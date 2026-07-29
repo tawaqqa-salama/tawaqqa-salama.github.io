@@ -1,0 +1,289 @@
+'use client';
+
+import { useEffect, useMemo, useState } from 'react';
+import { supabase } from '@/lib/supabase';
+import { ACTIVITY_RULES } from '@/lib/constants/clients';
+import { shouldShowInSales } from '@/lib/business/pipeline';
+import { calculateTotalAmount, calculateVatAmount, generateQuotationNumber } from '@/lib/business/client-workflow';
+import { generateReturnNumber, generateSalesDocNumber } from '@/lib/constants/modules';
+import AddClientModal from '@/components/clients/AddClientModal';
+import ClientDetailModal from '@/components/clients/ClientDetailModal';
+import ContractModal from '@/components/sales/ContractModal';
+import { printContract } from '@/components/sales/ContractPrint';
+import { printFinancialDocument } from '@/components/invoices/FinancialDocumentPrint';
+import { getClientBuildingProfile } from '@/lib/invoices/document-mapper';
+import { formatCurrency } from '@/lib/format/currency';
+import { parseLocalizedInteger, parseLocalizedNumber } from '@/lib/validation/client';
+import type { ClientFormData, ClientRecord, FinancialDocument } from '@/lib/types/client';
+import type { SalesContract, SalesDocument, SalesReturn } from '@/lib/types/sales';
+
+type TabId = 'clients' | 'documents' | 'credit' | 'contracts' | 'accounts';
+
+export default function SalesPage() {
+  const [tab, setTab] = useState<TabId>('clients');
+  const [clients, setClients] = useState<ClientRecord[]>([]);
+  const [documents, setDocuments] = useState<SalesDocument[]>([]);
+  const [contracts, setContracts] = useState<SalesContract[]>([]);
+  const [returns, setReturns] = useState<SalesReturn[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [isAddOpen, setIsAddOpen] = useState(false);
+  const [selected, setSelected] = useState<ClientRecord | null>(null);
+  const [contractClient, setContractClient] = useState<ClientRecord | null>(null);
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [errorMessage, setErrorMessage] = useState<string | null>(null);
+
+  const fetchAll = async () => {
+    setLoading(true);
+    const [clientsRes, docsRes, contractsRes, returnsRes] = await Promise.all([
+      supabase.from('clients').select('*').order('created_at', { ascending: false }),
+      supabase.from('sales_documents').select('*').order('created_at', { ascending: false }),
+      supabase.from('sales_contracts').select('*').order('created_at', { ascending: false }),
+      supabase.from('sales_returns').select('*').order('created_at', { ascending: false }),
+    ]);
+    setClients(((clientsRes.data || []) as ClientRecord[]).filter(shouldShowInSales));
+    setDocuments((docsRes.data || []) as SalesDocument[]);
+    setContracts((contractsRes.data || []) as SalesContract[]);
+    setReturns((returnsRes.data || []) as SalesReturn[]);
+    setLoading(false);
+  };
+
+  useEffect(() => {
+    fetchAll();
+  }, []);
+
+  const handleAdd = async (formData: ClientFormData) => {
+    setIsSubmitting(true);
+    setErrorMessage(null);
+    const { error } = await supabase.from('clients').insert([
+      {
+        client_code: `CL-${Date.now().toString().slice(-8)}`,
+        name: formData.business_name || formData.owner_name,
+        owner_name: formData.owner_name,
+        phone: formData.phone,
+        region: formData.region,
+        city: formData.city,
+        district: formData.district,
+        street: formData.street,
+        plot_number: formData.plot_number || null,
+        national_address: formData.national_address || null,
+        business_name: formData.business_name,
+        activity_type: formData.activity_type,
+        land_area: parseLocalizedNumber(formData.land_area),
+        building_area: parseLocalizedNumber(formData.building_area),
+        floors_count: parseLocalizedInteger(formData.floors_count),
+        floor_levels: formData.floor_levels || [],
+        project_status: formData.project_status,
+        pipeline_stage: 'sales',
+        sales_payment_type: 'نقدي',
+        financial_status: 'بانتظار الدفعة',
+        engineering_status: 'جديد',
+        quotation_status: 'مسودة',
+        quotation_visits_count: 1,
+        visit_status: 'لم تُجدول',
+        final_report_status: 'قيد الإعداد',
+      },
+    ]);
+    setIsSubmitting(false);
+    if (error) { setErrorMessage(error.message); return; }
+    setIsAddOpen(false);
+    fetchAll();
+  };
+
+  const archiveDocument = async (client: ClientRecord, type: 'quotation' | 'invoice') => {
+    const subtotal = Number(client.quotation_amount || 0);
+    if (subtotal <= 0) return alert('لا يوجد مبلغ للأرشفة');
+    await supabase.from('sales_documents').insert({
+      client_id: client.id,
+      doc_type: type,
+      doc_number: type === 'quotation' ? (client.quotation_number || generateSalesDocNumber('quotation')) : generateSalesDocNumber('invoice'),
+      subtotal,
+      vat_amount: Number(client.vat_amount || calculateVatAmount(subtotal)),
+      total_amount: Number(client.total_amount || calculateTotalAmount(subtotal)),
+      status: client.quotation_status || 'مسودة',
+      archived: true,
+    });
+    fetchAll();
+  };
+
+  const clientMap = useMemo(() => new Map(clients.map((c) => [c.id, c])), [clients]);
+
+  return (
+    <div className="space-y-5">
+      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+        <div>
+          <h1 className="text-xl font-bold">إدارة المبيعات</h1>
+          <p className="text-sm text-gray-500">عروض الأسعار، الفواتير، العقود، الآجل والمرتجعات</p>
+        </div>
+        <button onClick={() => setIsAddOpen(true)} className="px-4 py-2 bg-blue-600 text-white rounded-lg text-sm font-semibold">+ عميل / عرض</button>
+      </div>
+
+      <div className="flex flex-wrap gap-2">
+        {([
+          { id: 'clients' as const, label: 'العملاء والعروض' },
+          { id: 'documents' as const, label: 'أرشيف المستندات' },
+          { id: 'credit' as const, label: 'الآجل والمرتجعات' },
+          { id: 'contracts' as const, label: 'العقود' },
+          { id: 'accounts' as const, label: 'حساب العميل الشامل' },
+        ]).map((t) => (
+          <button key={t.id} onClick={() => setTab(t.id)} className={`px-3 py-2 rounded-lg text-sm font-semibold ${tab === t.id ? 'bg-blue-600 text-white' : 'bg-white border'}`}>{t.label}</button>
+        ))}
+      </div>
+
+      {tab === 'clients' && (
+        <div className="bg-white rounded-xl border overflow-hidden">
+          <table className="w-full text-right text-sm">
+            <thead className="bg-gray-50 border-b text-gray-600"><tr><th className="p-4">العميل</th><th className="p-4">عرض السعر</th><th className="p-4">الحالة</th><th className="p-4">نوع البيع</th><th className="p-4">إجراء</th></tr></thead>
+            <tbody>
+              {loading ? <tr><td colSpan={5} className="p-8 text-center text-gray-400">...</td></tr> : clients.map((c) => (
+                <tr key={c.id} className="border-b hover:bg-gray-50">
+                  <td className="p-4"><div className="font-semibold">{c.business_name}</div><div className="text-xs text-gray-400">{ACTIVITY_RULES[c.activity_type || '']?.label}</div></td>
+                  <td className="p-4 font-mono text-blue-600">{c.quotation_number || '—'}</td>
+                  <td className="p-4">{c.quotation_status}</td>
+                  <td className="p-4">{c.sales_payment_type || 'نقدي'}</td>
+                  <td className="p-4 flex flex-wrap gap-1">
+                    <button onClick={() => setSelected(c)} className="text-xs px-2 py-1 bg-blue-50 text-blue-700 rounded-lg">إدارة</button>
+                    <button onClick={() => archiveDocument(c, 'quotation')} className="text-xs px-2 py-1 bg-gray-100 rounded-lg">أرشفة</button>
+                    <button onClick={() => setContractClient(c)} className="text-xs px-2 py-1 bg-emerald-50 text-emerald-700 rounded-lg">عقد</button>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+
+      {tab === 'documents' && (
+        <div className="bg-white rounded-xl border overflow-hidden">
+          <table className="w-full text-right text-sm">
+            <thead className="bg-gray-50 border-b text-xs text-gray-500"><tr><th className="p-3">رقم</th><th className="p-3">النوع</th><th className="p-3">الإجمالي</th><th className="p-3">الحالة</th><th className="p-3">طباعة</th></tr></thead>
+            <tbody>
+              {documents.map((doc) => {
+                const c = clientMap.get(doc.client_id);
+                const finDoc: FinancialDocument | null = c ? {
+                  id: doc.id, documentType: doc.doc_type, documentNumber: doc.doc_number, clientId: doc.client_id,
+                  clientName: c.name, ...getClientBuildingProfile(c), subtotal: doc.subtotal, vatAmount: doc.vat_amount,
+                  totalAmount: doc.total_amount, status: doc.status, paidAmount: Number(c.paid_amount || 0), createdAt: doc.created_at || '',
+                } : null;
+                return (
+                  <tr key={doc.id} className="border-b">
+                    <td className="p-3 font-mono">{doc.doc_number}</td>
+                    <td className="p-3">{doc.doc_type === 'quotation' ? 'عرض سعر' : 'فاتورة'}</td>
+                    <td className="p-3 font-mono">{formatCurrency(doc.total_amount)}</td>
+                    <td className="p-3">{doc.status}</td>
+                    <td className="p-3">{finDoc && <button onClick={() => printFinancialDocument(finDoc)} className="text-xs text-blue-600">طباعة</button>}</td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        </div>
+      )}
+
+      {tab === 'credit' && (
+        <CreditReturnsTab clients={clients} returns={returns} onRefresh={fetchAll} />
+      )}
+
+      {tab === 'contracts' && (
+        <div className="bg-white rounded-xl border overflow-hidden">
+          <table className="w-full text-right text-sm">
+            <thead className="bg-gray-50 border-b text-xs"><tr><th className="p-3">رقم العقد</th><th className="p-3">عرض السعر</th><th className="p-3">الإجمالي</th><th className="p-3">الحالة</th><th className="p-3">طباعة</th></tr></thead>
+            <tbody>
+              {contracts.map((ct) => {
+                const c = clientMap.get(ct.client_id);
+                return (
+                  <tr key={ct.id} className="border-b">
+                    <td className="p-3 font-mono">{ct.contract_number}</td>
+                    <td className="p-3">{ct.quotation_number}</td>
+                    <td className="p-3 font-mono">{formatCurrency(ct.total_amount)}</td>
+                    <td className="p-3">{ct.status}</td>
+                    <td className="p-3">{c && <button onClick={() => printContract(ct, c)} className="text-xs text-blue-600">طباعة</button>}</td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        </div>
+      )}
+
+      {tab === 'accounts' && (
+        <div className="grid gap-4">
+          {clients.map((c) => (
+            <div key={c.id} className="bg-white border rounded-xl p-4">
+              <div className="flex justify-between items-start">
+                <div><p className="font-bold">{c.business_name || c.name}</p><p className="text-xs text-gray-500">{c.client_code}</p></div>
+                <span className="text-sm font-mono">{formatCurrency(Number(c.total_amount || 0))}</span>
+              </div>
+              <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mt-3 text-sm">
+                <div><span className="text-gray-400 text-xs">مدفوع</span><p className="font-mono">{formatCurrency(Number(c.paid_amount || 0))}</p></div>
+                <div><span className="text-gray-400 text-xs">آجل</span><p>{c.sales_payment_type || 'نقدي'}</p></div>
+                <div><span className="text-gray-400 text-xs">رصيد مستحق</span><p className="font-mono text-rose-600">{formatCurrency(Number(c.credit_balance || 0))}</p></div>
+                <div><span className="text-gray-400 text-xs">المالية</span><p>{c.financial_status}</p></div>
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+
+      <AddClientModal isOpen={isAddOpen} isSubmitting={isSubmitting} errorMessage={errorMessage} onClose={() => setIsAddOpen(false)} onSubmit={handleAdd} />
+      <ClientDetailModal client={selected} department="sales" onClose={() => setSelected(null)} onUpdated={fetchAll} />
+      <ContractModal client={contractClient} onClose={() => setContractClient(null)} onCreated={fetchAll} />
+    </div>
+  );
+}
+
+function CreditReturnsTab({ clients, returns, onRefresh }: { clients: ClientRecord[]; returns: SalesReturn[]; onRefresh: () => void }) {
+  const [clientId, setClientId] = useState('');
+  const [amount, setAmount] = useState('');
+  const [reason, setReason] = useState('');
+
+  const createReturn = async () => {
+    if (!clientId || parseLocalizedNumber(amount) <= 0) return;
+    await supabase.from('sales_returns').insert({
+      client_id: clientId,
+      return_number: generateReturnNumber(),
+      amount: parseLocalizedNumber(amount),
+      reason,
+      status: 'معتمد',
+    });
+    setAmount('');
+    setReason('');
+    onRefresh();
+  };
+
+  const setCredit = async (client: ClientRecord) => {
+    const balance = Math.max(0, Number(client.total_amount || 0) - Number(client.paid_amount || 0));
+    await supabase.from('clients').update({ sales_payment_type: 'آجل', credit_balance: balance }).eq('id', client.id);
+    onRefresh();
+  };
+
+  return (
+    <div className="grid grid-cols-1 xl:grid-cols-2 gap-4">
+      <div className="bg-white border rounded-xl p-4">
+        <h3 className="font-bold mb-3">مبيعات آجلة</h3>
+        <div className="space-y-2">
+          {clients.map((c) => (
+            <div key={c.id} className="flex justify-between items-center p-2 bg-gray-50 rounded-lg text-sm">
+              <span>{c.business_name || c.name}</span>
+              <button onClick={() => setCredit(c)} className="text-xs px-2 py-1 bg-amber-100 text-amber-800 rounded-lg">تحويل لآجل</button>
+            </div>
+          ))}
+        </div>
+      </div>
+      <div className="bg-white border rounded-xl p-4">
+        <h3 className="font-bold mb-3">مرتجعات المبيعات</h3>
+        <div className="space-y-2 mb-3">
+          <select value={clientId} onChange={(e) => setClientId(e.target.value)} className="w-full p-2 border rounded-lg text-sm">
+            <option value="">اختر العميل</option>
+            {clients.map((c) => <option key={c.id} value={c.id}>{c.business_name || c.name}</option>)}
+          </select>
+          <input placeholder="المبلغ" value={amount} onChange={(e) => setAmount(e.target.value)} className="w-full p-2 border rounded-lg text-sm font-mono" />
+          <input placeholder="السبب" value={reason} onChange={(e) => setReason(e.target.value)} className="w-full p-2 border rounded-lg text-sm" />
+          <button onClick={createReturn} className="w-full py-2 bg-rose-600 text-white rounded-lg text-sm">تسجيل مرتجع</button>
+        </div>
+        {returns.map((r) => (
+          <div key={r.id} className="text-sm p-2 border-b">{r.return_number} — {formatCurrency(r.amount)} — {r.reason}</div>
+        ))}
+      </div>
+    </div>
+  );
+}
