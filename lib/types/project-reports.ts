@@ -1,0 +1,174 @@
+export interface ReportMeta {
+  status: 'مسودة' | 'قيد الإعداد' | 'مكتمل' | 'معتمد';
+  updated_at?: string | null;
+}
+
+/** Read-only snapshot derived from client record (marketing/sales). */
+export interface BuildingPlanGeneralInfo {
+  business_name: string;
+  owner_name: string;
+  activity_type_label: string;
+  city: string;
+  region: string;
+  district: string;
+  street: string;
+  plot_number: string;
+  land_area: string;
+  building_area: string;
+  floors_count: string;
+  location_summary: string;
+  national_address: string;
+}
+
+export type YesNoValue = 'نعم' | 'لا' | '';
+
+/** Engineer-editable fields stored in project_engineering_data.building_plan */
+export interface BuildingPlanReport extends ReportMeta {
+  report_date?: string;
+  building_permit_number?: string;
+
+  occupancy_classification?: string;
+  building_type_code?: string;
+  sbc_requirements?: string;
+  sbc_code_exceptions?: YesNoValue;
+
+  high_rise_building?: YesNoValue;
+  total_site_area_m2?: string;
+  atrium_exists?: YesNoValue;
+  floors_description?: string;
+  underground_building?: YesNoValue;
+  building_height_m?: string;
+  windowless_building?: YesNoValue;
+  basement_floors_count?: string;
+  electrical_grounding?: YesNoValue;
+  underground_depth_m?: string;
+  lightning_protection?: YesNoValue;
+  exits_count?: string;
+  backup_generator?: YesNoValue;
+  stairs_count?: string;
+  escalators_count?: string;
+  elevators_count?: string;
+  special_rescue_team_required?: YesNoValue;
+
+  fire_alarm_system?: YesNoValue;
+  sprinkler_system?: YesNoValue;
+  emergency_exits_doors?: string;
+
+  plan_approval_status?: string;
+  technical_inspection_notes?: string;
+
+  office_name?: string;
+  commercial_registration?: string;
+  engineer_representative?: string;
+  engineering_membership_no?: string;
+  certification_date?: string;
+}
+
+export interface BoqLineItem {
+  id: string;
+  item: string;
+  unit: string;
+  quantity: number;
+  unit_price: number;
+}
+
+export interface BoqReport extends ReportMeta {
+  items: BoqLineItem[];
+  total_amount?: number;
+  notes?: string;
+}
+
+export interface TimelineMilestone {
+  id: string;
+  title: string;
+  start_date: string;
+  end_date: string;
+  status: string;
+}
+
+export interface TimelineReport extends ReportMeta {
+  milestones: TimelineMilestone[];
+  project_start?: string;
+  project_end?: string;
+  notes?: string;
+}
+
+export interface FieldVisitReport extends ReportMeta {
+  visit_number: number;
+  visit_date?: string;
+  engineer_name?: string;
+  location?: string;
+  findings?: string;
+  recommendations?: string;
+  photos_note?: string;
+  checklist?: { id: string; label: string; checked: boolean }[];
+}
+
+export interface TechnicalNotesReport extends ReportMeta {
+  deficiencies: { id: string; description: string; severity: string; resolved: boolean }[];
+  recommendations?: string;
+  compliance_status?: string;
+}
+
+export interface EngineeringDeliveryReport extends ReportMeta {
+  delivery_date?: string;
+  delivered_to?: string;
+  study_summary?: string;
+  attachments_note?: string;
+}
+
+export interface FinalInspectionReport extends ReportMeta {
+  inspection_date?: string;
+  inspector_name?: string;
+  overall_result?: string;
+  compliance_summary?: string;
+  license_recommendation?: string;
+}
+
+export interface CompletionCertificateReport extends ReportMeta {
+  certificate_number?: string;
+  issue_date?: string;
+  project_name?: string;
+  owner_name?: string;
+  scope_of_work?: string;
+  completion_date?: string;
+  engineer_name?: string;
+  notes?: string;
+}
+
+export interface ProjectEngineeringData {
+  building_plan: BuildingPlanReport;
+  boq: BoqReport;
+  timeline: TimelineReport;
+  field_visits: FieldVisitReport[];
+  technical_notes: TechnicalNotesReport;
+  engineering_delivery: EngineeringDeliveryReport;
+  final_inspection: FinalInspectionReport;
+  completion_certificate: CompletionCertificateReport;
+}
+
+export const EMPTY_BUILDING_PLAN: BuildingPlanReport = {
+  status: 'مسودة',
+  sbc_code_exceptions: '',
+  high_rise_building: '',
+  atrium_exists: '',
+  underground_building: '',
+  windowless_building: '',
+  electrical_grounding: '',
+  lightning_protection: '',
+  backup_generator: '',
+  special_rescue_team_required: '',
+  fire_alarm_system: '',
+  sprinkler_system: '',
+};
+
+export const EMPTY_PROJECT_ENGINEERING_DATA: ProjectEngineeringData = {
+  building_plan: { ...EMPTY_BUILDING_PLAN },
+  boq: { status: 'مسودة', items: [] },
+  timeline: { status: 'مسودة', milestones: [] },
+  field_visits: [],
+  technical_notes: { status: 'مسودة', deficiencies: [] },
+  engineering_delivery: { status: 'مسودة' },
+  final_inspection: { status: 'مسودة' },
+  completion_certificate: { status: 'مسودة' },
+};
