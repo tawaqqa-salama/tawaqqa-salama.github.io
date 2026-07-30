@@ -3,6 +3,12 @@ import { TECH_REPORT_GENERAL_RECOMMENDATIONS, TECH_REPORT_ITEMS } from '@/lib/co
 import type { ClientRecord } from '@/lib/types/client';
 import type { TechnicalReport, TechnicalReportSectionItem } from '@/lib/types/project-reports';
 import { getTechnicalReportFacilitySnapshot } from '@/lib/projects/technical-report';
+import {
+  buildCodeProofCards,
+  enrichZone,
+  floorAreaBalance,
+  zonesAreaSum,
+} from '@/lib/projects/sbc-classification';
 
 function esc(value: string | null | undefined) {
   return String(value || '')
@@ -50,8 +56,35 @@ export function printTechnicalReport(params: {
   const recommendations = TECH_REPORT_GENERAL_RECOMMENDATIONS.filter((item) =>
     report.general_recommendations.some((r) => r.id === item.id && r.checked)
   );
+  const proofCards = buildCodeProofCards(report, client);
 
-  const componentsRows = report.components
+  const floors = report.floor_uses || [];
+  const floorBlocks = floors
+    .map((floor) => {
+      const balance = floorAreaBalance(floor);
+      const zoneRows = floor.zones
+        .map((raw) => {
+          const zone = enrichZone(raw);
+          return `<tr>
+            <td>${esc(zone.label)}</td>
+            <td>GROUP ${esc(zone.group_letter)}</td>
+            <td>${esc(zone.risk_label)}</td>
+            <td>${esc(zone.area_m2)}${zone.area_m2 ? ' م²' : ''}</td>
+          </tr>`;
+        })
+        .join('');
+      return `
+        <h4 style="margin:12px 0 6px;color:#1f4d3a;font-size:13px">${esc(floor.floor_name)} — مساحة الدور ${esc(floor.floor_area_m2 || String(zonesAreaSum(floor.zones)))} م² · ${esc(floor.structure)} · ${esc(floor.classification)}</h4>
+        <table class="data">
+          <thead><tr><th>المنطقة</th><th>مجموعة الإشغال</th><th>الخطورة</th><th>المساحة</th></tr></thead>
+          <tbody>${zoneRows || '<tr><td colspan="4">لا مناطق</td></tr>'}</tbody>
+        </table>
+        <p style="font-size:11px;color:${balance.ok ? '#166534' : '#92400e'}">مجموع المناطق: ${balance.zonesSum} م² ${balance.ok ? '(متطابق مع مساحة الدور)' : `(فرق ${balance.diff})`}</p>
+      `;
+    })
+    .join('');
+
+  const componentsRows = (report.components || [])
     .map(
       (row, i) => `
       <tr>
@@ -62,6 +95,27 @@ export function printTechnicalReport(params: {
         <td>${esc(row.area_m2)}${row.area_m2 ? ' م²' : ''}</td>
       </tr>`
     )
+    .join('');
+
+  const proofHtml = proofCards
+    .map(
+      (card) => `
+      <div class="proof">
+        <div class="proof-title">${esc(card.title)}</div>
+        <div class="proof-sub">${esc(card.subtitle)}</div>
+        <table class="data">
+          ${card.rows
+            .map((row) => `<tr><th style="width:36%">${esc(row.label)}</th><td>${esc(row.value)}</td></tr>`)
+            .join('')}
+        </table>
+        ${card.highlight ? `<p class="proof-note">${esc(card.highlight)}</p>` : ''}
+        <p class="refs">مراجع: ${esc(card.refs.join(' · '))}</p>
+      </div>`
+    )
+    .join('');
+
+  const codePhotos = (report.code_proof_photos || [])
+    .map((p) => photoHtml(p.dataUrl, p.caption || 'مقطع من الكود'))
     .join('');
 
   const headerBlock = `
@@ -79,8 +133,9 @@ export function printTechnicalReport(params: {
   <meta charset="utf-8" />
   <title>تقرير فني — ${esc(facility.business_name)}</title>
   <style>
-    @page { size: A4; margin: 14mm 12mm; }
-    body { font-family: "Tahoma","Segoe UI",Arial,sans-serif; color:#222; line-height:1.7; }
+    @page { size: A4 portrait; margin: 14mm 12mm 18mm; }
+    html, body { width: 210mm; }
+    body { font-family: "Tahoma","Segoe UI",Arial,sans-serif; color:#222; line-height:1.7; margin:0 auto; max-width:210mm; }
     .header { display:flex; justify-content:space-between; align-items:flex-start; gap:12px; border-bottom:2px solid #1f4d3a; padding-bottom:10px; margin-bottom:16px; }
     .logo { display:flex; gap:10px; align-items:center; max-width:55%; }
     .logo img { width:54px; height:54px; object-fit:contain; }
@@ -90,30 +145,38 @@ export function printTechnicalReport(params: {
     .cover-title { text-align:center; color:#c0392b; font-size:20px; font-weight:800; margin:28px 0 18px; }
     .cover-fields { width:70%; margin:0 auto 24px; font-size:14px; }
     .cover-fields div { margin:8px 0; }
-    .signs { display:flex; justify-content:space-between; margin:40px 18% 20px; text-align:center; font-size:13px; }
+    .signs { display:flex; justify-content:space-between; margin:40px 12% 20px; text-align:center; font-size:13px; }
     .stamp { width:90px; height:90px; border:2px dashed #1f4d3a; border-radius:50%; margin:0 auto 8px; display:flex; align-items:center; justify-content:center; color:#1f4d3a; font-size:10px; text-align:center; padding:8px; }
     h2.chapter { color:#c0392b; text-align:center; margin:22px 0 12px; font-size:16px; }
     h3.section { color:#1f4d3a; margin:16px 0 8px; font-size:14px; }
     table.data { width:100%; border-collapse:collapse; font-size:12px; margin:8px 0 14px; }
-    table.data th, table.data td { border:1px solid #999; padding:6px 8px; }
-    table.data th { background:#f3f4f6; }
+    table.data th, table.data td { border:1px solid #999; padding:6px 8px; vertical-align:top; }
+    table.data th { background:#eef2f7; }
     .item { margin:10px 0 14px; }
     .item-title { color:#1f6b45; font-size:13px; margin:0 0 4px; }
     .notes { font-size:12px; margin:4px 0; }
     .opts { margin:4px 0 8px 0; padding-right:18px; font-size:12px; }
     .photos { display:flex; flex-wrap:wrap; gap:8px; margin-top:6px; }
-    .photo { width:48%; }
-    .photo img { width:100%; max-height:220px; object-fit:cover; border:1px solid #ddd; }
+    .photo { width:48%; page-break-inside: avoid; }
+    .photo img { width:100%; max-height:220px; object-fit:contain; border:1px solid #ddd; background:#fafafa; }
     .cap { font-size:10px; color:#666; text-align:center; }
-    .footer { position:fixed; bottom:0; left:0; right:0; border-top:1px solid #1f4d3a; padding-top:6px; font-size:10px; color:#444; text-align:center; }
-    .page { page-break-after: always; padding-bottom:40px; }
+    .proof { border:1px solid #cbd5e1; border-radius:6px; margin:10px 0 14px; overflow:hidden; page-break-inside: avoid; }
+    .proof-title { background:#1f4d3a; color:#fff; padding:8px 10px; font-size:12px; font-weight:700; }
+    .proof-sub { background:#fef2f2; color:#c0392b; padding:6px 10px; font-size:12px; font-weight:700; }
+    .proof-note { padding:6px 10px; font-size:11px; color:#92400e; background:#fffbeb; margin:0; }
+    .refs { padding:4px 10px 8px; font-size:10px; color:#64748b; margin:0; }
+    .footer { position:fixed; bottom:0; left:0; right:0; border-top:1px solid #1f4d3a; padding-top:6px; font-size:10px; color:#444; text-align:center; background:#fff; }
+    .page { page-break-after: always; padding-bottom:36px; }
     .page:last-child { page-break-after: auto; }
-    @media print { .no-print { display:none !important; } }
+    @media print {
+      .no-print { display:none !important; }
+      body { max-width:none; }
+    }
   </style>
 </head>
 <body>
   <div class="no-print" style="margin-bottom:12px;text-align:center">
-    <button onclick="window.print()" style="padding:8px 16px;font-size:14px">طباعة / حفظ PDF</button>
+    <button onclick="window.print()" style="padding:8px 16px;font-size:14px">طباعة / حفظ PDF (A4 عمودي)</button>
   </div>
 
   <section class="page">
@@ -128,6 +191,8 @@ export function printTechnicalReport(params: {
       <div><strong>الموقع:</strong> ${esc(facility.location_summary)}</div>
       <div><strong>قسم الدفاع المدني المختص:</strong> ${esc(report.civil_defense_branch || '—')}</div>
       <div><strong>المالك:</strong> ${esc(facility.owner_name)}</div>
+      <div><strong>تصنيف المبنى:</strong> ${esc(report.building_classification || '—')}</div>
+      <div><strong>تصنيف الخطورة:</strong> ${esc(report.risk_class || '—')}</div>
     </div>
     <div class="signs">
       <div>
@@ -160,7 +225,9 @@ export function printTechnicalReport(params: {
         <ul style="padding-right:18px; list-style:disc">
           <li>بيانات المنشأة العامة</li>
           <li>الموقع</li>
+          <li>الأدوار والمناطق</li>
           <li>مكونات المشروع والحالة الإنشائية</li>
+          <li>إثباتات التصنيف من الكود</li>
         </ul>
       </li>
       <li><strong>الباب الثاني: أنظمة السلامة</strong>
@@ -190,7 +257,8 @@ export function printTechnicalReport(params: {
       <tr><th>عدد الأدوار</th><td>${esc(report.floors_description || facility.floors_count || '—')}</td></tr>
       <tr><th>مساحة البناء</th><td>${esc(facility.building_area ? facility.building_area + ' م²' : '—')}</td></tr>
       <tr><th>الموقع</th><td>${esc(facility.location_summary)}</td></tr>
-      <tr><th>تصنيف المبنى</th><td>${esc(report.building_classification || '—')}</td></tr>
+      <tr><th>تصنيف المبنى (SBC)</th><td>${esc(report.building_classification || '—')}</td></tr>
+      <tr><th>تصنيف الخطورة</th><td>${esc(report.risk_class || '—')}</td></tr>
       <tr><th>حالة المبنى</th><td>${esc(report.building_status || '—')}</td></tr>
     </table>
 
@@ -199,16 +267,26 @@ export function printTechnicalReport(params: {
     ${photoHtml(report.earth_photo?.dataUrl, 'صورة Google Earth')}
     ${photoHtml(report.facade_photo?.dataUrl, 'واجهة المشروع')}
 
+    <h3 class="section">الأدوار والمناطق</h3>
+    ${floorBlocks || '<p style="font-size:12px">لا توجد أدوار بعد</p>'}
+
     <h3 class="section">مكونات المشروع والحالة الإنشائية</h3>
     <table class="data">
       <thead>
         <tr>
-          <th>#</th><th>المبنى</th><th>الهيكل الإنشائي</th><th>التصنيف الإنشائي</th><th>المساحة طبقاً للواقع</th>
+          <th>#</th><th>المبنى / الدور</th><th>الهيكل الإنشائي</th><th>التصنيف الإنشائي</th><th>المساحة طبقاً للواقع</th>
         </tr>
       </thead>
       <tbody>${componentsRows || '<tr><td colspan="5">لا توجد بيانات</td></tr>'}</tbody>
     </table>
     ${report.risk_class ? `<p style="font-size:12px">• تم تصنيف المشروع: ${esc(report.risk_class)}</p>` : ''}
+  </section>
+
+  <section class="page">
+    ${headerBlock}
+    <h2 class="chapter">إثباتات التصنيف من الكود السعودي</h2>
+    ${proofHtml}
+    ${codePhotos ? `<h3 class="section">صور مقاطع من الكود</h3><div class="photos">${codePhotos}</div>` : ''}
   </section>
 
   <section class="page">

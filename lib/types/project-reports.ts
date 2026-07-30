@@ -152,6 +152,28 @@ export interface TechnicalReportComponentRow {
   area_m2: string;
 }
 
+/** منطقة استخدام داخل دور */
+export interface TechnicalReportZone {
+  id: string;
+  use_code: string;
+  label: string;
+  area_m2: string;
+  occupancy_code?: string;
+  group_letter?: string;
+  risk_level?: string;
+  risk_label?: string;
+}
+
+/** دور مع مناطق استخدام — مجموع مساحات المناطق = مساحة الدور */
+export interface TechnicalReportFloorUse {
+  id: string;
+  floor_name: string;
+  floor_area_m2: string;
+  structure: string;
+  classification: string;
+  zones: TechnicalReportZone[];
+}
+
 export interface TechnicalReportSectionItem {
   id: string;
   enabled: boolean;
@@ -175,7 +197,9 @@ export interface TechnicalReport extends ReportMeta {
   building_permit_number?: string;
   building_permit_date?: string;
   building_status?: string;
+  /** مثل GROUP B,M — يُحسب تلقائياً من مناطق الأدوار */
   building_classification?: string;
+  /** ملخص الخطورة من المناطق / النشاط */
   risk_class?: string;
   overview_text?: string;
   location_description?: string;
@@ -183,6 +207,10 @@ export interface TechnicalReport extends ReportMeta {
   earth_photo?: TechnicalReportPhoto | null;
   facade_photo?: TechnicalReportPhoto | null;
   site_photo?: TechnicalReportPhoto | null;
+  /** صور مقاطع من الكود (تصنيف، خطورة، رشاشات…) */
+  code_proof_photos: TechnicalReportPhoto[];
+  /** أدوار ومناطق الاستخدام */
+  floor_uses: TechnicalReportFloorUse[];
   components: TechnicalReportComponentRow[];
   firefighting_items: TechnicalReportSectionItem[];
   ventilation_items: TechnicalReportSectionItem[];
@@ -223,6 +251,8 @@ export const EMPTY_BUILDING_PLAN: BuildingPlanReport = {
 export const EMPTY_TECHNICAL_REPORT: TechnicalReport = {
   status: 'مسودة',
   components: [],
+  floor_uses: [],
+  code_proof_photos: [],
   firefighting_items: [],
   ventilation_items: [],
   alarm_items: [],
