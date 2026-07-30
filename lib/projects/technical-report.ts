@@ -8,14 +8,13 @@ import type { ClientRecord } from '@/lib/types/client';
 import {
   EMPTY_TECHNICAL_REPORT,
   type TechnicalReport,
-  type TechnicalReportComponentRow,
   type TechnicalReportSectionItem,
 } from '@/lib/types/project-reports';
 import { ensureFloorLevels, labelForFloorKind } from '@/lib/business/floors';
-
-function newId(prefix: string) {
-  return `${prefix}-${Math.random().toString(36).slice(2, 9)}`;
-}
+import {
+  applyAutoClassification,
+  floorsFromClient,
+} from '@/lib/projects/sbc-classification';
 
 function buildItemsForChapter(
   chapter: TechReportItemCatalog['chapter'],
@@ -33,29 +32,6 @@ function buildItemsForChapter(
       }
     );
   });
-}
-
-function componentsFromClient(client: ClientRecord, existing: TechnicalReportComponentRow[]): TechnicalReportComponentRow[] {
-  if (existing.length > 0) return existing;
-  const floors = ensureFloorLevels(client.floor_levels, client.floors_count, client.building_area);
-  if (floors.length === 0) {
-    return [
-      {
-        id: newId('comp'),
-        part_name: 'الأرضي',
-        structure: 'خرسانة + بلوك',
-        classification: 'TYPE I A',
-        area_m2: client.building_area ? String(client.building_area) : '',
-      },
-    ];
-  }
-  return floors.map((floor) => ({
-    id: floor.id || newId('comp'),
-    part_name: floor.label || labelForFloorKind(floor.kind),
-    structure: 'خرسانة + بلوك',
-    classification: 'TYPE I A',
-    area_m2: floor.area_m2 ? String(floor.area_m2) : '',
-  }));
 }
 
 function locationSummary(client: ClientRecord): string {
@@ -77,18 +53,21 @@ export function seedTechnicalReportFromClient(
   existing?: TechnicalReport | null
 ): TechnicalReport {
   const base = { ...EMPTY_TECHNICAL_REPORT, ...existing };
-  return {
+  const floor_uses = floorsFromClient(client, base.floor_uses);
+  const withFloors: TechnicalReport = {
     ...base,
     report_date: base.report_date || new Date().toISOString().slice(0, 10),
     overview_text: base.overview_text || defaultOverview(client),
     location_description: base.location_description || locationSummary(client),
     floors_description:
       base.floors_description ||
+      floor_uses.map((f) => f.floor_name).join(' + ') ||
       ensureFloorLevels(client.floor_levels, client.floors_count, client.building_area)
         .map((f) => f.label || labelForFloorKind(f.kind))
         .join(' + '),
     building_status: base.building_status || client.project_status || 'تحت الإنشاء',
-    components: componentsFromClient(client, base.components || []),
+    floor_uses,
+    code_proof_photos: base.code_proof_photos || [],
     firefighting_items: buildItemsForChapter('firefighting', base.firefighting_items || []),
     ventilation_items: buildItemsForChapter('ventilation', base.ventilation_items || []),
     alarm_items: buildItemsForChapter('alarm', base.alarm_items || []),
@@ -97,6 +76,14 @@ export function seedTechnicalReportFromClient(
       base.general_recommendations?.length > 0
         ? base.general_recommendations
         : TECH_REPORT_GENERAL_RECOMMENDATIONS.map((item) => ({ id: item.id, checked: false })),
+  };
+
+  const classified = applyAutoClassification(withFloors, client);
+  return {
+    ...classified,
+    // لا تكتب فوق تصنيف محفوظ يدوياً إن وُجد وكان مختلفاً عن الفراغ — نعيد الحساب دائماً من المناطق
+    building_classification: classified.building_classification,
+    risk_class: classified.risk_class,
   };
 }
 
@@ -115,5 +102,6 @@ export function getTechnicalReportFacilitySnapshot(client: ClientRecord) {
     floors_count: client.floors_count != null ? String(client.floors_count) : '',
     national_address: client.national_address || '',
     location_summary: locationSummary(client),
+    activity_type: client.activity_type || '',
   };
 }
