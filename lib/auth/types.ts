@@ -29,6 +29,15 @@ export type AppUser = {
   page_bio?: string | null;
   last_login_at?: string | null;
   created_at?: string;
+  /** موارد بشرية */
+  salary?: number | null;
+  contract_type?: string | null;
+  contract_start_date?: string | null;
+  contract_end_date?: string | null;
+  hire_date?: string | null;
+  national_id?: string | null;
+  iban?: string | null;
+  hr_notes?: string | null;
 };
 
 export type AppRole = {
