@@ -5,6 +5,8 @@ import type { TechnicalReport, TechnicalReportSectionItem } from '@/lib/types/pr
 import { getTechnicalReportFacilitySnapshot } from '@/lib/projects/technical-report';
 import {
   buildCodeProofCards,
+  buildIntegratedFireNarrative,
+  buildZoneSystemNeeds,
   enrichZone,
   floorAreaBalance,
   zonesAreaSum,
@@ -57,6 +59,10 @@ export function printTechnicalReport(params: {
     report.general_recommendations.some((r) => r.id === item.id && r.checked)
   );
   const proofCards = buildCodeProofCards(report, client);
+  const zoneNeeds = buildZoneSystemNeeds(report.floor_uses || []);
+  const fireNarrative = buildIntegratedFireNarrative(report.floor_uses || []);
+  const proofsByKey = report.code_proofs_by_key || {};
+
 
   const floors = report.floor_uses || [];
   const floorBlocks = floors
@@ -64,11 +70,12 @@ export function printTechnicalReport(params: {
       const balance = floorAreaBalance(floor);
       const zoneRows = floor.zones
         .map((raw) => {
-          const zone = enrichZone(raw);
+          const zone = enrichZone(raw, { keepSuppression: true });
           return `<tr>
-            <td>${esc(zone.label)}</td>
+            <td>${esc(zone.label)}${zone.subtype_label ? `<div style="font-size:10px;color:#666">${esc(zone.subtype_label)}</div>` : ''}</td>
             <td>GROUP ${esc(zone.group_letter)}</td>
             <td>${esc(zone.risk_label)}</td>
+            <td>${esc(zone.suppression_label || '—')}</td>
             <td>${esc(zone.area_m2)}${zone.area_m2 ? ' م²' : ''}</td>
           </tr>`;
         })
@@ -76,8 +83,8 @@ export function printTechnicalReport(params: {
       return `
         <h4 style="margin:12px 0 6px;color:#1f4d3a;font-size:13px">${esc(floor.floor_name)} — مساحة الدور ${esc(floor.floor_area_m2 || String(zonesAreaSum(floor.zones)))} م² · ${esc(floor.structure)} · ${esc(floor.classification)}</h4>
         <table class="data">
-          <thead><tr><th>المنطقة</th><th>مجموعة الإشغال</th><th>الخطورة</th><th>المساحة</th></tr></thead>
-          <tbody>${zoneRows || '<tr><td colspan="4">لا مناطق</td></tr>'}</tbody>
+          <thead><tr><th>المنطقة / النوع</th><th>مجموعة الإشغال</th><th>الخطورة</th><th>نظام الإطفاء</th><th>المساحة</th></tr></thead>
+          <tbody>${zoneRows || '<tr><td colspan="5">لا مناطق</td></tr>'}</tbody>
         </table>
         <p style="font-size:11px;color:${balance.ok ? '#166534' : '#92400e'}">مجموع المناطق: ${balance.zonesSum} م² ${balance.ok ? '(متطابق مع مساحة الدور)' : `(فرق ${balance.diff})`}</p>
       `;
@@ -98,8 +105,13 @@ export function printTechnicalReport(params: {
     .join('');
 
   const proofHtml = proofCards
-    .map(
-      (card) => `
+    .map((card) => {
+      const photos = [
+        ...(proofsByKey[card.id] || []),
+        ...((report.code_proof_photos || []).filter((p) => (p.caption || '').includes(card.id))),
+      ];
+      const photosBlock = photos.map((p) => photoHtml(p.dataUrl, p.caption || 'صورة مقصوصة من الكود')).join('');
+      return `
       <div class="proof">
         <div class="proof-title">${esc(card.title)}</div>
         <div class="proof-sub">${esc(card.subtitle)}</div>
@@ -110,13 +122,40 @@ export function printTechnicalReport(params: {
         </table>
         ${card.highlight ? `<p class="proof-note">${esc(card.highlight)}</p>` : ''}
         <p class="refs">مراجع: ${esc(card.refs.join(' · '))}</p>
-      </div>`
+        ${photosBlock ? `<div class="photos">${photosBlock}</div>` : '<p class="proof-note">يلزم إرفاق صورة مقصوصة من الكود تحت هذا الإثبات.</p>'}
+      </div>`;
+    })
+    .join('');
+
+  const zoneProofPhotos = (report.floor_uses || [])
+    .flatMap((floor) =>
+      floor.zones
+        .filter((z) => z.code_proof_photo?.dataUrl)
+        .map((z) => photoHtml(z.code_proof_photo?.dataUrl, `${floor.floor_name} / ${z.label} — إثبات كود`))
     )
     .join('');
 
-  const codePhotos = (report.code_proof_photos || [])
-    .map((p) => photoHtml(p.dataUrl, p.caption || 'مقطع من الكود'))
-    .join('');
+  const systemsPlanHtml = zoneNeeds.length
+    ? `<h3 class="section">خطة أنظمة الإطفاء حسب الأدوار والمناطق</h3>
+       <table class="data">
+         <thead><tr><th>#</th><th>الدور</th><th>المنطقة</th><th>النوع</th><th>النظام المطلوب</th><th>المساحة</th></tr></thead>
+         <tbody>
+           ${zoneNeeds
+             .map(
+               (n, i) => `<tr>
+                 <td>${i + 1}</td>
+                 <td>${esc(n.floor_name)}</td>
+                 <td>${esc(n.zone_label)}</td>
+                 <td>${esc(n.subtype_label || '—')}</td>
+                 <td>${esc(n.suppression_label)}</td>
+                 <td>${esc(n.area_m2 || '—')}${n.area_m2 ? ' م²' : ''}</td>
+               </tr>`
+             )
+             .join('')}
+         </tbody>
+       </table>
+       <p class="notes" style="white-space:pre-wrap">${esc(fireNarrative)}</p>`
+    : '';
 
   const headerBlock = `
     <div class="header">
@@ -286,12 +325,13 @@ export function printTechnicalReport(params: {
     ${headerBlock}
     <h2 class="chapter">إثباتات التصنيف من الكود السعودي</h2>
     ${proofHtml}
-    ${codePhotos ? `<h3 class="section">صور مقاطع من الكود</h3><div class="photos">${codePhotos}</div>` : ''}
+    ${zoneProofPhotos ? `<h3 class="section">صور كود مربوطة بالمناطق</h3><div class="photos">${zoneProofPhotos}</div>` : ''}
   </section>
 
   <section class="page">
     ${headerBlock}
     <h2 class="chapter">الباب الثاني: أنظمة السلامة</h2>
+    ${systemsPlanHtml}
     ${renderItems('أنظمة مكافحة الحريق', report.firefighting_items)}
     ${renderItems('أنظمة التهوية الميكانيكية', report.ventilation_items)}
     ${renderItems('وسائل الإنذار المبكر عن الحريق', report.alarm_items)}

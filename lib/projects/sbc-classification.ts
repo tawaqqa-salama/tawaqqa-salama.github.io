@@ -5,11 +5,18 @@ import {
   type SbcOccupancyCode,
   type SbcRiskLevel,
 } from '@/lib/constants/sbc801';
-import { defaultZoneUseForActivity, getZoneUse } from '@/lib/constants/zone-uses';
+import {
+  defaultZoneUseForActivity,
+  getSuppression,
+  getZoneSubtype,
+  getZoneUse,
+  zoneOptionChoices,
+} from '@/lib/constants/zone-uses';
 import type {
   TechnicalReport,
   TechnicalReportComponentRow,
   TechnicalReportFloorUse,
+  TechnicalReportSectionItem,
   TechnicalReportZone,
 } from '@/lib/types/project-reports';
 import { ensureFloorLevels, labelForFloorKind } from '@/lib/business/floors';
@@ -29,30 +36,57 @@ function newId(prefix: string) {
 
 export function createZone(partial?: Partial<TechnicalReportZone>): TechnicalReportZone {
   const use = getZoneUse(partial?.use_code || 'offices');
-  const occ = SBC_OCCUPANCIES[use.occupancy];
+  const subtype = getZoneSubtype(use.id, partial?.subtype_code || use.subtypes[0]?.id);
+  const occupancyCode = (subtype?.occupancy || use.occupancy) as SbcOccupancyCode;
+  const occ = SBC_OCCUPANCIES[occupancyCode];
+  const risk = (subtype?.risk || occ.risk) as SbcRiskLevel;
+  const suppressionId = partial?.suppression_code || subtype?.default_suppression || use.default_suppression;
+  const suppression = getSuppression(suppressionId);
+  const label =
+    partial?.label ||
+    (subtype ? `${use.label} — ${subtype.label}` : use.label);
+
   return {
     id: partial?.id || newId('zone'),
     use_code: use.id,
-    label: partial?.label ?? use.label,
+    label,
     area_m2: partial?.area_m2 ?? '',
-    occupancy_code: use.occupancy,
+    subtype_code: subtype?.id,
+    subtype_label: subtype?.label,
+    suppression_code: suppression.id,
+    suppression_label: suppression.label,
+    selected_options: partial?.selected_options || [],
+    code_proof_photo: partial?.code_proof_photo ?? null,
+    occupancy_code: occupancyCode,
     group_letter: occ.group_letter,
-    risk_level: occ.risk,
-    risk_label: RISK_LABEL_AR[occ.risk],
+    risk_level: risk,
+    risk_label: RISK_LABEL_AR[risk],
   };
 }
 
-export function enrichZone(zone: TechnicalReportZone): TechnicalReportZone {
+export function enrichZone(zone: TechnicalReportZone, opts?: { keepSuppression?: boolean }): TechnicalReportZone {
   const use = getZoneUse(zone.use_code);
-  const occ = SBC_OCCUPANCIES[use.occupancy];
+  const subtype = getZoneSubtype(use.id, zone.subtype_code || use.subtypes[0]?.id);
+  const occupancyCode = (subtype?.occupancy || use.occupancy) as SbcOccupancyCode;
+  const occ = SBC_OCCUPANCIES[occupancyCode];
+  const risk = (subtype?.risk || occ.risk) as SbcRiskLevel;
+  const autoSuppressionId = subtype?.default_suppression || use.default_suppression;
+  const suppressionId = opts?.keepSuppression && zone.suppression_code ? zone.suppression_code : autoSuppressionId;
+  const suppression = getSuppression(suppressionId);
+
   return {
     ...zone,
     use_code: use.id,
-    label: zone.label || use.label,
-    occupancy_code: use.occupancy,
+    label: zone.label || (subtype ? `${use.label} — ${subtype.label}` : use.label),
+    subtype_code: subtype?.id,
+    subtype_label: subtype?.label,
+    suppression_code: suppression.id,
+    suppression_label: suppression.label,
+    selected_options: zone.selected_options || [],
+    occupancy_code: occupancyCode,
     group_letter: occ.group_letter,
-    risk_level: occ.risk,
-    risk_label: RISK_LABEL_AR[occ.risk],
+    risk_level: risk,
+    risk_label: RISK_LABEL_AR[risk],
   };
 }
 
@@ -77,13 +111,12 @@ export function collectOccupancies(floors: TechnicalReportFloorUse[]): SbcOccupa
   const codes = new Set<SbcOccupancyCode>();
   for (const floor of floors) {
     for (const zone of floor.zones) {
-      codes.add((enrichZone(zone).occupancy_code || 'business') as SbcOccupancyCode);
+      codes.add((enrichZone(zone, { keepSuppression: true }).occupancy_code || 'business') as SbcOccupancyCode);
     }
   }
   return [...codes];
 }
 
-/** مثل GROUP B,M من مناطق الأدوار */
 export function deriveBuildingClassification(floors: TechnicalReportFloorUse[], activityType?: string | null): string {
   const letters = new Set<string>();
   for (const code of collectOccupancies(floors)) {
@@ -97,17 +130,16 @@ export function deriveBuildingClassification(floors: TechnicalReportFloorUse[], 
   return `GROUP ${[...letters].sort().join(',')}`;
 }
 
-/** ملخص الخطورة حسب المناطق (مثل: متوسطة في التجاري، منخفضة في المكاتب) */
 export function deriveRiskClass(floors: TechnicalReportFloorUse[], activityType?: string | null): string {
   const byRisk = new Map<SbcRiskLevel, Set<string>>();
   let maxRisk: SbcRiskLevel | null = null;
 
   for (const floor of floors) {
     for (const raw of floor.zones) {
-      const zone = enrichZone(raw);
+      const zone = enrichZone(raw, { keepSuppression: true });
       const risk = (zone.risk_level || 'low') as SbcRiskLevel;
       if (!byRisk.has(risk)) byRisk.set(risk, new Set());
-      byRisk.get(risk)!.add(zone.label || getZoneUse(zone.use_code).label);
+      byRisk.get(risk)!.add(zone.subtype_label || zone.label || getZoneUse(zone.use_code).label);
       if (!maxRisk || RISK_RANK[risk] > RISK_RANK[maxRisk]) maxRisk = risk;
     }
   }
@@ -127,6 +159,128 @@ export function deriveRiskClass(floors: TechnicalReportFloorUse[], activityType?
   return parts.join('، ');
 }
 
+export type ZoneSystemNeed = {
+  floor_name: string;
+  zone_label: string;
+  subtype_label?: string;
+  area_m2: string;
+  group_letter?: string;
+  risk_label?: string;
+  suppression_code: string;
+  suppression_label: string;
+  is_special: boolean;
+  selected_options: string[];
+  occupancy_code?: string;
+};
+
+/** خطة أنظمة الإطفاء المدمجة من كل منطقة وكل دور */
+export function buildZoneSystemNeeds(floors: TechnicalReportFloorUse[]): ZoneSystemNeed[] {
+  return floors.flatMap((floor) =>
+    floor.zones.map((raw) => {
+      const zone = enrichZone(raw, { keepSuppression: true });
+      const suppression = getSuppression(zone.suppression_code);
+      return {
+        floor_name: floor.floor_name,
+        zone_label: zone.label,
+        subtype_label: zone.subtype_label,
+        area_m2: zone.area_m2,
+        group_letter: zone.group_letter,
+        risk_label: zone.risk_label,
+        suppression_code: suppression.id,
+        suppression_label: suppression.label,
+        is_special: suppression.is_special,
+        selected_options: zone.selected_options || [],
+        occupancy_code: zone.occupancy_code,
+      };
+    })
+  );
+}
+
+export function buildIntegratedFireNarrative(floors: TechnicalReportFloorUse[]): string {
+  const needs = buildZoneSystemNeeds(floors);
+  if (!needs.length) return '';
+
+  const lines = needs.map((n, i) => {
+    const opts = n.selected_options.length ? ` (خيارات: ${n.selected_options.join('، ')})` : '';
+    return `${i + 1}) الدور (${n.floor_name}) — المنطقة (${n.zone_label}${n.subtype_label ? ` / ${n.subtype_label}` : ''}) مساحة ${n.area_m2 || '—'} م²: يتطلب ${n.suppression_label}. التصنيف GROUP ${n.group_letter || '—'} وخطورة ${n.risk_label || '—'}.${opts}`;
+  });
+
+  const special = needs.filter((n) => n.is_special);
+  const water = needs.filter((n) => !n.is_special);
+
+  return [
+    'ملخص أنظمة الإطفاء حسب الأدوار والمناطق (مدمج من الباب الأول):',
+    ...lines,
+    water.length
+      ? `المناطق التي تعتمد مرشات/ماء: ${water.map((n) => `${n.floor_name}/${n.zone_label}`).join('، ')}.`
+      : '',
+    special.length
+      ? `المناطق التي تتطلب نظاماً خاصاً: ${special.map((n) => `${n.floor_name}/${n.zone_label} → ${n.suppression_label}`).join('؛ ')}.`
+      : '',
+  ]
+    .filter(Boolean)
+    .join('\n');
+}
+
+function mergeItemNotes(item: TechnicalReportSectionItem, block: string, marker: string): TechnicalReportSectionItem {
+  const cleaned = (item.notes || '').replace(new RegExp(`${marker}[\\s\\S]*?(?=\\n\\n|$)`, 'g'), '').trim();
+  const notes = [cleaned, `${marker}\n${block}`].filter(Boolean).join('\n\n');
+  return { ...item, notes };
+}
+
+/** يدمج احتياجات المناطق داخل بنود مكافحة الحريق */
+export function syncFirefightingFromZones(report: TechnicalReport): TechnicalReport {
+  const floors = report.floor_uses || [];
+  const needs = buildZoneSystemNeeds(floors);
+  if (!needs.length) return report;
+
+  const narrative = buildIntegratedFireNarrative(floors);
+  const specialLines = needs
+    .filter((n) => n.is_special)
+    .map((n) => `${n.floor_name} / ${n.zone_label}: ${n.suppression_label}`);
+  const sprinklerZones = needs.filter((n) => !n.is_special || n.suppression_code === 'esfr' || n.suppression_code === 'wet_sprinkler');
+
+  const firefighting_items = report.firefighting_items.map((item) => {
+    if (item.id === 'ff_special') {
+      const options = [...item.selectedOptions];
+      for (const line of specialLines) {
+        if (!options.includes(line)) options.push(line);
+      }
+      if (specialLines.length && !options.includes('تنفيذ أنظمة الإطفاء الخاصة وفق المناطق المحددة في التقرير')) {
+        options.push('تنفيذ أنظمة الإطفاء الخاصة وفق المناطق المحددة في التقرير');
+      }
+      return mergeItemNotes(
+        { ...item, enabled: true, selectedOptions: options },
+        specialLines.length
+          ? `الأنظمة الخاصة المطلوبة:\n${specialLines.map((l, i) => `${i + 1}. ${l}`).join('\n')}\n\n${narrative}`
+          : narrative,
+        '<<مدمج-من-المناطق>>'
+      );
+    }
+    if (item.id === 'ff_piping') {
+      const options = [...item.selectedOptions];
+      const autoOpts = [
+        'تركيب مرشات حريق (Sprinklers) في الفراغات المطلوبة',
+        'تنفيذ شبكة أنابيب حسب التصاميم الهيدروليكية',
+      ];
+      for (const opt of autoOpts) {
+        if (sprinklerZones.length && !options.includes(opt)) options.push(opt);
+      }
+      const zoneList = sprinklerZones
+        .map((n) => `${n.floor_name}/${n.zone_label} → ${n.suppression_label}`)
+        .join('؛ ');
+      return mergeItemNotes(
+        { ...item, enabled: true, selectedOptions: options },
+        `تغطية الرش/الماء للمناطق: ${zoneList || '—'}\n\n${narrative}`,
+        '<<مدمج-من-المناطق>>'
+      );
+    }
+    return item;
+  });
+
+  return { ...report, firefighting_items };
+}
+
 export type CodeProofCard = {
   id: string;
   title: string;
@@ -136,7 +290,6 @@ export type CodeProofCard = {
   refs: string[];
 };
 
-/** بطاقات إثبات من الكود (تصنيف، خطورة، رشاشات…) */
 export function buildCodeProofCards(
   report: Pick<TechnicalReport, 'floor_uses' | 'building_classification' | 'risk_class'>,
   client: Pick<ClientRecord, 'activity_type' | 'building_area' | 'floors_count' | 'land_area'>
@@ -168,7 +321,7 @@ export function buildCodeProofCards(
         value: `أمثلة: ${occ.examples.slice(0, 3).join('، ')} | خطر: ${RISK_LABEL_AR[occ.risk]}`,
       };
     }),
-    highlight: 'التصنيف يُستنتج من استخدامات المناطق داخل الأدوار وفق جداول الإشغال في كود البناء السعودي.',
+    highlight: 'أرفق صورة مقصوصة حقيقية من جدول الإشغال في الكود أسفل هذا الإثبات.',
     refs: codes.flatMap((c) => SBC_OCCUPANCIES[c].sbc_refs).slice(0, 6),
   });
 
@@ -178,14 +331,14 @@ export function buildCodeProofCards(
     subtitle: report.risk_class || deriveRiskClass(floors, client.activity_type),
     rows: floors.flatMap((floor) =>
       floor.zones.map((z) => {
-        const zone = enrichZone(z);
+        const zone = enrichZone(z, { keepSuppression: true });
         return {
           label: `${floor.floor_name} — ${zone.label}`,
-          value: `${zone.risk_label} | GROUP ${zone.group_letter} | ${zone.area_m2 || '—'} م²`,
+          value: `${zone.risk_label} | GROUP ${zone.group_letter} | ${zone.suppression_label || '—'} | ${zone.area_m2 || '—'} م²`,
         };
       })
     ),
-    highlight: 'يُعتمد أعلى مستوى خطورة مؤثر على أنظمة الحماية، مع توثيق اختلاف المناطق.',
+    highlight: 'أرفق صورة من الكود تدعم مستوى الخطورة المعتمد.',
     refs: ['SBC-801-OCC', 'EKB-RISKS'],
   });
 
@@ -195,7 +348,7 @@ export function buildCodeProofCards(
       (sum, floor) =>
         sum +
         floor.zones
-          .filter((z) => enrichZone(z).occupancy_code === code)
+          .filter((z) => enrichZone(z, { keepSuppression: true }).occupancy_code === code)
           .reduce((s, z) => s + (Number(z.area_m2) || 0), 0),
       0
     );
@@ -211,20 +364,12 @@ export function buildCodeProofCards(
         title: `اشتراط نظام إطفاء بالماء / مرشات — ${occ.label_ar}`,
         subtitle: needsSprinkler ? 'مطلوب وفق الكود' : 'يُراجع عند تجاوز العتبة',
         rows: [
-          {
-            label: 'رشاشات دائماً',
-            value: occ.sprinkler_always ? 'نعم' : 'لا',
-          },
+          { label: 'رشاشات دائماً', value: occ.sprinkler_always ? 'نعم' : 'لا' },
           {
             label: 'عتبة قسم الحريق',
-            value: occ.sprinkler_fire_area_m2
-              ? `${occ.sprinkler_fire_area_m2.toLocaleString('ar-SA')} م²`
-              : '—',
+            value: occ.sprinkler_fire_area_m2 ? `${occ.sprinkler_fire_area_m2.toLocaleString('ar-SA')} م²` : '—',
           },
-          {
-            label: 'مساحة هذا الإشغال في المشروع',
-            value: `${areaForOcc.toLocaleString('ar-SA')} م²`,
-          },
+          { label: 'مساحة هذا الإشغال في المشروع', value: `${areaForOcc.toLocaleString('ar-SA')} م²` },
           {
             label: 'النتيجة',
             value: needsSprinkler
@@ -232,31 +377,35 @@ export function buildCodeProofCards(
               : 'لم تُستوفَ عتبة الإلزام بعد — يُوثَّق للمراجعة',
           },
         ],
-        highlight: needsSprinkler
-          ? 'صورة الكود / الجدول أعلاه تُثبت الحاجة لنظام إطفاء بالماء.'
-          : undefined,
+        highlight: 'أرفق صورة مقصوصة من جدول/بند المرشات في SBC 801.',
         refs: ['SBC-801-SPR', ...occ.sbc_refs],
-      });
-    }
-
-    if (code === 'parking' || code === 'high_hazard' || code === 'special_fuel') {
-      cards.push({
-        id: `special-${code}`,
-        title: `اشتراط خاص — ${occ.label_ar}`,
-        subtitle: occ.notes?.[0] || 'متطلبات خاصة من SBC 801',
-        rows: (occ.notes || ['راجع متطلبات الإشغال الخاصة']).map((n) => ({
-          label: 'ملاحظة الكود',
-          value: n,
-        })),
-        refs: occ.sbc_refs,
       });
     }
   }
 
-  // Occupant load factors proof table from zones
+  const suppressionGroups = new Map<string, ZoneSystemNeed[]>();
+  for (const need of buildZoneSystemNeeds(floors)) {
+    if (!suppressionGroups.has(need.suppression_code)) suppressionGroups.set(need.suppression_code, []);
+    suppressionGroups.get(need.suppression_code)!.push(need);
+  }
+  for (const [code, group] of suppressionGroups) {
+    const suppression = getSuppression(code);
+    cards.push({
+      id: `sup-${code}`,
+      title: `إثبات نظام الإطفاء — ${suppression.short}`,
+      subtitle: suppression.label,
+      rows: group.map((n) => ({
+        label: `${n.floor_name} / ${n.zone_label}`,
+        value: `${n.subtype_label || '—'} · ${n.area_m2 || '—'} م² · ${n.risk_label || ''}`,
+      })),
+      highlight: 'أرفق صورة من الكود/المرجع المعتمد لنوع نظام الإطفاء المحدد.',
+      refs: ['SBC-801-SPR', 'EKB-SUPPRESSION'],
+    });
+  }
+
   const loadRows = floors.flatMap((floor) =>
     floor.zones.map((raw) => {
-      const zone = enrichZone(raw);
+      const zone = enrichZone(raw, { keepSuppression: true });
       const use = getZoneUse(zone.use_code);
       const area = Number(zone.area_m2) || 0;
       const factor = use.occupant_load_factor_m2;
@@ -275,7 +424,7 @@ export function buildCodeProofCards(
       title: 'إثبات عوامل حمل الإشغال (مرجع جداول الكود)',
       subtitle: 'حساب إرشادي للشاغلين من مساحة كل منطقة',
       rows: loadRows,
-      highlight: 'يُرفق عادةً مقطع من جدول الشاغلين في الكود كتوثيق بصري.',
+      highlight: 'أرفق صورة مقصوصة من جدول الشاغلين في الكود.',
       refs: ['SBC-201-1004', 'SBC-801-OCC'],
     });
   }
@@ -287,7 +436,7 @@ export function floorsFromClient(client: ClientRecord, existing?: TechnicalRepor
   if (existing && existing.length > 0) {
     return existing.map((floor) => ({
       ...floor,
-      zones: (floor.zones || []).map(enrichZone),
+      zones: (floor.zones || []).map((z) => enrichZone(z, { keepSuppression: true })),
     }));
   }
 
@@ -314,8 +463,7 @@ export function floorsFromClient(client: ClientRecord, existing?: TechnicalRepor
 
   return levels.map((level) => {
     const area = level.area_m2 ? String(level.area_m2) : '';
-    const useCode =
-      level.kind === 'basement' ? 'parking' : defaultUse;
+    const useCode = level.kind === 'basement' ? 'parking' : defaultUse;
     return {
       id: level.id || newId('floor'),
       floor_name: level.label || labelForFloorKind(level.kind),
@@ -341,12 +489,19 @@ export function applyAutoClassification(
   report: TechnicalReport,
   client: Pick<ClientRecord, 'activity_type'>
 ): TechnicalReport {
-  const floors = report.floor_uses || [];
-  return {
+  const floors = (report.floor_uses || []).map((floor) => ({
+    ...floor,
+    zones: floor.zones.map((z) => enrichZone(z, { keepSuppression: true })),
+  }));
+  const classified: TechnicalReport = {
     ...report,
+    floor_uses: floors,
     building_classification: deriveBuildingClassification(floors, client.activity_type),
     risk_class: deriveRiskClass(floors, client.activity_type),
     components: componentsFromFloors(floors),
     floors_description: floors.map((f) => f.floor_name).join(' + '),
   };
+  return syncFirefightingFromZones(classified);
 }
+
+export { zoneOptionChoices };
