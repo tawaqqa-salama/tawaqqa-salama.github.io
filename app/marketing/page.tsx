@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from 'react';
 import { supabase } from '@/lib/supabase';
+import { nextLeadCode } from '@/lib/business/document-numbers';
 import { shouldShowInMarketing } from '@/lib/business/pipeline';
 import AddLeadModal from '@/components/marketing/AddLeadModal';
 import FollowUpModal from '@/components/marketing/FollowUpModal';
@@ -48,9 +49,10 @@ export default function MarketingPage() {
   }) => {
     setIsSubmitting(true);
     setErrorMessage(null);
+    const leadCode = await nextLeadCode();
     const { error } = await supabase.from('clients').insert([
       {
-        client_code: `LD-${Date.now().toString().slice(-8)}`,
+        client_code: leadCode,
         name: form.business_name || form.owner_name,
         owner_name: form.owner_name,
         phone: form.phone,

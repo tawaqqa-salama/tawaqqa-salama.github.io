@@ -260,9 +260,10 @@ export default function ClientDetailModal({
       parseProjectEngineeringData(client.project_engineering_data),
       visitsCount
     );
+    const quotationNumber = client.quotation_number || (await generateQuotationNumber());
     await saveUpdate(
       {
-        quotation_number: client.quotation_number || generateQuotationNumber(),
+        quotation_number: quotationNumber,
         quotation_amount: subtotal,
         vat_amount: vatAmount,
         total_amount: totalAmount,
@@ -646,7 +647,7 @@ export default function ClientDetailModal({
                   <label className="block text-xs font-semibold text-gray-700 mb-1">رقم عرض السعر</label>
                   <input
                     readOnly
-                    value={client.quotation_number || 'لم يُنشأ بعد'}
+                    value={client.quotation_number || 'يُصدر تلقائياً عند الإنشاء (Q-YYYY-NNN)'}
                     className="w-full p-2.5 border rounded-xl text-sm bg-gray-50"
                   />
                 </div>

@@ -1,15 +1,8 @@
-export function generateContractNumber(): string {
-  return `CNT-${Date.now().toString().slice(-8)}`;
-}
-
-export function generateReturnNumber(): string {
-  return `RET-${Date.now().toString().slice(-8)}`;
-}
-
-export function generateSalesDocNumber(type: 'quotation' | 'invoice'): string {
-  const prefix = type === 'quotation' ? 'QT' : 'INV';
-  return `${prefix}-${Date.now().toString().slice(-8)}`;
-}
+export {
+  nextContractNumber as generateContractNumber,
+  nextReturnNumber as generateReturnNumber,
+  nextSalesDocNumber as generateSalesDocNumber,
+} from '@/lib/business/document-numbers';
 
 export const PROJECT_REPORT_SECTIONS = [
   { id: 'technical_report', label: 'التقرير الفني' },

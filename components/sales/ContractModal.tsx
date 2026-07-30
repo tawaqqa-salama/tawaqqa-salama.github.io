@@ -38,9 +38,10 @@ export default function ContractModal({ client, onClose, onCreated }: ContractMo
   const handleSave = async (print = false) => {
     setSaving(true);
     setError(null);
+    const contractNumber = await generateContractNumber();
     const contract: Omit<SalesContract, 'id' | 'created_at'> = {
       client_id: client.id,
-      contract_number: generateContractNumber(),
+      contract_number: contractNumber,
       quotation_number: client.quotation_number || null,
       contract_date: new Date().toISOString().slice(0, 10),
       service_scope: serviceScope,
@@ -68,6 +69,7 @@ export default function ContractModal({ client, onClose, onCreated }: ContractMo
           <div>
             <h2 className="text-xl font-bold">عقد خدمات استشارية</h2>
             <p className="text-sm text-gray-500">{client.business_name || client.name} — {client.quotation_number || 'بدون عرض'}</p>
+            <p className="text-xs text-emerald-700 mt-1">رقم العقد يُصدر تلقائياً عند الحفظ بصيغة CT-YYYY-NNN</p>
           </div>
           <button onClick={onClose} className="text-2xl text-gray-400">×</button>
         </div>

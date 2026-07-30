@@ -4,8 +4,9 @@ import { useEffect, useMemo, useState } from 'react';
 import { supabase } from '@/lib/supabase';
 import { ACTIVITY_RULES } from '@/lib/constants/clients';
 import { shouldShowInSales } from '@/lib/business/pipeline';
-import { calculateTotalAmount, calculateVatAmount, generateQuotationNumber } from '@/lib/business/client-workflow';
+import { calculateTotalAmount, calculateVatAmount } from '@/lib/business/client-workflow';
 import { generateReturnNumber, generateSalesDocNumber } from '@/lib/constants/modules';
+import { nextClientCode } from '@/lib/business/document-numbers';
 import AddClientModal from '@/components/clients/AddClientModal';
 import ClientDetailModal from '@/components/clients/ClientDetailModal';
 import ContractModal from '@/components/sales/ContractModal';
@@ -54,9 +55,10 @@ export default function SalesPage() {
   const handleAdd = async (formData: ClientFormData) => {
     setIsSubmitting(true);
     setErrorMessage(null);
+    const clientCode = await nextClientCode();
     const { error } = await supabase.from('clients').insert([
       {
-        client_code: `CL-${Date.now().toString().slice(-8)}`,
+        client_code: clientCode,
         name: formData.business_name || formData.owner_name,
         owner_name: formData.owner_name,
         phone: formData.phone,
@@ -92,10 +94,14 @@ export default function SalesPage() {
   const archiveDocument = async (client: ClientRecord, type: 'quotation' | 'invoice') => {
     const subtotal = Number(client.quotation_amount || 0);
     if (subtotal <= 0) return alert('لا يوجد مبلغ للأرشفة');
+    const docNumber =
+      type === 'quotation'
+        ? client.quotation_number || (await generateSalesDocNumber('quotation'))
+        : await generateSalesDocNumber('invoice');
     await supabase.from('sales_documents').insert({
       client_id: client.id,
       doc_type: type,
-      doc_number: type === 'quotation' ? (client.quotation_number || generateSalesDocNumber('quotation')) : generateSalesDocNumber('invoice'),
+      doc_number: docNumber,
       subtotal,
       vat_amount: Number(client.vat_amount || calculateVatAmount(subtotal)),
       total_amount: Number(client.total_amount || calculateTotalAmount(subtotal)),
@@ -238,9 +244,10 @@ function CreditReturnsTab({ clients, returns, onRefresh }: { clients: ClientReco
 
   const createReturn = async () => {
     if (!clientId || parseLocalizedNumber(amount) <= 0) return;
+    const returnNumber = await generateReturnNumber();
     await supabase.from('sales_returns').insert({
       client_id: clientId,
-      return_number: generateReturnNumber(),
+      return_number: returnNumber,
       amount: parseLocalizedNumber(amount),
       reason,
       status: 'معتمد',
