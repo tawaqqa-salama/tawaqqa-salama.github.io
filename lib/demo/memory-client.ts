@@ -369,6 +369,11 @@ export function createDemoSupabaseClient(): DemoSupabaseClient {
       return new DemoQuery(db, table);
     },
     async rpc(fn: string, args: Record<string, unknown> = {}) {
+      if (fn === 'provision_employee_auth') {
+        // وضع العرض لا يستخدم Supabase Auth
+        return { data: `demo-auth-${String(args.p_email || 'user')}`, error: null };
+      }
+
       if (fn !== 'next_document_number') {
         return { data: null, error: { message: `RPC غير مدعوم في وضع العرض: ${fn}` } };
       }
