@@ -136,7 +136,65 @@ export interface CompletionCertificateReport extends ReportMeta {
   notes?: string;
 }
 
+/** صورة مرفقة داخل التقرير الفني */
+export interface TechnicalReportPhoto {
+  id: string;
+  caption?: string;
+  /** Data URL مؤقت للمعاينة/الطباعة — لاحقاً يُستبدل بتخزين Supabase */
+  dataUrl?: string;
+}
+
+export interface TechnicalReportComponentRow {
+  id: string;
+  part_name: string;
+  structure: string;
+  classification: string;
+  area_m2: string;
+}
+
+export interface TechnicalReportSectionItem {
+  id: string;
+  enabled: boolean;
+  notes: string;
+  selectedOptions: string[];
+  photos: TechnicalReportPhoto[];
+}
+
+export interface TechnicalReportRecommendation {
+  id: string;
+  checked: boolean;
+}
+
+/** التقرير الفني لأنظمة السلامة والوقاية من الحريق */
+export interface TechnicalReport extends ReportMeta {
+  report_date?: string;
+  outgoing_number?: string;
+  civil_defense_branch?: string;
+  deed_number?: string;
+  deed_date?: string;
+  building_permit_number?: string;
+  building_permit_date?: string;
+  building_status?: string;
+  building_classification?: string;
+  risk_class?: string;
+  overview_text?: string;
+  location_description?: string;
+  floors_description?: string;
+  earth_photo?: TechnicalReportPhoto | null;
+  facade_photo?: TechnicalReportPhoto | null;
+  site_photo?: TechnicalReportPhoto | null;
+  components: TechnicalReportComponentRow[];
+  firefighting_items: TechnicalReportSectionItem[];
+  ventilation_items: TechnicalReportSectionItem[];
+  alarm_items: TechnicalReportSectionItem[];
+  exits_items: TechnicalReportSectionItem[];
+  general_recommendations: TechnicalReportRecommendation[];
+  safety_engineer_name?: string;
+  executive_director_name?: string;
+}
+
 export interface ProjectEngineeringData {
+  technical_report: TechnicalReport;
   building_plan: BuildingPlanReport;
   boq: BoqReport;
   timeline: TimelineReport;
@@ -162,7 +220,21 @@ export const EMPTY_BUILDING_PLAN: BuildingPlanReport = {
   sprinkler_system: '',
 };
 
+export const EMPTY_TECHNICAL_REPORT: TechnicalReport = {
+  status: 'مسودة',
+  components: [],
+  firefighting_items: [],
+  ventilation_items: [],
+  alarm_items: [],
+  exits_items: [],
+  general_recommendations: [],
+  earth_photo: null,
+  facade_photo: null,
+  site_photo: null,
+};
+
 export const EMPTY_PROJECT_ENGINEERING_DATA: ProjectEngineeringData = {
+  technical_report: { ...EMPTY_TECHNICAL_REPORT },
   building_plan: { ...EMPTY_BUILDING_PLAN },
   boq: { status: 'مسودة', items: [] },
   timeline: { status: 'مسودة', milestones: [] },

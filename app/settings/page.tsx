@@ -16,8 +16,8 @@ export default function SettingsPage() {
     },
     {
       title: 'إعدادات الشركة',
-      desc: 'بيانات المنشأة، الشعار، الرقم الضريبي',
-      href: null,
+      desc: 'بيانات المنشأة، الشعار، الرقم الضريبي — تظهر في التقرير الفني',
+      href: '/settings/company',
       enabled: canAccess('settings'),
     },
     {
