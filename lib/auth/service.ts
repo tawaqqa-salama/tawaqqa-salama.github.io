@@ -281,14 +281,18 @@ export async function upsertEmployee(input: {
   iban?: string | null;
   hr_notes?: string | null;
 }): Promise<{ user: AppUser | null; error: string | null }> {
+  const isUpdate = Boolean(input.id);
   const email = input.email.trim().toLowerCase();
   const phone = input.phone.replace(/\s+/g, '');
   const username = input.username.trim().toLowerCase().replace(/[^a-z0-9_-]/g, '');
 
-  if (!input.full_name.trim() || !email || !phone || !username) {
-    return { user: null, error: 'أكمل الاسم والبريد والجوال واسم المستخدم' };
+  if (!input.full_name.trim() || !email || !username) {
+    return { user: null, error: 'أكمل الاسم والبريد واسم المستخدم' };
   }
-  if (!/^05\d{8}$/.test(phone)) {
+  if (!isUpdate && !phone) {
+    return { user: null, error: 'أكمل رقم الجوال' };
+  }
+  if (phone && !/^05\d{8}$/.test(phone)) {
     return { user: null, error: 'رقم الجوال يجب أن يكون 05xxxxxxxx' };
   }
 
@@ -302,17 +306,21 @@ export async function upsertEmployee(input: {
     branch_id: tenant.branchId,
     full_name: input.full_name.trim(),
     email,
-    phone,
     username,
     role_code: input.role_code || 'staff',
     job_title: input.job_title?.trim() || null,
-    extra_permissions: input.extra_permissions || [],
-    page_modules: input.page_modules || [],
-    page_title: input.page_title?.trim() || null,
-    page_bio: input.page_bio?.trim() || null,
     is_active: input.is_active ?? true,
     updated_at: new Date().toISOString(),
   };
+
+  // عند التحديث: اسمح ببقاء الجوال فارغاً للموظفين القدامى
+  if (phone) payload.phone = phone;
+  else if (!isUpdate) payload.phone = phone;
+
+  if (input.extra_permissions !== undefined) payload.extra_permissions = input.extra_permissions;
+  if (input.page_modules !== undefined) payload.page_modules = input.page_modules;
+  if (input.page_title !== undefined) payload.page_title = input.page_title?.trim() || null;
+  if (input.page_bio !== undefined) payload.page_bio = input.page_bio?.trim() || null;
 
   if (input.salary !== undefined) payload.salary = input.salary;
   if (input.contract_type !== undefined) payload.contract_type = input.contract_type || null;
@@ -323,14 +331,14 @@ export async function upsertEmployee(input: {
   if (input.iban !== undefined) payload.iban = input.iban || null;
   if (input.hr_notes !== undefined) payload.hr_notes = input.hr_notes || null;
 
-  if (input.id) {
-    const { data, error } = await supabase.from('users').update(payload).eq('id', input.id).select('*').single();
+  if (isUpdate) {
+    const { data, error } = await supabase.from('users').update(payload).eq('id', input.id!).select('*').single();
     if (error) return { user: null, error: error.message };
     if (input.password && isDemoMode) {
       await supabase
         .from('demo_credentials')
-        .update({ email, phone, password: input.password })
-        .eq('user_id', input.id);
+        .update({ email, phone: phone || null, password: input.password })
+        .eq('user_id', input.id!);
     }
     return { user: data as AppUser, error: null };
   }

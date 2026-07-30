@@ -283,7 +283,7 @@ export default function HRPage() {
             <Field label="الاسم الكامل" value={form.full_name} onChange={(v) => setForm({ ...form, full_name: v })} disabled={!canManageStaff} />
             <Field label="اسم المستخدم" value={form.username} onChange={(v) => setForm({ ...form, username: v })} disabled={!canManageStaff || !!form.id} />
             <Field label="البريد" value={form.email} onChange={(v) => setForm({ ...form, email: v })} type="email" disabled={!canManageStaff} />
-            <Field label="الجوال" value={form.phone} onChange={(v) => setForm({ ...form, phone: v })} placeholder="05xxxxxxxx" disabled={!canManageStaff} />
+            <Field label="الجوال" value={form.phone} onChange={(v) => setForm({ ...form, phone: v })} placeholder={form.id ? '05xxxxxxxx (اختياري)' : '05xxxxxxxx'} disabled={!canManageStaff} />
             <Field label="المسمى الوظيفي" value={form.job_title} onChange={(v) => setForm({ ...form, job_title: v })} disabled={!canManageStaff} />
             <label className="block text-sm">
               <span className="text-gray-600 mb-1 block">الدور</span>
