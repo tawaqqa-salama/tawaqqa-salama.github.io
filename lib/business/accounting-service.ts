@@ -1,6 +1,7 @@
 import { supabase } from '@/lib/supabase';
 import { DEFAULT_ACCOUNT_CODES, getJournalEntryTypeLabel } from '@/lib/constants/accounting';
 import { isFinancialApproved } from '@/lib/business/workflow-stages';
+import { nextJournalNumber, nextVoucherNumber } from '@/lib/business/document-numbers';
 import type { ClientRecord } from '@/lib/types/client';
 import type {
   AccountingDashboardStats,
@@ -19,13 +20,12 @@ function round2(value: number): number {
   return Math.round(value * 100) / 100;
 }
 
-export function generateEntryNumber(): string {
-  return `JE-${Date.now().toString().slice(-8)}`;
+export async function generateEntryNumber(): Promise<string> {
+  return nextJournalNumber();
 }
 
-export function generateVoucherNumber(type: 'receipt' | 'payment'): string {
-  const prefix = type === 'receipt' ? 'RV' : 'PV';
-  return `${prefix}-${Date.now().toString().slice(-8)}`;
+export async function generateVoucherNumber(type: 'receipt' | 'payment'): Promise<string> {
+  return nextVoucherNumber(type);
 }
 
 export function isJournalBalanced(lines: Pick<JournalEntryLine, 'debit' | 'credit'>[]): boolean {
@@ -92,7 +92,7 @@ export async function createJournalEntry(input: {
     return { entry: null, error: 'يجب أن يتساوى مجموع المدين مع مجموع الدائن.' };
   }
 
-  const entryNumber = generateEntryNumber();
+  const entryNumber = await generateEntryNumber();
   const { data: entry, error: entryError } = await supabase
     .from('journal_entries')
     .insert({
@@ -142,10 +142,11 @@ export async function createVoucher(input: {
   status?: string;
   journalEntryId?: string | null;
 }): Promise<{ voucher: Voucher | null; error: string | null }> {
+  const voucherNumber = await generateVoucherNumber(input.type);
   const { data, error } = await supabase
     .from('vouchers')
     .insert({
-      voucher_number: generateVoucherNumber(input.type),
+      voucher_number: voucherNumber,
       voucher_type: input.type,
       voucher_date: new Date().toISOString().slice(0, 10),
       client_id: input.clientId || null,

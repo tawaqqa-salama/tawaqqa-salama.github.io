@@ -15,6 +15,7 @@ import BuildingPlanReportSection from '@/components/projects/BuildingPlanReportS
 import TechnicalReportSection from '@/components/projects/TechnicalReportSection';
 import { printTechnicalReport } from '@/components/projects/TechnicalReportPrint';
 import { loadCompanyProfile } from '@/lib/company-profile';
+import { ensureCertificateNumber, ensureOutgoingNumber } from '@/lib/business/document-numbers';
 import NumericInput from '@/components/ui/NumericInput';
 import type { ClientRecord } from '@/lib/types/client';
 import type { ProjectEngineeringData } from '@/lib/types/project-reports';
@@ -51,18 +52,33 @@ export default function ProjectReportModal({ client, onClose, onUpdated }: Proje
 
   if (!client || !data) return null;
 
-  const save = async (nextData: ProjectEngineeringData, successText: string) => {
+  const save = async (
+    nextData: ProjectEngineeringData,
+    successText: string,
+    options?: { issueOutgoing?: boolean; issueCertificate?: boolean }
+  ) => {
     setSaving(true);
     setMessage(null);
+    const outgoingNumber = options?.issueOutgoing
+      ? await ensureOutgoingNumber(nextData.technical_report?.outgoing_number)
+      : nextData.technical_report?.outgoing_number;
+    const certificateNumber = options?.issueCertificate
+      ? await ensureCertificateNumber(nextData.completion_certificate?.certificate_number)
+      : nextData.completion_certificate?.certificate_number;
     const stamped: ProjectEngineeringData = {
       ...nextData,
       technical_report: {
         ...nextData.technical_report,
+        ...(outgoingNumber ? { outgoing_number: outgoingNumber } : {}),
         updated_at: new Date().toISOString(),
       },
       building_plan: {
         ...nextData.building_plan,
         updated_at: new Date().toISOString(),
+      },
+      completion_certificate: {
+        ...nextData.completion_certificate,
+        ...(certificateNumber ? { certificate_number: certificateNumber } : {}),
       },
     };
     const { error } = await supabase
@@ -82,8 +98,18 @@ export default function ProjectReportModal({ client, onClose, onUpdated }: Proje
   const patch = (partial: Partial<ProjectEngineeringData>) => setData({ ...data, ...partial });
 
   const handlePrintTechnical = async () => {
+    let report = data.technical_report;
+    if (!report.outgoing_number?.trim()) {
+      const outgoingNumber = await ensureOutgoingNumber(report.outgoing_number);
+      const nextData: ProjectEngineeringData = {
+        ...data,
+        technical_report: { ...report, outgoing_number: outgoingNumber },
+      };
+      await save(nextData, 'تم إصدار رقم الصادر تلقائياً.', { issueOutgoing: false });
+      report = nextData.technical_report;
+    }
     const company = await loadCompanyProfile();
-    printTechnicalReport({ client, report: data.technical_report, company });
+    printTechnicalReport({ client, report, company });
   };
 
   return (
@@ -142,7 +168,7 @@ export default function ProjectReportModal({ client, onClose, onUpdated }: Proje
                 report={data.technical_report}
                 saving={saving}
                 onChange={(technical_report) => patch({ technical_report })}
-                onSave={() => save({ ...data }, 'تم حفظ التقرير الفني.')}
+                onSave={() => save({ ...data }, 'تم حفظ التقرير الفني.', { issueOutgoing: true })}
                 onPrint={() => void handlePrintTechnical()}
               />
             )}
@@ -254,15 +280,40 @@ export default function ProjectReportModal({ client, onClose, onUpdated }: Proje
               <div className="space-y-3">
                 <StatusSelect value={data.completion_certificate.status} onChange={(status) => patch({ completion_certificate: { ...data.completion_certificate, status } })} />
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                  <Field label="رقم الشهادة" value={data.completion_certificate.certificate_number || ''} onChange={(v) => patch({ completion_certificate: { ...data.completion_certificate, certificate_number: v } })} />
+                  <div>
+                    <label className="block text-xs font-semibold mb-1">رقم الشهادة</label>
+                    <input
+                      readOnly
+                      value={data.completion_certificate.certificate_number || 'يُصدر تلقائياً عند الحفظ'}
+                      className="w-full p-2.5 border rounded-xl text-sm bg-gray-50 text-gray-700"
+                    />
+                    <p className="text-[11px] text-gray-400 mt-1">تسلسل سنوي تلقائي بصيغة CERT-YYYY-NNN</p>
+                  </div>
                   <Field label="تاريخ الإصدار" type="date" value={data.completion_certificate.issue_date || ''} onChange={(v) => patch({ completion_certificate: { ...data.completion_certificate, issue_date: v } })} />
                   <Field label="تاريخ الإنجاز" type="date" value={data.completion_certificate.completion_date || ''} onChange={(v) => patch({ completion_certificate: { ...data.completion_certificate, completion_date: v } })} />
                   <Field label="المهندس" value={data.completion_certificate.engineer_name || client.assigned_engineer || ''} onChange={(v) => patch({ completion_certificate: { ...data.completion_certificate, engineer_name: v } })} />
                 </div>
                 <textarea rows={3} placeholder="نطاق الأعمال" value={data.completion_certificate.scope_of_work || ''} onChange={(e) => patch({ completion_certificate: { ...data.completion_certificate, scope_of_work: e.target.value } })} className="w-full p-2.5 border rounded-xl text-sm" />
                 <div className="flex gap-2">
-                  <button onClick={() => save(data, 'تم حفظ الشهادة.')} disabled={saving} className="px-4 py-2 bg-indigo-600 text-white rounded-xl text-sm">حفظ</button>
-                  <button onClick={() => printCompletionCertificate(client, data.completion_certificate)} className="px-4 py-2 bg-[#1f4d3a] text-white rounded-xl text-sm">طباعة / تصدير</button>
+                  <button onClick={() => save(data, 'تم حفظ الشهادة.', { issueCertificate: true })} disabled={saving} className="px-4 py-2 bg-indigo-600 text-white rounded-xl text-sm">حفظ</button>
+                  <button
+                    onClick={async () => {
+                      let cert = data.completion_certificate;
+                      if (!cert.certificate_number?.trim()) {
+                        const certificateNumber = await ensureCertificateNumber(cert.certificate_number);
+                        const nextData = {
+                          ...data,
+                          completion_certificate: { ...cert, certificate_number: certificateNumber },
+                        };
+                        await save(nextData, 'تم إصدار رقم الشهادة تلقائياً.', { issueCertificate: false });
+                        cert = nextData.completion_certificate;
+                      }
+                      printCompletionCertificate(client, cert);
+                    }}
+                    className="px-4 py-2 bg-[#1f4d3a] text-white rounded-xl text-sm"
+                  >
+                    طباعة / تصدير
+                  </button>
                 </div>
               </div>
             )}

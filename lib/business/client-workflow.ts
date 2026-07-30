@@ -43,13 +43,10 @@ export function canAdvanceEngineeringStatus(
   return null;
 }
 
-export function generateQuotationNumber(): string {
-  return `QT-${Date.now().toString().slice(-8)}`;
-}
-
-export function generateInvoiceNumber(sequence: number): string {
-  return `INV-${2026000 + sequence}`;
-}
+export {
+  nextQuotationNumber as generateQuotationNumber,
+  nextInvoiceNumber as generateInvoiceNumber,
+} from '@/lib/business/document-numbers';
 
 export function mapDocumentFilterStatus(
   status: string,

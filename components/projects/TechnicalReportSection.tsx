@@ -186,7 +186,15 @@ export default function TechnicalReportSection({
             <h4 className="font-bold text-gray-800">حقول يغطيها المهندس</h4>
             <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
               <Field label="تاريخ التقرير" type="date" value={report.report_date || ''} onChange={(v) => patch({ report_date: v })} />
-              <Field label="رقم الصادر" value={report.outgoing_number || ''} onChange={(v) => patch({ outgoing_number: v })} />
+              <div>
+                <label className="block text-xs font-semibold text-gray-600 mb-1">رقم الصادر</label>
+                <input
+                  readOnly
+                  value={report.outgoing_number || 'يُصدر تلقائياً عند الحفظ'}
+                  className="w-full border rounded-xl px-3 py-2.5 bg-gray-50 text-gray-700"
+                />
+                <p className="text-[11px] text-gray-400 mt-1">تسلسل سنوي تلقائي بصيغة OUT-YYYY-NNNN</p>
+              </div>
               <Field label="قسم الدفاع المدني المختص" value={report.civil_defense_branch || ''} onChange={(v) => patch({ civil_defense_branch: v })} />
               <SelectField label="حالة المبنى" value={report.building_status || ''} onChange={(v) => patch({ building_status: v })} options={BUILDING_STATUS_OPTIONS} />
               <Field label="رقم الصك" value={report.deed_number || ''} onChange={(v) => patch({ deed_number: v })} />

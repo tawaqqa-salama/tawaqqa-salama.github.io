@@ -22,6 +22,9 @@ const files = [
   '008_ekb_catalog.sql',
   '009_auth_users_roles.sql',
   '010_client_floor_levels.sql',
+  '012_hr_employee_fields.sql',
+  '013_company_branding_fields.sql',
+  '014_document_sequences.sql',
 ];
 
 if (!process.env.DATABASE_URL) {
