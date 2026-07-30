@@ -2,15 +2,24 @@ import type { ClientRecord } from '@/lib/types/client';
 import {
   EMPTY_PROJECT_ENGINEERING_DATA,
   EMPTY_BUILDING_PLAN,
+  EMPTY_TECHNICAL_REPORT,
   type FieldVisitReport,
   type ProjectEngineeringData,
 } from '@/lib/types/project-reports';
 import { mergeBuildingPlanDefaults } from '@/lib/projects/building-plan';
+import { seedTechnicalReportFromClient } from '@/lib/projects/technical-report';
 
 export function parseProjectEngineeringData(raw: ClientRecord['project_engineering_data']): ProjectEngineeringData {
-  if (!raw || typeof raw !== 'object') return { ...EMPTY_PROJECT_ENGINEERING_DATA, field_visits: [] };
+  if (!raw || typeof raw !== 'object') {
+    return {
+      ...EMPTY_PROJECT_ENGINEERING_DATA,
+      technical_report: { ...EMPTY_TECHNICAL_REPORT },
+      field_visits: [],
+    };
+  }
   const data = raw as Partial<ProjectEngineeringData>;
   return {
+    technical_report: { ...EMPTY_TECHNICAL_REPORT, ...data.technical_report },
     building_plan: mergeBuildingPlanDefaults({ ...EMPTY_BUILDING_PLAN, ...data.building_plan }),
     boq: { ...EMPTY_PROJECT_ENGINEERING_DATA.boq, items: data.boq?.items || [], ...data.boq },
     timeline: { ...EMPTY_PROJECT_ENGINEERING_DATA.timeline, milestones: data.timeline?.milestones || [], ...data.timeline },
@@ -51,8 +60,19 @@ export function syncProjectVisitsFromQuotation(
   };
 }
 
+export function seedProjectEngineeringFromClient(
+  client: ClientRecord,
+  data: ProjectEngineeringData
+): ProjectEngineeringData {
+  return {
+    ...data,
+    technical_report: seedTechnicalReportFromClient(client, data.technical_report),
+  };
+}
+
 export function getProjectReportProgress(data: ProjectEngineeringData): number {
   const sections = [
+    data.technical_report.status,
     data.building_plan.status,
     data.boq.status,
     data.timeline.status,

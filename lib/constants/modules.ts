@@ -12,6 +12,7 @@ export function generateSalesDocNumber(type: 'quotation' | 'invoice'): string {
 }
 
 export const PROJECT_REPORT_SECTIONS = [
+  { id: 'technical_report', label: 'التقرير الفني' },
   { id: 'building_plan', label: 'معلومات المخطط' },
   { id: 'boq', label: 'جدول الكميات BOQ' },
   { id: 'timeline', label: 'الجدول الزمني' },

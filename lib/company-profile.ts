@@ -1,0 +1,108 @@
+import { PLATFORM_NAME, PLATFORM_SHORT_NAME } from '@/lib/constants/branding';
+import { supabase, isDemoMode } from '@/lib/supabase';
+
+export type CompanyProfile = {
+  name: string;
+  legal_name: string;
+  tagline: string;
+  logo_url: string;
+  address: string;
+  city: string;
+  commercial_register: string;
+  membership_id: string;
+  tax_number: string;
+  phone: string;
+  fax: string;
+  email: string;
+  email_alt: string;
+  stamp_text: string;
+};
+
+export const DEFAULT_COMPANY_PROFILE: CompanyProfile = {
+  name: PLATFORM_SHORT_NAME,
+  legal_name: PLATFORM_NAME,
+  tagline: 'تصميم - إشراف - إدارة مشاريع / Design - supervision - project management',
+  logo_url: '',
+  address: 'المركز الرئيسي',
+  city: 'الرياض',
+  commercial_register: '',
+  membership_id: '',
+  tax_number: '',
+  phone: '',
+  fax: '',
+  email: '',
+  email_alt: '',
+  stamp_text: PLATFORM_SHORT_NAME,
+};
+
+const LOCAL_KEY = 'tawaqqa_company_profile_v1';
+
+export function loadLocalCompanyProfile(): CompanyProfile {
+  if (typeof window === 'undefined') return DEFAULT_COMPANY_PROFILE;
+  try {
+    const raw = localStorage.getItem(LOCAL_KEY);
+    if (!raw) return DEFAULT_COMPANY_PROFILE;
+    return { ...DEFAULT_COMPANY_PROFILE, ...JSON.parse(raw) };
+  } catch {
+    return DEFAULT_COMPANY_PROFILE;
+  }
+}
+
+export function saveLocalCompanyProfile(profile: CompanyProfile) {
+  if (typeof window === 'undefined') return;
+  localStorage.setItem(LOCAL_KEY, JSON.stringify(profile));
+}
+
+/** يحمّل من جدول companies إن وجد، مع دمج التخزين المحلي للشعار والحقول الإضافية */
+export async function loadCompanyProfile(): Promise<CompanyProfile> {
+  const local = loadLocalCompanyProfile();
+  if (isDemoMode) return local;
+
+  const { data } = await supabase.from('companies').select('*').eq('code', 'TWAQQA').maybeSingle();
+  if (!data) return local;
+
+  return {
+    ...local,
+    name: data.name || local.name,
+    legal_name: data.legal_name || local.legal_name,
+    city: data.city || local.city,
+    commercial_register: data.commercial_register || local.commercial_register,
+    tax_number: data.tax_number || local.tax_number,
+    phone: data.phone || local.phone,
+    email: data.email || local.email,
+    address: data.address || local.address,
+    logo_url: data.logo_url || local.logo_url,
+  };
+}
+
+export async function saveCompanyProfile(profile: CompanyProfile): Promise<{ error: string | null }> {
+  saveLocalCompanyProfile(profile);
+  if (isDemoMode) return { error: null };
+
+  const { data: existing } = await supabase.from('companies').select('id').eq('code', 'TWAQQA').maybeSingle();
+  const payload = {
+    name: profile.name,
+    legal_name: profile.legal_name,
+    city: profile.city,
+    commercial_register: profile.commercial_register || null,
+    tax_number: profile.tax_number || null,
+    phone: profile.phone || null,
+    email: profile.email || null,
+    address: profile.address || null,
+    logo_url: profile.logo_url || null,
+    updated_at: new Date().toISOString(),
+  };
+
+  if (existing?.id) {
+    const { error } = await supabase.from('companies').update(payload).eq('id', existing.id);
+    return { error: error?.message || null };
+  }
+
+  const { error } = await supabase.from('companies').insert({
+    code: 'TWAQQA',
+    ...payload,
+    is_active: true,
+    created_at: new Date().toISOString(),
+  });
+  return { error: error?.message || null };
+}

@@ -7,10 +7,14 @@ import {
   parseProjectEngineeringData,
   syncProjectVisitsFromQuotation,
   getProjectReportProgress,
+  seedProjectEngineeringFromClient,
 } from '@/lib/business/project-reports';
 import { PROJECT_REPORT_SECTIONS, type ProjectReportSectionId } from '@/lib/constants/modules';
 import { printCompletionCertificate } from '@/components/projects/CompletionCertificatePrint';
 import BuildingPlanReportSection from '@/components/projects/BuildingPlanReportSection';
+import TechnicalReportSection from '@/components/projects/TechnicalReportSection';
+import { printTechnicalReport } from '@/components/projects/TechnicalReportPrint';
+import { loadCompanyProfile } from '@/lib/company-profile';
 import NumericInput from '@/components/ui/NumericInput';
 import type { ClientRecord } from '@/lib/types/client';
 import type { ProjectEngineeringData } from '@/lib/types/project-reports';
@@ -24,7 +28,7 @@ interface ProjectReportModalProps {
 const REPORT_STATUSES = ['مسودة', 'قيد الإعداد', 'مكتمل', 'معتمد'] as const;
 
 export default function ProjectReportModal({ client, onClose, onUpdated }: ProjectReportModalProps) {
-  const [activeSection, setActiveSection] = useState<ProjectReportSectionId>('building_plan');
+  const [activeSection, setActiveSection] = useState<ProjectReportSectionId>('technical_report');
   const [data, setData] = useState<ProjectEngineeringData | null>(null);
   const [saving, setSaving] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
@@ -37,8 +41,9 @@ export default function ProjectReportModal({ client, onClose, onUpdated }: Proje
       ...parsed,
       building_plan: seedBuildingPlanFromClient(client, parsed.building_plan),
     };
-    setData(syncProjectVisitsFromQuotation(withPlan, visitsCount));
-    setActiveSection('building_plan');
+    const seeded = seedProjectEngineeringFromClient(client, withPlan);
+    setData(syncProjectVisitsFromQuotation(seeded, visitsCount));
+    setActiveSection('technical_report');
     setMessage(null);
   }, [client]);
 
@@ -51,6 +56,10 @@ export default function ProjectReportModal({ client, onClose, onUpdated }: Proje
     setMessage(null);
     const stamped: ProjectEngineeringData = {
       ...nextData,
+      technical_report: {
+        ...nextData.technical_report,
+        updated_at: new Date().toISOString(),
+      },
       building_plan: {
         ...nextData.building_plan,
         updated_at: new Date().toISOString(),
@@ -71,6 +80,11 @@ export default function ProjectReportModal({ client, onClose, onUpdated }: Proje
   };
 
   const patch = (partial: Partial<ProjectEngineeringData>) => setData({ ...data, ...partial });
+
+  const handlePrintTechnical = async () => {
+    const company = await loadCompanyProfile();
+    printTechnicalReport({ client, report: data.technical_report, company });
+  };
 
   return (
     <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
@@ -121,6 +135,17 @@ export default function ProjectReportModal({ client, onClose, onUpdated }: Proje
                 <option key={s.id} value={s.id}>{s.label}</option>
               ))}
             </select>
+
+            {activeSection === 'technical_report' && (
+              <TechnicalReportSection
+                client={client}
+                report={data.technical_report}
+                saving={saving}
+                onChange={(technical_report) => patch({ technical_report })}
+                onSave={() => save({ ...data }, 'تم حفظ التقرير الفني.')}
+                onPrint={() => void handlePrintTechnical()}
+              />
+            )}
 
             {activeSection === 'building_plan' && (
               <BuildingPlanReportSection
