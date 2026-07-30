@@ -24,6 +24,8 @@ export type SbcRiskLevel = 'low' | 'moderate' | 'high' | 'very_high';
 export type SbcOccupancyDef = {
   code: SbcOccupancyCode;
   label_ar: string;
+  /** حرف مجموعة الإشغال كما في تقارير الدفاع المدني (GROUP B,M…) */
+  group_letter: string;
   risk: SbcRiskLevel;
   examples: string[];
   /** عتبة مساحة قسم حريق للرشاشات (م²) إن وُجدت */
@@ -48,6 +50,7 @@ export const SBC_OCCUPANCIES: Record<SbcOccupancyCode, SbcOccupancyDef> = {
   assembly: {
     code: 'assembly',
     label_ar: 'تجمعات',
+    group_letter: 'A',
     risk: 'moderate',
     examples: ['مطاعم', 'صالات أفراح', 'سينما', 'مساجد', 'معارض', 'قاعات محاضرات'],
     sprinkler_always: false,
@@ -61,6 +64,7 @@ export const SBC_OCCUPANCIES: Record<SbcOccupancyCode, SbcOccupancyDef> = {
   business: {
     code: 'business',
     label_ar: 'مكاتب',
+    group_letter: 'B',
     risk: 'low',
     examples: ['مكاتب شركات', 'مصارف', 'عيادات', 'إدارات عامة'],
     alarm_occupants_building: 500,
@@ -70,6 +74,7 @@ export const SBC_OCCUPANCIES: Record<SbcOccupancyCode, SbcOccupancyDef> = {
   mercantile: {
     code: 'mercantile',
     label_ar: 'تجاري',
+    group_letter: 'M',
     risk: 'moderate',
     examples: ['محلات', 'صيدليات', 'أسواق', 'مجمعات تجارية'],
     sprinkler_fire_area_m2: 1115,
@@ -82,6 +87,7 @@ export const SBC_OCCUPANCIES: Record<SbcOccupancyCode, SbcOccupancyDef> = {
   educational: {
     code: 'educational',
     label_ar: 'تعليمي',
+    group_letter: 'E',
     risk: 'moderate',
     examples: ['مدارس', 'حضانات'],
     sprinkler_fire_area_m2: 1115,
@@ -92,6 +98,7 @@ export const SBC_OCCUPANCIES: Record<SbcOccupancyCode, SbcOccupancyDef> = {
   industrial_moderate: {
     code: 'industrial_moderate',
     label_ar: 'صناعي متوسط الخطورة',
+    group_letter: 'F-1',
     risk: 'high',
     examples: ['مصانع غذائية', 'ملابس', 'خشب', 'بلاستيك', 'سيارات'],
     sprinkler_fire_area_m2: 1115,
@@ -105,6 +112,7 @@ export const SBC_OCCUPANCIES: Record<SbcOccupancyCode, SbcOccupancyDef> = {
   industrial_low: {
     code: 'industrial_low',
     label_ar: 'صناعي منخفض الخطورة',
+    group_letter: 'F-2',
     risk: 'moderate',
     examples: ['طوب', 'سيراميك', 'ثلج', 'جبس', 'زجاج'],
     sbc_refs: ['SBC-801-OCC-IND-L'],
@@ -112,6 +120,7 @@ export const SBC_OCCUPANCIES: Record<SbcOccupancyCode, SbcOccupancyDef> = {
   high_hazard: {
     code: 'high_hazard',
     label_ar: 'عالي الخطورة',
+    group_letter: 'H',
     risk: 'very_high',
     examples: ['مواد كيميائية خطرة', 'سوائل قابلة للاشتعال بكميات عالية'],
     sprinkler_always: true,
@@ -122,6 +131,7 @@ export const SBC_OCCUPANCIES: Record<SbcOccupancyCode, SbcOccupancyDef> = {
   institutional: {
     code: 'institutional',
     label_ar: 'رعاية / مؤسسات',
+    group_letter: 'I',
     risk: 'high',
     examples: ['مستشفيات', 'سجون', 'دور رعاية'],
     sprinkler_always: true,
@@ -132,6 +142,7 @@ export const SBC_OCCUPANCIES: Record<SbcOccupancyCode, SbcOccupancyDef> = {
   residential: {
     code: 'residential',
     label_ar: 'سكني / فندقي',
+    group_letter: 'R',
     risk: 'moderate',
     examples: ['شقق', 'فنادق', 'مفروشات', 'مهاجع عمال'],
     sprinkler_always: true,
@@ -143,6 +154,7 @@ export const SBC_OCCUPANCIES: Record<SbcOccupancyCode, SbcOccupancyDef> = {
   storage_moderate: {
     code: 'storage_moderate',
     label_ar: 'تخزين متوسط الخطورة',
+    group_letter: 'S-1',
     risk: 'high',
     examples: ['ملابس', 'أثاث', 'ورق', 'سيارات', 'حبوب'],
     sprinkler_fire_area_m2: 1115,
@@ -152,6 +164,7 @@ export const SBC_OCCUPANCIES: Record<SbcOccupancyCode, SbcOccupancyDef> = {
   storage_low: {
     code: 'storage_low',
     label_ar: 'تخزين منخفض الخطورة',
+    group_letter: 'S-2',
     risk: 'low',
     examples: ['زجاج', 'أسمنت', 'مواد غذائية', 'بورسلين'],
     sbc_refs: ['SBC-801-OCC-ST-L'],
@@ -159,6 +172,7 @@ export const SBC_OCCUPANCIES: Record<SbcOccupancyCode, SbcOccupancyDef> = {
   parking: {
     code: 'parking',
     label_ar: 'مواقف سيارات',
+    group_letter: 'S-2',
     risk: 'moderate',
     examples: ['مواقف مقفلة', 'مواقف تحت إشغال آخر'],
     sprinkler_always: true,
@@ -168,6 +182,7 @@ export const SBC_OCCUPANCIES: Record<SbcOccupancyCode, SbcOccupancyDef> = {
   special_fuel: {
     code: 'special_fuel',
     label_ar: 'محطات محروقات (استخدام خاص)',
+    group_letter: 'H',
     risk: 'very_high',
     examples: ['محطات وقود'],
     sprinkler_always: true,

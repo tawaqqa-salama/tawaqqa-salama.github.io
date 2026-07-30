@@ -19,7 +19,18 @@ export function parseProjectEngineeringData(raw: ClientRecord['project_engineeri
   }
   const data = raw as Partial<ProjectEngineeringData>;
   return {
-    technical_report: { ...EMPTY_TECHNICAL_REPORT, ...data.technical_report },
+    technical_report: {
+      ...EMPTY_TECHNICAL_REPORT,
+      ...data.technical_report,
+      floor_uses: data.technical_report?.floor_uses || [],
+      code_proof_photos: data.technical_report?.code_proof_photos || [],
+      components: data.technical_report?.components || [],
+      firefighting_items: data.technical_report?.firefighting_items || [],
+      ventilation_items: data.technical_report?.ventilation_items || [],
+      alarm_items: data.technical_report?.alarm_items || [],
+      exits_items: data.technical_report?.exits_items || [],
+      general_recommendations: data.technical_report?.general_recommendations || [],
+    },
     building_plan: mergeBuildingPlanDefaults({ ...EMPTY_BUILDING_PLAN, ...data.building_plan }),
     boq: { ...EMPTY_PROJECT_ENGINEERING_DATA.boq, items: data.boq?.items || [], ...data.boq },
     timeline: { ...EMPTY_PROJECT_ENGINEERING_DATA.timeline, milestones: data.timeline?.milestones || [], ...data.timeline },
