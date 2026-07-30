@@ -3,9 +3,45 @@ import { resolveUserPermissions } from '@/lib/auth/permissions';
 import { clearSession, loadSession, saveSession } from '@/lib/auth/session';
 import { isDemoMode, supabase } from '@/lib/supabase';
 
-const COMPANY_ID = 'co-tawaqqa';
+/** معرفات الوضع التجريبي فقط — في Supabase الحقيقي تُجلب من جدول companies */
+const DEMO_COMPANY_ID = 'co-tawaqqa';
+const DEMO_BRANCH_ID = 'br-hq';
+const COMPANY_CODE = 'TWAQQA';
 
 type AuthResult = { session: AuthSession | null; error: string | null; demoOtp?: string };
+
+async function resolveTenantIds(): Promise<{
+  companyId: string;
+  branchId: string | null;
+  error: string | null;
+}> {
+  if (isDemoMode) {
+    return { companyId: DEMO_COMPANY_ID, branchId: DEMO_BRANCH_ID, error: null };
+  }
+
+  const { data: company, error: companyError } = await supabase
+    .from('companies')
+    .select('id')
+    .eq('code', COMPANY_CODE)
+    .maybeSingle();
+
+  if (companyError || !company?.id) {
+    return {
+      companyId: '',
+      branchId: null,
+      error: 'تعذر العثور على الشركة في قاعدة البيانات. تأكد من وجود شركة برمز TWAQQA.',
+    };
+  }
+
+  const { data: branch } = await supabase
+    .from('branches')
+    .select('id')
+    .eq('company_id', company.id)
+    .eq('code', 'HQ')
+    .maybeSingle();
+
+  return { companyId: company.id as string, branchId: (branch?.id as string) || null, error: null };
+}
 
 function toSession(user: AppUser, permissions: PermissionCode[], method: 'email' | 'phone'): AuthSession {
   return {
@@ -248,8 +284,14 @@ export async function upsertEmployee(input: {
     return { user: null, error: 'رقم الجوال يجب أن يكون 05xxxxxxxx' };
   }
 
-  const payload = {
-    company_id: COMPANY_ID,
+  const tenant = await resolveTenantIds();
+  if (tenant.error || !tenant.companyId) {
+    return { user: null, error: tenant.error || 'تعذر تحديد الشركة' };
+  }
+
+  const payload: Record<string, unknown> = {
+    company_id: tenant.companyId,
+    branch_id: tenant.branchId,
     full_name: input.full_name.trim(),
     email,
     phone,
@@ -267,7 +309,7 @@ export async function upsertEmployee(input: {
   if (input.id) {
     const { data, error } = await supabase.from('users').update(payload).eq('id', input.id).select('*').single();
     if (error) return { user: null, error: error.message };
-    if (input.password) {
+    if (input.password && isDemoMode) {
       await supabase
         .from('demo_credentials')
         .update({ email, phone, password: input.password })
@@ -278,6 +320,28 @@ export async function upsertEmployee(input: {
 
   if (!input.password || input.password.length < 6) {
     return { user: null, error: 'كلمة المرور يجب ألا تقل عن 6 أحرف' };
+  }
+
+  let authUserId: string | null = null;
+  if (!isDemoMode) {
+    const { data: currentAuth } = await supabase.auth.getSession();
+    const { data: signedUp, error: signUpError } = await supabase.auth.signUp({
+      email,
+      password: input.password,
+    });
+    // أعد جلسة المدير حتى لا يتحول الدخول إلى الموظف الجديد
+    if (currentAuth.session) {
+      await supabase.auth.setSession({
+        access_token: currentAuth.session.access_token,
+        refresh_token: currentAuth.session.refresh_token,
+      });
+    }
+    if (signUpError) {
+      return { user: null, error: `تعذر إنشاء حساب الدخول: ${signUpError.message}` };
+    }
+    authUserId = signedUp.user?.id ?? null;
+    payload.auth_user_id = authUserId;
+    payload.password_hash = 'supabase-auth';
   }
 
   const { data, error } = await supabase
@@ -291,12 +355,14 @@ export async function upsertEmployee(input: {
   if (error) return { user: null, error: error.message };
 
   const user = data as AppUser;
-  await supabase.from('demo_credentials').insert({
-    user_id: user.id,
-    email,
-    phone,
-    password: input.password,
-  });
+  if (isDemoMode) {
+    await supabase.from('demo_credentials').insert({
+      user_id: user.id,
+      email,
+      phone,
+      password: input.password,
+    });
+  }
   return { user, error: null };
 }
 
