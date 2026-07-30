@@ -68,6 +68,7 @@ export function seedTechnicalReportFromClient(
     building_status: base.building_status || client.project_status || 'تحت الإنشاء',
     floor_uses,
     code_proof_photos: base.code_proof_photos || [],
+    code_proofs_by_key: base.code_proofs_by_key || {},
     firefighting_items: buildItemsForChapter('firefighting', base.firefighting_items || []),
     ventilation_items: buildItemsForChapter('ventilation', base.ventilation_items || []),
     alarm_items: buildItemsForChapter('alarm', base.alarm_items || []),

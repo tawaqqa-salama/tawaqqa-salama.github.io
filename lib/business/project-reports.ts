@@ -24,6 +24,7 @@ export function parseProjectEngineeringData(raw: ClientRecord['project_engineeri
       ...data.technical_report,
       floor_uses: data.technical_report?.floor_uses || [],
       code_proof_photos: data.technical_report?.code_proof_photos || [],
+      code_proofs_by_key: data.technical_report?.code_proofs_by_key || {},
       components: data.technical_report?.components || [],
       firefighting_items: data.technical_report?.firefighting_items || [],
       ventilation_items: data.technical_report?.ventilation_items || [],

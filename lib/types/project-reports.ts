@@ -158,6 +158,16 @@ export interface TechnicalReportZone {
   use_code: string;
   label: string;
   area_m2: string;
+  /** نوع فرعي: نوع التخزين / المصنع / الورشة… */
+  subtype_code?: string;
+  subtype_label?: string;
+  /** نظام الإطفاء المخصص (تلقائي قابل للتعديل) */
+  suppression_code?: string;
+  suppression_label?: string;
+  /** اختيارات إضافية للمهندس ضمن المنطقة */
+  selected_options?: string[];
+  /** صورة مقطع كود خاصة بهذه المنطقة */
+  code_proof_photo?: TechnicalReportPhoto | null;
   occupancy_code?: string;
   group_letter?: string;
   risk_level?: string;
@@ -207,7 +217,9 @@ export interface TechnicalReport extends ReportMeta {
   earth_photo?: TechnicalReportPhoto | null;
   facade_photo?: TechnicalReportPhoto | null;
   site_photo?: TechnicalReportPhoto | null;
-  /** صور مقاطع من الكود (تصنيف، خطورة، رشاشات…) */
+  /** صور مقاطع من الكود مربوطة بمفتاح الإثبات (occ-class, risk-class, spr-…, zone:id) */
+  code_proofs_by_key: Record<string, TechnicalReportPhoto[]>;
+  /** صور مقاطع من الكود (قائمة عامة احتياطية) */
   code_proof_photos: TechnicalReportPhoto[];
   /** أدوار ومناطق الاستخدام */
   floor_uses: TechnicalReportFloorUse[];
@@ -253,6 +265,7 @@ export const EMPTY_TECHNICAL_REPORT: TechnicalReport = {
   components: [],
   floor_uses: [],
   code_proof_photos: [],
+  code_proofs_by_key: {},
   firefighting_items: [],
   ventilation_items: [],
   alarm_items: [],

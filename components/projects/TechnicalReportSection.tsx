@@ -3,28 +3,24 @@
 import { useMemo, useState } from 'react';
 import {
   BUILDING_STATUS_OPTIONS,
-  STRUCTURE_OPTIONS,
-  STRUCTURAL_CLASS_OPTIONS,
   TECH_REPORT_CHAPTERS,
   TECH_REPORT_GENERAL_RECOMMENDATIONS,
   TECH_REPORT_ITEMS,
 } from '@/lib/constants/technical-report';
-import { ZONE_USE_OPTIONS, getZoneUse } from '@/lib/constants/zone-uses';
 import { getTechnicalReportFacilitySnapshot } from '@/lib/projects/technical-report';
 import {
   applyAutoClassification,
   buildCodeProofCards,
-  createZone,
-  enrichZone,
-  floorAreaBalance,
+  buildIntegratedFireNarrative,
+  buildZoneSystemNeeds,
 } from '@/lib/projects/sbc-classification';
+import FloorZonesEditor from '@/components/projects/FloorZonesEditor';
 import type { ClientRecord } from '@/lib/types/client';
 import type {
   TechnicalReport,
   TechnicalReportFloorUse,
   TechnicalReportPhoto,
   TechnicalReportSectionItem,
-  TechnicalReportZone,
 } from '@/lib/types/project-reports';
 
 const REPORT_STATUSES = ['مسودة', 'قيد الإعداد', 'مكتمل', 'معتمد'] as const;
@@ -62,8 +58,30 @@ export default function TechnicalReportSection({
   const [chapter, setChapter] = useState<(typeof TECH_REPORT_CHAPTERS)[number]['id']>('facility');
   const facility = useMemo(() => getTechnicalReportFacilitySnapshot(client), [client]);
   const proofCards = useMemo(() => buildCodeProofCards(report, client), [report, client]);
+  const zoneNeeds = useMemo(() => buildZoneSystemNeeds(report.floor_uses || []), [report.floor_uses]);
+  const fireNarrative = useMemo(() => buildIntegratedFireNarrative(report.floor_uses || []), [report.floor_uses]);
 
   const patch = (partial: Partial<TechnicalReport>) => onChange({ ...report, ...partial });
+
+  const addProofPhoto = (key: string, photo: TechnicalReportPhoto) => {
+    const current = report.code_proofs_by_key || {};
+    patch({
+      code_proofs_by_key: {
+        ...current,
+        [key]: [...(current[key] || []), photo],
+      },
+    });
+  };
+
+  const removeProofPhoto = (key: string, photoId: string) => {
+    const current = report.code_proofs_by_key || {};
+    patch({
+      code_proofs_by_key: {
+        ...current,
+        [key]: (current[key] || []).filter((p) => p.id !== photoId),
+      },
+    });
+  };
 
   const setFloorsAndClassify = (floor_uses: TechnicalReportFloorUse[]) => {
     onChange(applyAutoClassification({ ...report, floor_uses }, client));
@@ -97,20 +115,6 @@ export default function TechnicalReportSection({
     return null;
   };
 
-  const updateFloor = (floorId: string, updater: (floor: TechnicalReportFloorUse) => TechnicalReportFloorUse) => {
-    setFloorsAndClassify(report.floor_uses.map((f) => (f.id === floorId ? updater(f) : f)));
-  };
-
-  const updateZone = (
-    floorId: string,
-    zoneId: string,
-    updater: (zone: TechnicalReportZone) => TechnicalReportZone
-  ) => {
-    updateFloor(floorId, (floor) => ({
-      ...floor,
-      zones: floor.zones.map((z) => (z.id === zoneId ? enrichZone(updater(z)) : z)),
-    }));
-  };
 
   return (
     <div className="space-y-4">
@@ -218,159 +222,96 @@ export default function TechnicalReportSection({
             </div>
           </section>
 
-          <section className="bg-white border rounded-xl p-4 space-y-4">
-            <div className="flex items-center justify-between gap-2">
-              <div>
-                <h4 className="font-bold text-gray-800">الأدوار والمناطق</h4>
-                <p className="text-xs text-gray-500 mt-1">مثال: بدروم = مواقف + غرفة كهرباء · الدور الأول = مخزن + منطقة جلوس. مجموع مساحات المناطق = مساحة الدور.</p>
-              </div>
-              <button
-                type="button"
-                className="text-xs font-semibold text-[#1f4d3a]"
-                onClick={() =>
-                  setFloorsAndClassify([
-                    ...report.floor_uses,
-                    {
-                      id: newPhotoId(),
-                      floor_name: `دور ${report.floor_uses.length + 1}`,
-                      floor_area_m2: '',
-                      structure: 'خرسانة + بلوك',
-                      classification: 'TYPE I A',
-                      zones: [createZone()],
-                    },
-                  ])
-                }
-              >
-                + دور
-              </button>
-            </div>
-
-            {report.floor_uses.map((floor) => {
-              const balance = floorAreaBalance(floor);
-              return (
-                <article key={floor.id} className="border rounded-xl p-3 bg-gray-50 space-y-3">
-                  <div className="grid grid-cols-1 md:grid-cols-4 gap-2">
-                    <input className="border rounded-lg px-2 py-2 text-sm bg-white" value={floor.floor_name} placeholder="اسم الدور" onChange={(e) => updateFloor(floor.id, (f) => ({ ...f, floor_name: e.target.value }))} />
-                    <input className="border rounded-lg px-2 py-2 text-sm bg-white" value={floor.floor_area_m2} placeholder="مساحة الدور م²" onChange={(e) => updateFloor(floor.id, (f) => ({ ...f, floor_area_m2: e.target.value }))} />
-                    <select className="border rounded-lg px-2 py-2 text-sm bg-white" value={floor.structure} onChange={(e) => updateFloor(floor.id, (f) => ({ ...f, structure: e.target.value }))}>
-                      {STRUCTURE_OPTIONS.map((opt) => (
-                        <option key={opt} value={opt}>
-                          {opt}
-                        </option>
-                      ))}
-                    </select>
-                    <select className="border rounded-lg px-2 py-2 text-sm bg-white" value={floor.classification} onChange={(e) => updateFloor(floor.id, (f) => ({ ...f, classification: e.target.value }))}>
-                      {STRUCTURAL_CLASS_OPTIONS.map((opt) => (
-                        <option key={opt} value={opt}>
-                          {opt}
-                        </option>
-                      ))}
-                    </select>
-                  </div>
-                  <div className={`text-xs font-semibold px-2 py-1.5 rounded-lg ${balance.ok ? 'bg-emerald-50 text-emerald-700' : 'bg-amber-50 text-amber-800'}`}>
-                    مجموع المناطق: {balance.zonesSum || 0} م² · مساحة الدور: {balance.floorArea || 0} م²
-                    {!balance.ok ? ` · الفرق ${balance.diff > 0 ? '+' : ''}${balance.diff}` : ' · متطابق'}
-                  </div>
-                  <div className="space-y-2">
-                    {floor.zones.map((zone) => (
-                      <div key={zone.id} className="grid grid-cols-1 md:grid-cols-12 gap-2 items-start bg-white border rounded-lg p-2">
-                        <div className="md:col-span-4">
-                          <select
-                            className="w-full border rounded-lg px-2 py-2 text-sm"
-                            value={zone.use_code}
-                            onChange={(e) => {
-                              const use = getZoneUse(e.target.value);
-                              updateZone(floor.id, zone.id, (z) => createZone({ ...z, use_code: use.id, label: use.label, area_m2: z.area_m2 }));
-                            }}
-                          >
-                            {ZONE_USE_OPTIONS.map((opt) => (
-                              <option key={opt.id} value={opt.id}>
-                                {opt.label}
-                              </option>
-                            ))}
-                          </select>
-                        </div>
-                        <div className="md:col-span-3">
-                          <input className="w-full border rounded-lg px-2 py-2 text-sm" value={zone.label} onChange={(e) => updateZone(floor.id, zone.id, (z) => ({ ...z, label: e.target.value }))} placeholder="وصف المنطقة" />
-                        </div>
-                        <div className="md:col-span-2">
-                          <input className="w-full border rounded-lg px-2 py-2 text-sm" value={zone.area_m2} onChange={(e) => updateZone(floor.id, zone.id, (z) => ({ ...z, area_m2: e.target.value }))} placeholder="م²" />
-                        </div>
-                        <div className="md:col-span-2 text-[11px] text-gray-600 pt-2">
-                          GROUP {zone.group_letter || '—'} · {zone.risk_label || '—'}
-                        </div>
-                        <div className="md:col-span-1 text-left">
-                          <button type="button" className="text-rose-600 text-xs" onClick={() => updateFloor(floor.id, (f) => ({ ...f, zones: f.zones.filter((z) => z.id !== zone.id) }))}>
-                            حذف
-                          </button>
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                  <div className="flex flex-wrap gap-3">
-                    <button type="button" className="text-xs font-semibold text-[#1f4d3a]" onClick={() => updateFloor(floor.id, (f) => ({ ...f, zones: [...f.zones, createZone({ area_m2: '' })] }))}>
-                      + منطقة
-                    </button>
-                    <button type="button" className="text-xs text-rose-600" onClick={() => setFloorsAndClassify(report.floor_uses.filter((f) => f.id !== floor.id))}>
-                      حذف الدور
-                    </button>
-                  </div>
-                </article>
-              );
-            })}
-          </section>
+          <FloorZonesEditor
+            floors={report.floor_uses || []}
+            onChange={setFloorsAndClassify}
+            onUploadPhoto={(file, apply) => void uploadPhoto(file, apply)}
+          />
 
           <section className="bg-white border rounded-xl p-4 space-y-3">
             <h4 className="font-bold text-gray-800">إثباتات من الكود السعودي</h4>
-            <p className="text-xs text-gray-500">جداول مستنتجة تلقائياً لتصنيف المبنى والخطورة واشتراط الإطفاء بالماء وغيرها. يمكن إرفاق صورة مقطع من الكود.</p>
+            <p className="text-xs text-gray-500">تحت كل معلومة مصدرها الكود أرفق صورة مقصوصة حقيقية من جداول/بنود SBC.</p>
             <div className="space-y-3">
-              {proofCards.map((card) => (
-                <div key={card.id} className="border rounded-xl overflow-hidden">
-                  <div className="bg-[#1f4d3a] text-white px-3 py-2 text-sm font-bold">{card.title}</div>
-                  <div className="px-3 py-2 text-sm font-semibold text-[#c0392b] bg-rose-50">{card.subtitle}</div>
-                  <table className="w-full text-sm">
-                    <tbody>
-                      {card.rows.map((row, idx) => (
-                        <tr key={`${card.id}-${idx}`} className="border-t">
-                          <th className="text-right p-2 bg-slate-50 w-[38%] font-semibold text-gray-700">{row.label}</th>
-                          <td className="p-2 text-gray-800">{row.value}</td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                  {card.highlight ? <p className="px-3 py-2 text-xs text-amber-800 bg-amber-50 border-t">{card.highlight}</p> : null}
-                  <p className="px-3 py-1.5 text-[10px] text-gray-400 border-t">مراجع: {card.refs.join(' · ')}</p>
-                </div>
-              ))}
-            </div>
-            <div>
-              <div className="flex items-center justify-between mb-2">
-                <p className="text-sm font-semibold text-gray-700">صور مقاطع من الكود</p>
-                <label className="text-xs font-semibold text-[#1f4d3a] cursor-pointer">
-                  + صورة كود
-                  <input type="file" accept="image/*" className="hidden" onChange={(e) => void uploadPhoto(e.target.files?.[0] || null, (photo) => patch({ code_proof_photos: [...(report.code_proof_photos || []), photo] }))} />
-                </label>
-              </div>
-              <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
-                {(report.code_proof_photos || []).map((photo) => (
-                  <div key={photo.id} className="relative border rounded-lg overflow-hidden bg-gray-50">
-                    {photo.dataUrl ? (
-                      // eslint-disable-next-line @next/next/no-img-element
-                      <img src={photo.dataUrl} alt={photo.caption || 'كود'} className="w-full h-28 object-cover" />
-                    ) : null}
-                    <button type="button" className="absolute top-1 left-1 bg-white/90 text-rose-600 text-[10px] px-1.5 py-0.5 rounded" onClick={() => patch({ code_proof_photos: (report.code_proof_photos || []).filter((p) => p.id !== photo.id) })}>
-                      حذف
-                    </button>
+              {proofCards.map((card) => {
+                const photos = (report.code_proofs_by_key || {})[card.id] || [];
+                return (
+                  <div key={card.id} className="border rounded-xl overflow-hidden">
+                    <div className="bg-[#1f4d3a] text-white px-3 py-2 text-sm font-bold">{card.title}</div>
+                    <div className="px-3 py-2 text-sm font-semibold text-[#c0392b] bg-rose-50">{card.subtitle}</div>
+                    <table className="w-full text-sm">
+                      <tbody>
+                        {card.rows.map((row, idx) => (
+                          <tr key={`${card.id}-${idx}`} className="border-t">
+                            <th className="text-right p-2 bg-slate-50 w-[38%] font-semibold text-gray-700">{row.label}</th>
+                            <td className="p-2 text-gray-800">{row.value}</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                    {card.highlight ? <p className="px-3 py-2 text-xs text-amber-800 bg-amber-50 border-t">{card.highlight}</p> : null}
+                    <p className="px-3 py-1.5 text-[10px] text-gray-400 border-t">مراجع: {card.refs.join(' · ')}</p>
+                    <div className="px-3 py-2 border-t bg-white space-y-2">
+                      <div className="flex items-center justify-between">
+                        <p className="text-xs font-semibold text-gray-700">صورة مقطع الكود تحت هذا الإثبات</p>
+                        <label className="text-xs font-semibold text-[#1f4d3a] cursor-pointer">
+                          + صورة مقصوصة
+                          <input
+                            type="file"
+                            accept="image/*"
+                            className="hidden"
+                            onChange={(e) =>
+                              void uploadPhoto(e.target.files?.[0] || null, (photo) => addProofPhoto(card.id, photo))
+                            }
+                          />
+                        </label>
+                      </div>
+                      <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
+                        {photos.map((photo) => (
+                          <div key={photo.id} className="relative border rounded-lg overflow-hidden bg-gray-50">
+                            {photo.dataUrl ? (
+                              // eslint-disable-next-line @next/next/no-img-element
+                              <img src={photo.dataUrl} alt={photo.caption || 'كود'} className="w-full h-28 object-cover" />
+                            ) : null}
+                            <button
+                              type="button"
+                              className="absolute top-1 left-1 bg-white/90 text-rose-600 text-[10px] px-1.5 py-0.5 rounded"
+                              onClick={() => removeProofPhoto(card.id, photo.id)}
+                            >
+                              حذف
+                            </button>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
                   </div>
-                ))}
-              </div>
+                );
+              })}
             </div>
           </section>
+
         </div>
       )}
 
       {['firefighting', 'ventilation', 'alarm', 'exits'].includes(chapter) && (
         <div className="space-y-3">
+          {chapter === 'firefighting' && zoneNeeds.length > 0 && (
+            <section className="rounded-xl border border-emerald-200 bg-emerald-50/70 p-4 space-y-2">
+              <h4 className="font-bold text-[#1f4d3a] text-sm">تكامل من الأدوار والمناطق — أنظمة الإطفاء المطلوبة</h4>
+              <ul className="text-sm text-gray-800 space-y-1 list-disc pr-5">
+                {zoneNeeds.map((n, i) => (
+                  <li key={`${n.floor_name}-${n.zone_label}-${i}`}>
+                    <strong>{n.floor_name}</strong> / {n.zone_label}
+                    {n.subtype_label ? ` (${n.subtype_label})` : ''} → {n.suppression_label}
+                    {n.area_m2 ? ` · ${n.area_m2} م²` : ''}
+                  </li>
+                ))}
+              </ul>
+              {fireNarrative ? (
+                <pre className="whitespace-pre-wrap text-xs text-gray-600 bg-white/80 rounded-lg p-3 border">{fireNarrative}</pre>
+              ) : null}
+            </section>
+          )}
+
           {(() => {
             const bundle = itemsForChapter(chapter);
             if (!bundle) return null;
