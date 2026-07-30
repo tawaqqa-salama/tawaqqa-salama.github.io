@@ -272,6 +272,14 @@ export async function upsertEmployee(input: {
   page_title?: string;
   page_bio?: string;
   is_active?: boolean;
+  salary?: number | null;
+  contract_type?: string | null;
+  contract_start_date?: string | null;
+  contract_end_date?: string | null;
+  hire_date?: string | null;
+  national_id?: string | null;
+  iban?: string | null;
+  hr_notes?: string | null;
 }): Promise<{ user: AppUser | null; error: string | null }> {
   const email = input.email.trim().toLowerCase();
   const phone = input.phone.replace(/\s+/g, '');
@@ -305,6 +313,15 @@ export async function upsertEmployee(input: {
     is_active: input.is_active ?? true,
     updated_at: new Date().toISOString(),
   };
+
+  if (input.salary !== undefined) payload.salary = input.salary;
+  if (input.contract_type !== undefined) payload.contract_type = input.contract_type || null;
+  if (input.contract_start_date !== undefined) payload.contract_start_date = input.contract_start_date || null;
+  if (input.contract_end_date !== undefined) payload.contract_end_date = input.contract_end_date || null;
+  if (input.hire_date !== undefined) payload.hire_date = input.hire_date || null;
+  if (input.national_id !== undefined) payload.national_id = input.national_id || null;
+  if (input.iban !== undefined) payload.iban = input.iban || null;
+  if (input.hr_notes !== undefined) payload.hr_notes = input.hr_notes || null;
 
   if (input.id) {
     const { data, error } = await supabase.from('users').update(payload).eq('id', input.id).select('*').single();
@@ -364,6 +381,48 @@ export async function upsertEmployee(input: {
     });
   }
   return { user, error: null };
+}
+
+export async function updateEmployeeHr(
+  userId: string,
+  input: {
+    salary?: number | null;
+    contract_type?: string | null;
+    contract_start_date?: string | null;
+    contract_end_date?: string | null;
+    hire_date?: string | null;
+    national_id?: string | null;
+    iban?: string | null;
+    hr_notes?: string | null;
+    job_title?: string | null;
+    is_active?: boolean;
+  }
+): Promise<{ user: AppUser | null; error: string | null }> {
+  const payload = {
+    salary: input.salary ?? null,
+    contract_type: input.contract_type || null,
+    contract_start_date: input.contract_start_date || null,
+    contract_end_date: input.contract_end_date || null,
+    hire_date: input.hire_date || null,
+    national_id: input.national_id?.trim() || null,
+    iban: input.iban?.trim() || null,
+    hr_notes: input.hr_notes?.trim() || null,
+    job_title: input.job_title?.trim() || null,
+    is_active: input.is_active ?? true,
+    updated_at: new Date().toISOString(),
+  };
+
+  const { data, error } = await supabase.from('users').update(payload).eq('id', userId).select('*').single();
+  if (error) {
+    if (error.message.includes('salary') || error.message.includes('column')) {
+      return {
+        user: null,
+        error: 'حقول الموارد البشرية غير مفعّلة بعد. شغّل سكربت scripts/sql/012_hr_employee_fields.sql في Supabase.',
+      };
+    }
+    return { user: null, error: error.message };
+  }
+  return { user: data as AppUser, error: null };
 }
 
 export const DEMO_LOGIN_HINTS = [

@@ -68,7 +68,7 @@ export const SYSTEM_MODULES = [
   {
     href: '/hr',
     title: 'الموارد البشرية',
-    description: 'إدارة المهندسين والموظفين وتوزيع المهام',
+    description: 'الموظفون والرواتب والعقود وتوزيع المهام',
     icon: '👷',
     color: 'from-amber-400 to-amber-500',
   },
