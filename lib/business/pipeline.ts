@@ -85,8 +85,14 @@ export function shouldShowInProjects(client: Partial<ClientRecord>): boolean {
   return stage === 'projects' || stage === 'completed';
 }
 
+/** يبقى العميل ظاهراً في المبيعات بعد اعتماد العرض أو الانتقال للمالية/المشاريع. */
 export function shouldShowInSales(client: Partial<ClientRecord>): boolean {
-  return resolvePipelineStage(client) === 'sales';
+  const stage = resolvePipelineStage(client);
+  if (stage === 'sales' || stage === 'finance' || stage === 'projects' || stage === 'completed') {
+    return true;
+  }
+  if (hasQuotation(client)) return true;
+  return client.pipeline_stage === 'sales';
 }
 
 export function shouldShowInMarketing(client: Partial<ClientRecord>): boolean {

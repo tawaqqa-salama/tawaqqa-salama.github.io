@@ -124,6 +124,12 @@ export function createDemoSeed(): Record<string, Row[]> {
       total_amount: 20700,
       quotation_status: 'مسودة',
       quotation_visits_count: 2,
+      quotation_services: [
+        'site_visits',
+        'firefighting_plans',
+        'alarm_plans',
+        'technical_study_report',
+      ],
       financial_status: 'بانتظار الدفعة',
       paid_amount: 0,
       sales_payment_type: 'نقدي',

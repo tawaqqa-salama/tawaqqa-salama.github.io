@@ -56,7 +56,7 @@ export default function CompanySettingsPage() {
     <div>
       <PageHeader
         title="إعدادات الشركة"
-        description="شعار المكتب ومعلومات الترويسة والتذييل المستخدمة في التقرير الفني وملفات PDF."
+        description="شعار المكتب، بيانات الترويسة، وسعر المتر المربع لحساب عروض الأسعار تلقائياً."
         action={
           <Link href="/settings" className="text-sm font-semibold text-[#1f4d3a] hover:underline">
             ← رجوع للإعدادات
@@ -79,6 +79,19 @@ export default function CompanySettingsPage() {
           <Field label="البريد" value={form.email} onChange={(v) => update('email', v)} dir="ltr" />
           <Field label="بريد بديل" value={form.email_alt} onChange={(v) => update('email_alt', v)} dir="ltr" />
           <Field label="نص الختم" value={form.stamp_text} onChange={(v) => update('stamp_text', v)} />
+          <label className="block text-sm">
+            <span className="text-xs font-semibold text-gray-600 mb-1 block">سعر المتر المربع (ر.س) — لحساب عرض السعر تلقائياً</span>
+            <input
+              type="number"
+              min={0}
+              step="0.01"
+              dir="ltr"
+              value={form.price_per_m2 || ''}
+              onChange={(e) => update('price_per_m2', Number(e.target.value) || 0)}
+              className="w-full border rounded-xl px-3 py-2.5 text-sm font-mono"
+              placeholder="مثال: 25"
+            />
+          </label>
         </div>
 
         <div>

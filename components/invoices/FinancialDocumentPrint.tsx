@@ -2,6 +2,7 @@
 
 import { formatCurrency, formatDate } from '@/lib/format/currency';
 import { PLATFORM_NAME } from '@/lib/constants/branding';
+import { getQuotationServiceLabel } from '@/lib/constants/quotation-services';
 import type { FinancialDocument } from '@/lib/types/client';
 
 function escapeHtml(value: string): string {
@@ -10,6 +11,46 @@ function escapeHtml(value: string): string {
     .replace(/</g, '&lt;')
     .replace(/>/g, '&gt;')
     .replace(/"/g, '&quot;');
+}
+
+function buildServicesSection(document: FinancialDocument): string {
+  const services = Array.isArray(document.quotationServices) ? document.quotationServices : [];
+  if (services.length === 0) return '';
+
+  const rows = services
+    .map((id) => {
+      const label = getQuotationServiceLabel(id);
+      const detail =
+        id === 'site_visits'
+          ? ` — ${Math.max(1, Number(document.quotationVisitsCount || 1))} زيارة`
+          : '';
+      return `<tr><td>${escapeHtml(label)}${escapeHtml(detail)}</td><td>مشمول</td></tr>`;
+    })
+    .join('');
+
+  return `
+  <div class="section">
+    <h3>نطاق عرض السعر / الخدمات المشمولة</h3>
+    <table>
+      <thead>
+        <tr>
+          <th>الخدمة</th>
+          <th>الحالة</th>
+        </tr>
+      </thead>
+      <tbody>
+        ${rows}
+      </tbody>
+    </table>
+  </div>`;
+}
+
+function buildPricingHint(document: FinancialDocument): string {
+  if (!document.pricePerM2 || !document.buildingArea) return '';
+  return `<div class="box" style="margin-top:8px">
+    <strong>أساس التسعير:</strong>
+    ${document.buildingArea} م² × ${escapeHtml(formatCurrency(document.pricePerM2))} / م²
+  </div>`;
 }
 
 export function buildPrintHtml(document: FinancialDocument): string {
@@ -21,7 +62,8 @@ export function buildPrintHtml(document: FinancialDocument): string {
   <meta charset="UTF-8" />
   <title>${escapeHtml(title)} - ${escapeHtml(document.documentNumber)}</title>
   <style>
-    body { font-family: 'Segoe UI', Tahoma, sans-serif; margin: 40px; color: #1f2937; }
+    @page { size: A4; margin: 14mm; }
+    body { font-family: 'Segoe UI', Tahoma, sans-serif; margin: 24px; color: #1f2937; }
     .header { display: flex; justify-content: space-between; border-bottom: 3px solid #2563eb; padding-bottom: 16px; margin-bottom: 24px; }
     .brand { font-size: 24px; font-weight: bold; color: #2563eb; }
     .meta { text-align: left; font-size: 14px; color: #6b7280; }
@@ -35,6 +77,9 @@ export function buildPrintHtml(document: FinancialDocument): string {
     .total { font-size: 18px; font-weight: bold; color: #2563eb; }
     .footer { margin-top: 32px; font-size: 12px; color: #6b7280; text-align: center; }
     .badge { display: inline-block; padding: 4px 10px; border-radius: 999px; background: #eff6ff; color: #1d4ed8; font-size: 12px; }
+    @media print {
+      body { margin: 0; }
+    }
   </style>
 </head>
 <body>
@@ -73,7 +118,10 @@ export function buildPrintHtml(document: FinancialDocument): string {
       <div class="box"><strong>مساحة المبنى:</strong> ${document.buildingArea ? `${document.buildingArea} م²` : '—'}</div>
       <div class="box"><strong>عدد الأدوار:</strong> ${document.floorsCount ?? '—'}</div>
     </div>
+    ${buildPricingHint(document)}
   </div>
+
+  ${buildServicesSection(document)}
 
   <div class="section">
     <h3>التفاصيل المالية <span class="badge">ضريبة القيمة المضافة 15%</span></h3>
@@ -115,11 +163,16 @@ export function buildPrintHtml(document: FinancialDocument): string {
 export function printFinancialDocument(document: FinancialDocument) {
   const html = buildPrintHtml(document);
   const printWindow = window.open('', '_blank', 'width=900,height=700');
-  if (!printWindow) return;
+  if (!printWindow) {
+    alert('تعذّر فتح نافذة الطباعة. اسمح بالنوافذ المنبثقة ثم أعد المحاولة.');
+    return;
+  }
   printWindow.document.write(html);
   printWindow.document.close();
   printWindow.focus();
-  printWindow.print();
+  setTimeout(() => {
+    printWindow.print();
+  }, 250);
 }
 
 export function exportFinancialDocument(document: FinancialDocument) {

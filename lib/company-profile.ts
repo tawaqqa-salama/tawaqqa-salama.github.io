@@ -16,6 +16,8 @@ export type CompanyProfile = {
   email: string;
   email_alt: string;
   stamp_text: string;
+  /** سعر المتر المربع لحساب عرض السعر تلقائياً */
+  price_per_m2: number;
 };
 
 export const DEFAULT_COMPANY_PROFILE: CompanyProfile = {
@@ -33,6 +35,7 @@ export const DEFAULT_COMPANY_PROFILE: CompanyProfile = {
   email: '',
   email_alt: '',
   stamp_text: PLATFORM_SHORT_NAME,
+  price_per_m2: 0,
 };
 
 const LOCAL_KEY = 'tawaqqa_company_profile_v1';
@@ -72,6 +75,10 @@ export async function loadCompanyProfile(): Promise<CompanyProfile> {
     email: data.email || local.email,
     address: data.address || local.address,
     logo_url: data.logo_url || local.logo_url,
+    price_per_m2:
+      data.price_per_m2 != null && data.price_per_m2 !== ''
+        ? Number(data.price_per_m2) || local.price_per_m2
+        : local.price_per_m2,
   };
 }
 
@@ -90,6 +97,7 @@ export async function saveCompanyProfile(profile: CompanyProfile): Promise<{ err
     email: profile.email || null,
     address: profile.address || null,
     logo_url: profile.logo_url || null,
+    price_per_m2: Number(profile.price_per_m2) || 0,
     updated_at: new Date().toISOString(),
   };
 
