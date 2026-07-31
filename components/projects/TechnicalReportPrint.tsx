@@ -5,7 +5,7 @@ import type { TechnicalReport, TechnicalReportSectionItem } from '@/lib/types/pr
 import { getTechnicalReportFacilitySnapshot } from '@/lib/projects/technical-report';
 import {
   buildCodeProofCards,
-  buildIntegratedFireNarrative,
+  buildOccupantEgressRows,
   buildZoneSystemNeeds,
   enrichZone,
   floorAreaBalance,
@@ -27,25 +27,65 @@ function photoHtml(dataUrl?: string, caption?: string) {
   }</div>`;
 }
 
-function renderItems(title: string, items: TechnicalReportSectionItem[]) {
+/** ينظّف الملاحظات من السرد التلقائي المكرر ويحوّلها لنقاط */
+function notesToBullets(notes: string | null | undefined): string[] {
+  const cleaned = String(notes || '')
+    .replace(/<<مدمج-من-المناطق>>[\s\S]*?(?=\n\n<<|$)/g, '')
+    .replace(/بالنسبة لبند[\s\S]*?(?=\n\n|$)/g, '')
+    .replace(/ملخص أنظمة الإطفاء حسب الأدوار والمناطق[\s\S]*?(?=\n\n|$)/g, '')
+    .replace(/يُوصى[\s\S]*?وفق الاشتراطات[\s\S]*?(?=\n|$)/g, '')
+    .replace(/مع الالتزام بمتطلبات كود البناء[\s\S]*?(?=\n|$)/g, '')
+    .trim();
+
+  if (!cleaned) return [];
+
+  return cleaned
+    .split(/\n+/)
+    .map((line) => line.replace(/^[\s•\-–—*]+/, '').replace(/^\d+[\)\.\-]\s*/, '').trim())
+    .filter((line) => line.length > 0)
+    .filter((line) => !/^بالنسبة لبند/.test(line))
+    .filter((line) => !/تغطية الرش\/الماء للمناطق/.test(line))
+    .filter((line) => !/الأنظمة الخاصة المطلوبة/.test(line));
+}
+
+function uniqueBullets(...groups: string[][]): string[] {
+  const seen = new Set<string>();
+  const out: string[] = [];
+  for (const group of groups) {
+    for (const item of group) {
+      const key = item.trim();
+      if (!key || seen.has(key)) continue;
+      seen.add(key);
+      out.push(key);
+    }
+  }
+  return out;
+}
+
+function renderSystemItems(title: string, items: TechnicalReportSectionItem[]) {
   const enabled = items.filter((item) => item.enabled);
   if (!enabled.length) return '';
+
   const blocks = enabled
-    .map((item, index) => {
+    .map((item) => {
       const catalog = TECH_REPORT_ITEMS.find((c) => c.id === item.id);
-      const options = item.selectedOptions.map((opt) => `<li>${esc(opt)}</li>`).join('');
+      const bullets = uniqueBullets(item.selectedOptions, notesToBullets(item.notes));
       const photos = item.photos.map((p) => photoHtml(p.dataUrl, p.caption)).join('');
+      const list = bullets.length
+        ? `<ul class="opts">${bullets.map((b) => `<li>${esc(b)}</li>`).join('')}</ul>`
+        : `<p class="muted">لا توجد مواصفات محددة لهذا البند بعد.</p>`;
+
       return `
         <div class="item">
-          <h4 class="item-title">${index + 1}. ${esc(catalog?.title || item.id)}</h4>
-          ${item.notes ? `<p class="notes">${esc(item.notes)}</p>` : ''}
-          ${options ? `<ul class="opts">${options}</ul>` : ''}
+          <h4 class="item-title">${esc(catalog?.title || item.id)}</h4>
+          ${list}
           ${photos ? `<div class="photos">${photos}</div>` : ''}
         </div>
       `;
     })
     .join('');
-  return `<h2 class="chapter">${esc(title)}</h2>${blocks}`;
+
+  return `<h3 class="section">${esc(title)}</h3>${blocks}`;
 }
 
 export function printTechnicalReport(params: {
@@ -60,9 +100,8 @@ export function printTechnicalReport(params: {
   );
   const proofCards = buildCodeProofCards(report, client);
   const zoneNeeds = buildZoneSystemNeeds(report.floor_uses || []);
-  const fireNarrative = buildIntegratedFireNarrative(report.floor_uses || []);
+  const egressRows = buildOccupantEgressRows(report.floor_uses || []);
   const proofsByKey = report.code_proofs_by_key || {};
-
 
   const floors = report.floor_uses || [];
   const floorBlocks = floors
@@ -72,7 +111,7 @@ export function printTechnicalReport(params: {
         .map((raw) => {
           const zone = enrichZone(raw, { keepSuppression: true });
           return `<tr>
-            <td>${esc(zone.label)}${zone.subtype_label ? `<div style="font-size:10px;color:#666">${esc(zone.subtype_label)}</div>` : ''}</td>
+            <td>${esc(zone.label)}${zone.subtype_label ? `<div class="sub">${esc(zone.subtype_label)}</div>` : ''}</td>
             <td>GROUP ${esc(zone.group_letter)}</td>
             <td>${esc(zone.risk_label)}</td>
             <td>${esc(zone.suppression_label || '—')}</td>
@@ -81,12 +120,12 @@ export function printTechnicalReport(params: {
         })
         .join('');
       return `
-        <h4 style="margin:12px 0 6px;color:#1f4d3a;font-size:13px">${esc(floor.floor_name)} — مساحة الدور ${esc(floor.floor_area_m2 || String(zonesAreaSum(floor.zones)))} م² · ${esc(floor.structure)} · ${esc(floor.classification)}</h4>
+        <h4 class="floor-title">${esc(floor.floor_name)} — ${esc(floor.floor_area_m2 || String(zonesAreaSum(floor.zones)))} م² · ${esc(floor.structure)} · ${esc(floor.classification)}</h4>
         <table class="data">
           <thead><tr><th>المنطقة / النوع</th><th>مجموعة الإشغال</th><th>الخطورة</th><th>نظام الإطفاء</th><th>المساحة</th></tr></thead>
           <tbody>${zoneRows || '<tr><td colspan="5">لا مناطق</td></tr>'}</tbody>
         </table>
-        <p style="font-size:11px;color:${balance.ok ? '#166534' : '#92400e'}">مجموع المناطق: ${balance.zonesSum} م² ${balance.ok ? '(متطابق مع مساحة الدور)' : `(فرق ${balance.diff})`}</p>
+        <p class="balance ${balance.ok ? 'ok' : 'warn'}">مجموع المناطق: ${balance.zonesSum} م² ${balance.ok ? '(متطابق)' : `(فرق ${balance.diff})`}</p>
       `;
     })
     .join('');
@@ -115,14 +154,13 @@ export function printTechnicalReport(params: {
       <div class="proof">
         <div class="proof-title">${esc(card.title)}</div>
         <div class="proof-sub">${esc(card.subtitle)}</div>
-        <table class="data">
+        <table class="data compact">
           ${card.rows
-            .map((row) => `<tr><th style="width:36%">${esc(row.label)}</th><td>${esc(row.value)}</td></tr>`)
+            .map((row) => `<tr><th>${esc(row.label)}</th><td>${esc(row.value)}</td></tr>`)
             .join('')}
         </table>
-        ${card.highlight ? `<p class="proof-note">${esc(card.highlight)}</p>` : ''}
         <p class="refs">مراجع: ${esc(card.refs.join(' · '))}</p>
-        ${photosBlock ? `<div class="photos">${photosBlock}</div>` : '<p class="proof-note">يلزم إرفاق صورة مقصوصة من الكود تحت هذا الإثبات.</p>'}
+        ${photosBlock ? `<div class="photos">${photosBlock}</div>` : ''}
       </div>`;
     })
     .join('');
@@ -131,12 +169,12 @@ export function printTechnicalReport(params: {
     .flatMap((floor) =>
       floor.zones
         .filter((z) => z.code_proof_photo?.dataUrl)
-        .map((z) => photoHtml(z.code_proof_photo?.dataUrl, `${floor.floor_name} / ${z.label} — إثبات كود`))
+        .map((z) => photoHtml(z.code_proof_photo?.dataUrl, `${floor.floor_name} / ${z.label}`))
     )
     .join('');
 
   const systemsPlanHtml = zoneNeeds.length
-    ? `<h3 class="section">خطة أنظمة الإطفاء حسب الأدوار والمناطق</h3>
+    ? `<h3 class="section">توزيع أنظمة الإطفاء حسب الأدوار والمناطق</h3>
        <table class="data">
          <thead><tr><th>#</th><th>الدور</th><th>المنطقة</th><th>النوع</th><th>النظام المطلوب</th><th>المساحة</th></tr></thead>
          <tbody>
@@ -153,8 +191,50 @@ export function printTechnicalReport(params: {
              )
              .join('')}
          </tbody>
+       </table>`
+    : '';
+
+  const egressTotal = egressRows.reduce((sum, row) => sum + (row.occupants || 0), 0);
+  const egressHtml = egressRows.length
+    ? `<h3 class="section">حصر الشاغلين ومخارج الهروب</h3>
+       <table class="data">
+         <thead>
+           <tr>
+             <th>الدور</th>
+             <th>المنطقة / الإشغال</th>
+             <th>التصنيف</th>
+             <th>المساحة</th>
+             <th>عامل الحمل</th>
+             <th>الشاغلون</th>
+             <th>أبواب مطلوبة</th>
+             <th>أبواب موجودة</th>
+           </tr>
+         </thead>
+         <tbody>
+           ${egressRows
+             .map(
+               (row) => `<tr>
+                 <td>${esc(row.floor_name)}</td>
+                 <td>${esc(row.zone_label)}</td>
+                 <td>${esc(row.occupancy_label)}</td>
+                 <td>${row.area_m2 ? `${row.area_m2} م²` : '—'}</td>
+                 <td>${row.factor != null ? `${row.factor} م²/شخص` : '—'}</td>
+                 <td>${row.occupants != null ? row.occupants : '—'}</td>
+                 <td>${row.required_exits != null ? row.required_exits : '—'}</td>
+                 <td>—</td>
+               </tr>`
+             )
+             .join('')}
+         </tbody>
+         <tfoot>
+           <tr>
+             <th colspan="5">إجمالي الشاغلين التقريبي</th>
+             <th>${egressTotal}</th>
+             <th colspan="2"></th>
+           </tr>
+         </tfoot>
        </table>
-       <p class="notes" style="white-space:pre-wrap">${esc(fireNarrative)}</p>`
+       <p class="muted">عدد الأبواب المطلوبة تقديري وفق حمل الإشغال؛ يُراجع مع مخططات المسارات المعتمدة.</p>`
     : '';
 
   const headerBlock = `
@@ -174,39 +254,50 @@ export function printTechnicalReport(params: {
   <style>
     @page { size: A4 portrait; margin: 14mm 12mm 18mm; }
     html, body { width: 210mm; }
-    body { font-family: "Tahoma","Segoe UI",Arial,sans-serif; color:#222; line-height:1.7; margin:0 auto; max-width:210mm; }
-    .header { display:flex; justify-content:space-between; align-items:flex-start; gap:12px; border-bottom:2px solid #1f4d3a; padding-bottom:10px; margin-bottom:16px; }
+    body { font-family: "Tahoma","Segoe UI",Arial,sans-serif; color:#222; line-height:1.55; margin:0 auto; max-width:210mm; }
+    .header { display:flex; justify-content:space-between; align-items:flex-start; gap:12px; border-bottom:2px solid #1f4d3a; padding-bottom:10px; margin-bottom:14px; }
     .logo { display:flex; gap:10px; align-items:center; max-width:55%; }
     .logo img { width:54px; height:54px; object-fit:contain; }
     .logo .name { font-weight:700; color:#1f4d3a; font-size:14px; }
     .banner { background:#c0392b; color:#fff; padding:8px 12px; border-radius:4px; font-size:11px; text-align:center; max-width:42%; }
-    .meta { display:flex; justify-content:space-between; font-size:12px; margin:8px 0 18px; color:#444; }
+    .meta { display:flex; justify-content:space-between; font-size:12px; margin:8px 0 16px; color:#444; }
     .cover-title { text-align:center; color:#c0392b; font-size:20px; font-weight:800; margin:28px 0 18px; }
-    .cover-fields { width:70%; margin:0 auto 24px; font-size:14px; }
+    .cover-fields { width:72%; margin:0 auto 24px; font-size:14px; }
     .cover-fields div { margin:8px 0; }
     .signs { display:flex; justify-content:space-between; margin:40px 12% 20px; text-align:center; font-size:13px; }
     .stamp { width:90px; height:90px; border:2px dashed #1f4d3a; border-radius:50%; margin:0 auto 8px; display:flex; align-items:center; justify-content:center; color:#1f4d3a; font-size:10px; text-align:center; padding:8px; }
-    h2.chapter { color:#c0392b; text-align:center; margin:22px 0 12px; font-size:16px; }
-    h3.section { color:#1f4d3a; margin:16px 0 8px; font-size:14px; }
-    table.data { width:100%; border-collapse:collapse; font-size:12px; margin:8px 0 14px; }
-    table.data th, table.data td { border:1px solid #999; padding:6px 8px; vertical-align:top; }
+    h2.chapter { color:#c0392b; text-align:center; margin:18px 0 10px; font-size:16px; }
+    h3.section { color:#1f4d3a; margin:14px 0 6px; font-size:13px; border-right:3px solid #1f4d3a; padding-right:8px; }
+    h4.floor-title { margin:10px 0 6px; color:#1f4d3a; font-size:12px; }
+    table.data { width:100%; border-collapse:collapse; font-size:11px; margin:6px 0 10px; }
+    table.data th, table.data td { border:1px solid #999; padding:5px 7px; vertical-align:top; }
     table.data th { background:#eef2f7; }
-    .item { margin:10px 0 14px; }
-    .item-title { color:#1f6b45; font-size:13px; margin:0 0 4px; }
-    .notes { font-size:12px; margin:4px 0; }
-    .opts { margin:4px 0 8px 0; padding-right:18px; font-size:12px; }
+    table.data.compact th { width:36%; }
+    table.data tfoot th, table.data tfoot td { background:#f8fafc; font-weight:700; }
+    .item { margin:8px 0 12px; page-break-inside: avoid; }
+    .item-title { color:#1f6b45; font-size:12.5px; margin:0 0 2px; font-weight:700; }
+    .opts { margin:2px 0 6px; padding-right:18px; font-size:11.5px; }
+    .opts li { margin:2px 0; }
+    .muted { font-size:11px; color:#64748b; margin:4px 0; }
+    .sub { font-size:10px; color:#666; }
+    .balance { font-size:10px; margin:0 0 8px; }
+    .balance.ok { color:#166534; }
+    .balance.warn { color:#92400e; }
     .photos { display:flex; flex-wrap:wrap; gap:8px; margin-top:6px; }
     .photo { width:48%; page-break-inside: avoid; }
-    .photo img { width:100%; max-height:220px; object-fit:contain; border:1px solid #ddd; background:#fafafa; }
+    .photo img { width:100%; max-height:200px; object-fit:contain; border:1px solid #ddd; background:#fafafa; }
     .cap { font-size:10px; color:#666; text-align:center; }
-    .proof { border:1px solid #cbd5e1; border-radius:6px; margin:10px 0 14px; overflow:hidden; page-break-inside: avoid; }
-    .proof-title { background:#1f4d3a; color:#fff; padding:8px 10px; font-size:12px; font-weight:700; }
-    .proof-sub { background:#fef2f2; color:#c0392b; padding:6px 10px; font-size:12px; font-weight:700; }
-    .proof-note { padding:6px 10px; font-size:11px; color:#92400e; background:#fffbeb; margin:0; }
+    .proof { border:1px solid #cbd5e1; border-radius:6px; margin:8px 0 12px; overflow:hidden; page-break-inside: avoid; }
+    .proof-title { background:#1f4d3a; color:#fff; padding:7px 10px; font-size:11.5px; font-weight:700; }
+    .proof-sub { background:#f8fafc; color:#334155; padding:5px 10px; font-size:11px; font-weight:600; }
     .refs { padding:4px 10px 8px; font-size:10px; color:#64748b; margin:0; }
     .footer { position:fixed; bottom:0; left:0; right:0; border-top:1px solid #1f4d3a; padding-top:6px; font-size:10px; color:#444; text-align:center; background:#fff; }
     .page { page-break-after: always; padding-bottom:36px; }
     .page:last-child { page-break-after: auto; }
+    .toc ol { font-size:13px; line-height:1.9; padding-right:22px; }
+    .toc ul { padding-right:18px; list-style:disc; }
+    .recs { font-size:12.5px; padding-right:18px; }
+    .recs li { margin:6px 0; }
     @media print {
       .no-print { display:none !important; }
       body { max-width:none; }
@@ -253,28 +344,27 @@ export function printTechnicalReport(params: {
     <h2 class="chapter">نبذة</h2>
     <p style="font-size:13px">${esc(report.overview_text || '')}</p>
     ${photoHtml(report.site_photo?.dataUrl, 'صورة المشروع')}
-    <div class="stamp" style="margin:24px auto 0">${esc(company.stamp_text || company.name)}</div>
   </section>
 
-  <section class="page">
+  <section class="page toc">
     ${headerBlock}
     <h2 class="chapter">جدول المحتويات</h2>
-    <ol style="font-size:14px; line-height:2.1; padding-right:22px">
+    <ol>
       <li><strong>الباب الأول: عن المنشأة</strong>
-        <ul style="padding-right:18px; list-style:disc">
+        <ul>
           <li>بيانات المنشأة العامة</li>
-          <li>الموقع</li>
-          <li>الأدوار والمناطق</li>
           <li>مكونات المشروع والحالة الإنشائية</li>
+          <li>الأدوار والمناطق</li>
           <li>إثباتات التصنيف من الكود</li>
         </ul>
       </li>
       <li><strong>الباب الثاني: أنظمة السلامة</strong>
-        <ul style="padding-right:18px; list-style:disc">
-          <li>أنظمة مكافحة الحريق</li>
-          <li>أنظمة التهوية الميكانيكية</li>
-          <li>وسائل الإنذار المبكر عن الحريق</li>
-          <li>مخارج ومسالك الهروب</li>
+        <ul>
+          <li>توزيع أنظمة الإطفاء</li>
+          <li>مكافحة الحريق (مضخات، ماء، شبكة، أنظمة خاصة...)</li>
+          <li>التهوية الميكانيكية</li>
+          <li>وسائل الإنذار المبكر</li>
+          <li>حصر الشاغلين ومخارج الهروب</li>
         </ul>
       </li>
       <li><strong>التوصيات العامة</strong></li>
@@ -284,67 +374,64 @@ export function printTechnicalReport(params: {
   <section class="page">
     ${headerBlock}
     <h2 class="chapter">الباب الأول: عن المنشأة</h2>
+
     <h3 class="section">بيانات المنشأة العامة</h3>
-    <table class="data">
+    <table class="data compact">
       <tr><th>اسم المنشأة</th><td>${esc(facility.business_name)}</td></tr>
       <tr><th>النشاط</th><td>${esc(facility.activity_label)}</td></tr>
       <tr><th>المالك / المستثمر</th><td>${esc(facility.owner_name)}</td></tr>
-      <tr><th>قسم الدفاع المدني</th><td>${esc(report.civil_defense_branch || '—')}</td></tr>
-      <tr><th>الصك</th><td>رقم: ${esc(report.deed_number || '—')} — تاريخ: ${esc(report.deed_date || '—')}</td></tr>
       <tr><th>رخصة البناء</th><td>رقم: ${esc(report.building_permit_number || '—')} — تاريخ: ${esc(report.building_permit_date || '—')}</td></tr>
-      <tr><th>مساحة الموقع العام</th><td>${esc(facility.land_area ? facility.land_area + ' م²' : '—')}</td></tr>
-      <tr><th>عدد الأدوار</th><td>${esc(report.floors_description || facility.floors_count || '—')}</td></tr>
+      <tr><th>الصك</th><td>رقم: ${esc(report.deed_number || '—')} — تاريخ: ${esc(report.deed_date || '—')}</td></tr>
+      <tr><th>مساحة الموقع</th><td>${esc(facility.land_area ? facility.land_area + ' م²' : '—')}</td></tr>
       <tr><th>مساحة البناء</th><td>${esc(facility.building_area ? facility.building_area + ' م²' : '—')}</td></tr>
+      <tr><th>عدد الأدوار</th><td>${esc(report.floors_description || facility.floors_count || '—')}</td></tr>
       <tr><th>الموقع</th><td>${esc(facility.location_summary)}</td></tr>
       <tr><th>تصنيف المبنى (SBC)</th><td>${esc(report.building_classification || '—')}</td></tr>
       <tr><th>تصنيف الخطورة</th><td>${esc(report.risk_class || '—')}</td></tr>
       <tr><th>حالة المبنى</th><td>${esc(report.building_status || '—')}</td></tr>
     </table>
-
-    <h3 class="section">الموقع</h3>
-    <p style="font-size:12px">${esc(report.location_description || '')}</p>
-    ${photoHtml(report.earth_photo?.dataUrl, 'صورة Google Earth')}
+    ${photoHtml(report.earth_photo?.dataUrl, 'Google Earth')}
     ${photoHtml(report.facade_photo?.dataUrl, 'واجهة المشروع')}
-
-    <h3 class="section">الأدوار والمناطق</h3>
-    ${floorBlocks || '<p style="font-size:12px">لا توجد أدوار بعد</p>'}
 
     <h3 class="section">مكونات المشروع والحالة الإنشائية</h3>
     <table class="data">
       <thead>
         <tr>
-          <th>#</th><th>المبنى / الدور</th><th>الهيكل الإنشائي</th><th>التصنيف الإنشائي</th><th>المساحة طبقاً للواقع</th>
+          <th>#</th><th>المبنى / الدور</th><th>الهيكل الإنشائي</th><th>التصنيف الإنشائي</th><th>المساحة</th>
         </tr>
       </thead>
       <tbody>${componentsRows || '<tr><td colspan="5">لا توجد بيانات</td></tr>'}</tbody>
     </table>
-    ${report.risk_class ? `<p style="font-size:12px">• تم تصنيف المشروع: ${esc(report.risk_class)}</p>` : ''}
+
+    <h3 class="section">الأدوار والمناطق</h3>
+    ${floorBlocks || '<p class="muted">لا توجد أدوار بعد</p>'}
   </section>
 
   <section class="page">
     ${headerBlock}
-    <h2 class="chapter">إثباتات التصنيف من الكود السعودي</h2>
-    ${proofHtml}
-    ${zoneProofPhotos ? `<h3 class="section">صور كود مربوطة بالمناطق</h3><div class="photos">${zoneProofPhotos}</div>` : ''}
+    <h2 class="chapter">الباب الأول — إثباتات التصنيف</h2>
+    ${proofHtml || '<p class="muted">لا توجد إثباتات بعد</p>'}
+    ${zoneProofPhotos ? `<h3 class="section">صور الكود حسب المناطق</h3><div class="photos">${zoneProofPhotos}</div>` : ''}
   </section>
 
   <section class="page">
     ${headerBlock}
     <h2 class="chapter">الباب الثاني: أنظمة السلامة</h2>
     ${systemsPlanHtml}
-    ${renderItems('أنظمة مكافحة الحريق', report.firefighting_items)}
-    ${renderItems('أنظمة التهوية الميكانيكية', report.ventilation_items)}
-    ${renderItems('وسائل الإنذار المبكر عن الحريق', report.alarm_items)}
-    ${renderItems('مخارج ومسالك الهروب', report.exits_items)}
+    ${renderSystemItems('أنظمة مكافحة الحريق', report.firefighting_items)}
+    ${renderSystemItems('أنظمة التهوية الميكانيكية', report.ventilation_items)}
+    ${renderSystemItems('وسائل الإنذار المبكر عن الحريق', report.alarm_items)}
+    ${egressHtml}
+    ${renderSystemItems('اشتراطات مخارج ومسالك الهروب', report.exits_items)}
   </section>
 
   <section class="page">
     ${headerBlock}
     <h2 class="chapter">التوصيات العامة</h2>
-    <ol style="font-size:13px; padding-right:18px">
+    <ol class="recs">
       ${
         recommendations.length
-          ? recommendations.map((r) => `<li style="margin:8px 0">${esc(r.label)}</li>`).join('')
+          ? recommendations.map((r) => `<li>${esc(r.label)}</li>`).join('')
           : '<li>لم يتم اختيار توصيات بعد</li>'
       }
     </ol>
