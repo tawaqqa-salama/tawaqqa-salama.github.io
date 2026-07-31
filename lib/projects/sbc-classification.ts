@@ -16,7 +16,6 @@ import type {
   TechnicalReport,
   TechnicalReportComponentRow,
   TechnicalReportFloorUse,
-  TechnicalReportSectionItem,
   TechnicalReportZone,
 } from '@/lib/types/project-reports';
 import { ensureFloorLevels, labelForFloorKind } from '@/lib/business/floors';
@@ -196,89 +195,115 @@ export function buildZoneSystemNeeds(floors: TechnicalReportFloorUse[]): ZoneSys
   );
 }
 
-export function buildIntegratedFireNarrative(floors: TechnicalReportFloorUse[]): string {
-  const needs = buildZoneSystemNeeds(floors);
-  if (!needs.length) return '';
-
-  const lines = needs.map((n, i) => {
-    const opts = n.selected_options.length ? ` (خيارات: ${n.selected_options.join('، ')})` : '';
-    return `${i + 1}) الدور (${n.floor_name}) — المنطقة (${n.zone_label}${n.subtype_label ? ` / ${n.subtype_label}` : ''}) مساحة ${n.area_m2 || '—'} م²: يتطلب ${n.suppression_label}. التصنيف GROUP ${n.group_letter || '—'} وخطورة ${n.risk_label || '—'}.${opts}`;
-  });
-
-  const special = needs.filter((n) => n.is_special);
-  const water = needs.filter((n) => !n.is_special);
-
-  return [
-    'ملخص أنظمة الإطفاء حسب الأدوار والمناطق (مدمج من الباب الأول):',
-    ...lines,
-    water.length
-      ? `المناطق التي تعتمد مرشات/ماء: ${water.map((n) => `${n.floor_name}/${n.zone_label}`).join('، ')}.`
-      : '',
-    special.length
-      ? `المناطق التي تتطلب نظاماً خاصاً: ${special.map((n) => `${n.floor_name}/${n.zone_label} → ${n.suppression_label}`).join('؛ ')}.`
-      : '',
-  ]
-    .filter(Boolean)
-    .join('\n');
+export function buildIntegratedFireNarrative(_floors: TechnicalReportFloorUse[]): string {
+  // أوقف السرد الطويل المكرر — العرض يتم عبر الجداول والنقاط فقط
+  return '';
 }
 
-function mergeItemNotes(item: TechnicalReportSectionItem, block: string, marker: string): TechnicalReportSectionItem {
-  const cleaned = (item.notes || '').replace(new RegExp(`${marker}[\\s\\S]*?(?=\\n\\n|$)`, 'g'), '').trim();
-  const notes = [cleaned, `${marker}\n${block}`].filter(Boolean).join('\n\n');
-  return { ...item, notes };
+function stripAutoMergedNotes(notes: string | null | undefined): string {
+  return String(notes || '')
+    .replace(/<<مدمج-من-المناطق>>[\s\S]*?(?=\n\n<<|$)/g, '')
+    .replace(/بالنسبة لبند[\s\S]*?(?=\n\n|$)/g, '')
+    .replace(/ملخص أنظمة الإطفاء حسب الأدوار والمناطق[\s\S]*?(?=\n\n|$)/g, '')
+    .replace(/\n{3,}/g, '\n\n')
+    .trim();
 }
 
-/** يدمج احتياجات المناطق داخل بنود مكافحة الحريق */
+/** يزامن احتياجات المناطق كخيارات قصيرة فقط — بدون سرد مكرر داخل الملاحظات */
 export function syncFirefightingFromZones(report: TechnicalReport): TechnicalReport {
   const floors = report.floor_uses || [];
   const needs = buildZoneSystemNeeds(floors);
-  if (!needs.length) return report;
+  if (!needs.length) {
+    return {
+      ...report,
+      firefighting_items: report.firefighting_items.map((item) => ({
+        ...item,
+        notes: stripAutoMergedNotes(item.notes),
+      })),
+    };
+  }
 
-  const narrative = buildIntegratedFireNarrative(floors);
   const specialLines = needs
     .filter((n) => n.is_special)
-    .map((n) => `${n.floor_name} / ${n.zone_label}: ${n.suppression_label}`);
-  const sprinklerZones = needs.filter((n) => !n.is_special || n.suppression_code === 'esfr' || n.suppression_code === 'wet_sprinkler');
+    .map((n) => `${n.suppression_label} — ${n.floor_name} / ${n.zone_label}`);
+  const sprinklerZones = needs.filter(
+    (n) => !n.is_special || n.suppression_code === 'esfr' || n.suppression_code === 'wet_sprinkler'
+  );
 
   const firefighting_items = report.firefighting_items.map((item) => {
+    const cleanedNotes = stripAutoMergedNotes(item.notes);
+
     if (item.id === 'ff_special') {
       const options = [...item.selectedOptions];
       for (const line of specialLines) {
         if (!options.includes(line)) options.push(line);
       }
-      if (specialLines.length && !options.includes('تنفيذ أنظمة الإطفاء الخاصة وفق المناطق المحددة في التقرير')) {
+      if (
+        specialLines.length &&
+        !options.includes('تنفيذ أنظمة الإطفاء الخاصة وفق المناطق المحددة في التقرير')
+      ) {
         options.push('تنفيذ أنظمة الإطفاء الخاصة وفق المناطق المحددة في التقرير');
       }
-      return mergeItemNotes(
-        { ...item, enabled: true, selectedOptions: options },
-        specialLines.length
-          ? `الأنظمة الخاصة المطلوبة:\n${specialLines.map((l, i) => `${i + 1}. ${l}`).join('\n')}\n\n${narrative}`
-          : narrative,
-        '<<مدمج-من-المناطق>>'
-      );
+      return { ...item, enabled: true, selectedOptions: options, notes: cleanedNotes };
     }
+
     if (item.id === 'ff_piping') {
       const options = [...item.selectedOptions];
       const autoOpts = [
         'تركيب مرشات حريق (Sprinklers) في الفراغات المطلوبة',
         'تنفيذ شبكة أنابيب حسب التصاميم الهيدروليكية',
       ];
-      for (const opt of autoOpts) {
-        if (sprinklerZones.length && !options.includes(opt)) options.push(opt);
+      if (sprinklerZones.length) {
+        for (const opt of autoOpts) {
+          if (!options.includes(opt)) options.push(opt);
+        }
       }
-      const zoneList = sprinklerZones
-        .map((n) => `${n.floor_name}/${n.zone_label} → ${n.suppression_label}`)
-        .join('؛ ');
-      return mergeItemNotes(
-        { ...item, enabled: true, selectedOptions: options },
-        `تغطية الرش/الماء للمناطق: ${zoneList || '—'}\n\n${narrative}`,
-        '<<مدمج-من-المناطق>>'
-      );
+      return { ...item, enabled: true, selectedOptions: options, notes: cleanedNotes };
     }
-    return item;
+
+    return { ...item, notes: cleanedNotes };
   });
 
   return { ...report, firefighting_items };
+}
+
+export type OccupantEgressRow = {
+  floor_name: string;
+  zone_label: string;
+  occupancy_label: string;
+  area_m2: number;
+  factor: number | null;
+  occupants: number | null;
+  required_exits: number | null;
+};
+
+/** جدول حصر الشاغلين والأبواب المطلوبة حسب الدور والإشغال */
+export function buildOccupantEgressRows(floors: TechnicalReportFloorUse[]): OccupantEgressRow[] {
+  return floors.flatMap((floor) =>
+    floor.zones.map((raw) => {
+      const zone = enrichZone(raw, { keepSuppression: true });
+      const use = getZoneUse(zone.use_code);
+      const occ = zone.occupancy_code ? SBC_OCCUPANCIES[zone.occupancy_code as SbcOccupancyCode] : null;
+      const area = Number(zone.area_m2) || 0;
+      const factor = use.occupant_load_factor_m2 ?? null;
+      const occupants = factor && area > 0 ? Math.ceil(area / factor) : null;
+      let required_exits: number | null = null;
+      if (occupants != null) {
+        if (occupants <= 49) required_exits = 1;
+        else if (occupants <= 500) required_exits = 2;
+        else required_exits = Math.max(3, Math.ceil(occupants / 500) + 1);
+      }
+      return {
+        floor_name: floor.floor_name,
+        zone_label: zone.subtype_label ? `${zone.label}` : zone.label,
+        occupancy_label: occ ? `GROUP ${occ.group_letter} — ${occ.label_ar}` : zone.group_letter || '—',
+        area_m2: area,
+        factor,
+        occupants,
+        required_exits,
+      };
+    })
+  );
 }
 
 export type CodeProofCard = {

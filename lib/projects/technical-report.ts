@@ -42,9 +42,7 @@ function locationSummary(client: ClientRecord): string {
 
 function defaultOverview(client: ClientRecord): string {
   const activity = ACTIVITY_RULES[client.activity_type || '']?.label || client.activity_type || 'المنشأة';
-  const owner = client.owner_name || client.name || 'المالك';
-  const place = [client.district, client.city].filter(Boolean).join('، ') || 'الموقع المحدد';
-  return `يتناول هذا التقرير أنظمة السلامة والوقاية من الحريق لمشروع (${client.business_name || client.name || 'المنشأة'}) بنشاط ${activity}، العائد لـ ${owner}، والواقع في ${place}. ويهدف إلى بيان الاشتراطات والتوصيات وفق كود البناء السعودي والأنظمة ذات العلاقة.`;
+  return `تقرير فني لأنظمة السلامة والوقاية من الحريق — ${client.business_name || client.name || 'المنشأة'} (${activity}).`;
 }
 
 /** يدمج التقرير المحفوظ مع القيم الافتراضية وبيانات التسويق/المبيعات */

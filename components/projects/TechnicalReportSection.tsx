@@ -11,7 +11,7 @@ import { getTechnicalReportFacilitySnapshot } from '@/lib/projects/technical-rep
 import {
   applyAutoClassification,
   buildCodeProofCards,
-  buildIntegratedFireNarrative,
+  buildOccupantEgressRows,
   buildZoneSystemNeeds,
 } from '@/lib/projects/sbc-classification';
 import FloorZonesEditor from '@/components/projects/FloorZonesEditor';
@@ -59,7 +59,7 @@ export default function TechnicalReportSection({
   const facility = useMemo(() => getTechnicalReportFacilitySnapshot(client), [client]);
   const proofCards = useMemo(() => buildCodeProofCards(report, client), [report, client]);
   const zoneNeeds = useMemo(() => buildZoneSystemNeeds(report.floor_uses || []), [report.floor_uses]);
-  const fireNarrative = useMemo(() => buildIntegratedFireNarrative(report.floor_uses || []), [report.floor_uses]);
+  const egressRows = useMemo(() => buildOccupantEgressRows(report.floor_uses || []), [report.floor_uses]);
 
   const patch = (partial: Partial<TechnicalReport>) => onChange({ ...report, ...partial });
 
@@ -304,19 +304,60 @@ export default function TechnicalReportSection({
         <div className="space-y-3">
           {chapter === 'firefighting' && zoneNeeds.length > 0 && (
             <section className="rounded-xl border border-emerald-200 bg-emerald-50/70 p-4 space-y-2">
-              <h4 className="font-bold text-[#1f4d3a] text-sm">تكامل من الأدوار والمناطق — أنظمة الإطفاء المطلوبة</h4>
-              <ul className="text-sm text-gray-800 space-y-1 list-disc pr-5">
-                {zoneNeeds.map((n, i) => (
-                  <li key={`${n.floor_name}-${n.zone_label}-${i}`}>
-                    <strong>{n.floor_name}</strong> / {n.zone_label}
-                    {n.subtype_label ? ` (${n.subtype_label})` : ''} → {n.suppression_label}
-                    {n.area_m2 ? ` · ${n.area_m2} م²` : ''}
-                  </li>
-                ))}
-              </ul>
-              {fireNarrative ? (
-                <pre className="whitespace-pre-wrap text-xs text-gray-600 bg-white/80 rounded-lg p-3 border">{fireNarrative}</pre>
-              ) : null}
+              <h4 className="font-bold text-[#1f4d3a] text-sm">توزيع أنظمة الإطفاء حسب الأدوار والمناطق</h4>
+              <div className="overflow-x-auto">
+                <table className="w-full text-xs bg-white rounded-lg overflow-hidden">
+                  <thead className="bg-emerald-100 text-[#1f4d3a]">
+                    <tr>
+                      <th className="p-2 text-right">الدور</th>
+                      <th className="p-2 text-right">المنطقة</th>
+                      <th className="p-2 text-right">النظام</th>
+                      <th className="p-2 text-right">المساحة</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {zoneNeeds.map((n, i) => (
+                      <tr key={`${n.floor_name}-${n.zone_label}-${i}`} className="border-t">
+                        <td className="p-2">{n.floor_name}</td>
+                        <td className="p-2">
+                          {n.zone_label}
+                          {n.subtype_label ? ` (${n.subtype_label})` : ''}
+                        </td>
+                        <td className="p-2">{n.suppression_label}</td>
+                        <td className="p-2">{n.area_m2 ? `${n.area_m2} م²` : '—'}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </section>
+          )}
+
+          {chapter === 'exits' && egressRows.length > 0 && (
+            <section className="rounded-xl border border-slate-200 bg-slate-50 p-4 space-y-2">
+              <h4 className="font-bold text-slate-800 text-sm">حصر الشاغلين والأبواب المطلوبة</h4>
+              <div className="overflow-x-auto">
+                <table className="w-full text-xs bg-white rounded-lg overflow-hidden">
+                  <thead className="bg-slate-200 text-slate-800">
+                    <tr>
+                      <th className="p-2 text-right">الدور</th>
+                      <th className="p-2 text-right">المنطقة</th>
+                      <th className="p-2 text-right">الشاغلون</th>
+                      <th className="p-2 text-right">أبواب مطلوبة</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {egressRows.map((row, i) => (
+                      <tr key={`${row.floor_name}-${row.zone_label}-${i}`} className="border-t">
+                        <td className="p-2">{row.floor_name}</td>
+                        <td className="p-2">{row.zone_label}</td>
+                        <td className="p-2">{row.occupants ?? '—'}</td>
+                        <td className="p-2">{row.required_exits ?? '—'}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
             </section>
           )}
 
@@ -341,19 +382,19 @@ export default function TechnicalReportSection({
                     <>
                       <div>
                         <div className="flex items-center justify-between gap-2 mb-1">
-                          <span className="text-sm text-gray-600">ملاحظات فنية (بمساعدة المسودة الذكية)</span>
+                          <span className="text-sm text-gray-600">نقاط فنية ومواصفات (مختصرة)</span>
                           <button
                             type="button"
                             className="text-xs font-semibold text-[#1f4d3a] border border-[#1f4d3a]/20 rounded-lg px-2 py-1"
                             onClick={() => {
-                              const draft = buildAiDraftNotes(catalog.title, item.selectedOptions, facility.business_name);
+                              const draft = buildSpecBullets(item.selectedOptions);
                               updateItemList(bundle.key, item.id, (row) => ({
                                 ...row,
-                                notes: row.notes?.trim() ? `${row.notes.trim()}\n\n${draft}` : draft,
+                                notes: draft,
                               }));
                             }}
                           >
-                            مساعدة AI
+                            توليد نقاط من الاختيارات
                           </button>
                         </div>
                         <textarea value={item.notes} onChange={(e) => updateItemList(bundle.key, item.id, (row) => ({ ...row, notes: e.target.value }))} className="w-full border rounded-xl px-3 py-2 min-h-20 text-sm" />
@@ -451,10 +492,9 @@ export default function TechnicalReportSection({
   );
 }
 
-function buildAiDraftNotes(title: string, selectedOptions: string[], projectName: string) {
-  const optionsText =
-    selectedOptions.length > 0 ? selectedOptions.map((opt, i) => `${i + 1}) ${opt}`).join('؛ ') : 'وفق الاشتراطات المعتمدة والمخططات الهندسية';
-  return `بالنسبة لبند (${title}) في مشروع (${projectName || 'المنشأة'}): يُوصى ${optionsText}. مع الالتزام بمتطلبات كود البناء السعودي والدفاع المدني، والتنفيذ عبر جهة معتمدة وبمواد مطابقة للمواصفات.`;
+function buildSpecBullets(selectedOptions: string[]) {
+  if (!selectedOptions.length) return '';
+  return selectedOptions.map((opt) => `• ${opt}`).join('\n');
 }
 
 function ReadOnly({ label, value }: { label: string; value: string }) {
