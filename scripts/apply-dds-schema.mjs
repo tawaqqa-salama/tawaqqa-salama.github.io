@@ -25,6 +25,7 @@ const files = [
   '012_hr_employee_fields.sql',
   '013_company_branding_fields.sql',
   '014_document_sequences.sql',
+  '015_provision_employee_auth.sql',
 ];
 
 if (!process.env.DATABASE_URL) {

@@ -30,6 +30,16 @@ https://github.com/tawaqqa-salama/tawaqqa-salama.github.io/actions/workflows/dep
 - Site URL: `https://tawaqqa-salama.github.io`
 - Redirect URLs: `https://tawaqqa-salama.github.io/**`
 
+## تفعيل بريد الموظفين (مهم)
+
+عند إنشاء موظف يظهر أحياناً `Email not confirmed` أو «الحساب موجود من قبل» لأن Supabase يطلب تأكيد الإيميل.
+
+1. شغّل في Supabase → SQL:
+   `scripts/sql/015_provision_employee_auth.sql`
+2. من شاشة المستخدمين: أعد حفظ الموظف مع كلمة المرور (المدير يفعّل الحساب تلقائياً).
+
+اختياري: Authentication → Providers → Email → عطّل **Confirm email** إذا كنت لا تريد رسائل التأكيد أصلاً.
+
 ## محلياً
 
 ```bash

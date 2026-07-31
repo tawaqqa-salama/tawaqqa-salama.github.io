@@ -105,6 +105,55 @@ export async function restoreAuthSession(): Promise<AuthResult> {
   return { session, error: null };
 }
 
+function mapAuthError(message: string | null | undefined, fallback: string): string {
+  const raw = (message || '').trim();
+  if (!raw) return fallback;
+  const lower = raw.toLowerCase();
+
+  if (lower.includes('email not confirmed')) {
+    return 'البريد غير مفعّل بعد. اطلب من المدير إعادة حفظ الموظف من شاشة المستخدمين لتفعيل الحساب، أو أكّد الإيميل من Supabase → Authentication → Users.';
+  }
+  if (
+    lower.includes('invalid login credentials') ||
+    lower.includes('invalid credentials') ||
+    lower.includes('invalid email or password')
+  ) {
+    return 'بيانات الدخول غير صحيحة';
+  }
+  if (lower.includes('user already registered') || lower.includes('already been registered')) {
+    return 'هذا البريد مسجّل مسبقاً في نظام الدخول.';
+  }
+  if (lower.includes('rate limit') || lower.includes('too many requests')) {
+    return 'محاولات كثيرة. انتظر قليلاً ثم أعد المحاولة.';
+  }
+
+  return raw;
+}
+
+async function provisionEmployeeAuth(email: string, password: string): Promise<{
+  authUserId: string | null;
+  error: string | null;
+}> {
+  const { data, error } = await supabase.rpc('provision_employee_auth', {
+    p_email: email,
+    p_password: password,
+  });
+
+  if (error) {
+    const msg = error.message || '';
+    if (/could not find the function|does not exist|42883/i.test(msg)) {
+      return {
+        authUserId: null,
+        error:
+          'يلزم تشغيل سكربت تفعيل البريد في Supabase أولاً: scripts/sql/015_provision_employee_auth.sql',
+      };
+    }
+    return { authUserId: null, error: mapAuthError(msg, 'تعذر تفعيل حساب الدخول') };
+  }
+
+  return { authUserId: (data as string | null) ?? null, error: null };
+}
+
 export async function signInWithEmailPassword(email: string, password: string): Promise<AuthResult> {
   const trimmedEmail = email.trim().toLowerCase();
   if (!trimmedEmail || !password) {
@@ -117,7 +166,7 @@ export async function signInWithEmailPassword(email: string, password: string): 
       password,
     });
     if (error || !data.user) {
-      return { session: null, error: error?.message || 'فشل تسجيل الدخول' };
+      return { session: null, error: mapAuthError(error?.message, 'فشل تسجيل الدخول') };
     }
     const { data: profile } = await supabase
       .from('users')
@@ -332,6 +381,12 @@ export async function upsertEmployee(input: {
   if (input.hr_notes !== undefined) payload.hr_notes = input.hr_notes || null;
 
   if (isUpdate) {
+    if (!isDemoMode && input.password && input.password.length >= 6) {
+      const provisioned = await provisionEmployeeAuth(email, input.password);
+      if (provisioned.error) return { user: null, error: provisioned.error };
+      if (provisioned.authUserId) payload.auth_user_id = provisioned.authUserId;
+    }
+
     const { data, error } = await supabase.from('users').update(payload).eq('id', input.id!).select('*').single();
     if (error) return { user: null, error: error.message };
     if (input.password && isDemoMode) {
@@ -361,12 +416,45 @@ export async function upsertEmployee(input: {
         refresh_token: currentAuth.session.refresh_token,
       });
     }
-    if (signUpError) {
-      return { user: null, error: `تعذر إنشاء حساب الدخول: ${signUpError.message}` };
+
+    const alreadyRegistered = Boolean(
+      signUpError &&
+        /already|registered|exists/i.test(signUpError.message || '')
+    );
+
+    if (signUpError && !alreadyRegistered) {
+      return { user: null, error: `تعذر إنشاء حساب الدخول: ${mapAuthError(signUpError.message, signUpError.message)}` };
     }
-    authUserId = signedUp.user?.id ?? null;
+
+    // فعّل البريد وأعد ضبط كلمة المرور (يحل Email not confirmed والحساب الموجود مسبقاً)
+    const provisioned = await provisionEmployeeAuth(email, input.password);
+    if (provisioned.error) {
+      return { user: null, error: provisioned.error };
+    }
+
+    authUserId = provisioned.authUserId || signedUp.user?.id || null;
+    if (!authUserId) {
+      return {
+        user: null,
+        error: 'تعذر ربط حساب الدخول. تأكد من تشغيل سكربت 015_provision_employee_auth.sql ثم أعد المحاولة.',
+      };
+    }
+
     payload.auth_user_id = authUserId;
     payload.password_hash = 'supabase-auth';
+
+    // إن كان ملف الموظف موجوداً سابقاً بسبب محاولة فاشلة: حدّثه بدلاً من إدراج جديد
+    const existingProfile = await fetchUserByEmail(email);
+    if (existingProfile) {
+      const { data: updated, error: updateError } = await supabase
+        .from('users')
+        .update(payload)
+        .eq('id', existingProfile.id)
+        .select('*')
+        .single();
+      if (updateError) return { user: null, error: updateError.message };
+      return { user: updated as AppUser, error: null };
+    }
   }
 
   const { data, error } = await supabase
