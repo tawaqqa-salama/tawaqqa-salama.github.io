@@ -56,6 +56,53 @@ export function saveLocalCompanyProfile(profile: CompanyProfile) {
   localStorage.setItem(LOCAL_KEY, JSON.stringify(profile));
 }
 
+function extractMissingColumn(message: string): string | null {
+  const patterns = [
+    /Could not find the '([^']+)' column/i,
+    /column ["']([^"']+)["'] of relation/i,
+    /column ([a-zA-Z_][a-zA-Z0-9_]*) does not exist/i,
+  ];
+  for (const pattern of patterns) {
+    const match = message.match(pattern);
+    if (match?.[1]) return match[1];
+  }
+  return null;
+}
+
+/** يحاول الحفظ مع حذف الأعمدة غير الموجودة في schema تلقائياً */
+async function upsertCompanyPayload(
+  payload: Record<string, unknown>,
+  existingId?: string
+): Promise<{ error: string | null; skippedColumns: string[] }> {
+  const current: Record<string, unknown> = { ...payload };
+  const skippedColumns: string[] = [];
+
+  for (let attempt = 0; attempt < 16; attempt += 1) {
+    const result = existingId
+      ? await supabase.from('companies').update(current).eq('id', existingId)
+      : await supabase.from('companies').insert({
+          code: 'TWAQQA',
+          ...current,
+          is_active: true,
+          created_at: new Date().toISOString(),
+        });
+
+    if (!result.error) {
+      return { error: null, skippedColumns };
+    }
+
+    const missing = extractMissingColumn(result.error.message);
+    if (!missing || !(missing in current)) {
+      return { error: result.error.message, skippedColumns };
+    }
+
+    delete current[missing];
+    skippedColumns.push(missing);
+  }
+
+  return { error: 'تعذر حفظ بيانات الشركة في قاعدة البيانات', skippedColumns };
+}
+
 /** يحمّل من جدول companies إن وجد، مع دمج التخزين المحلي للشعار والحقول الإضافية */
 export async function loadCompanyProfile(): Promise<CompanyProfile> {
   const local = loadLocalCompanyProfile();
@@ -82,12 +129,15 @@ export async function loadCompanyProfile(): Promise<CompanyProfile> {
   };
 }
 
-export async function saveCompanyProfile(profile: CompanyProfile): Promise<{ error: string | null }> {
+export async function saveCompanyProfile(
+  profile: CompanyProfile
+): Promise<{ error: string | null; warning?: string | null }> {
+  // الحفظ المحلي أولاً — يضمن عمل سعر المتر حتى لو أعمدة قاعدة البيانات ناقصة
   saveLocalCompanyProfile(profile);
   if (isDemoMode) return { error: null };
 
   const { data: existing } = await supabase.from('companies').select('id').eq('code', 'TWAQQA').maybeSingle();
-  const payload = {
+  const payload: Record<string, unknown> = {
     name: profile.name,
     legal_name: profile.legal_name,
     city: profile.city,
@@ -101,16 +151,22 @@ export async function saveCompanyProfile(profile: CompanyProfile): Promise<{ err
     updated_at: new Date().toISOString(),
   };
 
-  if (existing?.id) {
-    const { error } = await supabase.from('companies').update(payload).eq('id', existing.id);
-    return { error: error?.message || null };
+  const result = await upsertCompanyPayload(payload, existing?.id);
+  if (result.error) {
+    return {
+      error: null,
+      warning:
+        `حُفظ سعر المتر وبيانات المكتب محلياً على هذا الجهاز. قاعدة البيانات رفضت بعض الحقول (${result.error}). نفّذ SQL الحقول الإضافية لمزامنة كل الأجهزة.`,
+    };
   }
 
-  const { error } = await supabase.from('companies').insert({
-    code: 'TWAQQA',
-    ...payload,
-    is_active: true,
-    created_at: new Date().toISOString(),
-  });
-  return { error: error?.message || null };
+  if (result.skippedColumns.length > 0) {
+    const skipped = result.skippedColumns.join(', ');
+    return {
+      error: null,
+      warning: `تم الحفظ. بعض أعمدة قاعدة البيانات غير موجودة بعد (${skipped}) وبقيت محلياً — نفّذ SQL الحقول الإضافية للمزامنة الكاملة.`,
+    };
+  }
+
+  return { error: null };
 }
