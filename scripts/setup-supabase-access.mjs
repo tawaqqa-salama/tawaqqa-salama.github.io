@@ -74,7 +74,13 @@ await client.query(`
     ADD COLUMN IF NOT EXISTS sales_payment_type text DEFAULT 'نقدي',
     ADD COLUMN IF NOT EXISTS credit_balance numeric DEFAULT 0,
     ADD COLUMN IF NOT EXISTS project_engineering_data jsonb DEFAULT '{}'::jsonb,
-    ADD COLUMN IF NOT EXISTS national_address text;
+    ADD COLUMN IF NOT EXISTS national_address text,
+    ADD COLUMN IF NOT EXISTS quotation_services jsonb NOT NULL DEFAULT '[]'::jsonb;
+`);
+
+await client.query(`
+  ALTER TABLE public.companies
+    ADD COLUMN IF NOT EXISTS price_per_m2 numeric DEFAULT 0;
 `);
 
 await client.query(`

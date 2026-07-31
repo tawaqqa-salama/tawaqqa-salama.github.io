@@ -44,6 +44,13 @@ import { mergePipelineStage, getPipelineStageLabel, resolvePipelineStage } from 
 import { processSalesAccountingAutomation } from '@/lib/business/accounting-service';
 import { parseProjectEngineeringData, syncProjectVisitsFromQuotation } from '@/lib/business/project-reports';
 import { isFinancialApproved } from '@/lib/business/workflow-stages';
+import {
+  QUOTATION_SERVICE_OPTIONS,
+  normalizeQuotationServices,
+  type QuotationServiceId,
+} from '@/lib/constants/quotation-services';
+import { loadCompanyProfile } from '@/lib/company-profile';
+import PrintQuotationModal from '@/components/sales/PrintQuotationModal';
 import type { ClientRecord, DepartmentMode, FloorLevel, InspectionChecklistItem } from '@/lib/types/client';
 
 type TabId = 'basic' | 'finance' | 'engineering' | 'reports';
@@ -99,6 +106,9 @@ export default function ClientDetailModal({
   const [paymentReference, setPaymentReference] = useState('');
   const [paidAmount, setPaidAmount] = useState('');
   const [quotationVisitsCount, setQuotationVisitsCount] = useState('1');
+  const [quotationServices, setQuotationServices] = useState<QuotationServiceId[]>([]);
+  const [pricePerM2, setPricePerM2] = useState(0);
+  const [printOpen, setPrintOpen] = useState(false);
   const [salesPaymentType, setSalesPaymentType] = useState<'نقدي' | 'آجل'>('نقدي');
 
   const [assignedEngineer, setAssignedEngineer] = useState('');
@@ -127,13 +137,26 @@ export default function ClientDetailModal({
   const [floorLevels, setFloorLevels] = useState<FloorLevel[]>([]);
 
   useEffect(() => {
+    void loadCompanyProfile().then((profile) => setPricePerM2(Number(profile.price_per_m2) || 0));
+  }, []);
+
+  useEffect(() => {
     if (!client) return;
     const allowed = DEPARTMENT_TABS[department];
     const preferred = DEFAULT_TAB[department] || allowed[0] || 'basic';
     setActiveTab(allowed.includes(preferred) ? preferred : allowed[0]);
     setErrorMessage(null);
     setSuccessMessage(null);
-    setQuotationAmount(client.quotation_amount ? String(client.quotation_amount) : '');
+    setQuotationServices(normalizeQuotationServices(client.quotation_services));
+    const existingAmount = Number(client.quotation_amount || 0);
+    if (existingAmount > 0) {
+      setQuotationAmount(String(client.quotation_amount));
+    } else if (pricePerM2 > 0 && Number(client.building_area || 0) > 0) {
+      const auto = Math.round(Number(client.building_area) * pricePerM2 * 100) / 100;
+      setQuotationAmount(String(auto));
+    } else {
+      setQuotationAmount('');
+    }
     setQuotationStatus(client.quotation_status || 'مسودة');
     setFinancialStatus(client.financial_status || 'بانتظار الدفعة');
     setPaymentReference(client.payment_reference || '');
@@ -162,7 +185,7 @@ export default function ClientDetailModal({
     setLandArea(client.land_area != null ? String(client.land_area) : '');
     setProjectStatus(client.project_status || '');
     setFloorLevels(ensureFloorLevels(client.floor_levels, client.floors_count, client.building_area));
-  }, [client, department]);
+  }, [client, department, pricePerM2]);
 
   const subtotal = parseLocalizedNumber(quotationAmount);
   const vatAmount = useMemo(() => calculateVatAmount(subtotal), [subtotal]);
@@ -250,9 +273,34 @@ export default function ClientDetailModal({
     }
   };
 
+  const applyAutoPriceFromArea = () => {
+    const area = Number(client.building_area || calcBuildingArea(floorLevels) || 0);
+    if (pricePerM2 <= 0) {
+      setErrorMessage('حدد سعر المتر المربع من الإعدادات ← إعدادات الشركة أولاً.');
+      return;
+    }
+    if (area <= 0) {
+      setErrorMessage('أدخل مساحة المبنى في البيانات الأساسية لحساب السعر تلقائياً.');
+      return;
+    }
+    const auto = Math.round(area * pricePerM2 * 100) / 100;
+    setQuotationAmount(String(auto));
+    setSuccessMessage(`تم احتساب المبلغ: ${area} م² × ${formatCurrency(pricePerM2)} = ${formatCurrency(auto)}`);
+  };
+
+  const toggleQuotationService = (id: QuotationServiceId) => {
+    setQuotationServices((prev) =>
+      prev.includes(id) ? prev.filter((item) => item !== id) : [...prev, id]
+    );
+  };
+
   const handleCreateQuotation = async () => {
     if (subtotal <= 0) {
       setErrorMessage('يرجى إدخال مبلغ عرض السعر الأساسي.');
+      return;
+    }
+    if (quotationServices.length === 0) {
+      setErrorMessage('حدد نطاقاً واحداً على الأقل من خدمات عرض السعر.');
       return;
     }
     const visitsCount = Math.max(1, Math.min(10, parseLocalizedNumber(quotationVisitsCount) || 1));
@@ -269,6 +317,7 @@ export default function ClientDetailModal({
         total_amount: totalAmount,
         quotation_status: quotationStatus,
         quotation_visits_count: visitsCount,
+        quotation_services: quotationServices,
         sales_payment_type: salesPaymentType,
         project_engineering_data: engineeringData,
       },
@@ -689,6 +738,46 @@ export default function ClientDetailModal({
               </div>
 
               <div>
+                <p className="mb-2 text-xs font-semibold text-gray-700">نطاق عرض السعر (الخدمات المشمولة)</p>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                  {QUOTATION_SERVICE_OPTIONS.map((option) => (
+                    <label
+                      key={option.id}
+                      className="flex items-center gap-2 rounded-xl border px-3 py-2 text-sm hover:bg-gray-50"
+                    >
+                      <input
+                        type="checkbox"
+                        checked={quotationServices.includes(option.id)}
+                        onChange={() => toggleQuotationService(option.id)}
+                        className="rounded border-gray-300"
+                      />
+                      <span>{option.label}</span>
+                    </label>
+                  ))}
+                </div>
+              </div>
+
+              <div className="rounded-xl border border-emerald-100 bg-emerald-50/60 p-3 text-sm space-y-2">
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                  <div>
+                    <p className="font-semibold text-emerald-900">التسعير التلقائي بالمتر المربع</p>
+                    <p className="text-xs text-emerald-800/80">
+                      سعر المتر من الإعدادات: {pricePerM2 > 0 ? formatCurrency(pricePerM2) : 'غير محدد'}
+                      {' · '}
+                      مساحة المبنى: {client.building_area || computedBuildingArea || '—'} م²
+                    </p>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={applyAutoPriceFromArea}
+                    className="px-3 py-1.5 rounded-lg bg-emerald-700 text-white text-xs font-semibold"
+                  >
+                    احسب بالمتر المربع
+                  </button>
+                </div>
+              </div>
+
+              <div>
                 <label className="block text-xs font-semibold text-gray-700 mb-1">المبلغ الأساسي (قبل الضريبة)</label>
                 <NumericInput
                   mode="decimal"
@@ -710,14 +799,23 @@ export default function ClientDetailModal({
                 </div>
               </div>
 
-              <button
-                type="button"
-                onClick={handleCreateQuotation}
-                disabled={saving}
-                className="px-4 py-2 bg-blue-600 text-white rounded-xl text-sm font-semibold hover:bg-blue-700 disabled:opacity-50"
-              >
-                {saving ? 'جاري الحفظ...' : 'إنشاء / تحديث عرض السعر'}
-              </button>
+              <div className="flex flex-wrap gap-2">
+                <button
+                  type="button"
+                  onClick={handleCreateQuotation}
+                  disabled={saving}
+                  className="px-4 py-2 bg-blue-600 text-white rounded-xl text-sm font-semibold hover:bg-blue-700 disabled:opacity-50"
+                >
+                  {saving ? 'جاري الحفظ...' : 'إنشاء / تحديث عرض السعر'}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setPrintOpen(true)}
+                  className="px-4 py-2 bg-indigo-600 text-white rounded-xl text-sm font-semibold hover:bg-indigo-700"
+                >
+                  طباعة عرض السعر
+                </button>
+              </div>
 
               <div className="border-t pt-4 grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div>
@@ -927,6 +1025,22 @@ export default function ClientDetailModal({
           )}
         </div>
       </div>
+
+      {printOpen ? (
+        <PrintQuotationModal
+          client={{
+            ...client,
+            quotation_amount: subtotal || client.quotation_amount,
+            quotation_services: quotationServices,
+            quotation_visits_count: Math.max(1, parseLocalizedNumber(quotationVisitsCount) || 1),
+          }}
+          onClose={() => setPrintOpen(false)}
+          onSaved={() => {
+            setPrintOpen(false);
+            onUpdated();
+          }}
+        />
+      ) : null}
     </div>
   );
 }

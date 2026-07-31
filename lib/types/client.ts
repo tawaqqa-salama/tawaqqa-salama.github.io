@@ -52,6 +52,8 @@ export interface ClientRecord {
   total_amount?: number | null;
   quotation_status?: string | null;
   quotation_visits_count?: number | null;
+  /** معرفات الخدمات ضمن نطاق عرض السعر */
+  quotation_services?: string[] | null;
   financial_status?: string | null;
   payment_reference?: string | null;
   paid_amount?: number | null;
@@ -117,4 +119,7 @@ export interface FinancialDocument {
   status: string;
   paidAmount: number;
   createdAt: string;
+  quotationServices?: string[] | null;
+  quotationVisitsCount?: number | null;
+  pricePerM2?: number | null;
 }

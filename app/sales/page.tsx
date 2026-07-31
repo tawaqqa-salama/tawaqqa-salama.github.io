@@ -10,9 +10,10 @@ import { nextClientCode } from '@/lib/business/document-numbers';
 import AddClientModal from '@/components/clients/AddClientModal';
 import ClientDetailModal from '@/components/clients/ClientDetailModal';
 import ContractModal from '@/components/sales/ContractModal';
+import PrintQuotationModal from '@/components/sales/PrintQuotationModal';
 import { printContract } from '@/components/sales/ContractPrint';
 import { printFinancialDocument } from '@/components/invoices/FinancialDocumentPrint';
-import { getClientBuildingProfile } from '@/lib/invoices/document-mapper';
+import { clientToFinancialDocument } from '@/lib/invoices/document-mapper';
 import { formatCurrency } from '@/lib/format/currency';
 import { parseLocalizedInteger, parseLocalizedNumber } from '@/lib/validation/client';
 import type { ClientFormData, ClientRecord, FinancialDocument } from '@/lib/types/client';
@@ -20,9 +21,18 @@ import type { SalesContract, SalesDocument, SalesReturn } from '@/lib/types/sale
 
 type TabId = 'clients' | 'documents' | 'credit' | 'contracts' | 'accounts';
 
+function inDateRange(iso: string | undefined | null, from: string, to: string): boolean {
+  if (!from && !to) return true;
+  if (!iso) return false;
+  const day = iso.slice(0, 10);
+  if (from && day < from) return false;
+  if (to && day > to) return false;
+  return true;
+}
+
 export default function SalesPage() {
   const [tab, setTab] = useState<TabId>('clients');
-  const [clients, setClients] = useState<ClientRecord[]>([]);
+  const [allClients, setAllClients] = useState<ClientRecord[]>([]);
   const [documents, setDocuments] = useState<SalesDocument[]>([]);
   const [contracts, setContracts] = useState<SalesContract[]>([]);
   const [returns, setReturns] = useState<SalesReturn[]>([]);
@@ -30,8 +40,11 @@ export default function SalesPage() {
   const [isAddOpen, setIsAddOpen] = useState(false);
   const [selected, setSelected] = useState<ClientRecord | null>(null);
   const [contractClient, setContractClient] = useState<ClientRecord | null>(null);
+  const [printClient, setPrintClient] = useState<ClientRecord | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
+  const [dateFrom, setDateFrom] = useState('');
+  const [dateTo, setDateTo] = useState('');
 
   const fetchAll = async () => {
     setLoading(true);
@@ -41,7 +54,7 @@ export default function SalesPage() {
       supabase.from('sales_contracts').select('*').order('created_at', { ascending: false }),
       supabase.from('sales_returns').select('*').order('created_at', { ascending: false }),
     ]);
-    setClients(((clientsRes.data || []) as ClientRecord[]).filter(shouldShowInSales));
+    setAllClients((clientsRes.data || []) as ClientRecord[]);
     setDocuments((docsRes.data || []) as SalesDocument[]);
     setContracts((contractsRes.data || []) as SalesContract[]);
     setReturns((returnsRes.data || []) as SalesReturn[]);
@@ -51,6 +64,23 @@ export default function SalesPage() {
   useEffect(() => {
     fetchAll();
   }, []);
+
+  const salesClients = useMemo(
+    () => allClients.filter(shouldShowInSales),
+    [allClients]
+  );
+
+  const clients = useMemo(
+    () => salesClients.filter((c) => inDateRange(c.created_at, dateFrom, dateTo)),
+    [salesClients, dateFrom, dateTo]
+  );
+
+  const filteredDocuments = useMemo(
+    () => documents.filter((doc) => inDateRange(doc.created_at, dateFrom, dateTo)),
+    [documents, dateFrom, dateTo]
+  );
+
+  const clientMap = useMemo(() => new Map(allClients.map((c) => [c.id, c])), [allClients]);
 
   const handleAdd = async (formData: ClientFormData) => {
     setIsSubmitting(true);
@@ -81,6 +111,7 @@ export default function SalesPage() {
         engineering_status: 'جديد',
         quotation_status: 'مسودة',
         quotation_visits_count: 1,
+        quotation_services: [],
         visit_status: 'لم تُجدول',
         final_report_status: 'قيد الإعداد',
       },
@@ -111,8 +142,6 @@ export default function SalesPage() {
     fetchAll();
   };
 
-  const clientMap = useMemo(() => new Map(clients.map((c) => [c.id, c])), [clients]);
-
   return (
     <div className="space-y-5">
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
@@ -121,6 +150,36 @@ export default function SalesPage() {
           <p className="text-sm text-gray-500">عروض الأسعار، الفواتير، العقود، الآجل والمرتجعات</p>
         </div>
         <button onClick={() => setIsAddOpen(true)} className="px-4 py-2 bg-blue-600 text-white rounded-lg text-sm font-semibold">+ عميل / عرض</button>
+      </div>
+
+      <div className="bg-white border rounded-xl p-3 flex flex-col sm:flex-row sm:items-end gap-3">
+        <label className="block text-sm flex-1">
+          <span className="text-xs font-semibold text-gray-600 mb-1 block">من تاريخ</span>
+          <input
+            type="date"
+            value={dateFrom}
+            onChange={(e) => setDateFrom(e.target.value)}
+            className="w-full border rounded-lg px-3 py-2 text-sm"
+          />
+        </label>
+        <label className="block text-sm flex-1">
+          <span className="text-xs font-semibold text-gray-600 mb-1 block">إلى تاريخ</span>
+          <input
+            type="date"
+            value={dateTo}
+            onChange={(e) => setDateTo(e.target.value)}
+            className="w-full border rounded-lg px-3 py-2 text-sm"
+          />
+        </label>
+        {(dateFrom || dateTo) && (
+          <button
+            type="button"
+            onClick={() => { setDateFrom(''); setDateTo(''); }}
+            className="px-3 py-2 text-sm rounded-lg border bg-gray-50"
+          >
+            مسح الفترة
+          </button>
+        )}
       </div>
 
       <div className="flex flex-wrap gap-2">
@@ -140,7 +199,9 @@ export default function SalesPage() {
           <table className="w-full text-right text-sm">
             <thead className="bg-gray-50 border-b text-gray-600"><tr><th className="p-4">العميل</th><th className="p-4">عرض السعر</th><th className="p-4">الحالة</th><th className="p-4">نوع البيع</th><th className="p-4">إجراء</th></tr></thead>
             <tbody>
-              {loading ? <tr><td colSpan={5} className="p-8 text-center text-gray-400">...</td></tr> : clients.map((c) => (
+              {loading ? <tr><td colSpan={5} className="p-8 text-center text-gray-400">...</td></tr> : clients.length === 0 ? (
+                <tr><td colSpan={5} className="p-8 text-center text-gray-400">لا يوجد عملاء في هذه الفترة</td></tr>
+              ) : clients.map((c) => (
                 <tr key={c.id} className="border-b hover:bg-gray-50">
                   <td className="p-4"><div className="font-semibold">{c.business_name}</div><div className="text-xs text-gray-400">{ACTIVITY_RULES[c.activity_type || '']?.label}</div></td>
                   <td className="p-4 font-mono text-blue-600">{c.quotation_number || '—'}</td>
@@ -148,6 +209,7 @@ export default function SalesPage() {
                   <td className="p-4">{c.sales_payment_type || 'نقدي'}</td>
                   <td className="p-4 flex flex-wrap gap-1">
                     <button onClick={() => setSelected(c)} className="text-xs px-2 py-1 bg-blue-50 text-blue-700 rounded-lg">إدارة</button>
+                    <button onClick={() => setPrintClient(c)} className="text-xs px-2 py-1 bg-indigo-50 text-indigo-700 rounded-lg">طباعة عرض</button>
                     <button onClick={() => archiveDocument(c, 'quotation')} className="text-xs px-2 py-1 bg-gray-100 rounded-lg">أرشفة</button>
                     <button onClick={() => setContractClient(c)} className="text-xs px-2 py-1 bg-emerald-50 text-emerald-700 rounded-lg">عقد</button>
                   </td>
@@ -163,12 +225,22 @@ export default function SalesPage() {
           <table className="w-full text-right text-sm">
             <thead className="bg-gray-50 border-b text-xs text-gray-500"><tr><th className="p-3">رقم</th><th className="p-3">النوع</th><th className="p-3">الإجمالي</th><th className="p-3">الحالة</th><th className="p-3">طباعة</th></tr></thead>
             <tbody>
-              {documents.map((doc) => {
+              {filteredDocuments.length === 0 ? (
+                <tr><td colSpan={5} className="p-8 text-center text-gray-400">لا توجد مستندات في هذه الفترة</td></tr>
+              ) : filteredDocuments.map((doc) => {
                 const c = clientMap.get(doc.client_id);
                 const finDoc: FinancialDocument | null = c ? {
-                  id: doc.id, documentType: doc.doc_type, documentNumber: doc.doc_number, clientId: doc.client_id,
-                  clientName: c.name, ...getClientBuildingProfile(c), subtotal: doc.subtotal, vatAmount: doc.vat_amount,
-                  totalAmount: doc.total_amount, status: doc.status, paidAmount: Number(c.paid_amount || 0), createdAt: doc.created_at || '',
+                  ...clientToFinancialDocument(c, {
+                    documentType: doc.doc_type,
+                    documentNumber: doc.doc_number,
+                    createdAt: doc.created_at || c.created_at,
+                  }),
+                  id: doc.id,
+                  subtotal: doc.subtotal,
+                  vatAmount: doc.vat_amount,
+                  totalAmount: doc.total_amount,
+                  status: doc.status,
+                  paidAmount: Number(c.paid_amount || 0),
                 } : null;
                 return (
                   <tr key={doc.id} className="border-b">
@@ -233,6 +305,7 @@ export default function SalesPage() {
       <AddClientModal isOpen={isAddOpen} isSubmitting={isSubmitting} errorMessage={errorMessage} onClose={() => setIsAddOpen(false)} onSubmit={handleAdd} />
       <ClientDetailModal client={selected} department="sales" onClose={() => setSelected(null)} onUpdated={fetchAll} />
       <ContractModal client={contractClient} onClose={() => setContractClient(null)} onCreated={fetchAll} />
+      <PrintQuotationModal client={printClient} onClose={() => setPrintClient(null)} onSaved={fetchAll} />
     </div>
   );
 }
