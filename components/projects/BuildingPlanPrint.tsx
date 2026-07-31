@@ -6,44 +6,27 @@ import type { ClientRecord } from '@/lib/types/client';
 import type { BuildingPlanGeneralInfo, BuildingPlanReport } from '@/lib/types/project-reports';
 
 function esc(v: string) {
-  return String(v || '')
+  return String(v ?? '')
     .replace(/&/g, '&amp;')
     .replace(/</g, '&lt;')
     .replace(/>/g, '&gt;')
     .replace(/"/g, '&quot;');
 }
 
-type FieldCell = {
-  label: string;
-  value: string;
-  yn?: string;
-};
-
-function cellHtml(field: FieldCell) {
-  if (!field.label && !field.value && !field.yn) {
-    return `<td class="lbl empty"></td><td class="val empty"></td>`;
-  }
-  const yn = field.yn
-    ? `<span class="yn ${field.yn === 'نعم' ? 'yes' : field.yn === 'لا' ? 'no' : ''}">${esc(field.yn)}</span>`
-    : '';
-  const shownValue = field.value || (field.yn ? '' : '—');
-  return `<td class="lbl">${esc(field.label)}</td><td class="val">${esc(shownValue)}${yn}</td>`;
+/** صف رسمي: بند | قيمة رقمية/نصية | نعم/لا */
+function engRow(label: string, value: string, yn = '') {
+  return `<tr>
+    <td class="lbl">${esc(label)}</td>
+    <td class="val">${esc(value || '—')}</td>
+    <td class="yn">${esc(yn || '')}</td>
+  </tr>`;
 }
 
-function tripleRow(a: FieldCell, b?: FieldCell, c?: FieldCell) {
-  return `<tr>${cellHtml(a)}${b ? cellHtml(b) : '<td class="lbl"></td><td class="val"></td>'}${
-    c ? cellHtml(c) : '<td class="lbl"></td><td class="val"></td>'
-  }</tr>`;
-}
-
-function pairRows(left: FieldCell[], mid: FieldCell[], right: FieldCell[]): string {
-  const empty: FieldCell = { label: '', value: '' };
-  const max = Math.max(left.length, mid.length, right.length);
-  const rows: string[] = [];
-  for (let i = 0; i < max; i++) {
-    rows.push(tripleRow(left[i] || empty, mid[i] || empty, right[i] || empty));
+function kvRow(label: string, value: string, spanRest = false) {
+  if (spanRest) {
+    return `<tr><td class="lbl">${esc(label)}</td><td class="val" colspan="2">${esc(value || '—')}</td></tr>`;
   }
-  return rows.join('');
+  return `<tr><td class="lbl">${esc(label)}</td><td class="val">${esc(value || '—')}</td></tr>`;
 }
 
 export function buildBuildingPlanPrintHtml(
@@ -51,122 +34,29 @@ export function buildBuildingPlanPrintHtml(
   report: BuildingPlanReport,
   general: BuildingPlanGeneralInfo
 ): string {
-  const generalFields: FieldCell[] = [
-    { label: 'اسم المنشأة', value: general.business_name },
-    { label: 'المالك', value: general.owner_name },
-    { label: 'النشاط', value: general.activity_type_label },
-    { label: 'المدينة / الموقع', value: general.location_summary },
-    { label: 'الحي / الشارع', value: `${general.district} — ${general.street}` },
-    { label: 'رقم القطعة', value: general.plot_number },
-    { label: 'مساحة الأرض', value: general.land_area },
-    { label: 'مساحة المبنى', value: general.building_area },
-    { label: 'عدد الأدوار (مسجل)', value: general.floors_count },
-    {
-      label: 'رخصة البناء',
-      value: report.building_permit_number || client.license_number || '—',
-    },
-    { label: 'العنوان الوطني', value: general.national_address },
-    {
-      label: 'تاريخ التقرير',
-      value: report.report_date || new Date().toISOString().slice(0, 10),
-    },
-  ];
-
-  const engineeringFields: FieldCell[] = [
-    { label: 'تصنيف الإشغال', value: report.occupancy_classification || '—' },
-    { label: 'نوع البناء', value: report.building_type_code || '—' },
-    {
-      label: 'مساحة الموقع العام',
-      value: report.total_site_area_m2 || general.land_area,
-    },
-    {
-      label: 'عدد الأدوار',
-      value: report.floors_description || general.floors_count,
-    },
-    {
-      label: 'الارتفاع',
-      value: report.building_height_m ? `${report.building_height_m} m` : '—',
-    },
-    { label: 'عدد أدوار القبو', value: report.basement_floors_count || '0' },
-    {
-      label: 'العمق تحت الأرض',
-      value: report.underground_depth_m ? `${report.underground_depth_m} m` : '0',
-    },
-    { label: 'عدد المخارج', value: report.exits_count || '—' },
-    { label: 'عدد السلالم', value: report.stairs_count || '—' },
-    { label: 'السلالم الكهربائية', value: report.escalators_count || '0' },
-    { label: 'عدد المصاعد', value: report.elevators_count || '0' },
-    {
-      label: 'المبنى عالي',
-      value: '',
-      yn: formatYesNo(report.high_rise_building),
-    },
-    { label: 'يوجد بهو', value: '', yn: formatYesNo(report.atrium_exists) },
-    {
-      label: 'المبنى تحت الأرض',
-      value: '',
-      yn: formatYesNo(report.underground_building),
-    },
-    {
-      label: 'بلا نوافذ',
-      value: '',
-      yn: formatYesNo(report.windowless_building),
-    },
-    {
-      label: 'تأريض كهربائي',
-      value: '',
-      yn: formatYesNo(report.electrical_grounding),
-    },
-    {
-      label: 'حماية من الصواعق',
-      value: '',
-      yn: formatYesNo(report.lightning_protection),
-    },
-    {
-      label: 'مولد احتياطي',
-      value: '',
-      yn: formatYesNo(report.backup_generator),
-    },
-    {
-      label: 'استثناءات الكود',
-      value: '',
-      yn: formatYesNo(report.sbc_code_exceptions),
-    },
-    {
-      label: 'فرق إطفاء خاصة',
-      value: '',
-      yn: formatYesNo(report.special_rescue_team_required),
-    },
-  ];
-
-  const safetyFields: FieldCell[] = [
-    {
-      label: 'نظام إنذار',
-      value: '',
-      yn: formatYesNo(report.fire_alarm_system),
-    },
-    {
-      label: 'رش آلي',
-      value: '',
-      yn: formatYesNo(report.sprinkler_system),
-    },
-    {
-      label: 'أبواب/مخارج الطوارئ',
-      value: report.emergency_exits_doors || '—',
-    },
-    {
-      label: 'متطلبات SBC',
-      value: report.sbc_requirements || '—',
-    },
-    {
-      label: 'حالة اعتماد المخطط',
-      value: report.plan_approval_status || '—',
-    },
-    {
-      label: 'ملاحظات المعاينة',
-      value: report.technical_inspection_notes || '—',
-    },
-  ];
+  // ترتيب الصفوف مطابق لنموذج الدفاع المدني / واجهة المهندس حرفياً
+  const engineeringRows = [
+    engRow('تصنيف الإشغال', report.occupancy_classification || ''),
+    engRow('نوع البناء', report.building_type_code || ''),
+    engRow('المبنى عالي', '—', formatYesNo(report.high_rise_building)),
+    engRow('مساحة الموقع (م²)', report.total_site_area_m2 || general.land_area),
+    engRow('يوجد بهو', '—', formatYesNo(report.atrium_exists)),
+    engRow('عدد الأدوار (وصف)', report.floors_description || general.floors_count),
+    engRow('المبنى تحت الأرض', '—', formatYesNo(report.underground_building)),
+    engRow('الارتفاع (m)', report.building_height_m || ''),
+    engRow('بلا نوافذ', '—', formatYesNo(report.windowless_building)),
+    engRow('أدوار القبو', report.basement_floors_count || '0'),
+    engRow('تأريض كهربائي', '—', formatYesNo(report.electrical_grounding)),
+    engRow('عمق تحت الأرض (m)', report.underground_depth_m || '0'),
+    engRow('حماية صواعق', '—', formatYesNo(report.lightning_protection)),
+    engRow('عدد المخارج', report.exits_count || ''),
+    engRow('مولد احتياطي', '—', formatYesNo(report.backup_generator)),
+    engRow('عدد السلالم', report.stairs_count || ''),
+    engRow('استثناءات الكود', '—', formatYesNo(report.sbc_code_exceptions)),
+    engRow('سلالم كهربائية', report.escalators_count || '0'),
+    engRow('فرق إطفاء خاصة', '—', formatYesNo(report.special_rescue_team_required)),
+    engRow('عدد المصاعد', report.elevators_count || '0'),
+  ].join('');
 
   return `<!DOCTYPE html>
 <html lang="ar" dir="rtl">
@@ -176,7 +66,7 @@ export function buildBuildingPlanPrintHtml(
   <style>
     @page {
       size: A4 portrait;
-      margin: 8mm 10mm;
+      margin: 5mm 8mm;
     }
 
     * { box-sizing: border-box; }
@@ -187,14 +77,15 @@ export function buildBuildingPlanPrintHtml(
       background: #fff;
       color: #111;
       font-family: "Tahoma","Segoe UI",Arial,sans-serif;
+      font-size: 10px;
     }
 
     .sheet {
       width: 210mm;
-      height: 297mm;
+      min-height: 297mm;
       max-height: 297mm;
       margin: 0 auto;
-      padding: 8mm 10mm;
+      padding: 5mm 8mm;
       overflow: hidden;
       display: flex;
       flex-direction: column;
@@ -203,102 +94,43 @@ export function buildBuildingPlanPrintHtml(
       break-inside: avoid;
     }
 
-    .title-bar {
+    .head {
       text-align: center;
-      border: 1px solid #4d6b35;
-      background: linear-gradient(180deg, #edf5e4 0%, #d9e8c4 100%);
-      padding: 6px 8px;
-      margin-bottom: 6px;
+      margin-bottom: 3px;
       flex: 0 0 auto;
     }
 
-    .brand {
-      font-size: 12px;
+    .head .brand {
+      font-size: 11px;
       font-weight: 700;
       color: #1f4d3a;
-      margin: 0 0 2px;
+      margin: 0 0 1px;
     }
 
-    h1 {
+    .head h1 {
       margin: 0;
-      font-size: 14px;
-      color: #1f2937;
+      font-size: 12px;
       font-weight: 800;
-      line-height: 1.35;
+      color: #111;
+      line-height: 1.3;
     }
 
-    .sub {
-      margin: 2px 0 0;
-      font-size: 10px;
+    .head .en {
+      margin: 1px 0 0;
+      font-size: 9px;
       color: #475569;
     }
 
     .status {
       display: inline-block;
-      margin-top: 3px;
-      padding: 1px 8px;
-      border-radius: 999px;
+      margin-top: 2px;
+      padding: 0 6px;
+      border: 1px solid #86efac;
       background: #ecfdf5;
       color: #065f46;
-      font-size: 10px;
+      font-size: 9px;
       font-weight: 700;
     }
-
-    .section-head {
-      background: #6b8f4e;
-      color: #fff;
-      font-size: 11px;
-      font-weight: 700;
-      padding: 4px 6px;
-      text-align: center;
-    }
-
-    table.grid {
-      width: 100%;
-      border-collapse: collapse;
-      table-layout: fixed;
-      margin: 0 0 5px;
-      font-size: 10.5px;
-    }
-
-    table.grid th,
-    table.grid td {
-      border: 1px solid #8aa56a;
-      padding: 3px 5px;
-      vertical-align: middle;
-      line-height: 1.25;
-    }
-
-    table.grid .lbl {
-      width: 14%;
-      background: #e5f0d6;
-      font-weight: 700;
-      color: #243b18;
-      font-size: 10px;
-    }
-
-    table.grid .val {
-      width: 19.33%;
-      background: #fff;
-      font-size: 10.5px;
-      word-break: break-word;
-    }
-
-    .yn {
-      display: inline-block;
-      min-width: 28px;
-      margin-inline-start: 4px;
-      padding: 0 5px;
-      border-radius: 3px;
-      text-align: center;
-      font-size: 10px;
-      font-weight: 700;
-      background: #f1f5f9;
-      color: #334155;
-    }
-
-    .yn.yes { background: #dcfce7; color: #166534; }
-    .yn.no { background: #fee2e2; color: #991b1b; }
 
     .body {
       flex: 1 1 auto;
@@ -306,100 +138,169 @@ export function buildBuildingPlanPrintHtml(
       overflow: hidden;
     }
 
-    .cert {
-      flex: 0 0 auto;
-      margin-top: auto;
-      border: 1px solid #4d6b35;
-    }
-
-    .cert-head {
-      background: #1f4d3a;
-      color: #fff;
-      font-size: 11px;
-      font-weight: 700;
-      padding: 4px 6px;
-      text-align: center;
-    }
-
-    .cert-grid {
+    table.form {
       width: 100%;
       border-collapse: collapse;
       table-layout: fixed;
-      font-size: 10.5px;
+      margin: 0 0 3px;
+      font-size: 9.5px;
     }
 
-    .cert-grid td {
-      border: 1px solid #8aa56a;
-      padding: 4px 6px;
-      vertical-align: top;
+    table.form th,
+    table.form td {
+      border: 1px solid #5f7d45;
+      padding: 2px 5px;
+      vertical-align: middle;
+      line-height: 1.2;
     }
 
-    .cert-grid .lbl {
-      width: 16%;
-      background: #e5f0d6;
+    table.form th {
+      background: #6b8f4e;
+      color: #fff;
+      font-size: 10px;
+      font-weight: 700;
+      text-align: center;
+    }
+
+    table.form .lbl {
+      width: 28%;
+      background: #d9e8c4;
+      font-weight: 700;
+      color: #1f2f14;
+      font-size: 9px;
+    }
+
+    table.form .val {
+      background: #fff;
+      font-size: 9.5px;
+      word-break: break-word;
+    }
+
+    /* جدول المواصفات: بند | قيمة | نعم/لا */
+    table.eng .lbl { width: 34%; }
+    table.eng .val { width: 46%; }
+    table.eng .yn {
+      width: 20%;
+      text-align: center;
+      font-weight: 700;
+      background: #fff;
+      font-size: 9.5px;
+    }
+
+    table.meta .lbl { width: 22%; }
+    table.meta .val { width: 28%; }
+
+    table.safety .lbl { width: 28%; }
+    table.safety .val { width: 72%; }
+    table.safety .yn {
+      width: 18%;
+      text-align: center;
       font-weight: 700;
     }
 
-    .cert-grid .val { width: 34%; }
+    .cert {
+      flex: 0 0 auto;
+      margin-top: auto;
+    }
 
-    .sign-row {
+    table.cert {
+      width: 100%;
+      border-collapse: collapse;
+      table-layout: fixed;
+      font-size: 9.5px;
+      margin: 0;
+    }
+
+    table.cert th,
+    table.cert td {
+      border: 1px solid #5f7d45;
+      padding: 2px 5px;
+      vertical-align: middle;
+    }
+
+    table.cert th {
+      background: #1f4d3a;
+      color: #fff;
+      font-size: 10px;
+      text-align: center;
+    }
+
+    table.cert .lbl {
+      width: 18%;
+      background: #d9e8c4;
+      font-weight: 700;
+      font-size: 9px;
+    }
+
+    table.cert .val { width: 32%; }
+
+    .sign-wrap {
       display: grid;
       grid-template-columns: 1fr 1fr 1fr;
-      gap: 8px;
-      padding: 6px;
-      border-top: 1px solid #8aa56a;
-      background: #f8faf5;
+      border: 1px solid #5f7d45;
+      border-top: 0;
+      background: #f7faf3;
     }
 
     .sign-box {
       text-align: center;
-      font-size: 10px;
-      color: #334155;
-      min-height: 52px;
+      padding: 4px 4px 5px;
+      font-size: 9px;
+      border-left: 1px solid #5f7d45;
+      min-height: 48px;
     }
 
-    .stamp-box {
-      width: 58px;
-      height: 58px;
-      margin: 2px auto 4px;
+    .sign-box:last-child { border-left: 0; }
+
+    .stamp {
+      width: 46px;
+      height: 46px;
+      margin: 1px auto 2px;
       border: 1.5px dashed #1f4d3a;
       border-radius: 50%;
       display: flex;
       align-items: center;
       justify-content: center;
       color: #1f4d3a;
-      font-size: 9px;
+      font-size: 8px;
       font-weight: 700;
-      padding: 4px;
-      text-align: center;
-      line-height: 1.2;
+      line-height: 1.15;
+      padding: 3px;
     }
 
     .sign-line {
-      margin-top: 28px;
+      margin-top: 18px;
       border-top: 1px solid #64748b;
-      padding-top: 3px;
+      padding-top: 2px;
     }
 
     @media print {
+      @page {
+        size: A4 portrait;
+        margin: 0;
+      }
+
       html, body {
         width: auto;
         height: 100vh;
         overflow: hidden;
-        page-break-after: avoid;
-        page-break-inside: avoid;
+        page-break-after: avoid !important;
+        page-break-inside: avoid !important;
+        break-after: avoid !important;
+        break-inside: avoid !important;
       }
+
+      body { margin: 8mm; }
 
       .sheet {
         width: auto;
-        height: auto;
+        min-height: auto;
         max-height: none;
         margin: 0;
         padding: 0;
         overflow: hidden;
-        page-break-after: avoid;
-        page-break-inside: avoid;
-        break-inside: avoid;
+        page-break-after: avoid !important;
+        page-break-inside: avoid !important;
       }
 
       header, footer, .no-print {
@@ -408,42 +309,109 @@ export function buildBuildingPlanPrintHtml(
     }
 
     @media screen {
-      body { background: #e5e7eb; padding: 16px 0; }
+      body { background: #e5e7eb; padding: 12px 0 24px; }
       .sheet {
         background: #fff;
-        box-shadow: 0 8px 24px rgba(0,0,0,.12);
+        box-shadow: 0 8px 20px rgba(0,0,0,.12);
       }
     }
   </style>
 </head>
 <body>
-  <div class="no-print" style="text-align:center;margin-bottom:10px">
-    <button onclick="window.print()" style="padding:8px 14px;font-size:13px">طباعة / حفظ PDF (A4 صفحة واحدة)</button>
+  <div class="no-print" style="text-align:center;margin-bottom:8px">
+    <button onclick="window.print()" style="padding:7px 12px;font-size:12px">طباعة / حفظ PDF (A4 صفحة واحدة — نموذج الدفاع المدني)</button>
   </div>
 
   <div class="sheet">
-    <div class="title-bar">
-      <div class="brand">${esc(PLATFORM_NAME)}</div>
-      <h1>تقرير معلومات المخطط — Building Plan Information Report</h1>
-      <p class="sub">نموذج مكثف — صفحة A4 واحدة</p>
+    <div class="head">
+      <p class="brand">${esc(PLATFORM_NAME)}</p>
+      <h1>تقرير معلومات المخطط</h1>
+      <p class="en">Building Plan Information Report — نموذج رسمي موحد</p>
       <span class="status">${esc(report.status || 'مسودة')}</span>
     </div>
 
     <div class="body">
-      <div class="section-head">البيانات العامة + المواصفات الهندسية ومتطلبات SBC + أنظمة السلامة</div>
-      <table class="grid">
+      <!-- 1) بيانات المنشأة -->
+      <table class="form meta">
+        <tr><th colspan="4">بيانات المنشأة</th></tr>
         <tr>
-          <th colspan="2">بيانات عامة</th>
-          <th colspan="2">مواصفات هندسية / SBC</th>
-          <th colspan="2">أنظمة السلامة والاعتماد</th>
+          <td class="lbl">اسم المنشأة / المبنى</td>
+          <td class="val">${esc(general.business_name)}</td>
+          <td class="lbl">اسم المالك</td>
+          <td class="val">${esc(general.owner_name)}</td>
         </tr>
-        ${pairRows(generalFields, engineeringFields, safetyFields)}
+        <tr>
+          <td class="lbl">نوع النشاط التجاري</td>
+          <td class="val">${esc(general.activity_type_label)}</td>
+          <td class="lbl">المدينة</td>
+          <td class="val">${esc(general.city)}</td>
+        </tr>
+        <tr>
+          <td class="lbl">الموقع (مدينة — حي)</td>
+          <td class="val">${esc(general.location_summary)}</td>
+          <td class="lbl">الحي والشارع</td>
+          <td class="val">${esc(general.district)} — ${esc(general.street)}</td>
+        </tr>
+        <tr>
+          <td class="lbl">مساحة الأرض</td>
+          <td class="val">${esc(general.land_area)}</td>
+          <td class="lbl">مساحة المبنى</td>
+          <td class="val">${esc(general.building_area)}</td>
+        </tr>
+        <tr>
+          <td class="lbl">عدد الأدوار (مسجل)</td>
+          <td class="val">${esc(general.floors_count)}</td>
+          <td class="lbl">رقم القطعة</td>
+          <td class="val">${esc(general.plot_number)}</td>
+        </tr>
+        <tr>
+          <td class="lbl">العنوان الوطني</td>
+          <td class="val">${esc(general.national_address)}</td>
+          <td class="lbl">رخصة البناء</td>
+          <td class="val">${esc(report.building_permit_number || client.license_number || '—')}</td>
+        </tr>
+        <tr>
+          <td class="lbl">تاريخ التقرير</td>
+          <td class="val">${esc(report.report_date || new Date().toISOString().slice(0, 10))}</td>
+          <td class="lbl">حالة التقرير</td>
+          <td class="val">${esc(report.status || 'مسودة')}</td>
+        </tr>
+      </table>
+
+      <!-- 2) المواصفات الهندسية ومتطلبات SBC — بند | قيمة | نعم/لا -->
+      <table class="form eng">
+        <tr>
+          <th>البند</th>
+          <th>القيمة</th>
+          <th>نعم / لا</th>
+        </tr>
+        ${engineeringRows}
+      </table>
+
+      <!-- 3) أنظمة السلامة -->
+      <table class="form safety">
+        <tr><th colspan="3">أنظمة السلامة والاعتماد</th></tr>
+        <tr>
+          <td class="lbl">نظام إنذار حريق</td>
+          <td class="val">—</td>
+          <td class="yn">${esc(formatYesNo(report.fire_alarm_system))}</td>
+        </tr>
+        <tr>
+          <td class="lbl">نظام رش آلي</td>
+          <td class="val">—</td>
+          <td class="yn">${esc(formatYesNo(report.sprinkler_system))}</td>
+        </tr>
+        ${kvRow('متطلبات كود البناء SBC', report.sbc_requirements || '—', true)}
+        ${kvRow('أبواب ومخارج الطوارئ', report.emergency_exits_doors || '—', true)}
+        ${kvRow('حالة اعتماد المخطط', report.plan_approval_status || '—', true)}
+        ${kvRow('ملاحظات المعاينة الفنية', report.technical_inspection_notes || '—', true)}
       </table>
     </div>
 
+    <!-- 4) اعتماد المكتب — قاع الصفحة -->
     <div class="cert">
-      <div class="cert-head">اعتماد المكتب الاستشاري</div>
-      <table class="cert-grid">
+      <table class="cert">
+        <tr><th colspan="4">اعتماد المكتب الاستشاري</th></tr>
         <tr>
           <td class="lbl">اسم المكتب</td>
           <td class="val">${esc(report.office_name || PLATFORM_NAME)}</td>
@@ -463,13 +431,13 @@ export function buildBuildingPlanPrintHtml(
           <td class="val">${esc(report.plan_approval_status || report.status || '—')}</td>
         </tr>
       </table>
-      <div class="sign-row">
+      <div class="sign-wrap">
         <div class="sign-box">
           <div>توقيع المهندس</div>
           <div class="sign-line">${esc(report.engineer_representative || client.assigned_engineer || '................')}</div>
         </div>
         <div class="sign-box">
-          <div class="stamp-box">ختم المكتب</div>
+          <div class="stamp">ختم<br/>المكتب</div>
           <div>${esc(report.office_name || PLATFORM_NAME)}</div>
         </div>
         <div class="sign-box">
