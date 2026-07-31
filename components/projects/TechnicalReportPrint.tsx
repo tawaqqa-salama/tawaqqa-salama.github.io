@@ -3,14 +3,7 @@ import { TECH_REPORT_GENERAL_RECOMMENDATIONS, TECH_REPORT_ITEMS } from '@/lib/co
 import type { ClientRecord } from '@/lib/types/client';
 import type { TechnicalReport, TechnicalReportSectionItem } from '@/lib/types/project-reports';
 import { getTechnicalReportFacilitySnapshot } from '@/lib/projects/technical-report';
-import {
-  buildCodeProofCards,
-  buildOccupantEgressRows,
-  buildZoneSystemNeeds,
-  enrichZone,
-  floorAreaBalance,
-  zonesAreaSum,
-} from '@/lib/projects/sbc-classification';
+import { buildOccupantEgressRows, buildZoneSystemNeeds } from '@/lib/projects/sbc-classification';
 
 function esc(value: string | null | undefined) {
   return String(value || '')
@@ -27,7 +20,7 @@ function photoHtml(dataUrl?: string, caption?: string) {
   }</div>`;
 }
 
-/** ينظّف الملاحظات من السرد التلقائي المكرر ويحوّلها لنقاط */
+/** ينظّف السرد المكرر ويحوّله لنقاط مختصرة فقط */
 function notesToBullets(notes: string | null | undefined): string[] {
   const cleaned = String(notes || '')
     .replace(/<<مدمج-من-المناطق>>[\s\S]*?(?=\n\n<<|$)/g, '')
@@ -42,7 +35,7 @@ function notesToBullets(notes: string | null | undefined): string[] {
   return cleaned
     .split(/\n+/)
     .map((line) => line.replace(/^[\s•\-–—*]+/, '').replace(/^\d+[\)\.\-]\s*/, '').trim())
-    .filter((line) => line.length > 0)
+    .filter((line) => line.length > 0 && line.length <= 140)
     .filter((line) => !/^بالنسبة لبند/.test(line))
     .filter((line) => !/تغطية الرش\/الماء للمناطق/.test(line))
     .filter((line) => !/الأنظمة الخاصة المطلوبة/.test(line));
@@ -98,37 +91,8 @@ export function printTechnicalReport(params: {
   const recommendations = TECH_REPORT_GENERAL_RECOMMENDATIONS.filter((item) =>
     report.general_recommendations.some((r) => r.id === item.id && r.checked)
   );
-  const proofCards = buildCodeProofCards(report, client);
   const zoneNeeds = buildZoneSystemNeeds(report.floor_uses || []);
   const egressRows = buildOccupantEgressRows(report.floor_uses || []);
-  const proofsByKey = report.code_proofs_by_key || {};
-
-  const floors = report.floor_uses || [];
-  const floorBlocks = floors
-    .map((floor) => {
-      const balance = floorAreaBalance(floor);
-      const zoneRows = floor.zones
-        .map((raw) => {
-          const zone = enrichZone(raw, { keepSuppression: true });
-          return `<tr>
-            <td>${esc(zone.label)}${zone.subtype_label ? `<div class="sub">${esc(zone.subtype_label)}</div>` : ''}</td>
-            <td>GROUP ${esc(zone.group_letter)}</td>
-            <td>${esc(zone.risk_label)}</td>
-            <td>${esc(zone.suppression_label || '—')}</td>
-            <td>${esc(zone.area_m2)}${zone.area_m2 ? ' م²' : ''}</td>
-          </tr>`;
-        })
-        .join('');
-      return `
-        <h4 class="floor-title">${esc(floor.floor_name)} — ${esc(floor.floor_area_m2 || String(zonesAreaSum(floor.zones)))} م² · ${esc(floor.structure)} · ${esc(floor.classification)}</h4>
-        <table class="data">
-          <thead><tr><th>المنطقة / النوع</th><th>مجموعة الإشغال</th><th>الخطورة</th><th>نظام الإطفاء</th><th>المساحة</th></tr></thead>
-          <tbody>${zoneRows || '<tr><td colspan="5">لا مناطق</td></tr>'}</tbody>
-        </table>
-        <p class="balance ${balance.ok ? 'ok' : 'warn'}">مجموع المناطق: ${balance.zonesSum} م² ${balance.ok ? '(متطابق)' : `(فرق ${balance.diff})`}</p>
-      `;
-    })
-    .join('');
 
   const componentsRows = (report.components || [])
     .map(
@@ -140,36 +104,6 @@ export function printTechnicalReport(params: {
         <td>${esc(row.classification)}</td>
         <td>${esc(row.area_m2)}${row.area_m2 ? ' م²' : ''}</td>
       </tr>`
-    )
-    .join('');
-
-  const proofHtml = proofCards
-    .map((card) => {
-      const photos = [
-        ...(proofsByKey[card.id] || []),
-        ...((report.code_proof_photos || []).filter((p) => (p.caption || '').includes(card.id))),
-      ];
-      const photosBlock = photos.map((p) => photoHtml(p.dataUrl, p.caption || 'صورة مقصوصة من الكود')).join('');
-      return `
-      <div class="proof">
-        <div class="proof-title">${esc(card.title)}</div>
-        <div class="proof-sub">${esc(card.subtitle)}</div>
-        <table class="data compact">
-          ${card.rows
-            .map((row) => `<tr><th>${esc(row.label)}</th><td>${esc(row.value)}</td></tr>`)
-            .join('')}
-        </table>
-        <p class="refs">مراجع: ${esc(card.refs.join(' · '))}</p>
-        ${photosBlock ? `<div class="photos">${photosBlock}</div>` : ''}
-      </div>`;
-    })
-    .join('');
-
-  const zoneProofPhotos = (report.floor_uses || [])
-    .flatMap((floor) =>
-      floor.zones
-        .filter((z) => z.code_proof_photo?.dataUrl)
-        .map((z) => photoHtml(z.code_proof_photo?.dataUrl, `${floor.floor_name} / ${z.label}`))
     )
     .join('');
 
@@ -196,7 +130,7 @@ export function printTechnicalReport(params: {
 
   const egressTotal = egressRows.reduce((sum, row) => sum + (row.occupants || 0), 0);
   const egressHtml = egressRows.length
-    ? `<h3 class="section">حصر الشاغلين ومخارج الهروب</h3>
+    ? `<h3 class="section">جدول مسالك الهروب وحصر الشاغلين</h3>
        <table class="data">
          <thead>
            <tr>
@@ -233,20 +167,31 @@ export function printTechnicalReport(params: {
              <th colspan="2"></th>
            </tr>
          </tfoot>
-       </table>
-       <p class="muted">عدد الأبواب المطلوبة تقديري وفق حمل الإشغال؛ يُراجع مع مخططات المسارات المعتمدة.</p>`
+       </table>`
     : '';
 
   const reportTitle = 'تقرير معاينة وتدقيق فني لاشتراطات السلامة والوقاية من الحريق';
   const reportNumber = report.outgoing_number || '—';
   const reportDate = report.report_date || '';
 
-  // أرقام صفحات منطقية مرتبطة بفواصل الصفحات الإجبارية أدناه
+  // فهرس: غلاف(1) · فهرس(2) · الباب الأول(3) · الباب الثاني(4) · التوصيات(5)
   const tocEntries = [
-    { label: 'الباب الأول: عن المنشأة', page: 3, children: ['بيانات المنشأة العامة', 'مكونات المشروع والحالة الإنشائية', 'الأدوار والمناطق'] },
-    { label: 'إثباتات التصنيف من الكود', page: 4, children: [] as string[] },
-    { label: 'الباب الثاني: أنظمة السلامة والوقاية', page: 5, children: ['توزيع أنظمة الإطفاء', 'مكافحة الحريق', 'التهوية الميكانيكية', 'وسائل الإنذار المبكر', 'حصر الشاغلين ومخارج الهروب'] },
-    { label: 'التوصيات العامة', page: 6, children: [] as string[] },
+    {
+      label: 'الباب الأول: بيانات المنشأة',
+      page: 3,
+      children: ['جدول بيانات المنشأة العامة', 'جدول مكونات المشروع والحالة الإنشائية'],
+    },
+    {
+      label: 'الباب الثاني: أنظمة السلامة والوقاية',
+      page: 4,
+      children: [
+        'مكافحة الحريق',
+        'التهوية الميكانيكية',
+        'وسائل الإنذار المبكر',
+        'جدول مسالك الهروب وحصر الشاغلين',
+      ],
+    },
+    { label: 'التوصيات العامة', page: 5, children: [] as string[] },
   ];
 
   const tocHtml = tocEntries
@@ -260,8 +205,7 @@ export function printTechnicalReport(params: {
           <span class="toc-dots" aria-hidden="true"></span>
           <span class="toc-page">${entry.page}</span>
         </div>
-        ${children}
-      `;
+        ${children}`;
     })
     .join('');
 
@@ -286,7 +230,7 @@ export function printTechnicalReport(params: {
   <meta charset="utf-8" />
   <title>تقرير فني — ${esc(facility.business_name)}</title>
   <style>
-    /* مقاس ثابت لكل صفحات التقرير — لا يتغير بين الصفحات */
+    /* مقاس ثابت قاطع — لا يتغير بين الصفحات */
     @page {
       size: A4 portrait;
       margin: 15mm 12mm;
@@ -302,7 +246,7 @@ export function printTechnicalReport(params: {
     body {
       font-family: "Tahoma","Segoe UI",Arial,sans-serif;
       color: #222;
-      line-height: 1.55;
+      line-height: 1.5;
       max-width: 210mm;
       margin: 0 auto;
       -webkit-print-color-adjust: exact;
@@ -318,7 +262,6 @@ export function printTechnicalReport(params: {
       background: #fff;
       page-break-after: always;
       break-after: page;
-      position: relative;
     }
 
     .sheet:last-of-type {
@@ -326,13 +269,7 @@ export function printTechnicalReport(params: {
       break-after: auto;
     }
 
-    /* ——— الغلاف ——— */
-    .sheet-cover {
-      display: flex;
-      flex-direction: column;
-      justify-content: stretch;
-      text-align: center;
-    }
+    .sheet-cover { display: flex; flex-direction: column; }
 
     .cover-frame {
       flex: 1;
@@ -340,8 +277,9 @@ export function printTechnicalReport(params: {
       flex-direction: column;
       justify-content: space-between;
       align-items: center;
+      text-align: center;
       min-height: 255mm;
-      padding: 18mm 10mm;
+      padding: 16mm 8mm;
       border: 1.5px solid #1f4d3a;
       box-sizing: border-box;
     }
@@ -350,19 +288,19 @@ export function printTechnicalReport(params: {
       display: flex;
       flex-direction: column;
       align-items: center;
-      gap: 14px;
-      margin-top: 18mm;
+      gap: 12px;
+      margin-top: 14mm;
     }
 
     .cover-brand img {
-      width: 110px;
-      height: 110px;
+      width: 112px;
+      height: 112px;
       object-fit: contain;
     }
 
     .cover-brand-fallback {
-      width: 110px;
-      height: 110px;
+      width: 112px;
+      height: 112px;
       border: 2px solid #1f4d3a;
       border-radius: 50%;
       display: flex;
@@ -375,41 +313,25 @@ export function printTechnicalReport(params: {
     }
 
     .cover-office {
-      font-size: 16px;
+      font-size: 15px;
       font-weight: 700;
       color: #1f4d3a;
     }
 
-    .cover-title-block {
-      display: flex;
-      flex-direction: column;
-      align-items: center;
-      gap: 14px;
-      max-width: 160mm;
-    }
-
     .cover-title {
       margin: 0;
+      max-width: 165mm;
       color: #c0392b;
       font-size: 26px;
       font-weight: 800;
       line-height: 1.45;
     }
 
-    .cover-subtitle {
-      margin: 0;
-      color: #1f4d3a;
-      font-size: 14px;
-      font-weight: 600;
-    }
-
     .cover-meta {
       width: 100%;
-      max-width: 140mm;
-      margin-bottom: 10mm;
-      text-align: center;
+      max-width: 145mm;
+      margin-bottom: 8mm;
       font-size: 14px;
-      color: #333;
     }
 
     .cover-meta .row {
@@ -420,19 +342,9 @@ export function printTechnicalReport(params: {
       padding: 8px 4px;
     }
 
-    .cover-meta .label {
-      color: #64748b;
-      font-weight: 600;
-      white-space: nowrap;
-    }
+    .cover-meta .label { color: #64748b; font-weight: 600; white-space: nowrap; }
+    .cover-meta .value { font-weight: 700; color: #1f2937; text-align: left; }
 
-    .cover-meta .value {
-      font-weight: 700;
-      color: #1f2937;
-      text-align: left;
-    }
-
-    /* ——— الفهرس ——— */
     .toc-title {
       text-align: center;
       color: #c0392b;
@@ -445,72 +357,43 @@ export function printTechnicalReport(params: {
       display: flex;
       align-items: baseline;
       gap: 10px;
-      margin: 14px 0 4px;
+      margin: 16px 0 4px;
       font-size: 14px;
     }
 
-    .toc-label {
-      font-weight: 700;
-      color: #1f2937;
-      white-space: nowrap;
-    }
-
+    .toc-label { font-weight: 700; color: #1f2937; white-space: nowrap; }
     .toc-dots {
       flex: 1;
       border-bottom: 1px dotted #94a3b8;
       transform: translateY(-4px);
       min-width: 24px;
     }
-
-    .toc-page {
-      font-weight: 800;
-      color: #1f4d3a;
-      min-width: 18px;
-      text-align: center;
-    }
-
+    .toc-page { font-weight: 800; color: #1f4d3a; min-width: 18px; text-align: center; }
     .toc-sub {
-      margin: 0 0 8px;
+      margin: 0 0 10px;
       padding-right: 22px;
       color: #475569;
       font-size: 12.5px;
       line-height: 1.8;
     }
 
-    /* ——— صفحات المحتوى ——— */
     .header {
       display: flex;
       justify-content: space-between;
       align-items: flex-start;
       gap: 12px;
       border-bottom: 2px solid #1f4d3a;
-      padding-bottom: 10px;
-      margin-bottom: 12px;
+      padding-bottom: 8px;
+      margin-bottom: 10px;
     }
 
-    .logo {
-      display: flex;
-      gap: 10px;
-      align-items: center;
-      max-width: 55%;
-    }
-
-    .logo img {
-      width: 48px;
-      height: 48px;
-      object-fit: contain;
-    }
-
-    .logo .name {
-      font-weight: 700;
-      color: #1f4d3a;
-      font-size: 13px;
-    }
-
+    .logo { display: flex; gap: 10px; align-items: center; max-width: 55%; }
+    .logo img { width: 46px; height: 46px; object-fit: contain; }
+    .logo .name { font-weight: 700; color: #1f4d3a; font-size: 12.5px; }
     .banner {
       background: #c0392b;
       color: #fff;
-      padding: 8px 12px;
+      padding: 7px 10px;
       border-radius: 4px;
       font-size: 10px;
       text-align: center;
@@ -521,36 +404,30 @@ export function printTechnicalReport(params: {
       display: flex;
       justify-content: space-between;
       font-size: 11px;
-      margin: 0 0 12px;
+      margin: 0 0 10px;
       color: #444;
     }
 
     h2.chapter {
       color: #c0392b;
       text-align: center;
-      margin: 10px 0 12px;
+      margin: 6px 0 12px;
       font-size: 16px;
     }
 
     h3.section {
       color: #1f4d3a;
-      margin: 14px 0 6px;
+      margin: 12px 0 6px;
       font-size: 13px;
       border-right: 3px solid #1f4d3a;
       padding-right: 8px;
-    }
-
-    h4.floor-title {
-      margin: 10px 0 6px;
-      color: #1f4d3a;
-      font-size: 12px;
     }
 
     table.data {
       width: 100%;
       border-collapse: collapse;
       font-size: 11px;
-      margin: 6px 0 10px;
+      margin: 6px 0 12px;
     }
 
     table.data th,
@@ -563,13 +440,10 @@ export function printTechnicalReport(params: {
     table.data th { background: #eef2f7; }
     table.data.compact th { width: 36%; }
     table.data tfoot th,
-    table.data tfoot td {
-      background: #f8fafc;
-      font-weight: 700;
-    }
+    table.data tfoot td { background: #f8fafc; font-weight: 700; }
 
     .item {
-      margin: 8px 0 12px;
+      margin: 6px 0 10px;
       page-break-inside: avoid;
       break-inside: avoid;
     }
@@ -581,89 +455,32 @@ export function printTechnicalReport(params: {
       font-weight: 700;
     }
 
-    .opts {
-      margin: 2px 0 6px;
-      padding-right: 18px;
-      font-size: 11.5px;
-    }
-
+    .opts { margin: 2px 0 4px; padding-right: 18px; font-size: 11.5px; }
     .opts li { margin: 2px 0; }
     .muted { font-size: 11px; color: #64748b; margin: 4px 0; }
-    .sub { font-size: 10px; color: #666; }
-    .balance { font-size: 10px; margin: 0 0 8px; }
-    .balance.ok { color: #166534; }
-    .balance.warn { color: #92400e; }
 
-    .photos {
-      display: flex;
-      flex-wrap: wrap;
-      gap: 8px;
-      margin-top: 6px;
-    }
-
-    .photo {
-      width: 48%;
-      page-break-inside: avoid;
-      break-inside: avoid;
-    }
-
+    .photos { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 4px; }
+    .photo { width: 48%; page-break-inside: avoid; break-inside: avoid; }
     .photo img {
       width: 100%;
-      max-height: 200px;
+      max-height: 170px;
       object-fit: contain;
       border: 1px solid #ddd;
       background: #fafafa;
     }
-
-    .cap {
-      font-size: 10px;
-      color: #666;
-      text-align: center;
-    }
-
-    .proof {
-      border: 1px solid #cbd5e1;
-      border-radius: 6px;
-      margin: 8px 0 12px;
-      overflow: hidden;
-      page-break-inside: avoid;
-      break-inside: avoid;
-    }
-
-    .proof-title {
-      background: #1f4d3a;
-      color: #fff;
-      padding: 7px 10px;
-      font-size: 11.5px;
-      font-weight: 700;
-    }
-
-    .proof-sub {
-      background: #f8fafc;
-      color: #334155;
-      padding: 5px 10px;
-      font-size: 11px;
-      font-weight: 600;
-    }
-
-    .refs {
-      padding: 4px 10px 8px;
-      font-size: 10px;
-      color: #64748b;
-      margin: 0;
-    }
+    .cap { font-size: 10px; color: #666; text-align: center; }
 
     .signs {
       display: flex;
       justify-content: space-between;
-      margin: 36px 8% 8px;
+      margin: 28px 6% 6px;
       text-align: center;
       font-size: 12px;
     }
 
     .stamp {
-      width: 84px;
-      height: 84px;
+      width: 80px;
+      height: 80px;
       border: 2px dashed #1f4d3a;
       border-radius: 50%;
       margin: 0 auto 8px;
@@ -676,16 +493,12 @@ export function printTechnicalReport(params: {
       padding: 8px;
     }
 
-    .recs {
-      font-size: 12.5px;
-      padding-right: 18px;
-    }
-
-    .recs li { margin: 6px 0; }
+    .recs { font-size: 13px; padding-right: 20px; line-height: 1.7; }
+    .recs li { margin: 8px 0; }
 
     .page-foot {
-      margin-top: 18px;
-      padding-top: 8px;
+      margin-top: 14px;
+      padding-top: 6px;
       border-top: 1px solid #cbd5e1;
       font-size: 10px;
       color: #64748b;
@@ -694,14 +507,12 @@ export function printTechnicalReport(params: {
 
     @media print {
       .no-print { display: none !important; }
-
       html, body {
         width: auto;
         max-width: none;
         margin: 0;
         background: #fff;
       }
-
       .sheet {
         width: auto;
         min-height: auto;
@@ -711,29 +522,23 @@ export function printTechnicalReport(params: {
         page-break-after: always;
         break-after: page;
       }
-
       .sheet:last-of-type {
         page-break-after: auto;
         break-after: auto;
       }
-
-      .cover-frame {
-        min-height: calc(297mm - 30mm);
-      }
+      .cover-frame { min-height: calc(297mm - 30mm); }
     }
 
     @media screen {
       body { background: #e5e7eb; padding: 16px 0 32px; }
-      .sheet {
-        box-shadow: 0 8px 24px rgba(0,0,0,.12);
-      }
+      .sheet { box-shadow: 0 8px 24px rgba(0,0,0,.12); }
     }
   </style>
 </head>
 <body>
   <div class="no-print" style="margin-bottom:12px;text-align:center">
-    <button onclick="window.print()" style="padding:8px 16px;font-size:14px">طباعة / حفظ PDF (A4 عمودي ثابت)</button>
-    <div style="margin-top:6px;font-size:12px;color:#475569">الصفحة 1: الغلاف · الصفحة 2: الفهرس · من الصفحة 3: المحتوى</div>
+    <button onclick="window.print()" style="padding:8px 16px;font-size:14px">طباعة / حفظ PDF (A4 عمودي)</button>
+    <div style="margin-top:6px;font-size:12px;color:#475569">1 غلاف · 2 فهرس · 3 الباب الأول · 4 الباب الثاني · 5 التوصيات</div>
   </div>
 
   <!-- الصفحة 1: الغلاف -->
@@ -747,12 +552,7 @@ export function printTechnicalReport(params: {
         }
         <div class="cover-office">${esc(company.legal_name || company.name)}</div>
       </div>
-
-      <div class="cover-title-block">
-        <h1 class="cover-title">${esc(reportTitle)}</h1>
-        <p class="cover-subtitle">وفقاً لكود البناء السعودي ومتطلبات الدفاع المدني</p>
-      </div>
-
+      <h1 class="cover-title">${esc(reportTitle)}</h1>
       <div class="cover-meta">
         <div class="row"><span class="label">اسم المشروع</span><span class="value">${esc(facility.business_name)}</span></div>
         <div class="row"><span class="label">التاريخ</span><span class="value">${esc(reportDate || '—')}</span></div>
@@ -769,16 +569,13 @@ export function printTechnicalReport(params: {
     ${tocHtml}
   </section>
 
-  <!-- من الصفحة 3: المحتوى -->
+  <!-- الصفحة 3: الباب الأول -->
   <section class="sheet">
     ${headerBlock}
     ${pageMeta}
-    <h2 class="chapter">الباب الأول: عن المنشأة</h2>
+    <h2 class="chapter">الباب الأول: بيانات المنشأة</h2>
 
-    ${report.overview_text ? `<h3 class="section">نبذة</h3><p style="font-size:12.5px">${esc(report.overview_text)}</p>` : ''}
-    ${photoHtml(report.site_photo?.dataUrl, 'صورة المشروع')}
-
-    <h3 class="section">بيانات المنشأة العامة</h3>
+    <h3 class="section">جدول بيانات المنشأة العامة</h3>
     <table class="data compact">
       <tr><th>اسم المنشأة</th><td>${esc(facility.business_name)}</td></tr>
       <tr><th>النشاط</th><td>${esc(facility.activity_label)}</td></tr>
@@ -793,33 +590,24 @@ export function printTechnicalReport(params: {
       <tr><th>تصنيف الخطورة</th><td>${esc(report.risk_class || '—')}</td></tr>
       <tr><th>حالة المبنى</th><td>${esc(report.building_status || '—')}</td></tr>
     </table>
-    ${photoHtml(report.earth_photo?.dataUrl, 'Google Earth')}
-    ${photoHtml(report.facade_photo?.dataUrl, 'واجهة المشروع')}
 
-    <h3 class="section">مكونات المشروع والحالة الإنشائية</h3>
+    <h3 class="section">جدول مكونات المشروع والحالة الإنشائية</h3>
     <table class="data">
       <thead>
         <tr>
-          <th>#</th><th>المبنى / الدور</th><th>الهيكل الإنشائي</th><th>التصنيف الإنشائي</th><th>المساحة</th>
+          <th>#</th>
+          <th>المبنى / الدور</th>
+          <th>الهيكل الإنشائي</th>
+          <th>التصنيف الإنشائي</th>
+          <th>المساحة</th>
         </tr>
       </thead>
       <tbody>${componentsRows || '<tr><td colspan="5">لا توجد بيانات</td></tr>'}</tbody>
     </table>
-
-    <h3 class="section">الأدوار والمناطق</h3>
-    ${floorBlocks || '<p class="muted">لا توجد أدوار بعد</p>'}
-    <div class="page-foot">${esc(company.legal_name || company.name)} — صفحة المحتوى</div>
-  </section>
-
-  <section class="sheet">
-    ${headerBlock}
-    ${pageMeta}
-    <h2 class="chapter">إثباتات التصنيف من الكود</h2>
-    ${proofHtml || '<p class="muted">لا توجد إثباتات بعد</p>'}
-    ${zoneProofPhotos ? `<h3 class="section">صور الكود حسب المناطق</h3><div class="photos">${zoneProofPhotos}</div>` : ''}
     <div class="page-foot">${esc(company.legal_name || company.name)}</div>
   </section>
 
+  <!-- الصفحة 4: الباب الثاني -->
   <section class="sheet">
     ${headerBlock}
     ${pageMeta}
@@ -833,6 +621,7 @@ export function printTechnicalReport(params: {
     <div class="page-foot">${esc(company.legal_name || company.name)}</div>
   </section>
 
+  <!-- الصفحة 5: التوصيات -->
   <section class="sheet">
     ${headerBlock}
     ${pageMeta}
@@ -844,15 +633,12 @@ export function printTechnicalReport(params: {
           : '<li>لم يتم اختيار توصيات بعد</li>'
       }
     </ol>
-
     <div class="signs">
       <div>
         <div>مهندس السلامة</div>
         <div style="margin-top:36px">${esc(report.safety_engineer_name || '................')}</div>
       </div>
-      <div>
-        <div class="stamp">${esc(company.stamp_text || company.name)}</div>
-      </div>
+      <div><div class="stamp">${esc(company.stamp_text || company.name)}</div></div>
       <div>
         <div>المدير التنفيذي</div>
         <div style="margin-top:36px">${esc(report.executive_director_name || '................')}</div>
