@@ -15,15 +15,15 @@ export default function SettingsPage() {
       enabled: canManageStaff,
     },
     {
-      title: 'إعدادات الشركة',
-      desc: 'بيانات المنشأة، الشعار، الرقم الضريبي — تظهر في التقرير الفني',
+      title: 'معلومات الشركة',
+      desc: 'الاسم، الرقم الضريبي، السجل، البنك والآيبان، خطة السداد، الشعار والختم — تغذي عروض الأسعار والفواتير',
       href: '/settings/company',
       enabled: canAccess('settings'),
     },
     {
       title: 'قوالب المستندات',
-      desc: 'تخصيص عروض الأسعار والفواتير',
-      href: null,
+      desc: 'قالب عرض السعر A4 يعتمد على معلومات الشركة تلقائياً',
+      href: '/settings/company',
       enabled: canAccess('settings'),
     },
     {

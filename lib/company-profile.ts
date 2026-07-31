@@ -16,8 +16,18 @@ export type CompanyProfile = {
   email: string;
   email_alt: string;
   stamp_text: string;
+  stamp_url: string;
   /** سعر المتر المربع لحساب عرض السعر تلقائياً */
   price_per_m2: number;
+  bank_name: string;
+  bank_account: string;
+  iban: string;
+  payment_first: string;
+  payment_second: string;
+  payment_final: string;
+  payment_terms: string;
+  /** صلاحية عرض السعر بالأيام */
+  quotation_validity_days: number;
 };
 
 export const DEFAULT_COMPANY_PROFILE: CompanyProfile = {
@@ -35,7 +45,16 @@ export const DEFAULT_COMPANY_PROFILE: CompanyProfile = {
   email: '',
   email_alt: '',
   stamp_text: PLATFORM_SHORT_NAME,
+  stamp_url: '',
   price_per_m2: 0,
+  bank_name: '',
+  bank_account: '',
+  iban: '',
+  payment_first: 'الدفعة الأولى: 50% عند اعتماد عرض السعر',
+  payment_second: 'الدفعة الثانية: 30% عند تسليم الدراسة/المخططات',
+  payment_final: 'الدفعة الأخيرة: 20% عند الاعتماد النهائي',
+  payment_terms: 'يُسدد المستحق عبر التحويل البنكي حسب الآيبان أدناه خلال مدة صلاحية العرض.',
+  quotation_validity_days: 14,
 };
 
 const LOCAL_KEY = 'tawaqqa_company_profile_v1';
@@ -56,6 +75,57 @@ export function saveLocalCompanyProfile(profile: CompanyProfile) {
   localStorage.setItem(LOCAL_KEY, JSON.stringify(profile));
 }
 
+function extractMissingColumn(message: string): string | null {
+  const patterns = [
+    /Could not find the '([^']+)' column/i,
+    /column ["']([^"']+)["'] of relation/i,
+    /column ([a-zA-Z_][a-zA-Z0-9_]*) does not exist/i,
+  ];
+  for (const pattern of patterns) {
+    const match = message.match(pattern);
+    if (match?.[1]) return match[1];
+  }
+  return null;
+}
+
+async function upsertCompanyPayload(
+  payload: Record<string, unknown>,
+  existingId?: string
+): Promise<{ error: string | null; skippedColumns: string[] }> {
+  const current: Record<string, unknown> = { ...payload };
+  const skippedColumns: string[] = [];
+
+  for (let attempt = 0; attempt < 20; attempt += 1) {
+    const result = existingId
+      ? await supabase.from('companies').update(current).eq('id', existingId)
+      : await supabase.from('companies').insert({
+          code: 'TWAQQA',
+          ...current,
+          is_active: true,
+          created_at: new Date().toISOString(),
+        });
+
+    if (!result.error) {
+      return { error: null, skippedColumns };
+    }
+
+    const missing = extractMissingColumn(result.error.message);
+    if (!missing || !(missing in current)) {
+      return { error: result.error.message, skippedColumns };
+    }
+
+    delete current[missing];
+    skippedColumns.push(missing);
+  }
+
+  return { error: 'تعذر حفظ بيانات الشركة في قاعدة البيانات', skippedColumns };
+}
+
+function pickText(data: Record<string, unknown>, key: string, fallback: string): string {
+  const value = data[key];
+  return typeof value === 'string' && value.trim() ? value : fallback;
+}
+
 /** يحمّل من جدول companies إن وجد، مع دمج التخزين المحلي للشعار والحقول الإضافية */
 export async function loadCompanyProfile(): Promise<CompanyProfile> {
   const local = loadLocalCompanyProfile();
@@ -64,30 +134,46 @@ export async function loadCompanyProfile(): Promise<CompanyProfile> {
   const { data } = await supabase.from('companies').select('*').eq('code', 'TWAQQA').maybeSingle();
   if (!data) return local;
 
+  const row = data as Record<string, unknown>;
   return {
     ...local,
-    name: data.name || local.name,
-    legal_name: data.legal_name || local.legal_name,
-    city: data.city || local.city,
-    commercial_register: data.commercial_register || local.commercial_register,
-    tax_number: data.tax_number || local.tax_number,
-    phone: data.phone || local.phone,
-    email: data.email || local.email,
-    address: data.address || local.address,
-    logo_url: data.logo_url || local.logo_url,
+    name: pickText(row, 'name', local.name),
+    legal_name: pickText(row, 'legal_name', local.legal_name),
+    city: pickText(row, 'city', local.city),
+    commercial_register: pickText(row, 'commercial_register', local.commercial_register),
+    tax_number: pickText(row, 'tax_number', local.tax_number),
+    phone: pickText(row, 'phone', local.phone),
+    email: pickText(row, 'email', local.email),
+    address: pickText(row, 'address', local.address),
+    logo_url: pickText(row, 'logo_url', local.logo_url),
+    stamp_url: pickText(row, 'stamp_url', local.stamp_url),
+    stamp_text: pickText(row, 'stamp_text', local.stamp_text),
+    bank_name: pickText(row, 'bank_name', local.bank_name),
+    bank_account: pickText(row, 'bank_account', local.bank_account),
+    iban: pickText(row, 'iban', local.iban),
+    payment_first: pickText(row, 'payment_first', local.payment_first),
+    payment_second: pickText(row, 'payment_second', local.payment_second),
+    payment_final: pickText(row, 'payment_final', local.payment_final),
+    payment_terms: pickText(row, 'payment_terms', local.payment_terms),
     price_per_m2:
-      data.price_per_m2 != null && data.price_per_m2 !== ''
-        ? Number(data.price_per_m2) || local.price_per_m2
+      row.price_per_m2 != null && row.price_per_m2 !== ''
+        ? Number(row.price_per_m2) || local.price_per_m2
         : local.price_per_m2,
+    quotation_validity_days:
+      row.quotation_validity_days != null && row.quotation_validity_days !== ''
+        ? Math.max(1, Number(row.quotation_validity_days) || local.quotation_validity_days)
+        : local.quotation_validity_days,
   };
 }
 
-export async function saveCompanyProfile(profile: CompanyProfile): Promise<{ error: string | null }> {
+export async function saveCompanyProfile(
+  profile: CompanyProfile
+): Promise<{ error: string | null; warning?: string | null }> {
   saveLocalCompanyProfile(profile);
   if (isDemoMode) return { error: null };
 
   const { data: existing } = await supabase.from('companies').select('id').eq('code', 'TWAQQA').maybeSingle();
-  const payload = {
+  const payload: Record<string, unknown> = {
     name: profile.name,
     legal_name: profile.legal_name,
     city: profile.city,
@@ -97,20 +183,36 @@ export async function saveCompanyProfile(profile: CompanyProfile): Promise<{ err
     email: profile.email || null,
     address: profile.address || null,
     logo_url: profile.logo_url || null,
+    stamp_url: profile.stamp_url || null,
+    stamp_text: profile.stamp_text || null,
+    bank_name: profile.bank_name || null,
+    bank_account: profile.bank_account || null,
+    iban: profile.iban || null,
+    payment_first: profile.payment_first || null,
+    payment_second: profile.payment_second || null,
+    payment_final: profile.payment_final || null,
+    payment_terms: profile.payment_terms || null,
     price_per_m2: Number(profile.price_per_m2) || 0,
+    quotation_validity_days: Math.max(1, Number(profile.quotation_validity_days) || 14),
     updated_at: new Date().toISOString(),
   };
 
-  if (existing?.id) {
-    const { error } = await supabase.from('companies').update(payload).eq('id', existing.id);
-    return { error: error?.message || null };
+  const result = await upsertCompanyPayload(payload, existing?.id);
+  if (result.error) {
+    return {
+      error: null,
+      warning:
+        `حُفظت معلومات الشركة محلياً على هذا الجهاز. قاعدة البيانات رفضت بعض الحقول (${result.error}). نفّذ SQL الحقول الإضافية لمزامنة كل الأجهزة.`,
+    };
   }
 
-  const { error } = await supabase.from('companies').insert({
-    code: 'TWAQQA',
-    ...payload,
-    is_active: true,
-    created_at: new Date().toISOString(),
-  });
-  return { error: error?.message || null };
+  if (result.skippedColumns.length > 0) {
+    const skipped = result.skippedColumns.join(', ');
+    return {
+      error: null,
+      warning: `تم الحفظ. بعض أعمدة قاعدة البيانات غير موجودة بعد (${skipped}) وبقيت محلياً — نفّذ SQL الحقول الإضافية للمزامنة الكاملة.`,
+    };
+  }
+
+  return { error: null };
 }
