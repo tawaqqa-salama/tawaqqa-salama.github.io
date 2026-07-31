@@ -26,6 +26,7 @@ const files = [
   '013_company_branding_fields.sql',
   '014_document_sequences.sql',
   '016_quotation_services_pricing.sql',
+  '017_company_quotation_profile.sql',
 ];
 
 if (!process.env.DATABASE_URL) {
