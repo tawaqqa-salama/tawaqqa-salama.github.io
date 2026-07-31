@@ -237,6 +237,34 @@ export function printTechnicalReport(params: {
        <p class="muted">عدد الأبواب المطلوبة تقديري وفق حمل الإشغال؛ يُراجع مع مخططات المسارات المعتمدة.</p>`
     : '';
 
+  const reportTitle = 'تقرير معاينة وتدقيق فني لاشتراطات السلامة والوقاية من الحريق';
+  const reportNumber = report.outgoing_number || '—';
+  const reportDate = report.report_date || '';
+
+  // أرقام صفحات منطقية مرتبطة بفواصل الصفحات الإجبارية أدناه
+  const tocEntries = [
+    { label: 'الباب الأول: عن المنشأة', page: 3, children: ['بيانات المنشأة العامة', 'مكونات المشروع والحالة الإنشائية', 'الأدوار والمناطق'] },
+    { label: 'إثباتات التصنيف من الكود', page: 4, children: [] as string[] },
+    { label: 'الباب الثاني: أنظمة السلامة والوقاية', page: 5, children: ['توزيع أنظمة الإطفاء', 'مكافحة الحريق', 'التهوية الميكانيكية', 'وسائل الإنذار المبكر', 'حصر الشاغلين ومخارج الهروب'] },
+    { label: 'التوصيات العامة', page: 6, children: [] as string[] },
+  ];
+
+  const tocHtml = tocEntries
+    .map((entry) => {
+      const children = entry.children.length
+        ? `<ul class="toc-sub">${entry.children.map((c) => `<li>${esc(c)}</li>`).join('')}</ul>`
+        : '';
+      return `
+        <div class="toc-row">
+          <span class="toc-label">${esc(entry.label)}</span>
+          <span class="toc-dots" aria-hidden="true"></span>
+          <span class="toc-page">${entry.page}</span>
+        </div>
+        ${children}
+      `;
+    })
+    .join('');
+
   const headerBlock = `
     <div class="header">
       <div class="logo">
@@ -246,134 +274,509 @@ export function printTechnicalReport(params: {
       <div class="banner">${esc(company.tagline)}</div>
     </div>`;
 
+  const pageMeta = `
+    <div class="meta">
+      <div>التاريخ: ${esc(reportDate)}</div>
+      <div>رقم التقرير: ${esc(reportNumber)}</div>
+    </div>`;
+
   const html = `<!DOCTYPE html>
 <html lang="ar" dir="rtl">
 <head>
   <meta charset="utf-8" />
   <title>تقرير فني — ${esc(facility.business_name)}</title>
   <style>
-    @page { size: A4 portrait; margin: 14mm 12mm 18mm; }
-    html, body { width: 210mm; }
-    body { font-family: "Tahoma","Segoe UI",Arial,sans-serif; color:#222; line-height:1.55; margin:0 auto; max-width:210mm; }
-    .header { display:flex; justify-content:space-between; align-items:flex-start; gap:12px; border-bottom:2px solid #1f4d3a; padding-bottom:10px; margin-bottom:14px; }
-    .logo { display:flex; gap:10px; align-items:center; max-width:55%; }
-    .logo img { width:54px; height:54px; object-fit:contain; }
-    .logo .name { font-weight:700; color:#1f4d3a; font-size:14px; }
-    .banner { background:#c0392b; color:#fff; padding:8px 12px; border-radius:4px; font-size:11px; text-align:center; max-width:42%; }
-    .meta { display:flex; justify-content:space-between; font-size:12px; margin:8px 0 16px; color:#444; }
-    .cover-title { text-align:center; color:#c0392b; font-size:20px; font-weight:800; margin:28px 0 18px; }
-    .cover-fields { width:72%; margin:0 auto 24px; font-size:14px; }
-    .cover-fields div { margin:8px 0; }
-    .signs { display:flex; justify-content:space-between; margin:40px 12% 20px; text-align:center; font-size:13px; }
-    .stamp { width:90px; height:90px; border:2px dashed #1f4d3a; border-radius:50%; margin:0 auto 8px; display:flex; align-items:center; justify-content:center; color:#1f4d3a; font-size:10px; text-align:center; padding:8px; }
-    h2.chapter { color:#c0392b; text-align:center; margin:18px 0 10px; font-size:16px; }
-    h3.section { color:#1f4d3a; margin:14px 0 6px; font-size:13px; border-right:3px solid #1f4d3a; padding-right:8px; }
-    h4.floor-title { margin:10px 0 6px; color:#1f4d3a; font-size:12px; }
-    table.data { width:100%; border-collapse:collapse; font-size:11px; margin:6px 0 10px; }
-    table.data th, table.data td { border:1px solid #999; padding:5px 7px; vertical-align:top; }
-    table.data th { background:#eef2f7; }
-    table.data.compact th { width:36%; }
-    table.data tfoot th, table.data tfoot td { background:#f8fafc; font-weight:700; }
-    .item { margin:8px 0 12px; page-break-inside: avoid; }
-    .item-title { color:#1f6b45; font-size:12.5px; margin:0 0 2px; font-weight:700; }
-    .opts { margin:2px 0 6px; padding-right:18px; font-size:11.5px; }
-    .opts li { margin:2px 0; }
-    .muted { font-size:11px; color:#64748b; margin:4px 0; }
-    .sub { font-size:10px; color:#666; }
-    .balance { font-size:10px; margin:0 0 8px; }
-    .balance.ok { color:#166534; }
-    .balance.warn { color:#92400e; }
-    .photos { display:flex; flex-wrap:wrap; gap:8px; margin-top:6px; }
-    .photo { width:48%; page-break-inside: avoid; }
-    .photo img { width:100%; max-height:200px; object-fit:contain; border:1px solid #ddd; background:#fafafa; }
-    .cap { font-size:10px; color:#666; text-align:center; }
-    .proof { border:1px solid #cbd5e1; border-radius:6px; margin:8px 0 12px; overflow:hidden; page-break-inside: avoid; }
-    .proof-title { background:#1f4d3a; color:#fff; padding:7px 10px; font-size:11.5px; font-weight:700; }
-    .proof-sub { background:#f8fafc; color:#334155; padding:5px 10px; font-size:11px; font-weight:600; }
-    .refs { padding:4px 10px 8px; font-size:10px; color:#64748b; margin:0; }
-    .footer { position:fixed; bottom:0; left:0; right:0; border-top:1px solid #1f4d3a; padding-top:6px; font-size:10px; color:#444; text-align:center; background:#fff; }
-    .page { page-break-after: always; padding-bottom:36px; }
-    .page:last-child { page-break-after: auto; }
-    .toc ol { font-size:13px; line-height:1.9; padding-right:22px; }
-    .toc ul { padding-right:18px; list-style:disc; }
-    .recs { font-size:12.5px; padding-right:18px; }
-    .recs li { margin:6px 0; }
+    /* مقاس ثابت لكل صفحات التقرير — لا يتغير بين الصفحات */
+    @page {
+      size: A4 portrait;
+      margin: 15mm 12mm;
+    }
+
+    html, body {
+      width: 210mm;
+      margin: 0;
+      padding: 0;
+      background: #fff;
+    }
+
+    body {
+      font-family: "Tahoma","Segoe UI",Arial,sans-serif;
+      color: #222;
+      line-height: 1.55;
+      max-width: 210mm;
+      margin: 0 auto;
+      -webkit-print-color-adjust: exact;
+      print-color-adjust: exact;
+    }
+
+    .sheet {
+      box-sizing: border-box;
+      width: 210mm;
+      min-height: 297mm;
+      padding: 15mm 12mm;
+      margin: 0 auto 12px;
+      background: #fff;
+      page-break-after: always;
+      break-after: page;
+      position: relative;
+    }
+
+    .sheet:last-of-type {
+      page-break-after: auto;
+      break-after: auto;
+    }
+
+    /* ——— الغلاف ——— */
+    .sheet-cover {
+      display: flex;
+      flex-direction: column;
+      justify-content: stretch;
+      text-align: center;
+    }
+
+    .cover-frame {
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+      justify-content: space-between;
+      align-items: center;
+      min-height: 255mm;
+      padding: 18mm 10mm;
+      border: 1.5px solid #1f4d3a;
+      box-sizing: border-box;
+    }
+
+    .cover-brand {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 14px;
+      margin-top: 18mm;
+    }
+
+    .cover-brand img {
+      width: 110px;
+      height: 110px;
+      object-fit: contain;
+    }
+
+    .cover-brand-fallback {
+      width: 110px;
+      height: 110px;
+      border: 2px solid #1f4d3a;
+      border-radius: 50%;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      color: #1f4d3a;
+      font-size: 13px;
+      font-weight: 700;
+      padding: 10px;
+    }
+
+    .cover-office {
+      font-size: 16px;
+      font-weight: 700;
+      color: #1f4d3a;
+    }
+
+    .cover-title-block {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 14px;
+      max-width: 160mm;
+    }
+
+    .cover-title {
+      margin: 0;
+      color: #c0392b;
+      font-size: 26px;
+      font-weight: 800;
+      line-height: 1.45;
+    }
+
+    .cover-subtitle {
+      margin: 0;
+      color: #1f4d3a;
+      font-size: 14px;
+      font-weight: 600;
+    }
+
+    .cover-meta {
+      width: 100%;
+      max-width: 140mm;
+      margin-bottom: 10mm;
+      text-align: center;
+      font-size: 14px;
+      color: #333;
+    }
+
+    .cover-meta .row {
+      display: flex;
+      justify-content: space-between;
+      gap: 12px;
+      border-bottom: 1px solid #dbe3ea;
+      padding: 8px 4px;
+    }
+
+    .cover-meta .label {
+      color: #64748b;
+      font-weight: 600;
+      white-space: nowrap;
+    }
+
+    .cover-meta .value {
+      font-weight: 700;
+      color: #1f2937;
+      text-align: left;
+    }
+
+    /* ——— الفهرس ——— */
+    .toc-title {
+      text-align: center;
+      color: #c0392b;
+      font-size: 20px;
+      font-weight: 800;
+      margin: 8px 0 22px;
+    }
+
+    .toc-row {
+      display: flex;
+      align-items: baseline;
+      gap: 10px;
+      margin: 14px 0 4px;
+      font-size: 14px;
+    }
+
+    .toc-label {
+      font-weight: 700;
+      color: #1f2937;
+      white-space: nowrap;
+    }
+
+    .toc-dots {
+      flex: 1;
+      border-bottom: 1px dotted #94a3b8;
+      transform: translateY(-4px);
+      min-width: 24px;
+    }
+
+    .toc-page {
+      font-weight: 800;
+      color: #1f4d3a;
+      min-width: 18px;
+      text-align: center;
+    }
+
+    .toc-sub {
+      margin: 0 0 8px;
+      padding-right: 22px;
+      color: #475569;
+      font-size: 12.5px;
+      line-height: 1.8;
+    }
+
+    /* ——— صفحات المحتوى ——— */
+    .header {
+      display: flex;
+      justify-content: space-between;
+      align-items: flex-start;
+      gap: 12px;
+      border-bottom: 2px solid #1f4d3a;
+      padding-bottom: 10px;
+      margin-bottom: 12px;
+    }
+
+    .logo {
+      display: flex;
+      gap: 10px;
+      align-items: center;
+      max-width: 55%;
+    }
+
+    .logo img {
+      width: 48px;
+      height: 48px;
+      object-fit: contain;
+    }
+
+    .logo .name {
+      font-weight: 700;
+      color: #1f4d3a;
+      font-size: 13px;
+    }
+
+    .banner {
+      background: #c0392b;
+      color: #fff;
+      padding: 8px 12px;
+      border-radius: 4px;
+      font-size: 10px;
+      text-align: center;
+      max-width: 42%;
+    }
+
+    .meta {
+      display: flex;
+      justify-content: space-between;
+      font-size: 11px;
+      margin: 0 0 12px;
+      color: #444;
+    }
+
+    h2.chapter {
+      color: #c0392b;
+      text-align: center;
+      margin: 10px 0 12px;
+      font-size: 16px;
+    }
+
+    h3.section {
+      color: #1f4d3a;
+      margin: 14px 0 6px;
+      font-size: 13px;
+      border-right: 3px solid #1f4d3a;
+      padding-right: 8px;
+    }
+
+    h4.floor-title {
+      margin: 10px 0 6px;
+      color: #1f4d3a;
+      font-size: 12px;
+    }
+
+    table.data {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 11px;
+      margin: 6px 0 10px;
+    }
+
+    table.data th,
+    table.data td {
+      border: 1px solid #999;
+      padding: 5px 7px;
+      vertical-align: top;
+    }
+
+    table.data th { background: #eef2f7; }
+    table.data.compact th { width: 36%; }
+    table.data tfoot th,
+    table.data tfoot td {
+      background: #f8fafc;
+      font-weight: 700;
+    }
+
+    .item {
+      margin: 8px 0 12px;
+      page-break-inside: avoid;
+      break-inside: avoid;
+    }
+
+    .item-title {
+      color: #1f6b45;
+      font-size: 12.5px;
+      margin: 0 0 2px;
+      font-weight: 700;
+    }
+
+    .opts {
+      margin: 2px 0 6px;
+      padding-right: 18px;
+      font-size: 11.5px;
+    }
+
+    .opts li { margin: 2px 0; }
+    .muted { font-size: 11px; color: #64748b; margin: 4px 0; }
+    .sub { font-size: 10px; color: #666; }
+    .balance { font-size: 10px; margin: 0 0 8px; }
+    .balance.ok { color: #166534; }
+    .balance.warn { color: #92400e; }
+
+    .photos {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+      margin-top: 6px;
+    }
+
+    .photo {
+      width: 48%;
+      page-break-inside: avoid;
+      break-inside: avoid;
+    }
+
+    .photo img {
+      width: 100%;
+      max-height: 200px;
+      object-fit: contain;
+      border: 1px solid #ddd;
+      background: #fafafa;
+    }
+
+    .cap {
+      font-size: 10px;
+      color: #666;
+      text-align: center;
+    }
+
+    .proof {
+      border: 1px solid #cbd5e1;
+      border-radius: 6px;
+      margin: 8px 0 12px;
+      overflow: hidden;
+      page-break-inside: avoid;
+      break-inside: avoid;
+    }
+
+    .proof-title {
+      background: #1f4d3a;
+      color: #fff;
+      padding: 7px 10px;
+      font-size: 11.5px;
+      font-weight: 700;
+    }
+
+    .proof-sub {
+      background: #f8fafc;
+      color: #334155;
+      padding: 5px 10px;
+      font-size: 11px;
+      font-weight: 600;
+    }
+
+    .refs {
+      padding: 4px 10px 8px;
+      font-size: 10px;
+      color: #64748b;
+      margin: 0;
+    }
+
+    .signs {
+      display: flex;
+      justify-content: space-between;
+      margin: 36px 8% 8px;
+      text-align: center;
+      font-size: 12px;
+    }
+
+    .stamp {
+      width: 84px;
+      height: 84px;
+      border: 2px dashed #1f4d3a;
+      border-radius: 50%;
+      margin: 0 auto 8px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      color: #1f4d3a;
+      font-size: 10px;
+      text-align: center;
+      padding: 8px;
+    }
+
+    .recs {
+      font-size: 12.5px;
+      padding-right: 18px;
+    }
+
+    .recs li { margin: 6px 0; }
+
+    .page-foot {
+      margin-top: 18px;
+      padding-top: 8px;
+      border-top: 1px solid #cbd5e1;
+      font-size: 10px;
+      color: #64748b;
+      text-align: center;
+    }
+
     @media print {
-      .no-print { display:none !important; }
-      body { max-width:none; }
+      .no-print { display: none !important; }
+
+      html, body {
+        width: auto;
+        max-width: none;
+        margin: 0;
+        background: #fff;
+      }
+
+      .sheet {
+        width: auto;
+        min-height: auto;
+        margin: 0;
+        padding: 0;
+        box-shadow: none;
+        page-break-after: always;
+        break-after: page;
+      }
+
+      .sheet:last-of-type {
+        page-break-after: auto;
+        break-after: auto;
+      }
+
+      .cover-frame {
+        min-height: calc(297mm - 30mm);
+      }
+    }
+
+    @media screen {
+      body { background: #e5e7eb; padding: 16px 0 32px; }
+      .sheet {
+        box-shadow: 0 8px 24px rgba(0,0,0,.12);
+      }
     }
   </style>
 </head>
 <body>
   <div class="no-print" style="margin-bottom:12px;text-align:center">
-    <button onclick="window.print()" style="padding:8px 16px;font-size:14px">طباعة / حفظ PDF (A4 عمودي)</button>
+    <button onclick="window.print()" style="padding:8px 16px;font-size:14px">طباعة / حفظ PDF (A4 عمودي ثابت)</button>
+    <div style="margin-top:6px;font-size:12px;color:#475569">الصفحة 1: الغلاف · الصفحة 2: الفهرس · من الصفحة 3: المحتوى</div>
   </div>
 
-  <section class="page">
-    ${headerBlock}
-    <div class="meta">
-      <div>التاريخ: ${esc(report.report_date || '')}</div>
-      <div>الصادر: ${esc(report.outgoing_number || '')}</div>
-    </div>
-    <div class="cover-title">تقرير فني لأنظمة السلامة والوقاية من الحريق</div>
-    <div class="cover-fields">
-      <div><strong>مشروع:</strong> ${esc(facility.business_name)}</div>
-      <div><strong>الموقع:</strong> ${esc(facility.location_summary)}</div>
-      <div><strong>قسم الدفاع المدني المختص:</strong> ${esc(report.civil_defense_branch || '—')}</div>
-      <div><strong>المالك:</strong> ${esc(facility.owner_name)}</div>
-      <div><strong>تصنيف المبنى:</strong> ${esc(report.building_classification || '—')}</div>
-      <div><strong>تصنيف الخطورة:</strong> ${esc(report.risk_class || '—')}</div>
-    </div>
-    <div class="signs">
-      <div>
-        <div>مهندس السلامة</div>
-        <div style="margin-top:36px">${esc(report.safety_engineer_name || '................')}</div>
+  <!-- الصفحة 1: الغلاف -->
+  <section class="sheet sheet-cover">
+    <div class="cover-frame">
+      <div class="cover-brand">
+        ${
+          company.logo_url
+            ? `<img src="${company.logo_url}" alt="شعار المكتب" />`
+            : `<div class="cover-brand-fallback">${esc(company.stamp_text || company.name || 'الشعار')}</div>`
+        }
+        <div class="cover-office">${esc(company.legal_name || company.name)}</div>
       </div>
-      <div>
-        <div class="stamp">${esc(company.stamp_text || company.name)}</div>
+
+      <div class="cover-title-block">
+        <h1 class="cover-title">${esc(reportTitle)}</h1>
+        <p class="cover-subtitle">وفقاً لكود البناء السعودي ومتطلبات الدفاع المدني</p>
       </div>
-      <div>
-        <div>المدير التنفيذي</div>
-        <div style="margin-top:36px">${esc(report.executive_director_name || '................')}</div>
+
+      <div class="cover-meta">
+        <div class="row"><span class="label">اسم المشروع</span><span class="value">${esc(facility.business_name)}</span></div>
+        <div class="row"><span class="label">التاريخ</span><span class="value">${esc(reportDate || '—')}</span></div>
+        <div class="row"><span class="label">رقم التقرير</span><span class="value">${esc(reportNumber)}</span></div>
       </div>
     </div>
   </section>
 
-  <section class="page">
+  <!-- الصفحة 2: الفهرس -->
+  <section class="sheet">
     ${headerBlock}
-    <h2 class="chapter">نبذة</h2>
-    <p style="font-size:13px">${esc(report.overview_text || '')}</p>
-    ${photoHtml(report.site_photo?.dataUrl, 'صورة المشروع')}
+    ${pageMeta}
+    <h2 class="toc-title">جدول المحتويات</h2>
+    ${tocHtml}
   </section>
 
-  <section class="page toc">
+  <!-- من الصفحة 3: المحتوى -->
+  <section class="sheet">
     ${headerBlock}
-    <h2 class="chapter">جدول المحتويات</h2>
-    <ol>
-      <li><strong>الباب الأول: عن المنشأة</strong>
-        <ul>
-          <li>بيانات المنشأة العامة</li>
-          <li>مكونات المشروع والحالة الإنشائية</li>
-          <li>الأدوار والمناطق</li>
-          <li>إثباتات التصنيف من الكود</li>
-        </ul>
-      </li>
-      <li><strong>الباب الثاني: أنظمة السلامة</strong>
-        <ul>
-          <li>توزيع أنظمة الإطفاء</li>
-          <li>مكافحة الحريق (مضخات، ماء، شبكة، أنظمة خاصة...)</li>
-          <li>التهوية الميكانيكية</li>
-          <li>وسائل الإنذار المبكر</li>
-          <li>حصر الشاغلين ومخارج الهروب</li>
-        </ul>
-      </li>
-      <li><strong>التوصيات العامة</strong></li>
-    </ol>
-  </section>
-
-  <section class="page">
-    ${headerBlock}
+    ${pageMeta}
     <h2 class="chapter">الباب الأول: عن المنشأة</h2>
+
+    ${report.overview_text ? `<h3 class="section">نبذة</h3><p style="font-size:12.5px">${esc(report.overview_text)}</p>` : ''}
+    ${photoHtml(report.site_photo?.dataUrl, 'صورة المشروع')}
 
     <h3 class="section">بيانات المنشأة العامة</h3>
     <table class="data compact">
@@ -405,28 +808,34 @@ export function printTechnicalReport(params: {
 
     <h3 class="section">الأدوار والمناطق</h3>
     ${floorBlocks || '<p class="muted">لا توجد أدوار بعد</p>'}
+    <div class="page-foot">${esc(company.legal_name || company.name)} — صفحة المحتوى</div>
   </section>
 
-  <section class="page">
+  <section class="sheet">
     ${headerBlock}
-    <h2 class="chapter">الباب الأول — إثباتات التصنيف</h2>
+    ${pageMeta}
+    <h2 class="chapter">إثباتات التصنيف من الكود</h2>
     ${proofHtml || '<p class="muted">لا توجد إثباتات بعد</p>'}
     ${zoneProofPhotos ? `<h3 class="section">صور الكود حسب المناطق</h3><div class="photos">${zoneProofPhotos}</div>` : ''}
+    <div class="page-foot">${esc(company.legal_name || company.name)}</div>
   </section>
 
-  <section class="page">
+  <section class="sheet">
     ${headerBlock}
-    <h2 class="chapter">الباب الثاني: أنظمة السلامة</h2>
+    ${pageMeta}
+    <h2 class="chapter">الباب الثاني: أنظمة السلامة والوقاية</h2>
     ${systemsPlanHtml}
     ${renderSystemItems('أنظمة مكافحة الحريق', report.firefighting_items)}
     ${renderSystemItems('أنظمة التهوية الميكانيكية', report.ventilation_items)}
     ${renderSystemItems('وسائل الإنذار المبكر عن الحريق', report.alarm_items)}
     ${egressHtml}
     ${renderSystemItems('اشتراطات مخارج ومسالك الهروب', report.exits_items)}
+    <div class="page-foot">${esc(company.legal_name || company.name)}</div>
   </section>
 
-  <section class="page">
+  <section class="sheet">
     ${headerBlock}
+    ${pageMeta}
     <h2 class="chapter">التوصيات العامة</h2>
     <ol class="recs">
       ${
@@ -435,17 +844,25 @@ export function printTechnicalReport(params: {
           : '<li>لم يتم اختيار توصيات بعد</li>'
       }
     </ol>
-  </section>
 
-  <div class="footer">
-    ${esc(company.address)}${company.city ? ` — ${esc(company.city)}` : ''}
-    ${company.commercial_register ? ` | س.ت: ${esc(company.commercial_register)}` : ''}
-    ${company.membership_id ? ` | عضوية: ${esc(company.membership_id)}` : ''}
-    ${company.phone ? ` | هاتف: ${esc(company.phone)}` : ''}
-    ${company.tax_number ? ` | ضريبة: ${esc(company.tax_number)}` : ''}
-    <br/>
-    ${[company.email, company.email_alt].filter(Boolean).map(esc).join(' / ')}
-  </div>
+    <div class="signs">
+      <div>
+        <div>مهندس السلامة</div>
+        <div style="margin-top:36px">${esc(report.safety_engineer_name || '................')}</div>
+      </div>
+      <div>
+        <div class="stamp">${esc(company.stamp_text || company.name)}</div>
+      </div>
+      <div>
+        <div>المدير التنفيذي</div>
+        <div style="margin-top:36px">${esc(report.executive_director_name || '................')}</div>
+      </div>
+    </div>
+    <div class="page-foot">
+      ${esc(company.address)}${company.city ? ` — ${esc(company.city)}` : ''}
+      ${company.phone ? ` | هاتف: ${esc(company.phone)}` : ''}
+    </div>
+  </section>
 </body>
 </html>`;
 
