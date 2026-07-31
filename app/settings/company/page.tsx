@@ -45,11 +45,14 @@ export default function CompanySettingsPage() {
     const result = await saveCompanyProfile(form);
     setSaving(false);
     if (result.error) {
-      setMessage('حُفظ محلياً. لتفعيل الحفظ في قاعدة البيانات نفّذ SQL الحقول الإضافية أولاً.');
       setError(result.error);
       return;
     }
-    setMessage('تم حفظ بيانات المكتب الهندسي. تُستخدم في ترويسة التقرير الفني وملف PDF.');
+    if (result.warning) {
+      setMessage(result.warning);
+      return;
+    }
+    setMessage('تم حفظ بيانات المكتب الهندسي وسعر المتر المربع بنجاح.');
   }
 
   return (

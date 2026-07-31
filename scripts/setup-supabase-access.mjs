@@ -80,6 +80,12 @@ await client.query(`
 
 await client.query(`
   ALTER TABLE public.companies
+    ADD COLUMN IF NOT EXISTS commercial_register text,
+    ADD COLUMN IF NOT EXISTS tax_number text,
+    ADD COLUMN IF NOT EXISTS phone text,
+    ADD COLUMN IF NOT EXISTS email text,
+    ADD COLUMN IF NOT EXISTS address text,
+    ADD COLUMN IF NOT EXISTS logo_url text,
     ADD COLUMN IF NOT EXISTS price_per_m2 numeric DEFAULT 0;
 `);
 
