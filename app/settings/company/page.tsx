@@ -59,7 +59,7 @@ export default function CompanySettingsPage() {
     <div>
       <PageHeader
         title="معلومات الشركة"
-        description="بيانات المكتب والبنك وخطة السداد والشعار والختم — تغذي عروض الأسعار والفواتير تلقائياً."
+        description="بيانات المكتب والبنك وخطة السداد والشعار والختم — تغذي عروض الأسعار والفواتير وعقود الاتفاق تلقائياً."
         action={
           <Link href="/settings" className="text-sm font-semibold text-[#1f4d3a] hover:underline">
             ← رجوع للإعدادات

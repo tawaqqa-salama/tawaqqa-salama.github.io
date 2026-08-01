@@ -27,12 +27,35 @@ function nl2br(value: string): string {
   return escapeHtml(value).replace(/\n/g, '<br/>');
 }
 
+/** يتجاهل القيم الفارغة والشرطات والنقطتين الشائعتين في العقود القديمة */
+function coalesceText(...values: Array<string | null | undefined>): string {
+  for (const value of values) {
+    if (value == null) continue;
+    const trimmed = String(value).trim();
+    if (!trimmed) continue;
+    if (/^[\-–—:٫،.\s]+$/.test(trimmed)) continue;
+    return trimmed;
+  }
+  return '';
+}
+
+function displayOrDash(...values: Array<string | null | undefined>): string {
+  return coalesceText(...values) || '—';
+}
+
+function stripLeadingNumber(line: string): string {
+  return line
+    .replace(/^(?:[\d\u0660-\u0669]+)[\.\-\)\u060C:]?\s+/u, '')
+    .replace(/^(?:[\d\u0660-\u0669]+)\s+/u, '')
+    .trim();
+}
+
 function scopeItems(contract: SalesContract): string[] {
   const raw = (contract.service_scope || '').trim();
   if (!raw) return ['خدمات استشارية وفق عرض السعر المرتبط'];
   return raw
     .split(/\n+/)
-    .map((line) => line.replace(/^\d+\.\s*/, '').trim())
+    .map((line) => stripLeadingNumber(line))
     .filter(Boolean);
 }
 
@@ -41,43 +64,65 @@ export function buildContractPrintHtml(
   client: ClientRecord,
   company: CompanyProfile = DEFAULT_COMPANY_PROFILE
 ): string {
-  const party1Name = contract.party1_name || company.legal_name || company.name;
-  const party2Name = contract.party2_name || client.business_name || client.name;
-  const party2Cr = contract.party2_cr || client.commercial_register || '—';
-  const party2Phone = contract.party2_phone || client.phone || '—';
-  const party2Address =
-    contract.party2_address ||
+  const companyAddress = coalesceText(
+    [company.address, company.city].filter(Boolean).join(' — '),
+    company.address,
+    company.city
+  );
+
+  const party1Name = coalesceText(contract.party1_name, company.legal_name, company.name) || company.name;
+  const party1Cr = coalesceText(contract.party1_cr, company.commercial_register);
+  const party1Tax = coalesceText(contract.party1_tax, company.tax_number);
+  const party1Phone = coalesceText(contract.party1_phone, company.phone);
+  const party1Address = coalesceText(contract.party1_address, companyAddress);
+  const license = coalesceText(contract.party1_license, company.membership_id);
+
+  const party2Name =
+    coalesceText(contract.party2_name, client.business_name, client.name) || client.name;
+  const party2Cr = coalesceText(contract.party2_cr, client.commercial_register);
+  const party2Phone = coalesceText(contract.party2_phone, client.phone);
+  const party2Address = coalesceText(
+    contract.party2_address,
     [client.street, client.district, client.city, client.region, client.national_address]
       .filter(Boolean)
-      .join(' — ') ||
-    '—';
+      .join(' — ')
+  );
+
+  const bankName = coalesceText(contract.bank_name, company.bank_name);
+  const bankAccount = coalesceText(contract.bank_account, company.bank_account);
+  const iban = coalesceText(contract.iban, company.iban);
 
   const amount = Number(contract.amount || 0);
   const vat = Number(contract.vat_amount || 0);
   const total = Number(contract.total_amount || 0);
-  const words = contract.amount_words || amountToArabicWords(total);
-  const durationText = contract.duration_text || buildDurationClause(contract.duration_days || 30);
-  const preamble = contract.preamble || CONTRACT_PREAMBLE;
-  const license = contract.party1_license || company.membership_id || '—';
+  const words = coalesceText(contract.amount_words, amountToArabicWords(total)) || amountToArabicWords(total);
+  const durationText =
+    coalesceText(contract.duration_text, buildDurationClause(contract.duration_days || 30)) ||
+    buildDurationClause(30);
+  const preamble = coalesceText(contract.preamble, CONTRACT_PREAMBLE) || CONTRACT_PREAMBLE;
+
   const logo = company.logo_url
     ? `<img class="logo" src="${company.logo_url}" alt="شعار" />`
     : `<div class="logo-fallback">${escapeHtml(company.name)}</div>`;
   const stamp = company.stamp_url
     ? `<img class="stamp" src="${company.stamp_url}" alt="ختم" />`
-    : `<div class="stamp-box">${escapeHtml(company.stamp_text || company.name)}</div>`;
+    : `<div class="stamp-box">${escapeHtml(coalesceText(company.stamp_text, company.name) || company.name)}</div>`;
 
+  // ترقيم تلقائي فقط عبر <ol>/<li> — بدون أرقام يدوية مدمجة
   const scopeHtml = scopeItems(contract)
-    .map((item, index) => `<li><span class="n">${index + 1}</span>${escapeHtml(item)}</li>`)
+    .map((item) => `<li>${escapeHtml(item)}</li>`)
     .join('');
 
-  const termsHtml = CONTRACT_GENERAL_TERMS.map(
-    (term, index) => `<li><strong>${index + 1}.</strong> ${escapeHtml(term)}</li>`
-  ).join('');
+  const termsHtml = CONTRACT_GENERAL_TERMS.map((term) => `<li>${escapeHtml(term)}</li>`).join('');
 
-  const paymentFirst = contract.payment_first || company.payment_first;
-  const paymentSecond = contract.payment_second || company.payment_second;
-  const paymentFinal = contract.payment_final || company.payment_final;
-  const paymentTerms = contract.payment_terms || company.payment_terms;
+  const paymentFirst = coalesceText(contract.payment_first, company.payment_first);
+  const paymentSecond = coalesceText(contract.payment_second, company.payment_second);
+  const paymentFinal = coalesceText(contract.payment_final, company.payment_final);
+  const paymentTerms = coalesceText(contract.payment_terms, company.payment_terms);
+  const paymentItems = [paymentFirst, paymentSecond, paymentFinal]
+    .filter(Boolean)
+    .map((item) => `<li>${escapeHtml(stripLeadingNumber(item!))}</li>`)
+    .join('');
 
   return `<!DOCTYPE html>
 <html lang="ar" dir="rtl">
@@ -85,86 +130,95 @@ export function buildContractPrintHtml(
   <meta charset="UTF-8" />
   <title>عقد اتفاق — ${escapeHtml(contract.contract_number)}</title>
   <style>
-    @page { size: A4 portrait; margin: 12mm 12mm 14mm; }
+    @page { size: A4 portrait; margin: 10mm; }
     * { box-sizing: border-box; }
     html, body {
       margin: 0; padding: 0; background: #fff; color: #111827;
       font-family: "Tahoma", "Segoe UI", Arial, sans-serif;
-      font-size: 11px; line-height: 1.55;
+      font-size: 10px; line-height: 1.42;
       -webkit-print-color-adjust: exact; print-color-adjust: exact;
     }
-    .sheet { width: 186mm; margin: 0 auto; }
+    header, footer { display: none !important; }
+    .sheet { width: 100%; max-width: 190mm; margin: 0 auto; }
     .header {
-      display: grid; grid-template-columns: 70px 1fr 70px; gap: 8px;
-      align-items: center; border-bottom: 2.5px solid #1f4d3a;
-      padding-bottom: 8px; margin-bottom: 10px;
+      display: grid; grid-template-columns: 58px 1fr 72px; gap: 6px;
+      align-items: center; border-bottom: 2px solid #1f4d3a;
+      padding-bottom: 5px; margin-bottom: 6px;
     }
-    .logo, .logo-fallback { width: 64px; height: 64px; object-fit: contain; }
+    .logo, .logo-fallback { width: 54px; height: 54px; object-fit: contain; }
     .logo-fallback {
-      border: 1px solid #cbd5e1; border-radius: 8px; display: flex; align-items: center;
-      justify-content: center; text-align: center; font-size: 9px; font-weight: 700; color: #1f4d3a; padding: 4px;
+      border: 1px solid #cbd5e1; border-radius: 6px; display: flex; align-items: center;
+      justify-content: center; text-align: center; font-size: 8px; font-weight: 700; color: #1f4d3a; padding: 3px;
     }
     .head-center { text-align: center; }
-    .brand { margin: 0; font-size: 15px; font-weight: 800; color: #1f4d3a; }
-    .doc-title { margin: 4px 0 0; font-size: 22px; font-weight: 900; color: #0f172a; }
-    .license {
-      text-align: left; font-size: 9.5px; color: #334155; line-height: 1.45;
-    }
+    .brand { margin: 0; font-size: 13px; font-weight: 800; color: #1f4d3a; }
+    .doc-title { margin: 2px 0 0; font-size: 18px; font-weight: 900; color: #0f172a; }
+    .license { text-align: left; font-size: 8.5px; color: #334155; line-height: 1.35; }
     .meta {
-      display: grid; grid-template-columns: 1fr 1fr; gap: 6px 12px;
-      background: #f8fafc; border: 1px solid #dbe3ea; border-radius: 8px;
-      padding: 8px 10px; margin-bottom: 10px; font-size: 11px;
+      display: grid; grid-template-columns: 1fr 1fr; gap: 3px 10px;
+      background: #f8fafc; border: 1px solid #dbe3ea; border-radius: 6px;
+      padding: 5px 8px; margin-bottom: 6px; font-size: 10px;
     }
-    .section { margin: 0 0 10px; page-break-inside: avoid; }
+    .section { margin: 0 0 6px; }
     .section h3 {
-      margin: 0 0 6px; font-size: 12.5px; color: #1f4d3a;
-      border-right: 3px solid #1f4d3a; padding-right: 8px;
+      margin: 0 0 3px; font-size: 11px; color: #1f4d3a;
+      border-right: 3px solid #1f4d3a; padding-right: 6px;
     }
-    .party-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+    .section p { margin: 0; }
+    .party-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; }
     .card {
-      border: 1px solid #cbd5e1; border-radius: 8px; padding: 8px 10px; background: #fff;
+      border: 1px solid #cbd5e1; border-radius: 6px; padding: 5px 7px; background: #fff;
     }
-    .card .t { font-weight: 800; margin-bottom: 4px; color: #0f172a; }
-    .card p { margin: 0 0 3px; }
+    .card .t { font-weight: 800; margin-bottom: 2px; color: #0f172a; }
+    .card p { margin: 0 0 1px; }
     .muted { color: #64748b; }
-    ol.scope, ol.terms { margin: 0; padding: 0 18px 0 0; }
-    ol.scope li, ol.terms li { margin: 0 0 4px; }
-    ol.scope .n {
-      display: inline-block; min-width: 18px; margin-left: 4px; font-weight: 700; color: #1f4d3a;
+    ol.clean {
+      margin: 0;
+      padding: 0 1.15em 0 0;
+      list-style-type: decimal;
+      list-style-position: outside;
     }
-    .money-table { width: 100%; border-collapse: collapse; margin-top: 4px; }
+    ol.clean li { margin: 0 0 2px; padding: 0; }
+    ol.terms li { margin: 0 0 2.5px; }
+    .money-table { width: 100%; border-collapse: collapse; margin-top: 2px; }
     .money-table th, .money-table td {
-      border: 1px solid #94a3b8; padding: 6px 8px; text-align: right;
+      border: 1px solid #94a3b8; padding: 3px 6px; text-align: right;
     }
     .money-table th { background: #1f4d3a; color: #fff; }
     .money-table .due { background: #e8f5ef; font-weight: 800; }
     .words {
-      margin-top: 6px; padding: 7px 10px; border-radius: 8px;
+      margin-top: 4px; padding: 4px 7px; border-radius: 6px;
       background: #fffbeb; border: 1px solid #fcd34d; font-weight: 700;
     }
     .bank {
-      margin-top: 6px; padding: 8px 10px; border: 1px solid #cbd5e1; border-radius: 8px; background: #f8fafc;
+      margin-top: 4px; padding: 5px 7px; border: 1px solid #cbd5e1; border-radius: 6px; background: #f8fafc;
     }
+    .bank div { margin: 0 0 1px; }
+    .page-two { break-before: page; page-break-before: always; }
     .signs {
-      display: grid; grid-template-columns: 1fr 1fr; gap: 18px;
-      margin-top: 16px; page-break-inside: avoid;
+      display: grid; grid-template-columns: 1fr 1fr; gap: 14px;
+      margin-top: 8px; padding-top: 4px;
+      page-break-inside: avoid; break-inside: avoid;
     }
-    .sign { text-align: center; min-height: 90px; }
-    .sign .title { font-weight: 800; margin-bottom: 6px; }
-    .stamp { width: 70px; height: 70px; object-fit: contain; margin: 0 auto 4px; display: block; }
+    .sign { text-align: center; min-height: 0; }
+    .sign .title { font-weight: 800; margin-bottom: 3px; font-size: 11px; }
+    .stamp { width: 58px; height: 58px; object-fit: contain; margin: 0 auto 2px; display: block; }
     .stamp-box {
-      width: 70px; height: 70px; margin: 0 auto 4px; border: 2px dashed #94a3b8; border-radius: 999px;
+      width: 58px; height: 58px; margin: 0 auto 2px; border: 1.5px dashed #94a3b8; border-radius: 999px;
       display: flex; align-items: center; justify-content: center; text-align: center;
-      font-size: 9px; font-weight: 700; color: #475569; padding: 6px;
+      font-size: 8px; font-weight: 700; color: #475569; padding: 4px;
     }
     .sign-line {
-      margin-top: 28px; border-top: 1px solid #64748b; padding-top: 4px; font-size: 10px; color: #475569;
+      margin-top: 16px; border-top: 1px solid #64748b; padding-top: 3px; font-size: 9px; color: #475569;
     }
-    .page-break { break-before: page; page-break-before: always; }
     @media print {
+      @page { size: A4 portrait; margin: 10mm; }
+      html, body { margin: 0 !important; padding: 0 !important; }
+      header, footer { display: none !important; }
       a[href]::after { content: none !important; }
-      .sheet { width: auto; }
-      .section, .signs { break-inside: avoid; page-break-inside: avoid; }
+      .sheet { width: auto; max-width: none; }
+      .page-two { break-before: page; page-break-before: always; }
+      .signs { break-inside: avoid; page-break-inside: avoid; }
     }
   </style>
 </head>
@@ -178,16 +232,16 @@ export function buildContractPrintHtml(
       </div>
       <div class="license">
         <div><strong>ترخيص الدفاع المدني</strong></div>
-        <div>${escapeHtml(license)}</div>
-        ${company.commercial_register ? `<div>س.ت: ${escapeHtml(company.commercial_register)}</div>` : ''}
-        ${company.tax_number ? `<div>ضريبي: ${escapeHtml(company.tax_number)}</div>` : ''}
+        <div>${escapeHtml(displayOrDash(license))}</div>
+        ${party1Cr ? `<div>س.ت: ${escapeHtml(party1Cr)}</div>` : ''}
+        ${party1Tax ? `<div>ضريبي: ${escapeHtml(party1Tax)}</div>` : ''}
       </div>
     </div>
 
     <div class="meta">
       <div>رقم العقد: <strong>${escapeHtml(contract.contract_number)}</strong></div>
       <div>التاريخ: <strong>${escapeHtml(formatDate(contract.contract_date))}</strong></div>
-      <div>عرض السعر المرتبط: <strong>${escapeHtml(contract.quotation_number || '—')}</strong></div>
+      <div>عرض السعر المرتبط: <strong>${escapeHtml(displayOrDash(contract.quotation_number))}</strong></div>
       <div>الحالة: <strong>${escapeHtml(contract.status)}</strong></div>
     </div>
 
@@ -197,18 +251,18 @@ export function buildContractPrintHtml(
         <div class="card">
           <div class="t">الطرف الأول</div>
           <p>${escapeHtml(party1Name)}</p>
-          <p class="muted">س.ت: ${escapeHtml(contract.party1_cr || company.commercial_register || '—')}</p>
-          <p class="muted">الرقم الضريبي: ${escapeHtml(contract.party1_tax || company.tax_number || '—')}</p>
-          <p class="muted">الجوال: ${escapeHtml(contract.party1_phone || company.phone || '—')}</p>
-          <p class="muted">العنوان: ${escapeHtml(contract.party1_address || [company.address, company.city].filter(Boolean).join(' — ') || '—')}</p>
+          <p class="muted">س.ت: ${escapeHtml(displayOrDash(party1Cr))}</p>
+          <p class="muted">الرقم الضريبي: ${escapeHtml(displayOrDash(party1Tax))}</p>
+          <p class="muted">الجوال: ${escapeHtml(displayOrDash(party1Phone))}</p>
+          <p class="muted">العنوان: ${escapeHtml(displayOrDash(party1Address))}</p>
         </div>
         <div class="card">
           <div class="t">الطرف الثاني</div>
           <p>${escapeHtml(party2Name)}</p>
-          <p class="muted">س.ت: ${escapeHtml(party2Cr)}</p>
-          <p class="muted">الجوال: ${escapeHtml(party2Phone)}</p>
-          <p class="muted">العنوان: ${escapeHtml(party2Address)}</p>
-          <p class="muted">كود العميل: ${escapeHtml(client.client_code || '—')}</p>
+          <p class="muted">س.ت: ${escapeHtml(displayOrDash(party2Cr))}</p>
+          <p class="muted">الجوال: ${escapeHtml(displayOrDash(party2Phone))}</p>
+          <p class="muted">العنوان: ${escapeHtml(displayOrDash(party2Address))}</p>
+          <p class="muted">كود العميل: ${escapeHtml(displayOrDash(client.client_code))}</p>
         </div>
       </div>
     </div>
@@ -220,7 +274,7 @@ export function buildContractPrintHtml(
 
     <div class="section">
       <h3>ثالثاً: نطاق الأعمال</h3>
-      <ol class="scope">${scopeHtml}</ol>
+      <ol class="clean">${scopeHtml}</ol>
     </div>
 
     <div class="section">
@@ -241,38 +295,38 @@ export function buildContractPrintHtml(
       <div class="words">التفقيط: ${escapeHtml(words)}</div>
       <div class="bank">
         <div><strong>الحساب البنكي للتحويل:</strong></div>
-        <div>البنك: ${escapeHtml(contract.bank_name || company.bank_name || '—')}</div>
-        <div>رقم الحساب: ${escapeHtml(contract.bank_account || company.bank_account || '—')}</div>
-        <div>IBAN: <span dir="ltr">${escapeHtml(contract.iban || company.iban || '—')}</span></div>
-        <div>الرقم الضريبي: ${escapeHtml(contract.party1_tax || company.tax_number || '—')}</div>
+        <div>البنك: ${escapeHtml(displayOrDash(bankName))}</div>
+        <div>رقم الحساب: ${escapeHtml(displayOrDash(bankAccount))}</div>
+        <div>IBAN: <span dir="ltr">${escapeHtml(displayOrDash(iban))}</span></div>
+        <div>الرقم الضريبي: ${escapeHtml(displayOrDash(party1Tax))}</div>
+        <div>السجل التجاري: ${escapeHtml(displayOrDash(party1Cr))}</div>
+        <div>الجوال: ${escapeHtml(displayOrDash(party1Phone))}</div>
       </div>
     </div>
 
     <div class="section">
       <h3>سادساً: طريقة السداد</h3>
-      <p class="muted">نوع البيع: ${escapeHtml(contract.sales_payment_type || client.sales_payment_type || 'نقدي')}</p>
-      <ol class="scope">
-        ${paymentFirst ? `<li>${escapeHtml(paymentFirst)}</li>` : ''}
-        ${paymentSecond ? `<li>${escapeHtml(paymentSecond)}</li>` : ''}
-        ${paymentFinal ? `<li>${escapeHtml(paymentFinal)}</li>` : ''}
-      </ol>
-      ${paymentTerms ? `<p>${escapeHtml(paymentTerms)}</p>` : ''}
+      <p class="muted">نوع البيع: ${escapeHtml(displayOrDash(contract.sales_payment_type, client.sales_payment_type, 'نقدي'))}</p>
+      ${paymentItems ? `<ol class="clean">${paymentItems}</ol>` : '<p>حسب الاتفاق بين الطرفين.</p>'}
+      ${paymentTerms ? `<p>${escapeHtml(stripLeadingNumber(paymentTerms))}</p>` : ''}
     </div>
 
-    <div class="section page-break">
-      <h3>سابعاً: الشروط العامة</h3>
-      <ol class="terms">${termsHtml}</ol>
-    </div>
-
-    <div class="signs">
-      <div class="sign">
-        <div class="title">الطرف الثاني</div>
-        <div class="sign-line">التوقيع / الختم</div>
+    <div class="page-two">
+      <div class="section">
+        <h3>سابعاً: الشروط العامة</h3>
+        <ol class="clean terms">${termsHtml}</ol>
       </div>
-      <div class="sign">
-        <div class="title">الطرف الأول</div>
-        ${stamp}
-        <div class="sign-line">التوقيع والختم الرسمي</div>
+
+      <div class="signs">
+        <div class="sign">
+          <div class="title">الطرف الثاني</div>
+          <div class="sign-line">التوقيع / الختم</div>
+        </div>
+        <div class="sign">
+          <div class="title">الطرف الأول</div>
+          ${stamp}
+          <div class="sign-line">التوقيع والختم الرسمي</div>
+        </div>
       </div>
     </div>
   </div>
@@ -281,6 +335,7 @@ export function buildContractPrintHtml(
 }
 
 export async function printContract(contract: SalesContract, client: ClientRecord) {
+  // دائماً اسحب أحدث إعدادات الشركة وقت الطباعة (وليس نسخة قديمة فارغة من العقد)
   const company = await loadCompanyProfile();
   const html = buildContractPrintHtml(contract, client, company);
   const { openDocumentPreview } = await import('@/lib/print/document-preview');

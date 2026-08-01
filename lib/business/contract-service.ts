@@ -33,12 +33,12 @@ export function buildServiceScopeFromQuotation(client: ClientRecord): string {
   }
 
   return services
-    .map((id, index) => {
+    .map((id) => {
       const label = getQuotationServiceLabel(id);
       if (id === 'site_visits') {
-        return `${index + 1}. ${label} (${Math.max(1, Number(client.quotation_visits_count || 1))} زيارة)`;
+        return `${label} (${Math.max(1, Number(client.quotation_visits_count || 1))} زيارة)`;
       }
-      return `${index + 1}. ${label}`;
+      return label;
     })
     .join('\n');
 }
