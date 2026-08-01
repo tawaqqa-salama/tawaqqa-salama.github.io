@@ -283,13 +283,10 @@ export function buildContractPrintHtml(
 export async function printContract(contract: SalesContract, client: ClientRecord) {
   const company = await loadCompanyProfile();
   const html = buildContractPrintHtml(contract, client, company);
-  const w = window.open('', '_blank', 'width=900,height=700');
-  if (!w) {
-    alert('تعذّر فتح نافذة الطباعة. اسمح بالنوافذ المنبثقة ثم أعد المحاولة.');
-    return;
-  }
-  w.document.write(html);
-  w.document.close();
-  w.focus();
-  setTimeout(() => w.print(), 300);
+  const { openDocumentPreview } = await import('@/lib/print/document-preview');
+  openDocumentPreview({
+    title: `عقد ${contract.contract_number}`,
+    html,
+    fileName: contract.contract_number,
+  });
 }

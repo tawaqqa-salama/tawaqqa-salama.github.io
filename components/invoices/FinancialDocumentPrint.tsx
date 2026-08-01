@@ -449,33 +449,20 @@ export function buildPrintHtml(
 </html>`;
 }
 
-async function openPrintWindow(html: string) {
-  const printWindow = window.open('', '_blank', 'width=900,height=700');
-  if (!printWindow) {
-    alert('تعذّر فتح نافذة الطباعة. اسمح بالنوافذ المنبثقة ثم أعد المحاولة.');
-    return;
-  }
-  printWindow.document.write(html);
-  printWindow.document.close();
-  printWindow.focus();
-  setTimeout(() => {
-    printWindow.print();
-  }, 300);
-}
-
 export async function printFinancialDocument(document: FinancialDocument) {
   const company = await loadCompanyProfile();
-  await openPrintWindow(buildPrintHtml(document, company));
+  const html = buildPrintHtml(document, company);
+  const { openDocumentPreview } = await import('@/lib/print/document-preview');
+  openDocumentPreview({
+    title: document.documentType === 'quotation' ? `عرض سعر ${document.documentNumber}` : `فاتورة ${document.documentNumber}`,
+    html,
+    fileName: document.documentNumber,
+  });
 }
 
 export async function exportFinancialDocument(document: FinancialDocument) {
   const company = await loadCompanyProfile();
   const html = buildPrintHtml(document, company);
-  const blob = new Blob([html], { type: 'text/html;charset=utf-8' });
-  const url = URL.createObjectURL(blob);
-  const link = window.document.createElement('a');
-  link.href = url;
-  link.download = `${document.documentNumber}.html`;
-  link.click();
-  URL.revokeObjectURL(url);
+  const { downloadHtmlDocument } = await import('@/lib/print/document-preview');
+  downloadHtmlDocument(html, document.documentNumber);
 }

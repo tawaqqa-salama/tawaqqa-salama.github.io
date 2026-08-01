@@ -6,6 +6,7 @@ import { ACTIVITY_RULES } from '@/lib/constants/clients';
 import { shouldShowInProjects } from '@/lib/business/pipeline';
 import { getProjectReportProgress, parseProjectEngineeringData } from '@/lib/business/project-reports';
 import ProjectReportModal from '@/components/projects/ProjectReportModal';
+import ResponsiveTable from '@/components/ui/ResponsiveTable';
 import type { ClientRecord } from '@/lib/types/client';
 
 export default function ProjectsPage() {
@@ -35,7 +36,7 @@ export default function ProjectsPage() {
         كل مشروع يحتوي: معلومات المخطط، BOQ، الجدول الزمني، الزيارات الميدانية (حسب العرض)، الملاحظات الفنية، تسليم الدراسة، التقرير النهائي، وشهادة إنهاء الأعمال.
       </div>
 
-      <div className="bg-white rounded-xl border shadow-sm overflow-hidden">
+      <ResponsiveTable className="bg-white rounded-xl border shadow-sm">
         <table className="w-full text-right text-sm">
           <thead className="bg-gray-50 border-b text-gray-600">
             <tr>
@@ -79,7 +80,7 @@ export default function ProjectsPage() {
                     </td>
                     <td className="p-4">{project.assigned_engineer || '—'}</td>
                     <td className="p-4">
-                      <button onClick={() => setSelected(project)} className="px-3 py-1.5 bg-indigo-600 text-white rounded-lg text-xs font-semibold">
+                      <button onClick={() => setSelected(project)} className="touch-target px-3 bg-indigo-600 text-white rounded-lg text-xs font-semibold">
                         فتح ملف المشروع
                       </button>
                     </td>
@@ -89,7 +90,7 @@ export default function ProjectsPage() {
             )}
           </tbody>
         </table>
-      </div>
+      </ResponsiveTable>
 
       <ProjectReportModal client={selected} onClose={() => setSelected(null)} onUpdated={fetchProjects} />
     </div>

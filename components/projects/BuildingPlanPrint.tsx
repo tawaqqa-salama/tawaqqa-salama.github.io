@@ -454,22 +454,19 @@ export function buildBuildingPlanPrintHtml(
 export function printBuildingPlanReport(client: ClientRecord, report: BuildingPlanReport) {
   const general = getBuildingPlanGeneralInfo(client);
   const html = buildBuildingPlanPrintHtml(client, report, general);
-  const w = window.open('', '_blank', 'width=900,height=1200');
-  if (!w) return;
-  w.document.write(html);
-  w.document.close();
-  w.focus();
-  setTimeout(() => w.print(), 250);
+  void import('@/lib/print/document-preview').then(({ openDocumentPreview }) => {
+    openDocumentPreview({
+      title: `تقرير معلومات المخطط — ${client.client_code}`,
+      html,
+      fileName: `building-plan-${client.client_code}`,
+    });
+  });
 }
 
 export function exportBuildingPlanReport(client: ClientRecord, report: BuildingPlanReport) {
   const general = getBuildingPlanGeneralInfo(client);
   const html = buildBuildingPlanPrintHtml(client, report, general);
-  const blob = new Blob([html], { type: 'text/html;charset=utf-8' });
-  const url = URL.createObjectURL(blob);
-  const link = document.createElement('a');
-  link.href = url;
-  link.download = `building-plan-${client.client_code}.html`;
-  link.click();
-  URL.revokeObjectURL(url);
+  void import('@/lib/print/document-preview').then(({ downloadHtmlDocument }) => {
+    downloadHtmlDocument(html, `building-plan-${client.client_code}`);
+  });
 }

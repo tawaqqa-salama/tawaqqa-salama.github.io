@@ -104,7 +104,7 @@ export default function AddClientModal({
   const displayError = localError || errorMessage;
 
   return (
-    <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4 overflow-y-auto">
+    <div className="fixed inset-0 bg-black/50 flex items-end sm:items-center justify-center z-50 p-0 sm:p-4 overflow-y-auto">
       <div className="bg-white rounded-2xl p-6 w-full max-w-2xl shadow-xl max-h-[90vh] overflow-y-auto my-8">
         <h2 className="text-xl font-bold text-gray-800 mb-2">إضافة عميل ونشاط جديد</h2>
         <p className="text-xs text-gray-500 mb-6">* الحقول التي لا تحمل ملاحظة (اختياري) هي حقول إلزامية.</p>

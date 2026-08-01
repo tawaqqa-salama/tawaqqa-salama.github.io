@@ -7,6 +7,7 @@ import { shouldShowInMarketing } from '@/lib/business/pipeline';
 import AddLeadModal from '@/components/marketing/AddLeadModal';
 import FollowUpModal from '@/components/marketing/FollowUpModal';
 import PipelineStatusBoard from '@/components/marketing/PipelineStatusBoard';
+import ResponsiveTable from '@/components/ui/ResponsiveTable';
 import type { ClientFollowUp } from '@/lib/types/sales';
 import type { ClientRecord } from '@/lib/types/client';
 
@@ -133,8 +134,8 @@ export default function MarketingPage() {
       </div>
 
       {tab === 'leads' && (
-        <div className="bg-white rounded-xl border shadow-sm overflow-hidden">
-          <table className="w-full text-right text-sm">
+        <ResponsiveTable className="bg-white rounded-xl border shadow-sm">
+          <table className="w-full text-right text-sm table-as-cards">
             <thead className="bg-gray-50 border-b text-gray-600">
               <tr>
                 <th className="p-4">العميل</th>
@@ -152,24 +153,24 @@ export default function MarketingPage() {
               ) : (
                 leads.map((lead) => (
                   <tr key={lead.id} className="border-b hover:bg-gray-50">
-                    <td className="p-4 font-semibold">{lead.owner_name || lead.name}</td>
-                    <td className="p-4 font-mono">{lead.phone}</td>
-                    <td className="p-4">{lead.lead_status || 'مهتم'}</td>
-                    <td className="p-4 text-gray-500">{lead.last_contact_date || '—'}</td>
-                    <td className="p-4 flex flex-wrap gap-2">
-                      <button onClick={() => setFollowUpClient(lead)} className="px-2 py-1 bg-gray-100 rounded-lg text-xs">متابعة</button>
-                      <button onClick={() => convertToSales(lead)} className="px-2 py-1 bg-blue-600 text-white rounded-lg text-xs">→ مبيعات</button>
+                    <td className="p-4 font-semibold" data-label="العميل">{lead.owner_name || lead.name}</td>
+                    <td className="p-4 font-mono" data-label="الجوال">{lead.phone}</td>
+                    <td className="p-4" data-label="حالة الاهتمام">{lead.lead_status || 'مهتم'}</td>
+                    <td className="p-4 text-gray-500" data-label="آخر تواصل">{lead.last_contact_date || '—'}</td>
+                    <td className="p-4 flex flex-wrap gap-2" data-label="إجراء">
+                      <button onClick={() => setFollowUpClient(lead)} className="touch-target px-3 bg-gray-100 rounded-lg text-xs">متابعة</button>
+                      <button onClick={() => convertToSales(lead)} className="touch-target px-3 bg-blue-600 text-white rounded-lg text-xs">→ مبيعات</button>
                     </td>
                   </tr>
                 ))
               )}
             </tbody>
           </table>
-        </div>
+        </ResponsiveTable>
       )}
 
       {tab === 'followups' && (
-        <div className="bg-white rounded-xl border shadow-sm overflow-hidden">
+        <ResponsiveTable className="bg-white rounded-xl border shadow-sm">
           <table className="w-full text-right text-sm">
             <thead className="bg-gray-50 border-b text-xs text-gray-500">
               <tr><th className="p-3">العميل</th><th className="p-3">التاريخ</th><th className="p-3">الطريقة</th><th className="p-3">ملاحظات</th><th className="p-3">الحالة</th></tr>
@@ -190,7 +191,7 @@ export default function MarketingPage() {
               )}
             </tbody>
           </table>
-        </div>
+        </ResponsiveTable>
       )}
 
       {tab === 'pipeline' && <PipelineStatusBoard clients={allClients} />}
