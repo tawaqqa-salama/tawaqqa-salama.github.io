@@ -34,6 +34,8 @@ export interface ClientRecord {
   district?: string | null;
   street?: string | null;
   plot_number?: string | null;
+  /** السجل التجاري للعميل / المنشأة (الطرف الثاني في العقود) */
+  commercial_register?: string | null;
   business_name?: string | null;
   activity_type?: string | null;
   land_area?: number | null;

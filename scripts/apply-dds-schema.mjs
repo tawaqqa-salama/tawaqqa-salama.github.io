@@ -28,6 +28,7 @@ const files = [
   '016_quotation_services_pricing.sql',
   '017_company_quotation_profile.sql',
   '018_zatca_einvoicing.sql',
+  '019_auto_contracts.sql',
 ];
 
 if (!process.env.DATABASE_URL) {

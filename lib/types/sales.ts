@@ -40,6 +40,30 @@ export interface SalesContract {
   total_amount: number;
   status: ContractStatus;
   created_at?: string;
+  auto_generated?: boolean | null;
+  amount_words?: string | null;
+  duration_days?: number | null;
+  duration_text?: string | null;
+  preamble?: string | null;
+  party1_name?: string | null;
+  party1_cr?: string | null;
+  party1_tax?: string | null;
+  party1_phone?: string | null;
+  party1_address?: string | null;
+  party1_license?: string | null;
+  party2_name?: string | null;
+  party2_cr?: string | null;
+  party2_address?: string | null;
+  party2_phone?: string | null;
+  bank_name?: string | null;
+  bank_account?: string | null;
+  iban?: string | null;
+  payment_first?: string | null;
+  payment_second?: string | null;
+  payment_final?: string | null;
+  payment_terms?: string | null;
+  sales_payment_type?: SalesPaymentType | null;
+  quotation_services?: string[] | null;
 }
 
 export interface SalesReturn {

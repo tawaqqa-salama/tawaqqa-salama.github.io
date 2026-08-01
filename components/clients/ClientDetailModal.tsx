@@ -52,6 +52,7 @@ import {
 import { loadCompanyProfile } from '@/lib/company-profile';
 import PrintQuotationModal from '@/components/sales/PrintQuotationModal';
 import { processZatcaOnQuotationApproval } from '@/lib/zatca/submit';
+import { processAutoContractOnApproval } from '@/lib/business/contract-service';
 import type { ClientRecord, DepartmentMode, FloorLevel, InspectionChecklistItem } from '@/lib/types/client';
 
 type TabId = 'basic' | 'finance' | 'engineering' | 'reports';
@@ -130,6 +131,7 @@ export default function ClientDetailModal({
   const [district, setDistrict] = useState('');
   const [street, setStreet] = useState('');
   const [plotNumber, setPlotNumber] = useState('');
+  const [commercialRegister, setCommercialRegister] = useState('');
   const [nationalAddress, setNationalAddress] = useState('');
   const [businessName, setBusinessName] = useState('');
   const [activityType, setActivityType] = useState('');
@@ -180,6 +182,7 @@ export default function ClientDetailModal({
     setDistrict(client.district || '');
     setStreet(client.street || '');
     setPlotNumber(client.plot_number || '');
+    setCommercialRegister(client.commercial_register || '');
     setNationalAddress(client.national_address || '');
     setBusinessName(client.business_name || '');
     setActivityType(client.activity_type || '');
@@ -267,9 +270,23 @@ export default function ClientDetailModal({
         message += ` — تم نقل المعاملة تلقائياً إلى: ${getPipelineStageLabel(newStage)}`;
       }
 
+      const nextClient = { ...client, ...merged } as ClientRecord;
+      const financiallyApprovedNow =
+        ['تم السداد', 'معتمد مالياً'].includes(String(finalPayload.financial_status || financialStatus));
+
+      if ((quotationApprovedNow || financiallyApprovedNow) && Number(merged.quotation_amount || 0) > 0) {
+        try {
+          const contractResult = await processAutoContractOnApproval(client, nextClient);
+          if (contractResult.messages.length) message += ` — ${contractResult.messages.join(' ')}`;
+          if (contractResult.error) message += ` — العقد: ${contractResult.error}`;
+        } catch (contractError) {
+          message += ` — العقد: ${contractError instanceof Error ? contractError.message : 'تعذر إنشاء العقد'}`;
+        }
+      }
+
       if (quotationApprovedNow && Number(merged.quotation_amount || 0) > 0) {
         try {
-          const zatca = await processZatcaOnQuotationApproval({ ...client, ...merged } as ClientRecord);
+          const zatca = await processZatcaOnQuotationApproval(nextClient);
           if (zatca.messages.length) message += ` — ${zatca.messages.join(' ')}`;
           if (zatca.error) message += ` — ZATCA: ${zatca.error}`;
         } catch (zatcaError) {
@@ -457,6 +474,7 @@ export default function ClientDetailModal({
         district,
         street: street.trim() || null,
         plot_number: plotNumber.trim() || null,
+        commercial_register: commercialRegister.trim() || null,
         national_address: nationalAddress.trim() || null,
         business_name: businessName.trim() || ownerName.trim(),
         name: businessName.trim() || ownerName.trim(),
@@ -608,6 +626,15 @@ export default function ClientDetailModal({
                   <input
                     value={plotNumber}
                     onChange={(e) => setPlotNumber(e.target.value)}
+                    className="w-full p-2.5 border rounded-xl text-sm"
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs font-semibold text-gray-700 mb-1">السجل التجاري (للعقود)</label>
+                  <input
+                    value={commercialRegister}
+                    onChange={(e) => setCommercialRegister(e.target.value)}
+                    dir="ltr"
                     className="w-full p-2.5 border rounded-xl text-sm"
                   />
                 </div>
