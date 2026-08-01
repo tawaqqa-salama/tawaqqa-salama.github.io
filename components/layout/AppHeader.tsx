@@ -106,14 +106,29 @@ export default function AppHeader() {
   return (
     <>
       <header className="bg-white border-b border-[var(--erp-border)] px-3 sm:px-5 py-2.5 flex items-center justify-between gap-2 shrink-0 z-[55] relative">
-        <div className="flex items-center gap-2 min-w-0">
-          {/* RTL: يمين ← يسار = ☰ ثم الشبكة ثم البيت ثم العنوان */}
-          <div className="flex flex-row items-center gap-2 shrink-0" dir="rtl">
+        <div className="flex flex-row items-center justify-start gap-2 min-w-0">
+          {/*
+            ترتيب بصري من اليمين لليسار (RTL):
+            1) ☰  2) الشبكة  3) البيت
+          */}
+          <nav
+            aria-label="أزرار التنقل"
+            className="header-nav-controls shrink-0"
+            dir="rtl"
+            style={{
+              display: 'flex',
+              flexDirection: 'row',
+              justifyContent: 'flex-start',
+              alignItems: 'center',
+              gap: '8px',
+            }}
+          >
             {hasSubNav ? (
               <button
                 type="button"
                 onClick={toggleSubNav}
                 className={`${navBtnBase} ${subNavOpen ? navBtnActive : navBtnIdle}`}
+                style={{ order: 1 }}
                 title={subNavOpen ? 'إخفاء قائمة القسم' : 'إظهار قائمة القسم'}
                 aria-label={subNavOpen ? 'إخفاء القائمة الفرعية' : 'إظهار القائمة الفرعية'}
                 aria-expanded={subNavOpen}
@@ -127,6 +142,7 @@ export default function AppHeader() {
               type="button"
               onClick={() => setSwitcherOpen(true)}
               className={`${navBtnBase} ${switcherOpen ? navBtnActive : navBtnIdle}`}
+              style={{ order: 2 }}
               title="قائمة الأقسام"
               aria-label="فتح قائمة الأقسام"
               aria-haspopup="dialog"
@@ -138,12 +154,13 @@ export default function AppHeader() {
             <Link
               href={LAUNCHER_HREF}
               className={`${navBtnBase} ${isLauncher ? navBtnActive : navBtnIdle}`}
+              style={{ order: 3 }}
               title="الصفحة الرئيسية للأنظمة"
               aria-label="الصفحة الرئيسية للأنظمة"
             >
               <HomeIcon />
             </Link>
-          </div>
+          </nav>
 
           <div className="min-w-0 ms-1 sm:ms-2">
             <p className="text-sm sm:text-base font-bold text-[var(--erp-text)] truncate leading-tight">

@@ -17,6 +17,7 @@ import { clientToFinancialDocument } from '@/lib/invoices/document-mapper';
 import { formatCurrency } from '@/lib/format/currency';
 import { parseLocalizedInteger, parseLocalizedNumber } from '@/lib/validation/client';
 import ResponsiveTable from '@/components/ui/ResponsiveTable';
+import RowActionsMenu from '@/components/ui/RowActionsMenu';
 import ModuleSubNavSlot from '@/components/layout/ModuleSubNavSlot';
 import { insertClientSafe, mergeLocalClientOverrides } from '@/lib/supabase/safe-client-write';
 import type { ClientFormData, ClientRecord, FinancialDocument } from '@/lib/types/client';
@@ -155,34 +156,37 @@ export default function SalesPage() {
         <button onClick={() => setIsAddOpen(true)} className="px-4 py-2 bg-blue-600 text-white rounded-lg text-sm font-semibold">+ عميل / عرض</button>
       </div>
 
-      <div className="bg-white border rounded-xl p-3 flex flex-col sm:flex-row sm:items-end gap-3">
-        <label className="block text-sm flex-1">
-          <span className="text-xs font-semibold text-gray-600 mb-1 block">من تاريخ</span>
-          <input
-            type="date"
-            value={dateFrom}
-            onChange={(e) => setDateFrom(e.target.value)}
-            className="w-full border rounded-lg px-3 py-2 text-sm"
-          />
-        </label>
-        <label className="block text-sm flex-1">
-          <span className="text-xs font-semibold text-gray-600 mb-1 block">إلى تاريخ</span>
-          <input
-            type="date"
-            value={dateTo}
-            onChange={(e) => setDateTo(e.target.value)}
-            className="w-full border rounded-lg px-3 py-2 text-sm"
-          />
-        </label>
-        {(dateFrom || dateTo) && (
-          <button
-            type="button"
-            onClick={() => { setDateFrom(''); setDateTo(''); }}
-            className="px-3 py-2 text-sm rounded-lg border bg-gray-50"
-          >
-            مسح الفترة
-          </button>
-        )}
+      <div className="bg-white border border-[#e5e7eb] rounded-xl p-3">
+        <div className="date-range-bar">
+          <label className="date-field">
+            <span>من تاريخ</span>
+            <input
+              type="date"
+              value={dateFrom}
+              onChange={(e) => setDateFrom(e.target.value)}
+            />
+          </label>
+          <label className="date-field">
+            <span>إلى تاريخ</span>
+            <input
+              type="date"
+              value={dateTo}
+              onChange={(e) => setDateTo(e.target.value)}
+            />
+          </label>
+          {(dateFrom || dateTo) && (
+            <button
+              type="button"
+              onClick={() => {
+                setDateFrom('');
+                setDateTo('');
+              }}
+              className="date-clear"
+            >
+              مسح الفترة
+            </button>
+          )}
+        </div>
       </div>
 
       <ModuleSubNavSlot label="تبويبات المبيعات">
@@ -216,14 +220,20 @@ export default function SalesPage() {
               ) : clients.map((c) => (
                 <tr key={c.id} className="border-b hover:bg-gray-50">
                   <td className="p-4" data-label="العميل"><div className="font-semibold">{c.business_name}</div><div className="text-xs text-gray-400">{ACTIVITY_RULES[c.activity_type || '']?.label}</div></td>
-                  <td className="p-4 font-mono text-blue-600" data-label="عرض السعر">{c.quotation_number || '—'}</td>
+                  <td className="p-4 text-blue-600" data-label="عرض السعر">
+                    <span className="doc-number font-mono">{c.quotation_number || '—'}</span>
+                  </td>
                   <td className="p-4" data-label="الحالة">{c.quotation_status}</td>
                   <td className="p-4" data-label="نوع البيع">{c.sales_payment_type || 'نقدي'}</td>
-                  <td className="p-4 flex flex-wrap gap-1" data-label="إجراء">
-                    <button onClick={() => setSelected(c)} className="touch-target text-xs px-3 bg-blue-50 text-blue-700 rounded-lg">إدارة</button>
-                    <button onClick={() => setPrintClient(c)} className="touch-target text-xs px-3 bg-indigo-50 text-indigo-700 rounded-lg">طباعة عرض</button>
-                    <button onClick={() => archiveDocument(c, 'quotation')} className="touch-target text-xs px-3 bg-gray-100 rounded-lg">أرشفة</button>
-                    <button onClick={() => setContractClient(c)} className="touch-target text-xs px-3 bg-emerald-50 text-emerald-700 rounded-lg">عقد</button>
+                  <td className="p-4" data-label="إجراء">
+                    <RowActionsMenu
+                      items={[
+                        { id: 'manage', label: 'إدارة', onClick: () => setSelected(c), tone: 'primary' },
+                        { id: 'print', label: 'طباعة عرض', onClick: () => setPrintClient(c), tone: 'primary' },
+                        { id: 'archive', label: 'أرشفة', onClick: () => void archiveDocument(c, 'quotation') },
+                        { id: 'contract', label: 'عقد', onClick: () => setContractClient(c), tone: 'success' },
+                      ]}
+                    />
                   </td>
                 </tr>
               ))}
@@ -256,7 +266,7 @@ export default function SalesPage() {
                 } : null;
                 return (
                   <tr key={doc.id} className="border-b">
-                    <td className="p-3 font-mono">{doc.doc_number}</td>
+                    <td className="p-3"><span className="doc-number font-mono">{doc.doc_number}</span></td>
                     <td className="p-3">{doc.doc_type === 'quotation' ? 'عرض سعر' : 'فاتورة'}</td>
                     <td className="p-3 font-mono">{formatCurrency(doc.total_amount)}</td>
                     <td className="p-3">{doc.status}</td>
@@ -282,8 +292,8 @@ export default function SalesPage() {
                 const c = clientMap.get(ct.client_id);
                 return (
                   <tr key={ct.id} className="border-b">
-                    <td className="p-3 font-mono">{ct.contract_number}</td>
-                    <td className="p-3">{ct.quotation_number}</td>
+                    <td className="p-3"><span className="doc-number font-mono">{ct.contract_number}</span></td>
+                    <td className="p-3"><span className="doc-number font-mono">{ct.quotation_number || '—'}</span></td>
                     <td className="p-3 font-mono">{formatCurrency(ct.total_amount)}</td>
                     <td className="p-3">{ct.status}</td>
                     <td className="p-3">{c && <button onClick={() => void printContract(ct, c)} className="touch-target text-xs text-blue-600 px-2">طباعة</button>}</td>
