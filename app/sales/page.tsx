@@ -17,6 +17,7 @@ import { clientToFinancialDocument } from '@/lib/invoices/document-mapper';
 import { formatCurrency } from '@/lib/format/currency';
 import { parseLocalizedInteger, parseLocalizedNumber } from '@/lib/validation/client';
 import ResponsiveTable from '@/components/ui/ResponsiveTable';
+import ModuleSubNavSlot from '@/components/layout/ModuleSubNavSlot';
 import { insertClientSafe, mergeLocalClientOverrides } from '@/lib/supabase/safe-client-write';
 import type { ClientFormData, ClientRecord, FinancialDocument } from '@/lib/types/client';
 import type { SalesContract, SalesDocument, SalesReturn } from '@/lib/types/sales';
@@ -184,17 +185,26 @@ export default function SalesPage() {
         )}
       </div>
 
-      <div className="flex flex-wrap gap-2">
-        {([
-          { id: 'clients' as const, label: 'العملاء والعروض' },
-          { id: 'documents' as const, label: 'أرشيف المستندات' },
-          { id: 'credit' as const, label: 'الآجل والمرتجعات' },
-          { id: 'contracts' as const, label: 'العقود' },
-          { id: 'accounts' as const, label: 'حساب العميل الشامل' },
-        ]).map((t) => (
-          <button key={t.id} onClick={() => setTab(t.id)} className={`px-3 py-2 rounded-lg text-sm font-semibold ${tab === t.id ? 'bg-blue-600 text-white' : 'bg-white border'}`}>{t.label}</button>
-        ))}
-      </div>
+      <ModuleSubNavSlot label="تبويبات المبيعات">
+        <div id="module-subnav" className="flex flex-wrap gap-2">
+          {([
+            { id: 'clients' as const, label: 'العملاء والعروض' },
+            { id: 'documents' as const, label: 'أرشيف المستندات' },
+            { id: 'credit' as const, label: 'الآجل والمرتجعات' },
+            { id: 'contracts' as const, label: 'العقود' },
+            { id: 'accounts' as const, label: 'حساب العميل الشامل' },
+          ]).map((t) => (
+            <button
+              key={t.id}
+              type="button"
+              onClick={() => setTab(t.id)}
+              className={`px-3 py-2 rounded-lg text-sm font-semibold ${tab === t.id ? 'bg-blue-600 text-white' : 'bg-white border'}`}
+            >
+              {t.label}
+            </button>
+          ))}
+        </div>
+      </ModuleSubNavSlot>
 
       {tab === 'clients' && (
         <ResponsiveTable className="bg-white rounded-xl border">

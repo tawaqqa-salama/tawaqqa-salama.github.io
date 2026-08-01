@@ -7,6 +7,7 @@ import { FINANCE_NAV } from '@/lib/constants/accounting';
 import { SIDEBAR_NAV } from '@/lib/constants/navigation';
 import { useAuth } from '@/lib/auth/AuthProvider';
 import AppSwitcher from '@/components/layout/AppSwitcher';
+import { useModuleSubNav } from '@/components/layout/ModuleSubNavContext';
 
 const LAUNCHER_HREF = '/me';
 
@@ -75,10 +76,21 @@ function AppsGridIcon() {
   );
 }
 
+function HamburgerIcon() {
+  return (
+    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+      <path d="M4 7h16" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
+      <path d="M4 12h16" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
+      <path d="M4 17h16" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
+    </svg>
+  );
+}
+
 export default function AppHeader() {
   const pathname = usePathname();
   const section = resolveSection(pathname);
   const { session, logout } = useAuth();
+  const { hasSubNav, open: subNavOpen, toggleSubNav, isMobile } = useModuleSubNav();
   const [switcherOpen, setSwitcherOpen] = useState(false);
   const closeSwitcher = useCallback(() => setSwitcherOpen(false), []);
   const initial = (session?.fullName || 'م').trim().charAt(0);
@@ -86,7 +98,7 @@ export default function AppHeader() {
 
   return (
     <>
-      <header className="bg-white border-b border-[var(--erp-border)] px-3 sm:px-5 py-2.5 flex items-center justify-between gap-2 shrink-0 z-30">
+      <header className="bg-white border-b border-[var(--erp-border)] px-3 sm:px-5 py-2.5 flex items-center justify-between gap-2 shrink-0 z-[55] relative">
         <div className="flex items-center gap-1.5 sm:gap-2 min-w-0">
           <Link
             href={LAUNCHER_HREF}
@@ -123,6 +135,27 @@ export default function AppHeader() {
             <AppsGridIcon />
           </button>
 
+          {hasSubNav ? (
+            <button
+              type="button"
+              onClick={toggleSubNav}
+              className={`
+                touch-target rounded-xl border transition
+                ${
+                  subNavOpen
+                    ? 'border-[var(--erp-primary)] bg-[#eef6f1] text-[var(--erp-primary)]'
+                    : 'border-[var(--erp-border)] bg-white text-[var(--erp-text)] hover:border-[var(--erp-primary)]/40 hover:text-[var(--erp-primary)]'
+                }
+              `}
+              title={subNavOpen ? 'إخفاء قائمة القسم' : 'إظهار قائمة القسم'}
+              aria-label={subNavOpen ? 'إخفاء القائمة الفرعية' : 'إظهار القائمة الفرعية'}
+              aria-expanded={subNavOpen}
+              aria-controls="module-subnav"
+            >
+              <HamburgerIcon />
+            </button>
+          ) : null}
+
           <div className="min-w-0 ms-1 sm:ms-2">
             <p className="text-sm sm:text-base font-bold text-[var(--erp-text)] truncate leading-tight">
               {section.title}
@@ -130,6 +163,14 @@ export default function AppHeader() {
             {section.subtitle ? (
               <p className="text-[11px] sm:text-xs text-[var(--erp-muted)] truncate mt-0.5">
                 {section.subtitle}
+              </p>
+            ) : hasSubNav ? (
+              <p className="text-[11px] sm:text-xs text-[var(--erp-muted)] truncate mt-0.5 hidden sm:block">
+                {subNavOpen
+                  ? isMobile
+                    ? 'القائمة الفرعية مفتوحة'
+                    : 'التبويبات ظاهرة — اضغط القائمة لإخفائها'
+                  : 'التبويبات مخفية — اضغط القائمة لإظهارها'}
               </p>
             ) : (
               <p className="text-[11px] sm:text-xs text-[var(--erp-muted)] truncate mt-0.5 hidden sm:block">

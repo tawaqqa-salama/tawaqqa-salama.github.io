@@ -8,6 +8,7 @@ import AddLeadModal from '@/components/marketing/AddLeadModal';
 import FollowUpModal from '@/components/marketing/FollowUpModal';
 import PipelineStatusBoard from '@/components/marketing/PipelineStatusBoard';
 import ResponsiveTable from '@/components/ui/ResponsiveTable';
+import ModuleSubNavSlot from '@/components/layout/ModuleSubNavSlot';
 import type { ClientFollowUp } from '@/lib/types/sales';
 import type { ClientRecord } from '@/lib/types/client';
 
@@ -121,17 +122,24 @@ export default function MarketingPage() {
         </button>
       </div>
 
-      <div className="flex flex-wrap gap-2">
-        {([
-          { id: 'leads' as const, label: 'Leads' },
-          { id: 'followups' as const, label: 'متابعات التواصل' },
-          { id: 'pipeline' as const, label: 'لوحة حالة العميل' },
-        ]).map((t) => (
-          <button key={t.id} onClick={() => setTab(t.id)} className={`px-4 py-2 rounded-lg text-sm font-semibold ${tab === t.id ? 'bg-purple-600 text-white' : 'bg-white border'}`}>
-            {t.label}
-          </button>
-        ))}
-      </div>
+      <ModuleSubNavSlot label="تبويبات التسويق">
+        <div id="module-subnav" className="flex flex-wrap gap-2">
+          {([
+            { id: 'leads' as const, label: 'Leads' },
+            { id: 'followups' as const, label: 'متابعات التواصل' },
+            { id: 'pipeline' as const, label: 'لوحة حالة العميل' },
+          ]).map((t) => (
+            <button
+              key={t.id}
+              type="button"
+              onClick={() => setTab(t.id)}
+              className={`px-4 py-2 rounded-lg text-sm font-semibold ${tab === t.id ? 'bg-purple-600 text-white' : 'bg-white border'}`}
+            >
+              {t.label}
+            </button>
+          ))}
+        </div>
+      </ModuleSubNavSlot>
 
       {tab === 'leads' && (
         <ResponsiveTable className="bg-white rounded-xl border shadow-sm">
