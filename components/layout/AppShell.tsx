@@ -2,11 +2,9 @@
 
 import { useEffect } from 'react';
 import { usePathname, useRouter } from 'next/navigation';
-import AppSidebar from '@/components/layout/AppSidebar';
 import AppHeader from '@/components/layout/AppHeader';
 import SupabaseConfigBanner from '@/components/ui/SupabaseConfigBanner';
 import DocumentPreviewSheet from '@/components/ui/DocumentPreviewSheet';
-import { MobileNavProvider } from '@/components/layout/MobileNavContext';
 import { useAuth } from '@/lib/auth/AuthProvider';
 import type { DepartmentId } from '@/lib/constants/navigation';
 
@@ -83,16 +81,13 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
   }
 
   return (
-    <MobileNavProvider>
-      <AppSidebar />
-      <div className="flex-1 flex flex-col min-w-0 overflow-hidden">
-        <AppHeader />
-        <SupabaseConfigBanner />
-        <main className="flex-1 p-3 sm:p-5 md:p-6 overflow-y-auto overflow-x-hidden">
-          {children}
-        </main>
-      </div>
+    <div className="flex-1 flex flex-col min-w-0 w-full h-full overflow-hidden">
+      <AppHeader />
+      <SupabaseConfigBanner />
+      <main className="flex-1 p-3 sm:p-5 md:p-6 overflow-y-auto overflow-x-hidden w-full max-w-none">
+        {children}
+      </main>
       <DocumentPreviewSheet />
-    </MobileNavProvider>
+    </div>
   );
 }

@@ -19,7 +19,7 @@ export type DepartmentId =
   | 'projects'
   | 'settings';
 
-/** Main sidebar — exactly 7 departments as requested. */
+/** Module launcher / app switcher — exactly 7 departments. */
 export const SIDEBAR_NAV: {
   href: string;
   label: string;

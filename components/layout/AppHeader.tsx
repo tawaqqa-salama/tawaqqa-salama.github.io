@@ -1,120 +1,162 @@
 'use client';
 
+import { useCallback, useState } from 'react';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { FINANCE_NAV } from '@/lib/constants/accounting';
 import { SIDEBAR_NAV } from '@/lib/constants/navigation';
 import { useAuth } from '@/lib/auth/AuthProvider';
-import { useMobileNav } from '@/components/layout/MobileNavContext';
+import AppSwitcher from '@/components/layout/AppSwitcher';
 
-const ROUTE_LABELS: Record<string, string> = {
-  '/': 'الأنظمة',
-  '/me': 'صفحتي',
-  '/u': 'صفحة موظف',
-  '/login': 'تسجيل الدخول',
-  '/marketing': 'إدارة التسويق',
-  '/sales': 'إدارة المبيعات',
-  '/procurement': 'إدارة المشتريات',
-  '/finance': 'الحسابات المالية',
-  '/hr': 'الموارد البشرية',
-  '/projects': 'المشاريع',
-  '/settings': 'الإعدادات',
-  '/settings/users': 'المستخدمون والصلاحيات',
-};
+const LAUNCHER_HREF = '/me';
 
-function resolveBreadcrumbs(pathname: string): { label: string; href?: string }[] {
-  if (pathname === '/') return [{ label: 'الأنظمة' }];
-  if (pathname === '/me') return [{ label: 'صفحتي' }];
-  if (pathname.startsWith('/u')) return [{ label: 'صفحة موظف' }];
-  if (pathname.startsWith('/settings/users')) {
-    return [
-      { label: 'الإعدادات', href: '/settings' },
-      { label: 'المستخدمون والصلاحيات' },
-    ];
+function resolveSection(pathname: string): { title: string; subtitle?: string } {
+  if (pathname === '/' || pathname === '/me' || pathname.startsWith('/me/')) {
+    return { title: 'الأنظمة', subtitle: 'الصفحة الرئيسية' };
+  }
+  if (pathname.startsWith('/u')) {
+    return { title: 'صفحة موظف' };
+  }
+  if (pathname.startsWith('/login')) {
+    return { title: 'تسجيل الدخول' };
   }
 
   const main = SIDEBAR_NAV.find(
     (item) => pathname === item.href || pathname.startsWith(`${item.href}/`)
   );
 
-  if (!main) return [{ label: 'الأنظمة', href: '/' }];
-
-  const crumbs: { label: string; href?: string }[] = [
-    { label: ROUTE_LABELS[main.href] || main.label, href: main.href },
-  ];
+  if (!main) {
+    return { title: 'الأنظمة' };
+  }
 
   if (pathname.startsWith('/finance/')) {
     const sub = FINANCE_NAV.find(
       (item) => pathname === item.href || pathname.startsWith(`${item.href}/`)
     );
     if (sub && sub.href !== '/finance') {
-      crumbs.push({ label: sub.label });
+      return { title: main.label, subtitle: sub.label };
     }
   }
 
-  return crumbs;
+  if (pathname.startsWith('/settings/') && pathname !== '/settings') {
+    const settingsSubs: Record<string, string> = {
+      '/settings/users': 'المستخدمون والصلاحيات',
+      '/settings/company': 'بيانات الشركة',
+      '/settings/zatca': 'الفوترة الإلكترونية',
+    };
+    const sub = settingsSubs[pathname];
+    if (sub) return { title: main.label, subtitle: sub };
+  }
+
+  return { title: main.label };
+}
+
+function HomeIcon() {
+  return (
+    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+      <path
+        d="M4.5 10.75 12 4.5l7.5 6.25V20a1 1 0 0 1-1 1h-4.25v-5.25h-4.5V21H5.5a1 1 0 0 1-1-1v-9.25Z"
+        stroke="currentColor"
+        strokeWidth="1.75"
+        strokeLinejoin="round"
+      />
+    </svg>
+  );
+}
+
+function AppsGridIcon() {
+  return (
+    <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
+      <rect x="3.5" y="3.5" width="7" height="7" rx="1.5" />
+      <rect x="13.5" y="3.5" width="7" height="7" rx="1.5" />
+      <rect x="3.5" y="13.5" width="7" height="7" rx="1.5" />
+      <rect x="13.5" y="13.5" width="7" height="7" rx="1.5" />
+    </svg>
+  );
 }
 
 export default function AppHeader() {
   const pathname = usePathname();
-  const breadcrumbs = resolveBreadcrumbs(pathname);
+  const section = resolveSection(pathname);
   const { session, logout } = useAuth();
-  const { toggleNav, open } = useMobileNav();
+  const [switcherOpen, setSwitcherOpen] = useState(false);
+  const closeSwitcher = useCallback(() => setSwitcherOpen(false), []);
   const initial = (session?.fullName || 'م').trim().charAt(0);
+  const isLauncher = pathname === '/me' || pathname === '/' || pathname.startsWith('/me/');
 
   return (
-    <header className="bg-white border-b border-gray-200 px-3 sm:px-6 py-2.5 flex items-center justify-between gap-2 shrink-0">
-      <div className="flex items-center gap-2 sm:gap-3 min-w-0">
-        <button
-          type="button"
-          onClick={toggleNav}
-          className="touch-target md:hidden rounded-xl border bg-gray-50 text-gray-700"
-          aria-label={open ? 'إغلاق القائمة' : 'فتح القائمة'}
-          aria-expanded={open}
-        >
-          <span className="text-lg leading-none">{open ? '✕' : '☰'}</span>
-        </button>
+    <>
+      <header className="bg-white border-b border-[var(--erp-border)] px-3 sm:px-5 py-2.5 flex items-center justify-between gap-2 shrink-0 z-30">
+        <div className="flex items-center gap-1.5 sm:gap-2 min-w-0">
+          <Link
+            href={LAUNCHER_HREF}
+            className={`
+              touch-target rounded-xl border transition
+              ${
+                isLauncher
+                  ? 'border-[var(--erp-primary)] bg-[#eef6f1] text-[var(--erp-primary)]'
+                  : 'border-[var(--erp-border)] bg-[var(--erp-page)] text-[var(--erp-text)] hover:border-[var(--erp-primary)]/40 hover:text-[var(--erp-primary)]'
+              }
+            `}
+            title="الصفحة الرئيسية للأنظمة"
+            aria-label="الصفحة الرئيسية للأنظمة"
+          >
+            <HomeIcon />
+          </Link>
 
-        <Link
-          href="/me"
-          className="touch-target hidden sm:inline-flex text-gray-400 hover:text-gray-600 text-lg"
-          title="صفحتي"
-        >
-          ⌂
-        </Link>
-        <nav className="flex items-center gap-2 text-sm text-gray-500 min-w-0">
-          {breadcrumbs.map((crumb, index) => (
-            <span key={`${crumb.label}-${index}`} className="flex items-center gap-2 min-w-0">
-              {index > 0 && <span className="text-gray-300">/</span>}
-              {crumb.href && index < breadcrumbs.length - 1 ? (
-                <Link href={crumb.href} className="hover:text-gray-800 truncate">
-                  {crumb.label}
-                </Link>
-              ) : (
-                <span className={`truncate ${index === breadcrumbs.length - 1 ? 'text-gray-800 font-semibold' : ''}`}>
-                  {crumb.label}
-                </span>
-              )}
+          <button
+            type="button"
+            onClick={() => setSwitcherOpen(true)}
+            className={`
+              touch-target rounded-xl border transition
+              ${
+                switcherOpen
+                  ? 'border-[var(--erp-primary)] bg-[#eef6f1] text-[var(--erp-primary)]'
+                  : 'border-[var(--erp-border)] bg-white text-[var(--erp-text)] hover:border-[var(--erp-primary)]/40 hover:text-[var(--erp-primary)]'
+              }
+            `}
+            title="قائمة الأقسام"
+            aria-label="فتح قائمة الأقسام"
+            aria-haspopup="dialog"
+            aria-expanded={switcherOpen}
+          >
+            <AppsGridIcon />
+          </button>
+
+          <div className="min-w-0 ms-1 sm:ms-2">
+            <p className="text-sm sm:text-base font-bold text-[var(--erp-text)] truncate leading-tight">
+              {section.title}
+            </p>
+            {section.subtitle ? (
+              <p className="text-[11px] sm:text-xs text-[var(--erp-muted)] truncate mt-0.5">
+                {section.subtitle}
+              </p>
+            ) : (
+              <p className="text-[11px] sm:text-xs text-[var(--erp-muted)] truncate mt-0.5 hidden sm:block">
+                نظام مستقل · اختر قسماً من الشبكة
+              </p>
+            )}
+          </div>
+        </div>
+
+        <div className="flex items-center gap-2 sm:gap-3 text-sm text-gray-600 shrink-0">
+          <span className="flex items-center gap-2 bg-[var(--erp-page)] border border-[var(--erp-border)] rounded-full px-2 sm:px-3 py-1.5 min-h-[44px]">
+            <span className="h-7 w-7 rounded-full bg-[var(--erp-primary)] text-white flex items-center justify-center text-xs">
+              {initial}
             </span>
-          ))}
-        </nav>
-      </div>
-
-      <div className="flex items-center gap-2 sm:gap-3 text-sm text-gray-600 shrink-0">
-        <span className="flex items-center gap-2 bg-gray-50 border rounded-full px-2 sm:px-3 py-1.5 min-h-[44px]">
-          <span className="h-7 w-7 rounded-full bg-[#1f4d3a] text-white flex items-center justify-center text-xs">
-            {initial}
+            <span className="hidden sm:inline max-w-[9rem] truncate">{session?.fullName || 'موظف'}</span>
           </span>
-          <span className="hidden sm:inline max-w-[9rem] truncate">{session?.fullName || 'موظف'}</span>
-        </span>
-        <button
-          type="button"
-          onClick={() => void logout()}
-          className="touch-target text-xs font-semibold text-rose-700 bg-rose-50 border border-rose-100 rounded-xl px-3 hover:bg-rose-100"
-        >
-          خروج
-        </button>
-      </div>
-    </header>
+          <button
+            type="button"
+            onClick={() => void logout()}
+            className="touch-target text-xs font-semibold text-rose-700 bg-rose-50 border border-rose-100 rounded-xl px-3 hover:bg-rose-100"
+          >
+            خروج
+          </button>
+        </div>
+      </header>
+
+      <AppSwitcher open={switcherOpen} onClose={closeSwitcher} />
+    </>
   );
 }
