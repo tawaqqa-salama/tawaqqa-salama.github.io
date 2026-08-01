@@ -18,7 +18,7 @@ export default function FollowUpModal({ clientName, isOpen, isSubmitting, onClos
   if (!isOpen) return null;
 
   return (
-    <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+    <div className="fixed inset-0 bg-black/50 flex items-end sm:items-center justify-center z-50 p-0 sm:p-4">
       <div className="bg-white rounded-2xl shadow-xl w-full max-w-md p-6">
         <h2 className="text-lg font-bold mb-1">متابعة تواصل</h2>
         <p className="text-sm text-gray-500 mb-4">{clientName}</p>

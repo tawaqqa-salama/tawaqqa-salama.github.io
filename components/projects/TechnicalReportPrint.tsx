@@ -652,12 +652,11 @@ export function printTechnicalReport(params: {
 </body>
 </html>`;
 
-  const win = window.open('', '_blank');
-  if (!win) {
-    alert('تعذر فتح نافذة الطباعة. اسمح بالنوافذ المنبثقة ثم أعد المحاولة.');
-    return;
-  }
-  win.document.open();
-  win.document.write(html);
-  win.document.close();
+  void import('@/lib/print/document-preview').then(({ openDocumentPreview }) => {
+    openDocumentPreview({
+      title: `التقرير الفني — ${client.client_code}`,
+      html,
+      fileName: `technical-report-${client.client_code}`,
+    });
+  });
 }

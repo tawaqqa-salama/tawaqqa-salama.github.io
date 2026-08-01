@@ -11,6 +11,7 @@
   --erp-border: #e8eaed;
   --erp-text: #1f2937;
   --erp-muted: #6b7280;
+  --touch-min: 44px;
 }
 
 @theme inline {
@@ -20,7 +21,155 @@
   --color-erp-page: var(--erp-page);
 }
 
+html {
+  overflow-x: hidden;
+  max-width: 100%;
+}
+
 body {
   background: var(--erp-page);
   color: var(--erp-text);
+  overflow-x: hidden;
+  max-width: 100%;
+}
+
+/* أهداف لمس مريحة للإصبع */
+.touch-target {
+  min-height: var(--touch-min);
+  min-width: var(--touch-min);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+/* جداول متجاوبة */
+.responsive-table-wrap {
+  width: 100%;
+  max-width: 100%;
+  border-radius: 0.75rem;
+  overflow: hidden;
+}
+
+.responsive-table-scroll {
+  width: 100%;
+  max-width: 100%;
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+}
+
+.responsive-table-scroll > table {
+  min-width: 640px;
+  width: 100%;
+}
+
+/* أي بطاقة تحتوي جدولاً مباشراً تصبح قابلة للتمرير أفقياً على الجوال */
+main :is(.bg-white, .rounded-xl, .shadow-sm, .border):has(> table) {
+  max-width: 100%;
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+}
+
+main :is(.bg-white, .rounded-xl, .shadow-sm, .border):has(> table) > table {
+  min-width: 560px;
+}
+
+/* حقول الإدخال بعرض كامل على الجوال */
+@media (max-width: 767px) {
+  main input:not([type='checkbox']):not([type='radio']):not([type='file']):not([type='color']),
+  main select,
+  main textarea {
+    width: 100% !important;
+    max-width: 100%;
+  }
+
+  main button.touch-target,
+  header button,
+  .touch-target {
+    min-height: var(--touch-min);
+  }
+
+  /* تحويل صفوف الجداول إلى بطاقات عند تفعيل class */
+  .table-as-cards thead {
+    display: none;
+  }
+
+  .table-as-cards,
+  .table-as-cards tbody,
+  .table-as-cards tr,
+  .table-as-cards td {
+    display: block;
+    width: 100%;
+  }
+
+  .table-as-cards tr {
+    background: #fff;
+    border: 1px solid var(--erp-border);
+    border-radius: 0.75rem;
+    margin-bottom: 0.75rem;
+    padding: 0.75rem;
+  }
+
+  .table-as-cards td {
+    border: 0;
+    padding: 0.35rem 0;
+    display: flex;
+    justify-content: space-between;
+    gap: 0.75rem;
+    text-align: left;
+  }
+
+  .table-as-cards td::before {
+    content: attr(data-label);
+    font-weight: 700;
+    color: var(--erp-muted);
+    text-align: right;
+    flex: 1;
+  }
+
+  .table-as-cards td > * {
+    text-align: left;
+  }
+
+  .responsive-table-scroll > table {
+    min-width: 560px;
+  }
+
+  .table-as-cards.responsive-table-scroll > table,
+  .responsive-table-scroll > table.table-as-cards {
+    min-width: 0;
+  }
+}
+
+/* شريط معاينة المستند الثابت أسفل الشاشة */
+.document-preview-sticky {
+  position: fixed;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  z-index: 90;
+  display: flex;
+  gap: 0.5rem;
+  padding: 0.75rem;
+  padding-bottom: calc(0.75rem + env(safe-area-inset-bottom, 0px));
+  background: rgba(255, 255, 255, 0.96);
+  border-top: 1px solid var(--erp-border);
+  box-shadow: 0 -6px 20px rgba(15, 23, 42, 0.08);
+  backdrop-filter: blur(8px);
+}
+
+.mobile-preview-frame {
+  background: #fff;
+}
+
+/* منع تمدد المحتوى الأفقي داخل الصفحة */
+main {
+  max-width: 100%;
+  overflow-x: hidden;
+}
+
+main img,
+main video,
+main canvas,
+main iframe {
+  max-width: 100%;
 }

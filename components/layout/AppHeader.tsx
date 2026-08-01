@@ -5,6 +5,7 @@ import { usePathname } from 'next/navigation';
 import { FINANCE_NAV } from '@/lib/constants/accounting';
 import { SIDEBAR_NAV } from '@/lib/constants/navigation';
 import { useAuth } from '@/lib/auth/AuthProvider';
+import { useMobileNav } from '@/components/layout/MobileNavContext';
 
 const ROUTE_LABELS: Record<string, string> = {
   '/': 'الأنظمة',
@@ -58,12 +59,27 @@ export default function AppHeader() {
   const pathname = usePathname();
   const breadcrumbs = resolveBreadcrumbs(pathname);
   const { session, logout } = useAuth();
+  const { toggleNav, open } = useMobileNav();
   const initial = (session?.fullName || 'م').trim().charAt(0);
 
   return (
-    <header className="bg-white border-b border-gray-200 px-6 py-3 flex items-center justify-between shrink-0">
-      <div className="flex items-center gap-3 min-w-0">
-        <Link href="/me" className="text-gray-400 hover:text-gray-600 text-lg" title="صفحتي">
+    <header className="bg-white border-b border-gray-200 px-3 sm:px-6 py-2.5 flex items-center justify-between gap-2 shrink-0">
+      <div className="flex items-center gap-2 sm:gap-3 min-w-0">
+        <button
+          type="button"
+          onClick={toggleNav}
+          className="touch-target md:hidden rounded-xl border bg-gray-50 text-gray-700"
+          aria-label={open ? 'إغلاق القائمة' : 'فتح القائمة'}
+          aria-expanded={open}
+        >
+          <span className="text-lg leading-none">{open ? '✕' : '☰'}</span>
+        </button>
+
+        <Link
+          href="/me"
+          className="touch-target hidden sm:inline-flex text-gray-400 hover:text-gray-600 text-lg"
+          title="صفحتي"
+        >
           ⌂
         </Link>
         <nav className="flex items-center gap-2 text-sm text-gray-500 min-w-0">
@@ -84,17 +100,17 @@ export default function AppHeader() {
         </nav>
       </div>
 
-      <div className="flex items-center gap-3 text-sm text-gray-600">
-        <span className="flex items-center gap-2 bg-gray-50 border rounded-full px-3 py-1.5">
-          <span className="h-6 w-6 rounded-full bg-[#1f4d3a] text-white flex items-center justify-center text-xs">
+      <div className="flex items-center gap-2 sm:gap-3 text-sm text-gray-600 shrink-0">
+        <span className="flex items-center gap-2 bg-gray-50 border rounded-full px-2 sm:px-3 py-1.5 min-h-[44px]">
+          <span className="h-7 w-7 rounded-full bg-[#1f4d3a] text-white flex items-center justify-center text-xs">
             {initial}
           </span>
-          <span className="hidden sm:inline">{session?.fullName || 'موظف'}</span>
+          <span className="hidden sm:inline max-w-[9rem] truncate">{session?.fullName || 'موظف'}</span>
         </span>
         <button
           type="button"
           onClick={() => void logout()}
-          className="text-xs font-semibold text-rose-700 bg-rose-50 border border-rose-100 rounded-lg px-3 py-1.5 hover:bg-rose-100"
+          className="touch-target text-xs font-semibold text-rose-700 bg-rose-50 border border-rose-100 rounded-xl px-3 hover:bg-rose-100"
         >
           خروج
         </button>

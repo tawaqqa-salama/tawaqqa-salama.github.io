@@ -16,6 +16,7 @@ import { printFinancialDocument } from '@/components/invoices/FinancialDocumentP
 import { clientToFinancialDocument } from '@/lib/invoices/document-mapper';
 import { formatCurrency } from '@/lib/format/currency';
 import { parseLocalizedInteger, parseLocalizedNumber } from '@/lib/validation/client';
+import ResponsiveTable from '@/components/ui/ResponsiveTable';
 import type { ClientFormData, ClientRecord, FinancialDocument } from '@/lib/types/client';
 import type { SalesContract, SalesDocument, SalesReturn } from '@/lib/types/sales';
 
@@ -195,33 +196,33 @@ export default function SalesPage() {
       </div>
 
       {tab === 'clients' && (
-        <div className="bg-white rounded-xl border overflow-hidden">
-          <table className="w-full text-right text-sm">
+        <ResponsiveTable className="bg-white rounded-xl border">
+          <table className="w-full text-right text-sm table-as-cards">
             <thead className="bg-gray-50 border-b text-gray-600"><tr><th className="p-4">العميل</th><th className="p-4">عرض السعر</th><th className="p-4">الحالة</th><th className="p-4">نوع البيع</th><th className="p-4">إجراء</th></tr></thead>
             <tbody>
               {loading ? <tr><td colSpan={5} className="p-8 text-center text-gray-400">...</td></tr> : clients.length === 0 ? (
                 <tr><td colSpan={5} className="p-8 text-center text-gray-400">لا يوجد عملاء في هذه الفترة</td></tr>
               ) : clients.map((c) => (
                 <tr key={c.id} className="border-b hover:bg-gray-50">
-                  <td className="p-4"><div className="font-semibold">{c.business_name}</div><div className="text-xs text-gray-400">{ACTIVITY_RULES[c.activity_type || '']?.label}</div></td>
-                  <td className="p-4 font-mono text-blue-600">{c.quotation_number || '—'}</td>
-                  <td className="p-4">{c.quotation_status}</td>
-                  <td className="p-4">{c.sales_payment_type || 'نقدي'}</td>
-                  <td className="p-4 flex flex-wrap gap-1">
-                    <button onClick={() => setSelected(c)} className="text-xs px-2 py-1 bg-blue-50 text-blue-700 rounded-lg">إدارة</button>
-                    <button onClick={() => setPrintClient(c)} className="text-xs px-2 py-1 bg-indigo-50 text-indigo-700 rounded-lg">طباعة عرض</button>
-                    <button onClick={() => archiveDocument(c, 'quotation')} className="text-xs px-2 py-1 bg-gray-100 rounded-lg">أرشفة</button>
-                    <button onClick={() => setContractClient(c)} className="text-xs px-2 py-1 bg-emerald-50 text-emerald-700 rounded-lg">عقد</button>
+                  <td className="p-4" data-label="العميل"><div className="font-semibold">{c.business_name}</div><div className="text-xs text-gray-400">{ACTIVITY_RULES[c.activity_type || '']?.label}</div></td>
+                  <td className="p-4 font-mono text-blue-600" data-label="عرض السعر">{c.quotation_number || '—'}</td>
+                  <td className="p-4" data-label="الحالة">{c.quotation_status}</td>
+                  <td className="p-4" data-label="نوع البيع">{c.sales_payment_type || 'نقدي'}</td>
+                  <td className="p-4 flex flex-wrap gap-1" data-label="إجراء">
+                    <button onClick={() => setSelected(c)} className="touch-target text-xs px-3 bg-blue-50 text-blue-700 rounded-lg">إدارة</button>
+                    <button onClick={() => setPrintClient(c)} className="touch-target text-xs px-3 bg-indigo-50 text-indigo-700 rounded-lg">طباعة عرض</button>
+                    <button onClick={() => archiveDocument(c, 'quotation')} className="touch-target text-xs px-3 bg-gray-100 rounded-lg">أرشفة</button>
+                    <button onClick={() => setContractClient(c)} className="touch-target text-xs px-3 bg-emerald-50 text-emerald-700 rounded-lg">عقد</button>
                   </td>
                 </tr>
               ))}
             </tbody>
           </table>
-        </div>
+        </ResponsiveTable>
       )}
 
       {tab === 'documents' && (
-        <div className="bg-white rounded-xl border overflow-hidden">
+        <ResponsiveTable className="bg-white rounded-xl border">
           <table className="w-full text-right text-sm">
             <thead className="bg-gray-50 border-b text-xs text-gray-500"><tr><th className="p-3">رقم</th><th className="p-3">النوع</th><th className="p-3">الإجمالي</th><th className="p-3">الحالة</th><th className="p-3">طباعة</th></tr></thead>
             <tbody>
@@ -248,13 +249,13 @@ export default function SalesPage() {
                     <td className="p-3">{doc.doc_type === 'quotation' ? 'عرض سعر' : 'فاتورة'}</td>
                     <td className="p-3 font-mono">{formatCurrency(doc.total_amount)}</td>
                     <td className="p-3">{doc.status}</td>
-                    <td className="p-3">{finDoc && <button onClick={() => printFinancialDocument(finDoc)} className="text-xs text-blue-600">طباعة</button>}</td>
+                    <td className="p-3">{finDoc && <button onClick={() => void printFinancialDocument(finDoc)} className="touch-target text-xs text-blue-600 px-2">طباعة</button>}</td>
                   </tr>
                 );
               })}
             </tbody>
           </table>
-        </div>
+        </ResponsiveTable>
       )}
 
       {tab === 'credit' && (
@@ -262,7 +263,7 @@ export default function SalesPage() {
       )}
 
       {tab === 'contracts' && (
-        <div className="bg-white rounded-xl border overflow-hidden">
+        <ResponsiveTable className="bg-white rounded-xl border">
           <table className="w-full text-right text-sm">
             <thead className="bg-gray-50 border-b text-xs"><tr><th className="p-3">رقم العقد</th><th className="p-3">عرض السعر</th><th className="p-3">الإجمالي</th><th className="p-3">الحالة</th><th className="p-3">طباعة</th></tr></thead>
             <tbody>
@@ -274,13 +275,13 @@ export default function SalesPage() {
                     <td className="p-3">{ct.quotation_number}</td>
                     <td className="p-3 font-mono">{formatCurrency(ct.total_amount)}</td>
                     <td className="p-3">{ct.status}</td>
-                    <td className="p-3">{c && <button onClick={() => void printContract(ct, c)} className="text-xs text-blue-600">طباعة</button>}</td>
+                    <td className="p-3">{c && <button onClick={() => void printContract(ct, c)} className="touch-target text-xs text-blue-600 px-2">طباعة</button>}</td>
                   </tr>
                 );
               })}
             </tbody>
           </table>
-        </div>
+        </ResponsiveTable>
       )}
 
       {tab === 'accounts' && (

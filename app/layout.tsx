@@ -1,4 +1,4 @@
-import type { Metadata } from 'next';
+import type { Metadata, Viewport } from 'next';
 import { Cairo } from 'next/font/google';
 import { AuthProvider } from '@/lib/auth/AuthProvider';
 import AppShell from '@/components/layout/AppShell';
@@ -15,10 +15,17 @@ export const metadata: Metadata = {
   description: PLATFORM_DESCRIPTION,
 };
 
+export const viewport: Viewport = {
+  width: 'device-width',
+  initialScale: 1,
+  maximumScale: 1,
+  viewportFit: 'cover',
+};
+
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
     <html lang="ar" dir="rtl">
-      <body className={`${cairo.className} bg-[#f0f2f5] flex h-screen overflow-hidden`}>
+      <body className={`${cairo.className} bg-[#f0f2f5] flex h-screen overflow-hidden overflow-x-hidden`}>
         <AuthProvider>
           <AppShell>{children}</AppShell>
         </AuthProvider>
