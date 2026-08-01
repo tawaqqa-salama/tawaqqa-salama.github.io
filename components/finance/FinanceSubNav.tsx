@@ -4,12 +4,13 @@ import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { FINANCE_NAV } from '@/lib/constants/accounting';
 
-export function FinanceMobileNav() {
+/** تبويبات داخلية لنظام الحسابات — بدون شريط جانبي */
+export function FinanceSubNav() {
   const pathname = usePathname();
 
   return (
-    <div className="lg:hidden bg-[#243030] rounded-xl p-2 mb-4 overflow-x-auto">
-      <div className="flex gap-1 min-w-max">
+    <div className="bg-white border border-[var(--erp-border)] rounded-xl p-1.5 mb-4 overflow-x-auto">
+      <div className="flex gap-1 min-w-max" role="tablist" aria-label="تبويبات الحسابات المالية">
         {FINANCE_NAV.map((item) => {
           const isActive =
             item.href === '/finance'
@@ -20,9 +21,16 @@ export function FinanceMobileNav() {
             <Link
               key={item.href}
               href={item.href}
-              className={`px-3 py-2 rounded-lg text-xs font-medium whitespace-nowrap ${
-                isActive ? 'bg-[#b8e986] text-[#2c3333]' : 'text-white/80'
-              }`}
+              role="tab"
+              aria-selected={isActive}
+              className={`
+                touch-target !h-auto px-3.5 py-2 rounded-lg text-xs sm:text-sm font-semibold whitespace-nowrap transition
+                ${
+                  isActive
+                    ? 'bg-[var(--erp-primary)] text-white shadow-sm'
+                    : 'text-[var(--erp-muted)] hover:bg-[var(--erp-page)] hover:text-[var(--erp-text)]'
+                }
+              `}
             >
               {item.label}
             </Link>
@@ -32,3 +40,6 @@ export function FinanceMobileNav() {
     </div>
   );
 }
+
+/** @deprecated استخدم FinanceSubNav */
+export const FinanceMobileNav = FinanceSubNav;
