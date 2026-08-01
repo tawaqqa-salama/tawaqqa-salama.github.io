@@ -51,6 +51,7 @@ import {
 } from '@/lib/constants/quotation-services';
 import { loadCompanyProfile } from '@/lib/company-profile';
 import PrintQuotationModal from '@/components/sales/PrintQuotationModal';
+import { processZatcaOnQuotationApproval } from '@/lib/zatca/submit';
 import type { ClientRecord, DepartmentMode, FloorLevel, InspectionChecklistItem } from '@/lib/types/client';
 
 type TabId = 'basic' | 'finance' | 'engineering' | 'reports';
@@ -256,12 +257,26 @@ export default function ClientDetailModal({
 
       const newStage = merged.pipeline_stage;
       let message = successText;
-      if (department === 'sales' && ['معتمد', 'بانتظار السداد'].includes(String(finalPayload.quotation_status || quotationStatus))) {
+      const quotationApprovedNow = ['معتمد', 'بانتظار السداد'].includes(
+        String(finalPayload.quotation_status || quotationStatus)
+      );
+      if (department === 'sales' && quotationApprovedNow) {
         message += ' — تم توليد سند القبض والقيد المحاسبي تلقائياً.';
       }
       if (newStage && newStage !== previousStage) {
         message += ` — تم نقل المعاملة تلقائياً إلى: ${getPipelineStageLabel(newStage)}`;
       }
+
+      if (quotationApprovedNow && Number(merged.quotation_amount || 0) > 0) {
+        try {
+          const zatca = await processZatcaOnQuotationApproval({ ...client, ...merged } as ClientRecord);
+          if (zatca.messages.length) message += ` — ${zatca.messages.join(' ')}`;
+          if (zatca.error) message += ` — ZATCA: ${zatca.error}`;
+        } catch (zatcaError) {
+          message += ` — ZATCA: ${zatcaError instanceof Error ? zatcaError.message : 'تعذر الإرسال'}`;
+        }
+      }
+
       setSuccessMessage(message);
       onUpdated();
       return true;

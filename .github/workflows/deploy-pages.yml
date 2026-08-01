@@ -49,7 +49,14 @@ jobs:
           else
             echo "::warning::Supabase غير مربوط — البناء بوضع تجريبي. أضف الأسرار حسب docs/SUPABASE.md"
           fi
+          # إخفاء Route Handlers أثناء البناء الثابت (output: export)
+          if [ -d app/api ]; then
+            mv app/api .api-build-tmp
+          fi
           npm run build
+          if [ -d .api-build-tmp ]; then
+            mv .api-build-tmp app/api
+          fi
           touch out/.nojekyll
 
       - name: Upload Pages artifact
