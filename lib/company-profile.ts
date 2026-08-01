@@ -126,6 +126,19 @@ function pickText(data: Record<string, unknown>, key: string, fallback: string):
   return typeof value === 'string' && value.trim() ? value : fallback;
 }
 
+/** أول قيمة نصية صالحة من أعمدة بديلة في صف الشركة */
+function pickTextAny(
+  data: Record<string, unknown>,
+  keys: string[],
+  fallback: string
+): string {
+  for (const key of keys) {
+    const value = data[key];
+    if (typeof value === 'string' && value.trim()) return value.trim();
+  }
+  return fallback;
+}
+
 /** يحمّل من جدول companies إن وجد، مع دمج التخزين المحلي للشعار والحقول الإضافية */
 export async function loadCompanyProfile(): Promise<CompanyProfile> {
   const local = loadLocalCompanyProfile();
@@ -138,23 +151,34 @@ export async function loadCompanyProfile(): Promise<CompanyProfile> {
   return {
     ...local,
     name: pickText(row, 'name', local.name),
-    legal_name: pickText(row, 'legal_name', local.legal_name),
+    legal_name: pickTextAny(row, ['legal_name', 'name'], local.legal_name),
     city: pickText(row, 'city', local.city),
-    commercial_register: pickText(row, 'commercial_register', local.commercial_register),
-    tax_number: pickText(row, 'tax_number', local.tax_number),
-    phone: pickText(row, 'phone', local.phone),
+    commercial_register: pickTextAny(
+      row,
+      ['commercial_register', 'cr_number', 'commercial_registration', 'cr'],
+      local.commercial_register
+    ),
+    membership_id: pickTextAny(
+      row,
+      ['membership_id', 'civil_defense_license', 'license_number', 'license_no'],
+      local.membership_id
+    ),
+    tax_number: pickTextAny(row, ['tax_number', 'vat_number', 'tin', 'vat'], local.tax_number),
+    phone: pickTextAny(row, ['phone', 'mobile', 'telephone'], local.phone),
     email: pickText(row, 'email', local.email),
-    address: pickText(row, 'address', local.address),
+    email_alt: pickTextAny(row, ['email_alt', 'email2'], local.email_alt),
+    address: pickTextAny(row, ['address', 'national_address', 'hq_address'], local.address),
     logo_url: pickText(row, 'logo_url', local.logo_url),
     stamp_url: pickText(row, 'stamp_url', local.stamp_url),
     stamp_text: pickText(row, 'stamp_text', local.stamp_text),
-    bank_name: pickText(row, 'bank_name', local.bank_name),
-    bank_account: pickText(row, 'bank_account', local.bank_account),
-    iban: pickText(row, 'iban', local.iban),
+    bank_name: pickTextAny(row, ['bank_name', 'bank'], local.bank_name),
+    bank_account: pickTextAny(row, ['bank_account', 'account_number', 'account_no'], local.bank_account),
+    iban: pickTextAny(row, ['iban', 'bank_iban'], local.iban),
     payment_first: pickText(row, 'payment_first', local.payment_first),
     payment_second: pickText(row, 'payment_second', local.payment_second),
     payment_final: pickText(row, 'payment_final', local.payment_final),
     payment_terms: pickText(row, 'payment_terms', local.payment_terms),
+    tagline: pickText(row, 'tagline', local.tagline),
     price_per_m2:
       row.price_per_m2 != null && row.price_per_m2 !== ''
         ? Number(row.price_per_m2) || local.price_per_m2
@@ -178,10 +202,13 @@ export async function saveCompanyProfile(
     legal_name: profile.legal_name,
     city: profile.city,
     commercial_register: profile.commercial_register || null,
+    membership_id: profile.membership_id || null,
     tax_number: profile.tax_number || null,
     phone: profile.phone || null,
     email: profile.email || null,
+    email_alt: profile.email_alt || null,
     address: profile.address || null,
+    tagline: profile.tagline || null,
     logo_url: profile.logo_url || null,
     stamp_url: profile.stamp_url || null,
     stamp_text: profile.stamp_text || null,
