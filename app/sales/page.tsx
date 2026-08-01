@@ -20,6 +20,7 @@ import ResponsiveTable from '@/components/ui/ResponsiveTable';
 import RowActionsMenu from '@/components/ui/RowActionsMenu';
 import ModuleSubNavSlot from '@/components/layout/ModuleSubNavSlot';
 import { insertClientSafe, mergeLocalClientOverrides } from '@/lib/supabase/safe-client-write';
+import { logActivity } from '@/lib/activity/logger';
 import type { ClientFormData, ClientRecord, FinancialDocument } from '@/lib/types/client';
 import type { SalesContract, SalesDocument, SalesReturn } from '@/lib/types/sales';
 
@@ -122,6 +123,12 @@ export default function SalesPage() {
     });
     setIsSubmitting(false);
     if (error) { setErrorMessage(error); return; }
+    void logActivity({
+      actionType: 'CREATE',
+      module: 'sales',
+      pageUrl: '/sales',
+      details: `تم إنشاء عميل/عرض: ${formData.business_name || formData.owner_name}`,
+    });
     setIsAddOpen(false);
     fetchAll();
   };
@@ -142,6 +149,16 @@ export default function SalesPage() {
       total_amount: Number(client.total_amount || calculateTotalAmount(subtotal)),
       status: client.quotation_status || 'مسودة',
       archived: true,
+    });
+    void logActivity({
+      actionType: 'ARCHIVE',
+      module: 'sales',
+      pageUrl: '/sales',
+      details:
+        type === 'quotation'
+          ? `تم أرشفة عرض سعر رقم ${docNumber}`
+          : `تم أرشفة فاتورة رقم ${docNumber}`,
+      metadata: { docNumber, clientId: client.id, type },
     });
     fetchAll();
   };

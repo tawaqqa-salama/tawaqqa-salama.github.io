@@ -43,6 +43,7 @@ function resolveSection(pathname: string): { title: string; subtitle?: string } 
     const settingsSubs: Record<string, string> = {
       '/settings/users': 'المستخدمون والصلاحيات',
       '/settings/company': 'بيانات الشركة',
+      '/settings/activity': 'سجل النشاطات',
       '/settings/zatca': 'الفوترة الإلكترونية',
     };
     const sub = settingsSubs[pathname];

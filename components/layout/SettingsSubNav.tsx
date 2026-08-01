@@ -9,6 +9,7 @@ const SETTINGS_LINKS = [
   { href: '/settings', label: 'نظرة عامة', exact: true },
   { href: '/settings/company', label: 'معلومات الشركة' },
   { href: '/settings/users', label: 'المستخدمون' },
+  { href: '/settings/activity', label: 'سجل النشاطات' },
   { href: '/settings/zatca', label: 'ZATCA' },
 ] as const;
 
@@ -17,7 +18,7 @@ export default function SettingsSubNav() {
   const { canAccess, canManageStaff } = useAuth();
 
   const links = SETTINGS_LINKS.filter((item) => {
-    if (item.href === '/settings/users') return canManageStaff;
+    if (item.href === '/settings/users' || item.href === '/settings/activity') return canManageStaff;
     if (item.href === '/settings') return canAccess('settings') || canManageStaff;
     return canAccess('settings');
   });

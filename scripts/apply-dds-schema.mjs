@@ -29,6 +29,7 @@ const files = [
   '017_company_quotation_profile.sql',
   '018_zatca_einvoicing.sql',
   '019_auto_contracts.sql',
+  '020_activity_logs.sql',
 ];
 
 if (!process.env.DATABASE_URL) {

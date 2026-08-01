@@ -3,6 +3,7 @@
 import { useEffect } from 'react';
 import { usePathname, useRouter } from 'next/navigation';
 import AppHeader from '@/components/layout/AppHeader';
+import ActivityTracker from '@/components/layout/ActivityTracker';
 import { ModuleSubNavProvider } from '@/components/layout/ModuleSubNavContext';
 import SupabaseConfigBanner from '@/components/ui/SupabaseConfigBanner';
 import DocumentPreviewSheet from '@/components/ui/DocumentPreviewSheet';
@@ -51,7 +52,11 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
 
     const department = resolveDepartment(pathname);
     if (department && !canAccess(department)) {
-      if (department === 'settings' && pathname.startsWith('/settings/users') && canManageStaff) {
+      if (
+        department === 'settings' &&
+        (pathname.startsWith('/settings/users') || pathname.startsWith('/settings/activity')) &&
+        canManageStaff
+      ) {
         return;
       }
       if (department === 'settings' && !canAccess('settings') && !canManageStaff) {
@@ -86,6 +91,7 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
       <div className="flex-1 flex flex-col min-w-0 w-full h-full overflow-hidden">
         <AppHeader />
         <SupabaseConfigBanner />
+        <ActivityTracker />
         <main className="flex-1 p-3 sm:p-5 md:p-6 overflow-y-auto overflow-x-hidden w-full max-w-none">
           {children}
         </main>
