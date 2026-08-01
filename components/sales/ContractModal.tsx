@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect, useState } from 'react';
+import { supabase } from '@/lib/supabase';
 import { calculateTotalAmount, calculateVatAmount } from '@/lib/business/client-workflow';
 import {
   buildContractTermsText,
@@ -61,8 +62,6 @@ export default function ContractModal({ client, onClose, onCreated }: ContractMo
     }
 
     if (result.contract && (serviceScope !== result.contract.service_scope || terms !== result.contract.terms)) {
-      // تحديث يدوي للنطاق/الشروط بعد الإنشاء التلقائي أو الموجود
-      const { supabase } = await import('@/lib/supabase');
       await supabase
         .from('sales_contracts')
         .update({ service_scope: serviceScope, terms, amount: subtotal, vat_amount: vat, total_amount: total })
