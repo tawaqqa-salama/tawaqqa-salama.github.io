@@ -39,29 +39,30 @@ export const SYSTEM_MODULES = [
   {
     href: '/marketing',
     title: 'إدارة التسويق',
-    description: 'Leads والعملاء المهتمون وتحويلهم للمبيعات',
+    description: 'لوحة الحملات ورحلة العميل وLeads ومتابعات التواصل',
     icon: '📣',
     color: 'from-teal-500 to-teal-600',
   },
   {
     href: '/sales',
     title: 'إدارة المبيعات',
-    description: 'عروض الأسعار والمتابعة والتواصل مع العملاء',
+    description: 'خانة المبيعات وخانة عروض الأسعار والعقود والأرشيف',
     icon: '💼',
     color: 'from-blue-500 to-blue-600',
   },
   {
     href: '/procurement',
     title: 'إدارة المشتريات',
-    description: 'الموردون وفواتير الشراء — قيد التطوير',
+    description: 'الموردون وفواتير الشراء',
     icon: '📦',
     color: 'from-orange-400 to-orange-500',
     badge: 'قيد التطوير',
+    status: 'under_development' as const,
   },
   {
     href: '/finance',
     title: 'الحسابات المالية',
-    description: 'القيود اليومية والسندات والتقارير والإقرار الضريبي',
+    description: 'الاعتماد المالي، الفوترة، القيود، السندات والتقارير',
     icon: '💰',
     color: 'from-rose-500 to-rose-600',
   },
@@ -74,16 +75,19 @@ export const SYSTEM_MODULES = [
   },
   {
     href: '/projects',
-    title: 'المشاريع',
-    description: 'المعاينة الهندسية والتراخيص والتقارير النهائية',
+    title: 'إدارة المشاريع',
+    description: 'المعاينة الهندسية، المخططات/BIM، والامتثال SBC/NFPA',
     icon: '🏗️',
     color: 'from-indigo-500 to-indigo-600',
   },
   {
     href: '/settings',
     title: 'الإعدادات',
-    description: 'إعدادات النظام والمستخدمين والصلاحيات',
+    description: 'إعدادات النظام والمستخدمين وسجل النشاطات',
     icon: '⚙️',
     color: 'from-emerald-500 to-emerald-600',
   },
 ] as const;
+
+/** إعادة تصدير هيكل التبويبات الفرعية */
+export { DEPARTMENT_SUB_MODULES } from '@/lib/constants/module-navigation';

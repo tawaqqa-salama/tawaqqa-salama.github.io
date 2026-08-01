@@ -12,10 +12,10 @@ import ModuleSubNavSlot from '@/components/layout/ModuleSubNavSlot';
 import type { ClientFollowUp } from '@/lib/types/sales';
 import type { ClientRecord } from '@/lib/types/client';
 
-type TabId = 'leads' | 'followups' | 'pipeline';
+type TabId = 'dashboard' | 'campaigns' | 'leads' | 'followups' | 'pipeline';
 
 export default function MarketingPage() {
-  const [tab, setTab] = useState<TabId>('leads');
+  const [tab, setTab] = useState<TabId>('dashboard');
   const [leads, setLeads] = useState<ClientRecord[]>([]);
   const [allClients, setAllClients] = useState<ClientRecord[]>([]);
   const [followUps, setFollowUps] = useState<ClientFollowUp[]>([]);
@@ -115,7 +115,7 @@ export default function MarketingPage() {
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
         <div>
           <h1 className="text-xl font-bold text-gray-900">إدارة التسويق</h1>
-          <p className="text-sm text-gray-500 mt-1">Leads، متابعات التواصل، ومتابعة مراحل المشاريع (للقراءة فقط)</p>
+          <p className="text-sm text-gray-500 mt-1">لوحة الحملات ورحلة العميل — Leads ومتابعات التواصل</p>
         </div>
         <button onClick={() => { setErrorMessage(null); setIsModalOpen(true); }} className="px-4 py-2 bg-purple-600 text-white rounded-lg text-sm font-semibold">
           + Lead جديد
@@ -125,6 +125,8 @@ export default function MarketingPage() {
       <ModuleSubNavSlot label="تبويبات التسويق">
         <div id="module-subnav" className="flex flex-wrap gap-2">
           {([
+            { id: 'dashboard' as const, label: 'لوحة الحملات' },
+            { id: 'campaigns' as const, label: 'الحملات' },
             { id: 'leads' as const, label: 'Leads' },
             { id: 'followups' as const, label: 'متابعات التواصل' },
             { id: 'pipeline' as const, label: 'لوحة حالة العميل' },
@@ -140,6 +142,30 @@ export default function MarketingPage() {
           ))}
         </div>
       </ModuleSubNavSlot>
+
+      {(tab === 'dashboard' || tab === 'campaigns') && (
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+          <div className="rounded-xl border bg-white p-4">
+            <p className="text-xs text-gray-500">Leads نشطة</p>
+            <p className="text-2xl font-bold text-gray-900 mt-1">{leads.length}</p>
+          </div>
+          <div className="rounded-xl border bg-white p-4">
+            <p className="text-xs text-gray-500">متابعات مسجّلة</p>
+            <p className="text-2xl font-bold text-gray-900 mt-1">{followUps.length}</p>
+          </div>
+          <div className="rounded-xl border bg-white p-4">
+            <p className="text-xs text-gray-500">رحلة العميل</p>
+            <p className="text-sm text-gray-700 mt-2 leading-relaxed">
+              {tab === 'campaigns'
+                ? 'حملات التواصل والمتابعة — حوّل المهتمين إلى مبيعات عبر تبويب Leads.'
+                : 'لوحة متابعة رحلة العميل من الاهتمام حتى التحويل للمبيعات.'}
+            </p>
+          </div>
+          <div className="md:col-span-3 rounded-xl border border-teal-100 bg-teal-50 p-4 text-sm text-teal-900">
+            استخدم تبويب «لوحة حالة العميل» لعرض مراحل المشاريع (قراءة)، وتبويب Leads لإدارة الحملات اليومية.
+          </div>
+        </div>
+      )}
 
       {tab === 'leads' && (
         <ResponsiveTable className="bg-white rounded-xl border shadow-sm">

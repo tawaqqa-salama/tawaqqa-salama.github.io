@@ -24,7 +24,7 @@ import { logActivity } from '@/lib/activity/logger';
 import type { ClientFormData, ClientRecord, FinancialDocument } from '@/lib/types/client';
 import type { SalesContract, SalesDocument, SalesReturn } from '@/lib/types/sales';
 
-type TabId = 'clients' | 'documents' | 'credit' | 'contracts' | 'accounts';
+type TabId = 'sales' | 'quotations' | 'documents' | 'credit' | 'contracts' | 'accounts';
 
 function inDateRange(iso: string | undefined | null, from: string, to: string): boolean {
   if (!from && !to) return true;
@@ -36,7 +36,7 @@ function inDateRange(iso: string | undefined | null, from: string, to: string): 
 }
 
 export default function SalesPage() {
-  const [tab, setTab] = useState<TabId>('clients');
+  const [tab, setTab] = useState<TabId>('sales');
   const [allClients, setAllClients] = useState<ClientRecord[]>([]);
   const [documents, setDocuments] = useState<SalesDocument[]>([]);
   const [contracts, setContracts] = useState<SalesContract[]>([]);
@@ -168,7 +168,7 @@ export default function SalesPage() {
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
         <div>
           <h1 className="text-xl font-bold">إدارة المبيعات</h1>
-          <p className="text-sm text-gray-500">عروض الأسعار، الفواتير، العقود، الآجل والمرتجعات</p>
+          <p className="text-sm text-gray-500">خانة المبيعات، خانة عرض السعر، العقود، الآجل والأرشيف</p>
         </div>
         <button onClick={() => setIsAddOpen(true)} className="px-4 py-2 bg-blue-600 text-white rounded-lg text-sm font-semibold">+ عميل / عرض</button>
       </div>
@@ -209,7 +209,8 @@ export default function SalesPage() {
       <ModuleSubNavSlot label="تبويبات المبيعات">
         <div id="module-subnav" className="flex flex-wrap gap-2">
           {([
-            { id: 'clients' as const, label: 'العملاء والعروض' },
+            { id: 'sales' as const, label: 'المبيعات' },
+            { id: 'quotations' as const, label: 'عرض السعر' },
             { id: 'documents' as const, label: 'أرشيف المستندات' },
             { id: 'credit' as const, label: 'الآجل والمرتجعات' },
             { id: 'contracts' as const, label: 'العقود' },
@@ -227,28 +228,55 @@ export default function SalesPage() {
         </div>
       </ModuleSubNavSlot>
 
-      {tab === 'clients' && (
+      {tab === 'sales' && (
         <ResponsiveTable className="bg-white rounded-xl border">
           <table className="w-full text-right text-sm table-as-cards">
-            <thead className="bg-gray-50 border-b text-gray-600"><tr><th className="p-4">العميل</th><th className="p-4">عرض السعر</th><th className="p-4">الحالة</th><th className="p-4">نوع البيع</th><th className="p-4">إجراء</th></tr></thead>
+            <thead className="bg-gray-50 border-b text-gray-600"><tr><th className="p-4">العميل</th><th className="p-4">الحالة</th><th className="p-4">نوع البيع</th><th className="p-4">المبلغ</th><th className="p-4">إجراء</th></tr></thead>
             <tbody>
               {loading ? <tr><td colSpan={5} className="p-8 text-center text-gray-400">...</td></tr> : clients.length === 0 ? (
                 <tr><td colSpan={5} className="p-8 text-center text-gray-400">لا يوجد عملاء في هذه الفترة</td></tr>
               ) : clients.map((c) => (
                 <tr key={c.id} className="border-b hover:bg-gray-50">
                   <td className="p-4" data-label="العميل"><div className="font-semibold">{c.business_name}</div><div className="text-xs text-gray-400">{ACTIVITY_RULES[c.activity_type || '']?.label}</div></td>
-                  <td className="p-4 text-blue-600" data-label="عرض السعر">
-                    <span className="doc-number font-mono">{c.quotation_number || '—'}</span>
-                  </td>
-                  <td className="p-4" data-label="الحالة">{c.quotation_status}</td>
+                  <td className="p-4" data-label="الحالة">{c.quotation_status || c.financial_status || '—'}</td>
                   <td className="p-4" data-label="نوع البيع">{c.sales_payment_type || 'نقدي'}</td>
+                  <td className="p-4 font-mono" data-label="المبلغ">{formatCurrency(Number(c.total_amount || 0))}</td>
                   <td className="p-4" data-label="إجراء">
                     <RowActionsMenu
                       items={[
                         { id: 'manage', label: 'إدارة', onClick: () => setSelected(c), tone: 'primary' },
+                        { id: 'contract', label: 'عقد', onClick: () => setContractClient(c), tone: 'success' },
+                      ]}
+                    />
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </ResponsiveTable>
+      )}
+
+      {tab === 'quotations' && (
+        <ResponsiveTable className="bg-white rounded-xl border">
+          <table className="w-full text-right text-sm table-as-cards">
+            <thead className="bg-gray-50 border-b text-gray-600"><tr><th className="p-4">العميل</th><th className="p-4">رقم العرض</th><th className="p-4">حالة العرض</th><th className="p-4">الإجمالي</th><th className="p-4">إجراء</th></tr></thead>
+            <tbody>
+              {loading ? <tr><td colSpan={5} className="p-8 text-center text-gray-400">...</td></tr> : clients.length === 0 ? (
+                <tr><td colSpan={5} className="p-8 text-center text-gray-400">لا توجد عروض في هذه الفترة</td></tr>
+              ) : clients.map((c) => (
+                <tr key={c.id} className="border-b hover:bg-gray-50">
+                  <td className="p-4" data-label="العميل"><div className="font-semibold">{c.business_name}</div><div className="text-xs text-gray-400">{c.phone}</div></td>
+                  <td className="p-4 text-blue-600" data-label="رقم العرض">
+                    <span className="doc-number font-mono">{c.quotation_number || '—'}</span>
+                  </td>
+                  <td className="p-4" data-label="حالة العرض">{c.quotation_status || 'مسودة'}</td>
+                  <td className="p-4 font-mono" data-label="الإجمالي">{formatCurrency(Number(c.total_amount || 0))}</td>
+                  <td className="p-4" data-label="إجراء">
+                    <RowActionsMenu
+                      items={[
+                        { id: 'manage', label: 'تحرير العرض', onClick: () => setSelected(c), tone: 'primary' },
                         { id: 'print', label: 'طباعة عرض', onClick: () => setPrintClient(c), tone: 'primary' },
                         { id: 'archive', label: 'أرشفة', onClick: () => void archiveDocument(c, 'quotation') },
-                        { id: 'contract', label: 'عقد', onClick: () => setContractClient(c), tone: 'success' },
                       ]}
                     />
                   </td>

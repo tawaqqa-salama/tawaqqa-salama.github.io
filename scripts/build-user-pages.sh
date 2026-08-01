@@ -16,4 +16,4 @@ fi
 npm run build
 touch out/.nojekyll
 echo "Built to ./out — deploy contents to tawaqqa-salama/tawaqqa-salama.github.io (main)"
-echo "ملاحظة: واجهات /api/zatca/* تحتاج نشراً على Node/Vercel (ليست جزءاً من GitHub Pages)."
+echo "ملاحظة: واجهات /api/* (ZATCA، الامتثال، WhatsApp، التصدير) تحتاج نشراً على Node/Vercel (ليست جزءاً من GitHub Pages)."

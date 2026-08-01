@@ -1,0 +1,269 @@
+'use client';
+
+import { useMemo, useState } from 'react';
+import { validateCompliance } from '@/lib/compliance/engine';
+import { getEkbTopic } from '@/lib/compliance/ekb-catalog';
+import {
+  buildComplianceReportHtml,
+  buildComplianceReportDocHtml,
+  downloadTextFile,
+} from '@/lib/export/compliance-report';
+import { openDocumentPreview } from '@/lib/print/document-preview';
+import type { ClientRecord } from '@/lib/types/client';
+import type { ComplianceValidationResult } from '@/lib/compliance/types';
+
+type ComplianceEnginePanelProps = {
+  clients: ClientRecord[];
+};
+
+export default function ComplianceEnginePanel({ clients }: ComplianceEnginePanelProps) {
+  const [clientId, setClientId] = useState(clients[0]?.id || '');
+  const [occupants, setOccupants] = useState('');
+  const [travelDistanceM, setTravelDistanceM] = useState('');
+  const [hasSprinklers, setHasSprinklers] = useState(false);
+  const [hasFireAlarm, setHasFireAlarm] = useState(false);
+  const [hasDetection, setHasDetection] = useState(false);
+  const [fileName, setFileName] = useState('');
+  const [result, setResult] = useState<ComplianceValidationResult | null>(null);
+  const [whatsappTo, setWhatsappTo] = useState('');
+  const [notifyMsg, setNotifyMsg] = useState<string | null>(null);
+
+  const selected = useMemo(
+    () => clients.find((c) => c.id === clientId) || null,
+    [clients, clientId]
+  );
+
+  const runValidate = () => {
+    if (!selected) return;
+    const next = validateCompliance({
+      activityType: selected.activity_type,
+      floorsCount: selected.floors_count,
+      buildingArea: selected.building_area,
+      landArea: selected.land_area,
+      occupants: occupants ? Number(occupants) : null,
+      travelDistanceM: travelDistanceM ? Number(travelDistanceM) : null,
+      hasSprinklers,
+      hasFireAlarm,
+      hasDetection,
+      fileName: fileName || null,
+    });
+    setResult(next);
+  };
+
+  const exportPdfPreview = () => {
+    if (!result || !selected) return;
+    const html = buildComplianceReportHtml(result, {
+      projectName: selected.business_name || selected.name,
+      preparedBy: 'محرك الامتثال',
+    });
+    openDocumentPreview({
+      title: `امتثال — ${selected.business_name || selected.name}`,
+      html,
+      fileName: `compliance-${selected.client_code || selected.id}`,
+    });
+  };
+
+  const exportDocx = () => {
+    if (!result || !selected) return;
+    const html = buildComplianceReportDocHtml(result, {
+      projectName: selected.business_name || selected.name,
+      preparedBy: 'محرك الامتثال',
+    });
+    downloadTextFile(html, `compliance-${selected.client_code || 'report'}.doc`, 'application/msword;charset=utf-8');
+  };
+
+  const notifyWhatsApp = async () => {
+    if (!result || !whatsappTo) {
+      setNotifyMsg('أدخل رقم الجوال');
+      return;
+    }
+    setNotifyMsg(null);
+    try {
+      const res = await fetch('/api/notifications/whatsapp', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          to: whatsappTo,
+          message: `تقرير امتثال: ${result.summary} (درجة ${result.score}) — ${selected?.business_name || ''}`,
+          metadata: { score: result.score, ok: result.ok },
+        }),
+      });
+      const data = (await res.json()) as { ok?: boolean; result?: { provider?: string; messageId?: string }; error?: string };
+      if (!res.ok || !data.ok) {
+        setNotifyMsg(data.error || 'فشل إرسال الإشعار');
+        return;
+      }
+      setNotifyMsg(
+        data.result?.provider === 'stub'
+          ? `تم تسجيل الإشعار محلياً (${data.result.messageId}) — اضبط WHATSAPP_WEBHOOK_URL للإرسال الفعلي`
+          : `تم الإرسال عبر Webhook (${data.result?.messageId})`
+      );
+    } catch {
+      // وضع التصدير الثابت قد لا يدعم /api — نُظهر رسالة واضحة
+      setNotifyMsg('تعذر الوصول لواجهة WhatsApp API في هذا النشر. استخدم نشراً على Node أو اضبط Webhook.');
+    }
+  };
+
+  return (
+    <div className="space-y-4">
+      <div className="rounded-xl border border-[var(--erp-border)] bg-white p-4">
+        <h2 className="text-lg font-bold text-[var(--erp-text)]">محرك الامتثال الديناميكي (SBC &amp; NFPA)</h2>
+        <p className="text-sm text-[var(--erp-muted)] mt-1">
+          يتحقق من معلمات السلامة ويربط النتائج بقاعدة المعرفة الهندسية (EKB).
+        </p>
+
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-3 mt-4">
+          <label className="text-sm">
+            <span className="text-xs font-semibold text-gray-600 mb-1 block">المشروع / العميل</span>
+            <select
+              value={clientId}
+              onChange={(e) => setClientId(e.target.value)}
+              className="w-full border rounded-xl px-3 py-2.5 text-sm"
+            >
+              {clients.map((c) => (
+                <option key={c.id} value={c.id}>
+                  {c.business_name || c.name}
+                </option>
+              ))}
+            </select>
+          </label>
+          <label className="text-sm">
+            <span className="text-xs font-semibold text-gray-600 mb-1 block">اسم ملف هندسي (اختياري)</span>
+            <input
+              value={fileName}
+              onChange={(e) => setFileName(e.target.value)}
+              placeholder="plan.ifc / drawing.dwg"
+              className="w-full border rounded-xl px-3 py-2.5 text-sm"
+              dir="ltr"
+            />
+          </label>
+          <label className="text-sm">
+            <span className="text-xs font-semibold text-gray-600 mb-1 block">عدد الشاغلين</span>
+            <input
+              value={occupants}
+              onChange={(e) => setOccupants(e.target.value)}
+              className="w-full border rounded-xl px-3 py-2.5 text-sm"
+              dir="ltr"
+            />
+          </label>
+          <label className="text-sm">
+            <span className="text-xs font-semibold text-gray-600 mb-1 block">مسافة السفر إلى المخرج (م)</span>
+            <input
+              value={travelDistanceM}
+              onChange={(e) => setTravelDistanceM(e.target.value)}
+              className="w-full border rounded-xl px-3 py-2.5 text-sm"
+              dir="ltr"
+            />
+          </label>
+        </div>
+
+        <div className="flex flex-wrap gap-4 mt-3 text-sm">
+          <label className="inline-flex items-center gap-2">
+            <input type="checkbox" checked={hasSprinklers} onChange={(e) => setHasSprinklers(e.target.checked)} />
+            مرشات تلقائية
+          </label>
+          <label className="inline-flex items-center gap-2">
+            <input type="checkbox" checked={hasFireAlarm} onChange={(e) => setHasFireAlarm(e.target.checked)} />
+            إنذار حريق
+          </label>
+          <label className="inline-flex items-center gap-2">
+            <input type="checkbox" checked={hasDetection} onChange={(e) => setHasDetection(e.target.checked)} />
+            كشف دخان/حرارة
+          </label>
+        </div>
+
+        <div className="flex flex-wrap gap-2 mt-4">
+          <button
+            type="button"
+            onClick={runValidate}
+            disabled={!selected}
+            className="px-4 py-2.5 rounded-xl bg-[var(--erp-primary)] text-white text-sm font-semibold disabled:opacity-50"
+          >
+            تشغيل التحقق
+          </button>
+          <button
+            type="button"
+            onClick={exportPdfPreview}
+            disabled={!result}
+            className="px-4 py-2.5 rounded-xl border text-sm font-semibold disabled:opacity-50"
+          >
+            تصدير PDF (معاينة طباعة)
+          </button>
+          <button
+            type="button"
+            onClick={exportDocx}
+            disabled={!result}
+            className="px-4 py-2.5 rounded-xl border text-sm font-semibold disabled:opacity-50"
+          >
+            تصدير DOCX/Word
+          </button>
+        </div>
+      </div>
+
+      {result ? (
+        <div className="rounded-xl border bg-white p-4 space-y-3">
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <p className="font-bold text-gray-800">{result.summary}</p>
+            <span
+              className={`text-xs font-bold px-2.5 py-1 rounded-lg ${
+                result.ok ? 'bg-emerald-50 text-emerald-800' : 'bg-rose-50 text-rose-800'
+              }`}
+            >
+              الدرجة {result.score}
+            </span>
+          </div>
+
+          <div className="space-y-2">
+            {result.findings.map((f) => (
+              <div key={f.id} className="rounded-lg border px-3 py-2">
+                <div className="flex flex-wrap gap-2 items-center justify-between">
+                  <p className="font-semibold text-sm">{f.title}</p>
+                  <span className="text-[11px] font-semibold text-gray-500">
+                    {f.standard} · {f.code} · {f.severity}
+                  </span>
+                </div>
+                <p className="text-xs text-gray-600 mt-1">{f.detail}</p>
+              </div>
+            ))}
+          </div>
+
+          <div>
+            <p className="text-sm font-bold mb-2">EKB — مواضيع مرتبطة</p>
+            <ul className="space-y-1">
+              {result.ekbHints.map((id) => {
+                const topic = getEkbTopic(id);
+                if (!topic) return null;
+                return (
+                  <li key={id} className="text-xs text-gray-600">
+                    <strong>{topic.title}</strong> — {topic.summary}
+                  </li>
+                );
+              })}
+            </ul>
+          </div>
+
+          <div className="border-t pt-3 flex flex-col sm:flex-row gap-2 sm:items-end">
+            <label className="text-sm flex-1">
+              <span className="text-xs font-semibold text-gray-600 mb-1 block">إشعار WhatsApp</span>
+              <input
+                value={whatsappTo}
+                onChange={(e) => setWhatsappTo(e.target.value)}
+                placeholder="05xxxxxxxx"
+                className="w-full border rounded-xl px-3 py-2 text-sm"
+                dir="ltr"
+              />
+            </label>
+            <button
+              type="button"
+              onClick={() => void notifyWhatsApp()}
+              className="px-4 py-2.5 rounded-xl bg-emerald-700 text-white text-sm font-semibold"
+            >
+              إرسال إشعار
+            </button>
+          </div>
+          {notifyMsg ? <p className="text-xs text-gray-600">{notifyMsg}</p> : null}
+        </div>
+      ) : null}
+    </div>
+  );
+}
