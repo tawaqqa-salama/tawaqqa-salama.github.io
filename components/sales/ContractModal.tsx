@@ -1,14 +1,17 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import { supabase } from '@/lib/supabase';
 import { calculateTotalAmount, calculateVatAmount } from '@/lib/business/client-workflow';
-import { generateContractNumber } from '@/lib/constants/modules';
+import {
+  buildContractTermsText,
+  buildServiceScopeFromQuotation,
+  createContractFromQuotation,
+} from '@/lib/business/contract-service';
 import { parseLocalizedNumber } from '@/lib/validation/client';
 import NumericInput from '@/components/ui/NumericInput';
 import { printContract } from '@/components/sales/ContractPrint';
+import { loadCompanyProfile } from '@/lib/company-profile';
 import type { ClientRecord } from '@/lib/types/client';
-import type { SalesContract } from '@/lib/types/sales';
 
 interface ContractModalProps {
   client: ClientRecord | null;
@@ -18,7 +21,7 @@ interface ContractModalProps {
 
 export default function ContractModal({ client, onClose, onCreated }: ContractModalProps) {
   const [serviceScope, setServiceScope] = useState('');
-  const [terms, setTerms] = useState('يلتزم الطرف الثاني بسداد المبالغ وفق جدول الدفعات المتفق عليه. ت covers خدمات الاستشارات الهندسية وتراخيص السلامة.');
+  const [terms, setTerms] = useState('');
   const [amount, setAmount] = useState('');
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -26,7 +29,8 @@ export default function ContractModal({ client, onClose, onCreated }: ContractMo
   useEffect(() => {
     if (!client) return;
     setAmount(String(client.quotation_amount || 0));
-    setServiceScope(`خدمات استشارية وتراخيص سلامة — ${client.business_name || client.name}`);
+    setServiceScope(buildServiceScopeFromQuotation(client));
+    void loadCompanyProfile().then((company) => setTerms(buildContractTermsText(company)));
   }, [client]);
 
   if (!client) return null;
@@ -38,26 +42,45 @@ export default function ContractModal({ client, onClose, onCreated }: ContractMo
   const handleSave = async (print = false) => {
     setSaving(true);
     setError(null);
-    const contractNumber = await generateContractNumber();
-    const contract: Omit<SalesContract, 'id' | 'created_at'> = {
-      client_id: client.id,
-      contract_number: contractNumber,
-      quotation_number: client.quotation_number || null,
-      contract_date: new Date().toISOString().slice(0, 10),
-      service_scope: serviceScope,
-      terms,
-      amount: subtotal,
-      vat_amount: vat,
-      total_amount: total,
-      status: 'معتمد',
-    };
-    const { data, error: insertError } = await supabase.from('sales_contracts').insert(contract).select('*').single();
-    setSaving(false);
-    if (insertError) {
-      setError(insertError.message);
+    const result = await createContractFromQuotation(
+      {
+        ...client,
+        quotation_amount: subtotal,
+        vat_amount: vat,
+        total_amount: total,
+        quotation_services: client.quotation_services,
+      },
+      { force: false }
+    );
+
+    // إذا كان موجوداً ونريد تحديث النطاق يدوياً — نطبع الموجود
+    if (result.error) {
+      setSaving(false);
+      setError(result.error);
       return;
     }
-    if (print && data) printContract(data as SalesContract, client);
+
+    if (result.contract && (serviceScope !== result.contract.service_scope || terms !== result.contract.terms)) {
+      // تحديث يدوي للنطاق/الشروط بعد الإنشاء التلقائي أو الموجود
+      const { supabase } = await import('@/lib/supabase');
+      await supabase
+        .from('sales_contracts')
+        .update({ service_scope: serviceScope, terms, amount: subtotal, vat_amount: vat, total_amount: total })
+        .eq('id', result.contract.id);
+      result.contract = {
+        ...result.contract,
+        service_scope: serviceScope,
+        terms,
+        amount: subtotal,
+        vat_amount: vat,
+        total_amount: total,
+      };
+    }
+
+    setSaving(false);
+    if (print && result.contract) {
+      await printContract(result.contract, client);
+    }
     onCreated();
     onClose();
   };
@@ -67,31 +90,34 @@ export default function ContractModal({ client, onClose, onCreated }: ContractMo
       <div className="bg-white rounded-2xl shadow-xl w-full max-w-2xl max-h-[90vh] overflow-y-auto p-6">
         <div className="flex justify-between items-start mb-4">
           <div>
-            <h2 className="text-xl font-bold">عقد خدمات استشارية</h2>
+            <h2 className="text-xl font-bold">عقد اتفاق</h2>
             <p className="text-sm text-gray-500">{client.business_name || client.name} — {client.quotation_number || 'بدون عرض'}</p>
-            <p className="text-xs text-emerald-700 mt-1">رقم العقد يُصدر تلقائياً عند الحفظ بصيغة CT-YYYY-NNN</p>
+            <p className="text-xs text-emerald-700 mt-1">
+              يُنشأ تلقائياً عند اعتماد/سداد العرض. يمكنك المراجعة والطباعة هنا. الرقم: CT-YYYY-NNN
+            </p>
           </div>
           <button onClick={onClose} className="text-2xl text-gray-400">×</button>
         </div>
         {error && <div className="mb-3 p-3 bg-red-50 text-red-700 rounded-xl text-sm">{error}</div>}
         <div className="space-y-3">
           <div>
-            <label className="block text-xs font-semibold mb-1">نطاق الخدمة</label>
-            <textarea rows={3} value={serviceScope} onChange={(e) => setServiceScope(e.target.value)} className="w-full p-2.5 border rounded-xl text-sm" />
+            <label className="block text-xs font-semibold mb-1">نطاق الأعمال (من خدمات عرض السعر)</label>
+            <textarea rows={4} value={serviceScope} onChange={(e) => setServiceScope(e.target.value)} className="w-full p-2.5 border rounded-xl text-sm" />
           </div>
           <div>
-            <label className="block text-xs font-semibold mb-1">الشروط والأحكام</label>
-            <textarea rows={4} value={terms} onChange={(e) => setTerms(e.target.value)} className="w-full p-2.5 border rounded-xl text-sm" />
+            <label className="block text-xs font-semibold mb-1">الشروط وخطة السداد</label>
+            <textarea rows={5} value={terms} onChange={(e) => setTerms(e.target.value)} className="w-full p-2.5 border rounded-xl text-sm" />
           </div>
           <div>
             <label className="block text-xs font-semibold mb-1">قيمة العقد (قبل الضريبة)</label>
             <NumericInput mode="decimal" value={amount} onChange={setAmount} className="w-full p-2.5 border rounded-xl text-sm font-mono" />
+            <p className="text-xs text-gray-500 mt-1">شامل الضريبة تقريباً: {total.toLocaleString('ar-SA')} ر.س</p>
           </div>
         </div>
         <div className="flex flex-wrap gap-2 mt-5 justify-end">
           <button onClick={onClose} className="px-4 py-2 bg-gray-100 rounded-xl text-sm">إلغاء</button>
-          <button onClick={() => handleSave(false)} disabled={saving} className="px-4 py-2 bg-[#1f4d3a] text-white rounded-xl text-sm">حفظ العقد</button>
-          <button onClick={() => handleSave(true)} disabled={saving} className="px-4 py-2 bg-blue-600 text-white rounded-xl text-sm">حفظ وطباعة</button>
+          <button onClick={() => void handleSave(false)} disabled={saving} className="px-4 py-2 bg-[#1f4d3a] text-white rounded-xl text-sm">حفظ / ربط العقد</button>
+          <button onClick={() => void handleSave(true)} disabled={saving} className="px-4 py-2 bg-blue-600 text-white rounded-xl text-sm">حفظ وطباعة</button>
         </div>
       </div>
     </div>

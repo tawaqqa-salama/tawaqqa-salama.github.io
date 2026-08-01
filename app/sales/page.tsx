@@ -274,7 +274,7 @@ export default function SalesPage() {
                     <td className="p-3">{ct.quotation_number}</td>
                     <td className="p-3 font-mono">{formatCurrency(ct.total_amount)}</td>
                     <td className="p-3">{ct.status}</td>
-                    <td className="p-3">{c && <button onClick={() => printContract(ct, c)} className="text-xs text-blue-600">طباعة</button>}</td>
+                    <td className="p-3">{c && <button onClick={() => void printContract(ct, c)} className="text-xs text-blue-600">طباعة</button>}</td>
                   </tr>
                 );
               })}
