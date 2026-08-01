@@ -53,6 +53,7 @@ import { loadCompanyProfile } from '@/lib/company-profile';
 import PrintQuotationModal from '@/components/sales/PrintQuotationModal';
 import { processZatcaOnQuotationApproval } from '@/lib/zatca/submit';
 import { processAutoContractOnApproval } from '@/lib/business/contract-service';
+import { mergeLocalClientOverrides, updateClientSafe } from '@/lib/supabase/safe-client-write';
 import type { ClientRecord, DepartmentMode, FloorLevel, InspectionChecklistItem } from '@/lib/types/client';
 
 type TabId = 'basic' | 'finance' | 'engineering' | 'reports';
@@ -145,50 +146,51 @@ export default function ClientDetailModal({
 
   useEffect(() => {
     if (!client) return;
+    const hydrated = mergeLocalClientOverrides(client);
     const allowed = DEPARTMENT_TABS[department];
     const preferred = DEFAULT_TAB[department] || allowed[0] || 'basic';
     setActiveTab(allowed.includes(preferred) ? preferred : allowed[0]);
     setErrorMessage(null);
     setSuccessMessage(null);
-    setQuotationServices(normalizeQuotationServices(client.quotation_services));
-    const existingAmount = Number(client.quotation_amount || 0);
+    setQuotationServices(normalizeQuotationServices(hydrated.quotation_services));
+    const existingAmount = Number(hydrated.quotation_amount || 0);
     if (existingAmount > 0) {
-      setQuotationAmount(String(client.quotation_amount));
-    } else if (pricePerM2 > 0 && Number(client.building_area || 0) > 0) {
-      const auto = Math.round(Number(client.building_area) * pricePerM2 * 100) / 100;
+      setQuotationAmount(String(hydrated.quotation_amount));
+    } else if (pricePerM2 > 0 && Number(hydrated.building_area || 0) > 0) {
+      const auto = Math.round(Number(hydrated.building_area) * pricePerM2 * 100) / 100;
       setQuotationAmount(String(auto));
     } else {
       setQuotationAmount('');
     }
-    setQuotationStatus(client.quotation_status || 'مسودة');
-    setFinancialStatus(client.financial_status || 'بانتظار الدفعة');
-    setPaymentReference(client.payment_reference || '');
-    setPaidAmount(client.paid_amount ? String(client.paid_amount) : '');
-    setQuotationVisitsCount(String(client.quotation_visits_count || 1));
-    setSalesPaymentType((client.sales_payment_type as 'نقدي' | 'آجل') || 'نقدي');
-    setAssignedEngineer(client.assigned_engineer || '');
-    setEngineeringStatus(client.engineering_status || 'جديد');
-    setEngineeringNotes(client.engineering_notes || '');
-    setVisitDate(client.visit_date ? client.visit_date.slice(0, 16) : '');
-    setVisitStatus(client.visit_status || 'لم تُجدول');
-    setChecklist(normalizeChecklist(client.inspection_checklist));
-    setFinalReportStatus(client.final_report_status || 'قيد الإعداد');
-    setLicenseNumber(client.license_number || '');
-    setLicenseExpiryDate(client.license_expiry_date || '');
-    setOwnerName(client.owner_name || '');
-    setPhone(client.phone || '');
-    setRegion(client.region || '');
-    setCity(client.city || '');
-    setDistrict(client.district || '');
-    setStreet(client.street || '');
-    setPlotNumber(client.plot_number || '');
-    setCommercialRegister(client.commercial_register || '');
-    setNationalAddress(client.national_address || '');
-    setBusinessName(client.business_name || '');
-    setActivityType(client.activity_type || '');
-    setLandArea(client.land_area != null ? String(client.land_area) : '');
-    setProjectStatus(client.project_status || '');
-    setFloorLevels(ensureFloorLevels(client.floor_levels, client.floors_count, client.building_area));
+    setQuotationStatus(hydrated.quotation_status || 'مسودة');
+    setFinancialStatus(hydrated.financial_status || 'بانتظار الدفعة');
+    setPaymentReference(hydrated.payment_reference || '');
+    setPaidAmount(hydrated.paid_amount ? String(hydrated.paid_amount) : '');
+    setQuotationVisitsCount(String(hydrated.quotation_visits_count || 1));
+    setSalesPaymentType((hydrated.sales_payment_type as 'نقدي' | 'آجل') || 'نقدي');
+    setAssignedEngineer(hydrated.assigned_engineer || '');
+    setEngineeringStatus(hydrated.engineering_status || 'جديد');
+    setEngineeringNotes(hydrated.engineering_notes || '');
+    setVisitDate(hydrated.visit_date ? String(hydrated.visit_date).slice(0, 16) : '');
+    setVisitStatus(hydrated.visit_status || 'لم تُجدول');
+    setChecklist(normalizeChecklist(hydrated.inspection_checklist));
+    setFinalReportStatus(hydrated.final_report_status || 'قيد الإعداد');
+    setLicenseNumber(hydrated.license_number || '');
+    setLicenseExpiryDate(hydrated.license_expiry_date || '');
+    setOwnerName(hydrated.owner_name || '');
+    setPhone(hydrated.phone || '');
+    setRegion(hydrated.region || '');
+    setCity(hydrated.city || '');
+    setDistrict(hydrated.district || '');
+    setStreet(hydrated.street || '');
+    setPlotNumber(hydrated.plot_number || '');
+    setCommercialRegister(hydrated.commercial_register || '');
+    setNationalAddress(hydrated.national_address || '');
+    setBusinessName(hydrated.business_name || '');
+    setActivityType(hydrated.activity_type || '');
+    setLandArea(hydrated.land_area != null ? String(hydrated.land_area) : '');
+    setProjectStatus(hydrated.project_status || '');
+    setFloorLevels(ensureFloorLevels(hydrated.floor_levels, hydrated.floors_count, hydrated.building_area));
   }, [client, department, pricePerM2]);
 
   const subtotal = parseLocalizedNumber(quotationAmount);
@@ -252,14 +254,17 @@ export default function ClientDetailModal({
 
       const merged = mergePipelineStage(client, finalPayload);
       const previousStage = client.pipeline_stage || resolvePipelineStage(client);
-      const { error } = await supabase.from('clients').update(merged).eq('id', client.id);
-      if (error) {
-        setErrorMessage(error.message);
+      const writeResult = await updateClientSafe(client.id, merged as Record<string, unknown>);
+      if (writeResult.error) {
+        setErrorMessage(writeResult.error);
         return false;
       }
 
       const newStage = merged.pipeline_stage;
       let message = successText;
+      if (writeResult.warning) {
+        message += ` — ${writeResult.warning}`;
+      }
       const quotationApprovedNow = ['معتمد', 'بانتظار السداد'].includes(
         String(finalPayload.quotation_status || quotationStatus)
       );

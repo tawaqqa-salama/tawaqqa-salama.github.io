@@ -17,6 +17,7 @@ import { clientToFinancialDocument } from '@/lib/invoices/document-mapper';
 import { formatCurrency } from '@/lib/format/currency';
 import { parseLocalizedInteger, parseLocalizedNumber } from '@/lib/validation/client';
 import ResponsiveTable from '@/components/ui/ResponsiveTable';
+import { insertClientSafe, mergeLocalClientOverrides } from '@/lib/supabase/safe-client-write';
 import type { ClientFormData, ClientRecord, FinancialDocument } from '@/lib/types/client';
 import type { SalesContract, SalesDocument, SalesReturn } from '@/lib/types/sales';
 
@@ -55,7 +56,9 @@ export default function SalesPage() {
       supabase.from('sales_contracts').select('*').order('created_at', { ascending: false }),
       supabase.from('sales_returns').select('*').order('created_at', { ascending: false }),
     ]);
-    setAllClients((clientsRes.data || []) as ClientRecord[]);
+    setAllClients(
+      ((clientsRes.data || []) as ClientRecord[]).map((row) => mergeLocalClientOverrides(row))
+    );
     setDocuments((docsRes.data || []) as SalesDocument[]);
     setContracts((contractsRes.data || []) as SalesContract[]);
     setReturns((returnsRes.data || []) as SalesReturn[]);
@@ -87,38 +90,36 @@ export default function SalesPage() {
     setIsSubmitting(true);
     setErrorMessage(null);
     const clientCode = await nextClientCode();
-    const { error } = await supabase.from('clients').insert([
-      {
-        client_code: clientCode,
-        name: formData.business_name || formData.owner_name,
-        owner_name: formData.owner_name,
-        phone: formData.phone,
-        region: formData.region,
-        city: formData.city,
-        district: formData.district,
-        street: formData.street,
-        plot_number: formData.plot_number || null,
-        national_address: formData.national_address || null,
-        business_name: formData.business_name,
-        activity_type: formData.activity_type,
-        land_area: parseLocalizedNumber(formData.land_area),
-        building_area: parseLocalizedNumber(formData.building_area),
-        floors_count: parseLocalizedInteger(formData.floors_count),
-        floor_levels: formData.floor_levels || [],
-        project_status: formData.project_status,
-        pipeline_stage: 'sales',
-        sales_payment_type: 'نقدي',
-        financial_status: 'بانتظار الدفعة',
-        engineering_status: 'جديد',
-        quotation_status: 'مسودة',
-        quotation_visits_count: 1,
-        quotation_services: [],
-        visit_status: 'لم تُجدول',
-        final_report_status: 'قيد الإعداد',
-      },
-    ]);
+    const { error } = await insertClientSafe({
+      client_code: clientCode,
+      name: formData.business_name || formData.owner_name,
+      owner_name: formData.owner_name,
+      phone: formData.phone,
+      region: formData.region,
+      city: formData.city,
+      district: formData.district,
+      street: formData.street,
+      plot_number: formData.plot_number || null,
+      national_address: formData.national_address || null,
+      business_name: formData.business_name,
+      activity_type: formData.activity_type,
+      land_area: parseLocalizedNumber(formData.land_area),
+      building_area: parseLocalizedNumber(formData.building_area),
+      floors_count: parseLocalizedInteger(formData.floors_count),
+      floor_levels: formData.floor_levels || [],
+      project_status: formData.project_status,
+      pipeline_stage: 'sales',
+      sales_payment_type: 'نقدي',
+      financial_status: 'بانتظار الدفعة',
+      engineering_status: 'جديد',
+      quotation_status: 'مسودة',
+      quotation_visits_count: 1,
+      quotation_services: [],
+      visit_status: 'لم تُجدول',
+      final_report_status: 'قيد الإعداد',
+    });
     setIsSubmitting(false);
-    if (error) { setErrorMessage(error.message); return; }
+    if (error) { setErrorMessage(error); return; }
     setIsAddOpen(false);
     fetchAll();
   };
