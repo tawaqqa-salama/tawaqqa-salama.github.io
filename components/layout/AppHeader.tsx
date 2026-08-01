@@ -96,65 +96,54 @@ export default function AppHeader() {
   const initial = (session?.fullName || 'م').trim().charAt(0);
   const isLauncher = pathname === '/me' || pathname === '/' || pathname.startsWith('/me/');
 
+  const navBtnBase =
+    'touch-target h-11 w-11 shrink-0 rounded-xl border transition inline-flex items-center justify-center';
+  const navBtnIdle =
+    'border-[var(--erp-border)] bg-white text-[var(--erp-text)] hover:border-[var(--erp-primary)]/40 hover:text-[var(--erp-primary)]';
+  const navBtnActive =
+    'border-[var(--erp-primary)] bg-[#eef6f1] text-[var(--erp-primary)]';
+
   return (
     <>
       <header className="bg-white border-b border-[var(--erp-border)] px-3 sm:px-5 py-2.5 flex items-center justify-between gap-2 shrink-0 z-[55] relative">
-        <div className="flex items-center gap-1.5 sm:gap-2 min-w-0">
-          <Link
-            href={LAUNCHER_HREF}
-            className={`
-              touch-target rounded-xl border transition
-              ${
-                isLauncher
-                  ? 'border-[var(--erp-primary)] bg-[#eef6f1] text-[var(--erp-primary)]'
-                  : 'border-[var(--erp-border)] bg-[var(--erp-page)] text-[var(--erp-text)] hover:border-[var(--erp-primary)]/40 hover:text-[var(--erp-primary)]'
-              }
-            `}
-            title="الصفحة الرئيسية للأنظمة"
-            aria-label="الصفحة الرئيسية للأنظمة"
-          >
-            <HomeIcon />
-          </Link>
+        <div className="flex items-center gap-2 min-w-0">
+          {/* RTL: يمين ← يسار = ☰ ثم الشبكة ثم البيت ثم العنوان */}
+          <div className="flex flex-row items-center gap-2 shrink-0" dir="rtl">
+            {hasSubNav ? (
+              <button
+                type="button"
+                onClick={toggleSubNav}
+                className={`${navBtnBase} ${subNavOpen ? navBtnActive : navBtnIdle}`}
+                title={subNavOpen ? 'إخفاء قائمة القسم' : 'إظهار قائمة القسم'}
+                aria-label={subNavOpen ? 'إخفاء القائمة الفرعية' : 'إظهار القائمة الفرعية'}
+                aria-expanded={subNavOpen}
+                aria-controls="module-subnav"
+              >
+                <HamburgerIcon />
+              </button>
+            ) : null}
 
-          <button
-            type="button"
-            onClick={() => setSwitcherOpen(true)}
-            className={`
-              touch-target rounded-xl border transition
-              ${
-                switcherOpen
-                  ? 'border-[var(--erp-primary)] bg-[#eef6f1] text-[var(--erp-primary)]'
-                  : 'border-[var(--erp-border)] bg-white text-[var(--erp-text)] hover:border-[var(--erp-primary)]/40 hover:text-[var(--erp-primary)]'
-              }
-            `}
-            title="قائمة الأقسام"
-            aria-label="فتح قائمة الأقسام"
-            aria-haspopup="dialog"
-            aria-expanded={switcherOpen}
-          >
-            <AppsGridIcon />
-          </button>
-
-          {hasSubNav ? (
             <button
               type="button"
-              onClick={toggleSubNav}
-              className={`
-                touch-target rounded-xl border transition
-                ${
-                  subNavOpen
-                    ? 'border-[var(--erp-primary)] bg-[#eef6f1] text-[var(--erp-primary)]'
-                    : 'border-[var(--erp-border)] bg-white text-[var(--erp-text)] hover:border-[var(--erp-primary)]/40 hover:text-[var(--erp-primary)]'
-                }
-              `}
-              title={subNavOpen ? 'إخفاء قائمة القسم' : 'إظهار قائمة القسم'}
-              aria-label={subNavOpen ? 'إخفاء القائمة الفرعية' : 'إظهار القائمة الفرعية'}
-              aria-expanded={subNavOpen}
-              aria-controls="module-subnav"
+              onClick={() => setSwitcherOpen(true)}
+              className={`${navBtnBase} ${switcherOpen ? navBtnActive : navBtnIdle}`}
+              title="قائمة الأقسام"
+              aria-label="فتح قائمة الأقسام"
+              aria-haspopup="dialog"
+              aria-expanded={switcherOpen}
             >
-              <HamburgerIcon />
+              <AppsGridIcon />
             </button>
-          ) : null}
+
+            <Link
+              href={LAUNCHER_HREF}
+              className={`${navBtnBase} ${isLauncher ? navBtnActive : navBtnIdle}`}
+              title="الصفحة الرئيسية للأنظمة"
+              aria-label="الصفحة الرئيسية للأنظمة"
+            >
+              <HomeIcon />
+            </Link>
+          </div>
 
           <div className="min-w-0 ms-1 sm:ms-2">
             <p className="text-sm sm:text-base font-bold text-[var(--erp-text)] truncate leading-tight">
