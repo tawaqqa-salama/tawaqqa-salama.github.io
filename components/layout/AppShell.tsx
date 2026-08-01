@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect } from 'react';
+import { Suspense, useEffect } from 'react';
 import { usePathname, useRouter } from 'next/navigation';
 import AppHeader from '@/components/layout/AppHeader';
 import ActivityTracker from '@/components/layout/ActivityTracker';
@@ -89,7 +89,9 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
   return (
     <ModuleSubNavProvider>
       <div className="flex-1 flex flex-col min-w-0 w-full h-full overflow-hidden">
-        <AppHeader />
+        <Suspense fallback={<div className="h-[57px] border-b bg-white shrink-0" />}>
+          <AppHeader />
+        </Suspense>
         <SupabaseConfigBanner />
         <ActivityTracker />
         <main className="flex-1 p-3 sm:p-5 md:p-6 overflow-y-auto overflow-x-hidden w-full max-w-none">

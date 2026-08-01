@@ -2,7 +2,7 @@
 
 import { useCallback, useState } from 'react';
 import Link from 'next/link';
-import { usePathname } from 'next/navigation';
+import { usePathname, useSearchParams } from 'next/navigation';
 import { FINANCE_NAV } from '@/lib/constants/accounting';
 import { SIDEBAR_NAV } from '@/lib/constants/navigation';
 import { useAuth } from '@/lib/auth/AuthProvider';
@@ -11,7 +11,10 @@ import { useModuleSubNav } from '@/components/layout/ModuleSubNavContext';
 
 const LAUNCHER_HREF = '/me';
 
-function resolveSection(pathname: string): { title: string; subtitle?: string } {
+function resolveSection(
+  pathname: string,
+  searchTab?: string | null
+): { title: string; subtitle?: string } {
   if (pathname === '/' || pathname === '/me' || pathname.startsWith('/me/')) {
     return { title: 'الأنظمة', subtitle: 'الصفحة الرئيسية' };
   }
@@ -30,10 +33,15 @@ function resolveSection(pathname: string): { title: string; subtitle?: string } 
     return { title: 'الأنظمة' };
   }
 
-  if (pathname.startsWith('/finance/')) {
-    const sub = FINANCE_NAV.find(
-      (item) => pathname === item.href || pathname.startsWith(`${item.href}/`)
-    );
+  if (pathname.startsWith('/finance')) {
+    if (pathname.startsWith('/finance/vouchers') && searchTab === 'approvals') {
+      return { title: main.label, subtitle: 'الاعتماد المالي' };
+    }
+    const sub = FINANCE_NAV.find((item) => {
+      const path = item.href.split('?')[0];
+      if (item.href.includes('tab=approvals')) return false;
+      return pathname === path || pathname.startsWith(`${path}/`);
+    });
     if (sub && sub.href !== '/finance') {
       return { title: main.label, subtitle: sub.label };
     }
@@ -89,7 +97,8 @@ function HamburgerIcon() {
 
 export default function AppHeader() {
   const pathname = usePathname();
-  const section = resolveSection(pathname);
+  const searchParams = useSearchParams();
+  const section = resolveSection(pathname, searchParams.get('tab'));
   const { session, logout } = useAuth();
   const { hasSubNav, open: subNavOpen, toggleSubNav, isMobile } = useModuleSubNav();
   const [switcherOpen, setSwitcherOpen] = useState(false);

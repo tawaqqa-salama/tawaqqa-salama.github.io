@@ -1,13 +1,25 @@
 'use client';
 
 import Link from 'next/link';
-import { usePathname } from 'next/navigation';
+import { usePathname, useSearchParams } from 'next/navigation';
 import { FINANCE_NAV } from '@/lib/constants/accounting';
 import ModuleSubNavSlot from '@/components/layout/ModuleSubNavSlot';
+
+function hrefPath(href: string): string {
+  return href.split('?')[0] || href;
+}
+
+function hrefTab(href: string): string | null {
+  const q = href.split('?')[1];
+  if (!q) return null;
+  return new URLSearchParams(q).get('tab');
+}
 
 /** تبويبات داخلية لنظام الحسابات — تُخفى/تُظهر عبر زر ☰ */
 export function FinanceSubNav() {
   const pathname = usePathname();
+  const searchParams = useSearchParams();
+  const currentTab = searchParams.get('tab');
 
   return (
     <ModuleSubNavSlot label="تبويبات الحسابات المالية">
@@ -17,10 +29,21 @@ export function FinanceSubNav() {
       >
         <div className="flex gap-1 min-w-max" role="tablist" aria-label="تبويبات الحسابات المالية">
           {FINANCE_NAV.map((item) => {
-            const isActive =
-              item.href === '/finance'
-                ? pathname === '/finance'
-                : pathname === item.href || pathname.startsWith(`${item.href}/`);
+            const path = hrefPath(item.href);
+            const tab = hrefTab(item.href);
+            const isApprovalsLink = tab === 'approvals';
+            const isVouchersRoot = path === '/finance/vouchers' && !tab;
+
+            let isActive = false;
+            if (item.href === '/finance') {
+              isActive = pathname === '/finance';
+            } else if (isApprovalsLink) {
+              isActive = pathname.startsWith('/finance/vouchers') && currentTab === 'approvals';
+            } else if (isVouchersRoot) {
+              isActive = pathname.startsWith('/finance/vouchers') && currentTab !== 'approvals';
+            } else {
+              isActive = pathname === path || pathname.startsWith(`${path}/`);
+            }
 
             return (
               <Link
