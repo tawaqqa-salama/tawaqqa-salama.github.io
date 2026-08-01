@@ -27,6 +27,12 @@ export default function SettingsPage() {
       enabled: canAccess('settings'),
     },
     {
+      title: 'ZATCA — الفوترة الإلكترونية',
+      desc: 'Phase 2: OTP، CSID، Sandbox/Production، وإرسال الفواتير (Reporting/Clearance)',
+      href: '/settings/zatca',
+      enabled: canAccess('settings'),
+    },
+    {
       title: 'كود البناء',
       desc: 'اشتراطات الأنشطة والمساحات',
       href: null,
