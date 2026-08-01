@@ -1,7 +1,6 @@
 'use client';
 
 import { useEffect, useMemo, useState } from 'react';
-import { supabase } from '@/lib/supabase';
 import { printFinancialDocument } from '@/components/invoices/FinancialDocumentPrint';
 import { clientToFinancialDocument } from '@/lib/invoices/document-mapper';
 import {
@@ -12,6 +11,7 @@ import {
 import { loadCompanyProfile } from '@/lib/company-profile';
 import { formatCurrency } from '@/lib/format/currency';
 import { parseLocalizedNumber } from '@/lib/validation/client';
+import { mergeLocalClientOverrides, updateClientSafe } from '@/lib/supabase/safe-client-write';
 import type { ClientRecord } from '@/lib/types/client';
 
 interface PrintQuotationModalProps {
@@ -29,8 +29,9 @@ export default function PrintQuotationModal({ client, onClose, onSaved }: PrintQ
 
   useEffect(() => {
     if (!client) return;
-    setSelected(normalizeQuotationServices(client.quotation_services));
-    setVisitsCount(String(client.quotation_visits_count || 1));
+    const hydrated = mergeLocalClientOverrides(client);
+    setSelected(normalizeQuotationServices(hydrated.quotation_services));
+    setVisitsCount(String(hydrated.quotation_visits_count || 1));
     setError(null);
     void loadCompanyProfile().then((profile) => setPricePerM2(Number(profile.price_per_m2) || 0));
   }, [client]);
@@ -62,18 +63,15 @@ export default function PrintQuotationModal({ client, onClose, onSaved }: PrintQ
     setError(null);
     const visits = Math.max(1, Math.min(10, parseLocalizedNumber(visitsCount) || 1));
 
-    const { error: updateError } = await supabase
-      .from('clients')
-      .update({
-        quotation_services: selected,
-        quotation_visits_count: visits,
-      })
-      .eq('id', client.id);
+    const writeResult = await updateClientSafe(client.id, {
+      quotation_services: selected,
+      quotation_visits_count: visits,
+    });
 
     setSaving(false);
-    if (updateError) {
-      // الطباعة تعمل حتى لو العمود غير موجود بعد؛ نحفظ محلياً عبر تحديث الواجهة
-      console.warn(updateError.message);
+    if (writeResult.error) {
+      setError(writeResult.error);
+      return;
     }
 
     const document = clientToFinancialDocument(
