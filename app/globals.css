@@ -75,11 +75,17 @@ main :is(.bg-white, .rounded-xl, .shadow-sm, .border):has(> table) > table {
 
 /* حقول الإدخال بعرض كامل على الجوال */
 @media (max-width: 767px) {
-  main input:not([type='checkbox']):not([type='radio']):not([type='file']):not([type='color']),
+  main input:not([type='checkbox']):not([type='radio']):not([type='file']):not([type='color']):not([type='date']),
   main select,
   main textarea {
     width: 100% !important;
     max-width: 100%;
+  }
+
+  main input[type='date'] {
+    width: 100%;
+    max-width: 100%;
+    min-height: 42px;
   }
 
   main button.touch-target,
@@ -130,6 +136,14 @@ main :is(.bg-white, .rounded-xl, .shadow-sm, .border):has(> table) > table {
     text-align: left;
   }
 
+  .table-as-cards td[data-label='إجراء'] {
+    align-items: center;
+  }
+
+  .table-as-cards td[data-label='عرض السعر'] .doc-number {
+    white-space: nowrap;
+  }
+
   .responsive-table-scroll > table {
     min-width: 560px;
   }
@@ -172,6 +186,76 @@ main video,
 main canvas,
 main iframe {
   max-width: 100%;
+}
+
+/* شريط أيقونات الهيدر — يمين ← يسار */
+.header-nav-controls {
+  display: flex;
+  flex-direction: row;
+  justify-content: flex-start;
+  align-items: center;
+  gap: 8px;
+}
+
+/* حقول نطاق التاريخ */
+.date-range-bar {
+  display: flex;
+  flex-direction: row;
+  flex-wrap: wrap;
+  gap: 10px;
+  width: 100%;
+  align-items: flex-end;
+}
+
+.date-range-bar .date-field {
+  display: flex;
+  flex-direction: column;
+  flex: 1 1 140px;
+  min-width: 0;
+}
+
+.date-range-bar .date-field span {
+  display: block;
+  margin-bottom: 4px;
+  font-size: 12px;
+  font-weight: 600;
+  color: #4b5563;
+}
+
+.date-range-bar input[type='date'] {
+  display: block;
+  width: 100%;
+  min-height: 42px;
+  border: 1px solid #ccc;
+  padding: 8px;
+  border-radius: 6px;
+  background: #fff;
+  color: #111827;
+  font-size: 14px;
+  line-height: 1.4;
+  direction: ltr;
+  -webkit-appearance: auto;
+  appearance: auto;
+  color-scheme: light;
+}
+
+.date-range-bar .date-clear {
+  border: 1px solid #ccc;
+  padding: 8px 12px;
+  border-radius: 6px;
+  background: #f9fafb;
+  min-height: 42px;
+  font-size: 13px;
+  white-space: nowrap;
+}
+
+/* أرقام المستندات لا تنكسر على سطرين */
+.doc-number {
+  white-space: nowrap;
+  direction: ltr;
+  display: inline-block;
+  unicode-bidi: isolate;
+  font-variant-numeric: tabular-nums;
 }
 
 /* حركات مبدّل الأقسام والهيدر */
