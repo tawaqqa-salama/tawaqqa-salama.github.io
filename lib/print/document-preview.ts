@@ -15,7 +15,18 @@ export function registerDocumentPreviewListener(next: Listener) {
   };
 }
 
+function trackPrint(payload: DocumentPreviewPayload) {
+  void import('@/lib/activity/logger').then(({ logActivity }) =>
+    logActivity({
+      actionType: 'PRINT',
+      details: `طباعة / معاينة مستند: ${payload.title}`,
+      metadata: { fileName: payload.fileName || null, title: payload.title },
+    })
+  );
+}
+
 export function openDocumentPreview(payload: DocumentPreviewPayload) {
+  trackPrint(payload);
   if (listener) {
     listener(payload);
     return;
@@ -32,6 +43,13 @@ export function closeDocumentPreview() {
 }
 
 export function downloadHtmlDocument(html: string, fileName: string) {
+  void import('@/lib/activity/logger').then(({ logActivity }) =>
+    logActivity({
+      actionType: 'EXPORT',
+      details: `تصدير مستند: ${fileName}`,
+      metadata: { fileName },
+    })
+  );
   const blob = new Blob([html], { type: 'text/html;charset=utf-8' });
   const url = URL.createObjectURL(blob);
   const link = document.createElement('a');

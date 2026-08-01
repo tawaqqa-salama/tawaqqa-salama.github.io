@@ -33,6 +33,12 @@ export default function SettingsPage() {
       enabled: canAccess('settings'),
     },
     {
+      title: 'سجل النشاطات',
+      desc: 'تتبع دخول الموظفين وتصفح الصفحات وعمليات الإنشاء والتعديل والطباعة والأرشفة',
+      href: '/settings/activity',
+      enabled: canManageStaff,
+    },
+    {
       title: 'كود البناء',
       desc: 'اشتراطات الأنشطة والمساحات',
       href: null,

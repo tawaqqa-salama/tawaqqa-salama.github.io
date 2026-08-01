@@ -54,6 +54,7 @@ import PrintQuotationModal from '@/components/sales/PrintQuotationModal';
 import { processZatcaOnQuotationApproval } from '@/lib/zatca/submit';
 import { processAutoContractOnApproval } from '@/lib/business/contract-service';
 import { mergeLocalClientOverrides, updateClientSafe } from '@/lib/supabase/safe-client-write';
+import { logActivity } from '@/lib/activity/logger';
 import type { ClientRecord, DepartmentMode, FloorLevel, InspectionChecklistItem } from '@/lib/types/client';
 
 type TabId = 'basic' | 'finance' | 'engineering' | 'reports';
@@ -298,6 +299,20 @@ export default function ClientDetailModal({
           message += ` — ZATCA: ${zatcaError instanceof Error ? zatcaError.message : 'تعذر الإرسال'}`;
         }
       }
+
+      const quoteNo = String(merged.quotation_number || client.quotation_number || '');
+      void logActivity({
+        actionType: 'UPDATE',
+        module: department,
+        details: quoteNo
+          ? `تم تحديث بيانات العميل وعرض السعر ${quoteNo} — ${successText}`
+          : `تم تحديث بيانات العميل ${client.business_name || client.name} — ${successText}`,
+        metadata: {
+          clientId: client.id,
+          quotationNumber: quoteNo || null,
+          department,
+        },
+      });
 
       setSuccessMessage(message);
       onUpdated();

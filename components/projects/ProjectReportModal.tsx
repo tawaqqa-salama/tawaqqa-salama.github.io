@@ -90,6 +90,15 @@ export default function ProjectReportModal({ client, onClose, onUpdated }: Proje
       setMessage(error.message);
       return;
     }
+    void import('@/lib/activity/logger').then(({ logActivity }) =>
+      logActivity({
+        actionType: 'UPDATE',
+        module: 'projects',
+        pageUrl: '/projects',
+        details: `تم تحديث تقرير هندسي للعميل ${client.business_name || client.name} — ${successText}`,
+        metadata: { clientId: client.id },
+      })
+    );
     setData(stamped);
     setMessage(successText);
     onUpdated();

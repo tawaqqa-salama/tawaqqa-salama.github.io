@@ -13,8 +13,19 @@ import {
 import { amountToArabicWords } from '@/lib/format/arabic-amount';
 import { loadCompanyProfile, type CompanyProfile } from '@/lib/company-profile';
 import { isFinancialApproved } from '@/lib/business/workflow-stages';
+import { logActivity } from '@/lib/activity/logger';
 import type { ClientRecord } from '@/lib/types/client';
 import type { SalesContract } from '@/lib/types/sales';
+
+async function trackContractCreated(contractNumber: string, quotationNumber: string | null) {
+  await logActivity({
+    actionType: 'CREATE',
+    module: 'sales',
+    pageUrl: '/sales',
+    details: `تم إنشاء عقد اتفاق رقم ${contractNumber}${quotationNumber ? ` مرتبط بعرض ${quotationNumber}` : ''}`,
+    metadata: { contractNumber, quotationNumber },
+  });
+}
 
 function round2(value: number): number {
   return Math.round(Number(value || 0) * 100) / 100;
@@ -188,6 +199,7 @@ export async function createContractFromQuotation(
     // محاولة الإدراج في الذاكرة التجريبية
     const { data, error } = await supabase.from('sales_contracts').insert(payload).select('*').single();
     if (!error && data) {
+      await trackContractCreated(payload.contract_number, quotationNumber);
       return {
         contract: data as SalesContract,
         created: true,
@@ -195,6 +207,7 @@ export async function createContractFromQuotation(
         error: null,
       };
     }
+    await trackContractCreated(payload.contract_number, quotationNumber);
     return {
       contract: demoContract,
       created: true,
@@ -223,6 +236,7 @@ export async function createContractFromQuotation(
       if (retry.error) {
         return { contract: null, created: false, messages: [], error: retry.error.message };
       }
+      await trackContractCreated(payload.contract_number, quotationNumber);
       return {
         contract: { ...payload, ...(retry.data as SalesContract) },
         created: true,
@@ -235,6 +249,7 @@ export async function createContractFromQuotation(
     return { contract: null, created: false, messages: [], error: error.message };
   }
 
+  await trackContractCreated(payload.contract_number, quotationNumber);
   return {
     contract: data as SalesContract,
     created: true,

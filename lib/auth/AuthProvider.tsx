@@ -24,6 +24,8 @@ import {
   signOutAuth,
   verifyPhoneOtp,
 } from '@/lib/auth/service';
+import { logActivity } from '@/lib/activity/logger';
+import { roleLabel } from '@/lib/activity/labels';
 
 type AuthContextValue = {
   session: AuthSession | null;
@@ -69,6 +71,18 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     if (result.error || !result.session) return result.error || 'فشل تسجيل الدخول';
     setSession(result.session);
     setProfile(await getUserProfile(result.session.userId));
+    void logActivity({
+      actionType: 'LOGIN',
+      details: `تسجيل دخول ناجح (${result.session.fullName}) عبر البريد`,
+      pageUrl: '/login',
+      module: 'auth',
+      actor: {
+        userId: result.session.userId,
+        userName: result.session.fullName,
+        userRole: result.session.roleCode,
+      },
+      metadata: { method: 'email', role: roleLabel(result.session.roleCode) },
+    });
     return null;
   }, []);
 
@@ -79,14 +93,39 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     if (result.error || !result.session) return result.error || 'فشل تسجيل الدخول';
     setSession(result.session);
     setProfile(await getUserProfile(result.session.userId));
+    void logActivity({
+      actionType: 'LOGIN',
+      details: `تسجيل دخول ناجح (${result.session.fullName}) عبر الجوال`,
+      pageUrl: '/login',
+      module: 'auth',
+      actor: {
+        userId: result.session.userId,
+        userName: result.session.fullName,
+        userRole: result.session.roleCode,
+      },
+      metadata: { method: 'phone', role: roleLabel(result.session.roleCode) },
+    });
     return null;
   }, []);
 
   const logout = useCallback(async () => {
+    if (session) {
+      await logActivity({
+        actionType: 'LOGOUT',
+        details: `تسجيل خروج (${session.fullName})`,
+        pageUrl: typeof window !== 'undefined' ? window.location.pathname : '/me',
+        module: 'auth',
+        actor: {
+          userId: session.userId,
+          userName: session.fullName,
+          userRole: session.roleCode,
+        },
+      });
+    }
     await signOutAuth();
     setSession(null);
     setProfile(null);
-  }, []);
+  }, [session]);
 
   const refreshProfile = useCallback(async () => {
     if (!session) return;
