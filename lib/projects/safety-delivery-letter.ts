@@ -48,13 +48,21 @@ export function formatHijriDate(isoDate?: string | null): string {
   const d = parseIsoDateLocal(isoDate);
   if (!d) return '—';
   try {
-    const text = new Intl.DateTimeFormat('ar-SA-u-ca-islamic-umalqura', {
+    const fmt = new Intl.DateTimeFormat('ar-SA-u-ca-islamic-umalqura', {
       day: 'numeric',
       month: 'long',
       year: 'numeric',
-    }).format(d);
-    const cleaned = text.replace(/\s*هـ?\.?\s*$/u, '').trim();
-    return `${cleaned} هـ`;
+    });
+    const parts = fmt.formatToParts(d);
+    const day = parts.find((p) => p.type === 'day')?.value;
+    const month = parts.find((p) => p.type === 'month')?.value;
+    const year = parts.find((p) => p.type === 'year')?.value;
+    if (day && month && year) {
+      // مثال مطلوب: ٢٠ صفر، ١٤٤٨ هـ
+      return `${day} ${month}، ${year} هـ`;
+    }
+    const text = fmt.format(d).replace(/\s*هـ?\.?\s*$/u, '').trim();
+    return `${text} هـ`;
   } catch {
     return '—';
   }
