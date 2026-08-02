@@ -140,6 +140,8 @@ export interface EngineeringDeliveryReport extends ReportMeta {
   /** تاريخ هجري اختياري (نص) — يُولَّد تلقائياً إن تُرك فارغاً */
   hijri_date?: string;
   civil_defense_city?: string;
+  /** رقم رخصة البناء المعروض في خطاب التسليم */
+  building_permit_number?: string;
   safety_engineer_name?: string;
   safety_engineer_title?: string;
   safety_engineer_phone?: string;
