@@ -203,6 +203,37 @@ export interface CompletionCertificateReport extends ReportMeta {
   completion_date?: string;
   engineer_name?: string;
   notes?: string;
+
+  /** بيانات الدراسة التي بُني عليها الإشراف */
+  study_office_name?: string;
+  study_report_number?: string;
+  study_date?: string;
+
+  /** بيانات المنشأة */
+  facility_name?: string;
+  activity_label?: string;
+  activity_classification?: string;
+  district?: string;
+  street?: string;
+  land_area?: string;
+  building_components?: string;
+  building_structural_class?: string;
+  owner_contact?: string;
+
+  /** مقاول التنفيذ */
+  contractor_name?: string;
+  contractor_license?: string;
+  contractor_license_expiry?: string;
+
+  /** ترخيص مكتب الاستشارات (قابل للتجاوز يدوياً) */
+  office_license_number?: string;
+  office_license_expiry?: string;
+
+  /** مالك المكتب للتوقيع */
+  office_owner_name?: string;
+
+  /** نص تذييل الغرفة / التحقق */
+  chamber_footer_note?: string;
 }
 
 /** صورة مرفقة داخل التقرير الفني */
