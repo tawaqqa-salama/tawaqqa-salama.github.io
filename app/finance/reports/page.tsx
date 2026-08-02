@@ -24,14 +24,20 @@ export default function FinancialReportsPage() {
   useEffect(() => {
     Promise.all([
       fetchAccounts(),
-      fetchVouchers(),
-      supabase.from('journal_entry_lines').select('*'),
-    ]).then(([accounts, vouchers, linesRes]) => {
-      const lines = (linesRes.data || []) as JournalEntryLine[];
-      setTrialBalance(buildTrialBalance(accounts, lines));
-      setIncome(buildIncomeStatement(accounts, lines));
-      setVat(buildVatSummary(vouchers));
-    }).finally(() => setLoading(false));
+      fetchVouchers(undefined, 80),
+      // حد أعلى لبنود القيود — يكفي التقارير التشغيلية دون مسح الجدول كاملاً
+      supabase
+        .from('journal_entry_lines')
+        .select('id, journal_entry_id, account_id, debit, credit, cost_center_id')
+        .limit(500),
+    ])
+      .then(([accounts, vouchers, linesRes]) => {
+        const lines = (linesRes.data || []) as JournalEntryLine[];
+        setTrialBalance(buildTrialBalance(accounts, lines));
+        setIncome(buildIncomeStatement(accounts, lines));
+        setVat(buildVatSummary(vouchers));
+      })
+      .finally(() => setLoading(false));
   }, []);
 
   return (

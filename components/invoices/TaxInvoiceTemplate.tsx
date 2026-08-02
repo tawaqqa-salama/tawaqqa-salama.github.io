@@ -257,6 +257,13 @@ export function buildTaxInvoiceHtml(
 
 export async function printTaxInvoice(invoice: TaxInvoice) {
   const company = await loadCompanyProfile();
+  // تأجيل بناء HTML الثقيل حتى لا يجمّد واجهة الجداول/المودال
+  await new Promise<void>((resolve) => {
+    const ric = (window as Window & { requestIdleCallback?: (fn: () => void, opts?: { timeout: number }) => number })
+      .requestIdleCallback;
+    if (typeof ric === 'function') ric(() => resolve(), { timeout: 400 });
+    else setTimeout(() => resolve(), 0);
+  });
   const html = buildTaxInvoiceHtml(invoice, company);
   const { openDocumentPreview } = await import('@/lib/print/document-preview');
   openDocumentPreview({

@@ -72,8 +72,15 @@ export async function fetchJournalEntries(limit = 50): Promise<JournalEntry[]> {
   }));
 }
 
-export async function fetchVouchers(type?: 'receipt' | 'payment'): Promise<Voucher[]> {
-  let query = supabase.from('vouchers').select('*').order('created_at', { ascending: false });
+export async function fetchVouchers(
+  type?: 'receipt' | 'payment',
+  limit = 40
+): Promise<Voucher[]> {
+  let query = supabase
+    .from('vouchers')
+    .select('*')
+    .order('created_at', { ascending: false })
+    .limit(limit);
   if (type) query = query.eq('voucher_type', type);
   const { data } = await query;
   return (data || []) as Voucher[];
@@ -378,16 +385,17 @@ function mapEntryToDashboardRow(entry: JournalEntry): DashboardJournalRow {
 }
 
 export async function loadAccountingDashboard(): Promise<AccountingDashboardStats> {
-  const [accounts, costCenters, allEntries, vouchers, lines, journalCountRes, voucherCountRes] = await Promise.all([
+  const [accounts, costCenters, allEntries, vouchers, journalCountRes, voucherCountRes] = await Promise.all([
     fetchAccounts(),
     fetchCostCenters(),
-    fetchJournalEntries(200),
-    fetchVouchers(),
-    supabase.from('journal_entry_lines').select('*').then(({ data }) => (data || []) as JournalEntryLine[]),
+    fetchJournalEntries(40),
+    fetchVouchers(undefined, 40),
     supabase.from('journal_entries').select('*', { count: 'exact', head: true }),
     supabase.from('vouchers').select('*', { count: 'exact', head: true }),
   ]);
 
+  // استخدم بنود القيود المحمّلة مع آخر 40 قيد فقط بدل مسح الجدول بالكامل
+  const lines = allEntries.flatMap((entry) => entry.lines || []);
   const incomeSummary = buildIncomeStatement(accounts, lines);
   const vatSummary = buildVatSummary(vouchers);
 

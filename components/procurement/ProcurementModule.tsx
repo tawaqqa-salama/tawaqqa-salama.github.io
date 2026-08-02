@@ -83,22 +83,40 @@ export default function ProcurementModule() {
     }
   }, [searchParams]);
 
-  const refresh = useCallback(async () => {
-    const [v, o, r, clientsRes] = await Promise.all([
-      listVendors('all'),
-      listPurchaseOrders(),
-      listRfqs(),
-      supabase.from('clients').select('*').order('created_at', { ascending: false }),
-    ]);
-    setVendors(v);
-    setOrders(o);
-    setRfqs(r);
-    setProjects((clientsRes.data || []) as ClientRecord[]);
-  }, []);
+  const refresh = useCallback(async (activeTab: TabId = tab) => {
+    const tasks: Promise<unknown>[] = [];
+
+    if (
+      activeTab === 'vendors' ||
+      activeTab === 'subcontractors' ||
+      activeTab === 'orders' ||
+      activeTab === 'boq-rfq'
+    ) {
+      tasks.push(listVendors('all').then((v) => setVendors(v)));
+    }
+    if (activeTab === 'orders') {
+      tasks.push(listPurchaseOrders().then((o) => setOrders(o)));
+    }
+    if (activeTab === 'boq-rfq') {
+      tasks.push(listRfqs().then((r) => setRfqs(r)));
+      tasks.push(
+        (async () => {
+          const clientsRes = await supabase
+            .from('clients')
+            .select('id, business_name, name, client_code, project_engineering_data')
+            .order('created_at', { ascending: false })
+            .limit(20);
+          setProjects((clientsRes.data || []) as ClientRecord[]);
+        })()
+      );
+    }
+
+    await Promise.all(tasks);
+  }, [tab]);
 
   useEffect(() => {
-    void refresh();
-  }, [refresh]);
+    void refresh(tab);
+  }, [refresh, tab]);
 
   const suppliers = useMemo(() => vendors.filter((v) => v.vendor_type === 'supplier'), [vendors]);
   const subcontractors = useMemo(

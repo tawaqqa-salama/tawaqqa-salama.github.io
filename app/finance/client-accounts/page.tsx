@@ -16,11 +16,17 @@ export default function FinanceClientAccountsPage() {
 
   useEffect(() => {
     Promise.all([
-      supabase.from('clients').select('*').order('created_at', { ascending: false }),
-      fetchVouchers(),
+      supabase
+        .from('clients')
+        .select(
+          'id, client_code, name, business_name, total_amount, paid_amount, credit_balance, financial_status, created_at'
+        )
+        .order('created_at', { ascending: false })
+        .limit(40),
+      fetchVouchers('receipt', 40),
     ]).then(([clientsRes, voucherData]) => {
       setClients((clientsRes.data || []) as ClientRecord[]);
-      setVouchers(voucherData.filter((v) => v.voucher_type === 'receipt'));
+      setVouchers(voucherData);
       setLoading(false);
     });
   }, []);

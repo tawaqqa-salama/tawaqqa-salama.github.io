@@ -1,19 +1,24 @@
 'use client';
 
+import dynamic from 'next/dynamic';
 import { useEffect, useState } from 'react';
-import { supabase } from '@/lib/supabase';
-import TaxInvoicesPanel from '@/components/invoices/TaxInvoicesPanel';
+import { fetchClientsList } from '@/lib/data/fetchers';
 import type { ClientRecord } from '@/lib/types/client';
+
+const TaxInvoicesPanel = dynamic(() => import('@/components/invoices/TaxInvoicesPanel'), {
+  ssr: false,
+  loading: () => (
+    <div className="rounded-xl border bg-white p-8 text-center text-sm text-gray-400">
+      جاري تحميل الفواتير...
+    </div>
+  ),
+});
 
 export default function FinanceInvoicesPage() {
   const [clients, setClients] = useState<ClientRecord[]>([]);
 
   useEffect(() => {
-    void supabase
-      .from('clients')
-      .select('*')
-      .order('created_at', { ascending: false })
-      .then(({ data }) => setClients((data || []) as ClientRecord[]));
+    void fetchClientsList({ limit: 40 }).then(setClients);
   }, []);
 
   return (
