@@ -30,6 +30,7 @@ import {
 import { EMPTY_SAFETY_BLUEPRINTS } from '@/lib/types/project-reports';
 import { loadCompanyProfile, type CompanyProfile } from '@/lib/company-profile';
 import { ensureCertificateNumber, ensureOutgoingNumber } from '@/lib/business/document-numbers';
+import { backupEngineeringDataLocally } from '@/lib/supabase/safe-client-write';
 import NumericInput from '@/components/ui/NumericInput';
 import type { ClientRecord } from '@/lib/types/client';
 import type { ProjectEngineeringData } from '@/lib/types/project-reports';
@@ -115,17 +116,42 @@ export default function ProjectReportModal({ client, onClose, onUpdated }: Proje
         pipeline_stage: client.pipeline_stage === 'completed' ? 'completed' : 'projects',
       })
       .eq('id', client.id);
+
+    // نسخة محلية فورية (متزامنة) — لا نؤخر الإغلاق بـ dynamic import
+    backupEngineeringDataLocally(client.id, stamped);
     setSaving(false);
+
     if (error) {
-      // حتى لو فشل السيرفر — احفظ محلياً حتى لا تُفقد التقارير
-      const { backupEngineeringDataLocally } = await import('@/lib/supabase/safe-client-write');
-      backupEngineeringDataLocally(client.id, stamped);
       setMessage(`تعذّر الحفظ على السيرفر — تم حفظ نسخة محلية: ${error.message}`);
       setData(stamped);
       return;
     }
-    const { backupEngineeringDataLocally } = await import('@/lib/supabase/safe-client-write');
-    backupEngineeringDataLocally(client.id, stamped);
+
+    const deliveryDone = ['مكتمل', 'معتمد'].includes(stamped.engineering_delivery.status || '');
+    const finalDone = ['مكتمل', 'معتمد'].includes(stamped.final_inspection.status || '');
+    const completionDone = ['مكتمل', 'معتمد'].includes(stamped.completion_certificate.status || '');
+    const willInvoice =
+      (deliveryDone && successText.includes('تسليم')) ||
+      (finalDone && successText.includes('النهائي')) ||
+      (completionDone && successText.includes('شهادة'));
+
+    if (willInvoice) {
+      if (deliveryDone && successText.includes('تسليم')) {
+        setPendingInvoiceEvent('engineering_delivery');
+      } else if (finalDone && successText.includes('النهائي')) {
+        setPendingInvoiceEvent('final_inspection');
+      } else {
+        setPendingInvoiceEvent('completion');
+      }
+      setPromptInvoice(null);
+      setInvoicePromptOpen(true);
+      setData(stamped);
+      setMessage(successText);
+    } else {
+      // أقفل فوراً بعد نجاح الكتابة — قبل تحديث القائمة الثقيل
+      onClose();
+    }
+
     void import('@/lib/activity/logger').then(({ logActivity }) =>
       logActivity({
         actionType: 'UPDATE',
@@ -135,29 +161,10 @@ export default function ProjectReportModal({ client, onClose, onUpdated }: Proje
         metadata: { clientId: client.id },
       })
     );
-    setData(stamped);
-    setMessage(successText);
-    onUpdated();
-
-    const deliveryDone = ['مكتمل', 'معتمد'].includes(stamped.engineering_delivery.status || '');
-    const finalDone = ['مكتمل', 'معتمد'].includes(stamped.final_inspection.status || '');
-    const completionDone = ['مكتمل', 'معتمد'].includes(stamped.completion_certificate.status || '');
-    if (deliveryDone && successText.includes('تسليم')) {
-      setPendingInvoiceEvent('engineering_delivery');
-      setPromptInvoice(null);
-      setInvoicePromptOpen(true);
-    } else if (finalDone && successText.includes('النهائي')) {
-      setPendingInvoiceEvent('final_inspection');
-      setPromptInvoice(null);
-      setInvoicePromptOpen(true);
-    } else if (completionDone && successText.includes('شهادة')) {
-      setPendingInvoiceEvent('completion');
-      setPromptInvoice(null);
-      setInvoicePromptOpen(true);
-    } else {
-      // بعد الحفظ الناجح أقفل النافذة مباشرة
-      onClose();
-    }
+    // حدّث القائمة بعد إطار رسم حتى يظهر الإغلاق بلا تأخير
+    requestAnimationFrame(() => {
+      onUpdated();
+    });
   };
 
   const patch = (partial: Partial<ProjectEngineeringData>) => setData({ ...data, ...partial });

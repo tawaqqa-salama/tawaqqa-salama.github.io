@@ -286,71 +286,82 @@ export default function ClientDetailModal({
         return false;
       }
 
-      const newStage = merged.pipeline_stage;
-      let message = successText;
-      if (writeResult.warning) {
-        message += ` — ${writeResult.warning}`;
-      }
       const quotationApprovedNow = ['معتمد', 'بانتظار السداد'].includes(
         String(finalPayload.quotation_status || quotationStatus)
       );
-      if (department === 'sales' && quotationApprovedNow) {
-        message += ' — تم توليد سند القبض والقيد المحاسبي تلقائياً.';
-      }
-      if (newStage && newStage !== previousStage) {
-        message += ` — تم نقل المعاملة تلقائياً إلى: ${getPipelineStageLabel(newStage)}`;
+      const financiallyApprovedNow = ['تم السداد', 'معتمد مالياً'].includes(
+        String(finalPayload.financial_status || financialStatus)
+      );
+      const mayNeedInvoicePrompt =
+        (quotationApprovedNow || financiallyApprovedNow) && Number(merged.quotation_amount || 0) > 0;
+
+      // المسار السريع: أقفل فور نجاح الكتابة قبل العقد/ZATCA/تحديث القائمة
+      if (!mayNeedInvoicePrompt) {
+        onClose();
       }
 
       const nextClient = { ...client, ...merged } as ClientRecord;
-      const financiallyApprovedNow =
-        ['تم السداد', 'معتمد مالياً'].includes(String(finalPayload.financial_status || financialStatus));
-      let keepOpenForInvoice = false;
-
-      if ((quotationApprovedNow || financiallyApprovedNow) && Number(merged.quotation_amount || 0) > 0) {
-        try {
-          const contractResult = await processAutoContractOnApproval(client, nextClient);
-          if (contractResult.messages.length) message += ` — ${contractResult.messages.join(' ')}`;
-          if (contractResult.error) message += ` — العقد: ${contractResult.error}`;
-          if (contractResult.contract) {
-            setInvoicePromptMessage(
-              'تم اعتماد العقد / العرض. هل تريد استعراض وإصدار الفاتورة الضريبية المعتمدة؟'
-            );
-            setPromptInvoice(null);
-            setInvoicePromptOpen(true);
-            keepOpenForInvoice = true;
-          }
-        } catch (contractError) {
-          message += ` — العقد: ${contractError instanceof Error ? contractError.message : 'تعذر إنشاء العقد'}`;
-        }
-      }
-
-      if (quotationApprovedNow && Number(merged.quotation_amount || 0) > 0) {
-        try {
-          const zatca = await processZatcaOnQuotationApproval(nextClient);
-          if (zatca.messages.length) message += ` — ${zatca.messages.join(' ')}`;
-          if (zatca.error) message += ` — ZATCA: ${zatca.error}`;
-        } catch (zatcaError) {
-          message += ` — ZATCA: ${zatcaError instanceof Error ? zatcaError.message : 'تعذر الإرسال'}`;
-        }
-      }
-
+      const newStage = merged.pipeline_stage;
       const quoteNo = String(merged.quotation_number || client.quotation_number || '');
-      void logActivity({
-        actionType: 'UPDATE',
-        module: department,
-        details: quoteNo
-          ? `تم تحديث بيانات العميل وعرض السعر ${quoteNo} — ${successText}`
-          : `تم تحديث بيانات العميل ${client.business_name || client.name} — ${successText}`,
-        metadata: {
-          clientId: client.id,
-          quotationNumber: quoteNo || null,
-          department,
-        },
-      });
 
-      setSuccessMessage(message);
-      onUpdated();
-      if (!keepOpenForInvoice) onClose();
+      void (async () => {
+        let message = successText;
+        if (writeResult.warning) message += ` — ${writeResult.warning}`;
+        if (department === 'sales' && quotationApprovedNow) {
+          message += ' — تم توليد سند القبض والقيد المحاسبي تلقائياً.';
+        }
+        if (newStage && newStage !== previousStage) {
+          message += ` — تم نقل المعاملة تلقائياً إلى: ${getPipelineStageLabel(newStage)}`;
+        }
+
+        let keepOpenForInvoice = false;
+        if (mayNeedInvoicePrompt) {
+          try {
+            const contractResult = await processAutoContractOnApproval(client, nextClient);
+            if (contractResult.messages.length) message += ` — ${contractResult.messages.join(' ')}`;
+            if (contractResult.error) message += ` — العقد: ${contractResult.error}`;
+            if (contractResult.contract) {
+              setInvoicePromptMessage(
+                'تم اعتماد العقد / العرض. هل تريد استعراض وإصدار الفاتورة الضريبية المعتمدة؟'
+              );
+              setPromptInvoice(null);
+              setInvoicePromptOpen(true);
+              keepOpenForInvoice = true;
+              setSuccessMessage(message);
+            }
+          } catch (contractError) {
+            message += ` — العقد: ${contractError instanceof Error ? contractError.message : 'تعذر إنشاء العقد'}`;
+          }
+
+          try {
+            const zatca = await processZatcaOnQuotationApproval(nextClient);
+            if (zatca.messages.length) message += ` — ${zatca.messages.join(' ')}`;
+            if (zatca.error) message += ` — ZATCA: ${zatca.error}`;
+          } catch (zatcaError) {
+            message += ` — ZATCA: ${zatcaError instanceof Error ? zatcaError.message : 'تعذر الإرسال'}`;
+          }
+
+          if (!keepOpenForInvoice) onClose();
+        }
+
+        void logActivity({
+          actionType: 'UPDATE',
+          module: department,
+          details: quoteNo
+            ? `تم تحديث بيانات العميل وعرض السعر ${quoteNo} — ${successText}`
+            : `تم تحديث بيانات العميل ${client.business_name || client.name} — ${successText}`,
+          metadata: {
+            clientId: client.id,
+            quotationNumber: quoteNo || null,
+            department,
+          },
+        });
+
+        requestAnimationFrame(() => {
+          onUpdated();
+        });
+      })();
+
       return true;
     } catch (error) {
       setErrorMessage(error instanceof Error ? error.message : 'حدث خطأ غير متوقع');
