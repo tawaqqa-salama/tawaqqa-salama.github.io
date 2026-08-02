@@ -1,16 +1,17 @@
 'use client';
 
 import Link from 'next/link';
-import { SYSTEM_MODULES } from '@/lib/constants/navigation';
+import { getVisibleSidebarNav, SYSTEM_MODULES } from '@/lib/constants/navigation';
 import { PLATFORM_NAME, PLATFORM_SHORT_NAME } from '@/lib/constants/branding';
 import { useAuth } from '@/lib/auth/AuthProvider';
-import { SIDEBAR_NAV } from '@/lib/constants/navigation';
 
 export default function HomePage() {
   const { session, canAccess, canManageStaff } = useAuth();
+  const visibleNav = getVisibleSidebarNav();
 
   const modules = SYSTEM_MODULES.filter((module) => {
-    const nav = SIDEBAR_NAV.find((item) => item.href === module.href);
+    if (module.status !== 'active') return false;
+    const nav = visibleNav.find((item) => item.href === module.href);
     if (!nav) return false;
     if (nav.department === 'settings') return canAccess('settings') || canManageStaff;
     return canAccess(nav.department);

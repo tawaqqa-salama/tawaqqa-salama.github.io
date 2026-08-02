@@ -6,8 +6,12 @@ import { useSearchParams } from 'next/navigation';
 import { supabase } from '@/lib/supabase';
 import { useAuth } from '@/lib/auth/AuthProvider';
 import type { AppUser } from '@/lib/auth/types';
-import { SIDEBAR_NAV, SYSTEM_MODULES } from '@/lib/constants/navigation';
-import { departmentsFromPermissions, resolveUserPermissions } from '@/lib/auth/permissions';
+import { getVisibleSidebarNav, SYSTEM_MODULES } from '@/lib/constants/navigation';
+import {
+  ALL_DEPARTMENTS,
+  departmentsFromPermissions,
+  resolveUserPermissions,
+} from '@/lib/auth/permissions';
 import { listRoles } from '@/lib/auth/service';
 
 export default function EmployeePageByUsername() {
@@ -33,12 +37,16 @@ export default function EmployeePageByUsername() {
         const roles = await listRoles();
         const role = roles.find((item) => item.code === found.role_code) || null;
         const permissions = resolveUserPermissions(found, role);
-        const allowed = found.page_modules?.length
-          ? found.page_modules
-          : departmentsFromPermissions(permissions);
+        const allowed = permissions.includes('*')
+          ? ALL_DEPARTMENTS
+          : found.page_modules?.length
+            ? found.page_modules
+            : departmentsFromPermissions(permissions);
+        const visibleNav = getVisibleSidebarNav();
         setModules(
           SYSTEM_MODULES.filter((module) => {
-            const nav = SIDEBAR_NAV.find((item) => item.href === module.href);
+            if (module.status !== 'active') return false;
+            const nav = visibleNav.find((item) => item.href === module.href);
             return nav ? allowed.includes(nav.department) : false;
           })
         );

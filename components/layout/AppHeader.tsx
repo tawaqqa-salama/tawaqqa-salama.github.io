@@ -4,7 +4,7 @@ import { useCallback, useState } from 'react';
 import Link from 'next/link';
 import { usePathname, useSearchParams } from 'next/navigation';
 import { FINANCE_NAV } from '@/lib/constants/accounting';
-import { SIDEBAR_NAV } from '@/lib/constants/navigation';
+import { getVisibleSidebarNav } from '@/lib/constants/navigation';
 import { useAuth } from '@/lib/auth/AuthProvider';
 import AppSwitcher from '@/components/layout/AppSwitcher';
 import { useModuleSubNav } from '@/components/layout/ModuleSubNavContext';
@@ -25,7 +25,7 @@ function resolveSection(
     return { title: 'تسجيل الدخول' };
   }
 
-  const main = SIDEBAR_NAV.find(
+  const main = getVisibleSidebarNav().find(
     (item) => pathname === item.href || pathname.startsWith(`${item.href}/`)
   );
 

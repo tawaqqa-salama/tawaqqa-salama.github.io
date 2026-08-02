@@ -28,8 +28,8 @@ FROM public.companies c
 CROSS JOIN (
   VALUES
     ('admin', 'مدير النظام', '["*"]'),
-    ('engineer', 'مهندس سلامة', '["dept.projects","dept.hr","me.page"]'),
-    ('sales', 'موظف مبيعات', '["dept.marketing","dept.sales","me.page"]'),
+    ('engineer', 'مهندس سلامة', '["dept.projects","dept.hr","dept.procurement","me.page"]'),
+    ('sales', 'موظف مبيعات', '["dept.marketing","dept.sales","dept.procurement","me.page"]'),
     ('accountant', 'محاسب', '["dept.finance","me.page"]'),
     ('staff', 'موظف', '["me.page"]')
 ) AS r(code, name, permissions)

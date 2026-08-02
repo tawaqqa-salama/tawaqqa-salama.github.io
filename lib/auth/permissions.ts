@@ -33,8 +33,8 @@ export const DEPARTMENT_PERMISSIONS: { code: PermissionCode; label: string; depa
 
 export const DEFAULT_ROLE_PERMISSIONS: Record<string, PermissionCode[]> = {
   admin: ['*'],
-  engineer: ['dept.projects', 'dept.hr', 'me.page'],
-  sales: ['dept.marketing', 'dept.sales', 'me.page'],
+  engineer: ['dept.projects', 'dept.hr', 'dept.procurement', 'me.page'],
+  sales: ['dept.marketing', 'dept.sales', 'dept.procurement', 'me.page'],
   accountant: ['dept.finance', 'me.page'],
   staff: ['me.page'],
 };

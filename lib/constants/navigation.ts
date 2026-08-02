@@ -19,21 +19,42 @@ export type DepartmentId =
   | 'projects'
   | 'settings';
 
-/** Module launcher / app switcher — exactly 7 departments. */
+export type NavModuleStatus = 'active' | 'under_development' | 'beta';
+
+/** Module launcher / app switcher — exactly 7 departments (all active). */
 export const SIDEBAR_NAV: {
   href: string;
   label: string;
   icon: string;
   department: DepartmentId;
+  /** لا تُخفَ الأقسام ذات الحالة active من الشبكة/القائمة */
+  status: NavModuleStatus;
+  disabled?: boolean;
+  hidden?: boolean;
 }[] = [
-  { href: '/marketing', label: 'إدارة التسويق', icon: '📣', department: 'marketing' },
-  { href: '/sales', label: 'إدارة المبيعات', icon: '💼', department: 'sales' },
-  { href: '/procurement', label: 'إدارة المشتريات والتعاقدات', icon: '📦', department: 'procurement' },
-  { href: '/finance', label: 'الحسابات المالية', icon: '💰', department: 'finance' },
-  { href: '/hr', label: 'الموارد البشرية', icon: '👷', department: 'hr' },
-  { href: '/projects', label: 'المشاريع', icon: '🏗️', department: 'projects' },
-  { href: '/settings', label: 'الإعدادات', icon: '⚙️', department: 'settings' },
+  { href: '/marketing', label: 'إدارة التسويق', icon: '📣', department: 'marketing', status: 'active' },
+  { href: '/sales', label: 'إدارة المبيعات', icon: '💼', department: 'sales', status: 'active' },
+  {
+    href: '/procurement',
+    label: 'إدارة المشتريات والتعاقدات',
+    icon: '📦',
+    department: 'procurement',
+    status: 'active',
+  },
+  { href: '/finance', label: 'الحسابات المالية', icon: '💰', department: 'finance', status: 'active' },
+  { href: '/hr', label: 'الموارد البشرية', icon: '👷', department: 'hr', status: 'active' },
+  { href: '/projects', label: 'المشاريع', icon: '🏗️', department: 'projects', status: 'active' },
+  { href: '/settings', label: 'الإعدادات', icon: '⚙️', department: 'settings', status: 'active' },
 ];
+
+/** أقسام ظاهرة في الشبكة الرئيسية — يستبعد أي عنصر hidden/disabled/قيد التطوير */
+export function getVisibleSidebarNav(
+  items: typeof SIDEBAR_NAV = SIDEBAR_NAV
+): typeof SIDEBAR_NAV {
+  return items.filter(
+    (item) => item.status === 'active' && !item.disabled && !item.hidden
+  ) as typeof SIDEBAR_NAV;
+}
 
 export const SYSTEM_MODULES = [
   {
@@ -42,6 +63,7 @@ export const SYSTEM_MODULES = [
     description: 'لوحة الحملات ورحلة العميل وLeads ومتابعات التواصل',
     icon: '📣',
     color: 'from-teal-500 to-teal-600',
+    status: 'active' as const,
   },
   {
     href: '/sales',
@@ -49,6 +71,7 @@ export const SYSTEM_MODULES = [
     description: 'خانة المبيعات وخانة عروض الأسعار والعقود والأرشيف',
     icon: '💼',
     color: 'from-blue-500 to-blue-600',
+    status: 'active' as const,
   },
   {
     href: '/procurement',
@@ -56,6 +79,7 @@ export const SYSTEM_MODULES = [
     description: 'الموردون المعتمدون، العقود الخارجية، أوامر الشراء، وتحويل BOQ إلى RFQ',
     icon: '📦',
     color: 'from-orange-400 to-orange-500',
+    status: 'active' as const,
   },
   {
     href: '/finance',
@@ -63,6 +87,7 @@ export const SYSTEM_MODULES = [
     description: 'الاعتماد المالي، الفوترة، القيود، السندات والتقارير',
     icon: '💰',
     color: 'from-rose-500 to-rose-600',
+    status: 'active' as const,
   },
   {
     href: '/hr',
@@ -70,6 +95,7 @@ export const SYSTEM_MODULES = [
     description: 'الموظفون والرواتب والعقود وتوزيع المهام',
     icon: '👷',
     color: 'from-amber-400 to-amber-500',
+    status: 'active' as const,
   },
   {
     href: '/projects',
@@ -77,6 +103,7 @@ export const SYSTEM_MODULES = [
     description: 'المعاينة الهندسية، المخططات/BIM، والامتثال SBC/NFPA',
     icon: '🏗️',
     color: 'from-indigo-500 to-indigo-600',
+    status: 'active' as const,
   },
   {
     href: '/settings',
@@ -84,6 +111,7 @@ export const SYSTEM_MODULES = [
     description: 'إعدادات النظام والمستخدمين وسجل النشاطات',
     icon: '⚙️',
     color: 'from-emerald-500 to-emerald-600',
+    status: 'active' as const,
   },
 ] as const;
 
