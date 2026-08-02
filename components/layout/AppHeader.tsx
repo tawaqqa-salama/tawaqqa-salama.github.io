@@ -53,6 +53,7 @@ function resolveSection(
       '/settings/company': 'بيانات الشركة',
       '/settings/activity': 'سجل النشاطات',
       '/settings/zatca': 'الفوترة الإلكترونية',
+      '/settings/building-code': 'كود البناء SBC/NFPA',
     };
     const sub = settingsSubs[pathname];
     if (sub) return { title: main.label, subtitle: sub };

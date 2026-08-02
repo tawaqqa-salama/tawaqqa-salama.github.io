@@ -117,11 +117,6 @@ export default function AppSwitcher({ open, onClose }: AppSwitcherProps) {
                     <p className="mt-1 text-[11px] text-[var(--erp-muted)] leading-relaxed line-clamp-2">
                       {module.description}
                     </p>
-                    {'badge' in module && module.badge ? (
-                      <span className="mt-2 inline-block text-[10px] font-semibold text-amber-800 bg-amber-50 border border-amber-100 rounded-md px-1.5 py-0.5">
-                        {module.badge}
-                      </span>
-                    ) : null}
                   </Link>
                 );
               })}

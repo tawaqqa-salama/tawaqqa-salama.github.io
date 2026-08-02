@@ -54,11 +54,36 @@ export const DEPARTMENT_SUB_MODULES: Record<DepartmentId, DepartmentSubModule[]>
   ],
   procurement: [
     {
-      id: 'hub',
-      label: 'إدارة المشتريات',
-      description: 'الموردون وطلبات الشراء',
+      id: 'vendors',
+      label: 'دليل الموردين المعتمدين',
+      description: 'موردو معدات الإطفاء والإنذار المعتمدون',
       href: '/procurement',
-      status: 'under_development',
+      tab: 'vendors',
+      status: 'active',
+    },
+    {
+      id: 'subcontractors',
+      label: 'العقود الخارجية',
+      description: 'مقاولون واستشاريون واختبارات طرف ثالث',
+      href: '/procurement',
+      tab: 'subcontractors',
+      status: 'active',
+    },
+    {
+      id: 'orders',
+      label: 'أوامر الشراء',
+      description: 'طلبات شراء أدوات ومعدات وتراخيص',
+      href: '/procurement',
+      tab: 'orders',
+      status: 'active',
+    },
+    {
+      id: 'boq-rfq',
+      label: 'BOQ → RFQ',
+      description: 'تحويل جدول الكميات إلى طلبات تسعير',
+      href: '/procurement',
+      tab: 'boq-rfq',
+      status: 'active',
     },
   ],
   finance: [
@@ -108,6 +133,7 @@ export const DEPARTMENT_SUB_MODULES: Record<DepartmentId, DepartmentSubModule[]>
     { id: 'users', label: 'المستخدمون', href: '/settings/users' },
     { id: 'activity', label: 'سجل النشاطات', href: '/settings/activity' },
     { id: 'zatca', label: 'ZATCA', href: '/settings/zatca' },
+    { id: 'building-code', label: 'كود البناء SBC/NFPA', href: '/settings/building-code' },
   ],
 };
 
