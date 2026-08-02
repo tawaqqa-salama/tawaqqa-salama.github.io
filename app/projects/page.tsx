@@ -3,12 +3,12 @@
 import { memo, useCallback, useMemo, useState } from 'react';
 import dynamic from 'next/dynamic';
 import { ACTIVITY_RULES } from '@/lib/constants/clients';
-import { shouldShowInProjects } from '@/lib/business/pipeline';
+import { resolvePipelineStage, shouldShowInProjects } from '@/lib/business/pipeline';
 import { getProjectReportProgress, parseProjectEngineeringData } from '@/lib/business/project-reports';
 import ModuleSubNavSlot from '@/components/layout/ModuleSubNavSlot';
 import ResponsiveTable from '@/components/ui/ResponsiveTable';
 import { useProjectsList, invalidateErpLists, invalidateClient } from '@/lib/data/hooks';
-import { LIST_PAGE_SIZE } from '@/lib/data/query-config';
+import { PROJECTS_PAGE_SIZE } from '@/lib/data/query-config';
 import { fetchClientById } from '@/lib/data/fetchers';
 import type { ClientRecord } from '@/lib/types/client';
 
@@ -33,12 +33,40 @@ const ComplianceEnginePanel = dynamic(() => import('@/components/compliance/Comp
 });
 
 type TabId = 'list' | 'inspection' | 'blueprints' | 'compliance';
+type StatusFilter = 'all' | 'in_study' | 'completed' | 'archive';
+
+const STATUS_FILTERS: { id: StatusFilter; label: string }[] = [
+  { id: 'all', label: 'الكل' },
+  { id: 'in_study', label: 'قيد الدراسة' },
+  { id: 'completed', label: 'المكتملة' },
+  { id: 'archive', label: 'الأرشيف' },
+];
 
 function PanelSkeleton({ label }: { label: string }) {
   return (
     <div className="rounded-xl border bg-white p-8 text-center text-sm text-gray-400 animate-pulse">
       جاري تحميل {label}...
     </div>
+  );
+}
+
+function matchesStatusFilter(project: ClientRecord, filter: StatusFilter): boolean {
+  if (filter === 'all') return true;
+  const stage = resolvePipelineStage(project);
+  if (filter === 'in_study') {
+    return stage === 'projects' && project.engineering_status !== 'مكتمل';
+  }
+  if (filter === 'completed') {
+    return (
+      stage === 'completed' ||
+      project.engineering_status === 'مكتمل' ||
+      project.final_report_status === 'معتمد'
+    );
+  }
+  // الأرشيف: مشاريع مكتملة بترخيص أو شهادة
+  return (
+    stage === 'completed' &&
+    Boolean(project.license_number || project.final_report_status === 'معتمد')
   );
 }
 
@@ -50,20 +78,26 @@ const ProjectRow = memo(function ProjectRow({
   onOpen: (project: ClientRecord) => void;
 }) {
   const { progress, planStatus } = useMemo(() => {
-    const parsed = parseProjectEngineeringData(project.project_engineering_data);
-    return {
-      progress: getProjectReportProgress(parsed),
-      planStatus: parsed.building_plan.status,
-    };
+    try {
+      const parsed = parseProjectEngineeringData(project.project_engineering_data);
+      return {
+        progress: getProjectReportProgress(parsed),
+        planStatus: parsed.building_plan?.status || 'مسودة',
+      };
+    } catch {
+      return { progress: 0, planStatus: 'مسودة' };
+    }
   }, [project.project_engineering_data]);
+
+  const title = project.business_name || project.name || project.client_code || 'مشروع بدون اسم';
+  const subtitle =
+    ACTIVITY_RULES[project.activity_type || '']?.label || project.city || project.client_code || '—';
 
   return (
     <tr className="border-b hover:bg-gray-50">
       <td className="p-4">
-        <div className="font-semibold">{project.business_name || project.name}</div>
-        <div className="text-xs text-gray-400">
-          {ACTIVITY_RULES[project.activity_type || '']?.label || project.city}
-        </div>
+        <div className="font-semibold">{title}</div>
+        <div className="text-xs text-gray-400">{subtitle}</div>
       </td>
       <td className="p-4">{project.quotation_visits_count || 1} زيارة</td>
       <td className="p-4">
@@ -98,16 +132,27 @@ const ProjectRow = memo(function ProjectRow({
 });
 
 export default function ProjectsPage() {
-  const [limit, setLimit] = useState(LIST_PAGE_SIZE);
-  const { projects: rawProjects, loading, refresh } = useProjectsList(limit);
+  const [limit, setLimit] = useState(PROJECTS_PAGE_SIZE);
+  const { projects: rawProjects, loading, error, refresh } = useProjectsList(limit);
   const [selected, setSelected] = useState<ClientRecord | null>(null);
   const [tab, setTab] = useState<TabId>('list');
+  const [statusFilter, setStatusFilter] = useState<StatusFilter>('all');
   const [opening, setOpening] = useState(false);
 
-  const projects = useMemo(
-    () => rawProjects.filter(shouldShowInProjects),
-    [rawProjects]
-  );
+  const projects = useMemo(() => {
+    const list = Array.isArray(rawProjects) ? rawProjects : [];
+    return list.filter((row) => shouldShowInProjects(row) && matchesStatusFilter(row, statusFilter));
+  }, [rawProjects, statusFilter]);
+
+  const counts = useMemo(() => {
+    const list = Array.isArray(rawProjects) ? rawProjects.filter(shouldShowInProjects) : [];
+    return {
+      all: list.length,
+      in_study: list.filter((p) => matchesStatusFilter(p, 'in_study')).length,
+      completed: list.filter((p) => matchesStatusFilter(p, 'completed')).length,
+      archive: list.filter((p) => matchesStatusFilter(p, 'archive')).length,
+    };
+  }, [rawProjects]);
 
   const handleUpdated = useCallback(async () => {
     await invalidateErpLists();
@@ -118,10 +163,14 @@ export default function ProjectsPage() {
   const openProject = useCallback(async (project: ClientRecord) => {
     setOpening(true);
     setSelected(project);
-    // جلب السجل الكامل عند الفتح فقط (يشمل كل حقول الهندسة)
-    const full = await fetchClientById(project.id);
-    if (full) setSelected(full);
-    setOpening(false);
+    try {
+      const full = await fetchClientById(project.id);
+      if (full) setSelected(full);
+    } catch {
+      // أبقِ صف القائمة إن فشل جلب التفاصيل
+    } finally {
+      setOpening(false);
+    }
   }, []);
 
   return (
@@ -159,10 +208,41 @@ export default function ProjectsPage() {
 
       {tab === 'list' && (
         <>
+          <div className="flex flex-wrap gap-2">
+            {STATUS_FILTERS.map((f) => (
+              <button
+                key={f.id}
+                type="button"
+                onClick={() => setStatusFilter(f.id)}
+                className={`px-3 py-1.5 rounded-full text-xs font-semibold border transition ${
+                  statusFilter === f.id
+                    ? 'bg-[#1f4d3a] text-white border-[#1f4d3a]'
+                    : 'bg-white text-gray-700 border-gray-200 hover:border-[#1f4d3a]/40'
+                }`}
+              >
+                {f.label}
+                <span className="ms-1 opacity-80">({counts[f.id]})</span>
+              </button>
+            ))}
+          </div>
+
           <div className="rounded-xl border border-indigo-100 bg-indigo-50 p-4 text-sm text-indigo-800">
             كل مشروع يحتوي: معلومات المخطط، BOQ، الجدول الزمني، الزيارات الميدانية، الملاحظات الفنية، خطاب تسليم
             الدراسة، التقرير النهائي، وشهادة إنهاء الأعمال.
           </div>
+
+          {error ? (
+            <div className="rounded-xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-800">
+              تعذّر تحديث قائمة المشاريع. يتم عرض البيانات المتوفرة إن وُجدت.
+              <button
+                type="button"
+                onClick={() => void refresh()}
+                className="ms-3 underline font-semibold"
+              >
+                إعادة المحاولة
+              </button>
+            </div>
+          ) : null}
 
           <ResponsiveTable className="bg-white rounded-xl border shadow-sm">
             <table className="w-full text-right text-sm">
@@ -186,7 +266,9 @@ export default function ProjectsPage() {
                 ) : projects.length === 0 ? (
                   <tr>
                     <td colSpan={6} className="p-8 text-center text-gray-400">
-                      لا توجد مشاريع معتمدة مالياً
+                      {statusFilter === 'all'
+                        ? 'لا توجد مشاريع معتمدة مالياً'
+                        : 'لا توجد مشاريع ضمن هذا التصنيف'}
                     </td>
                   </tr>
                 ) : (
@@ -198,13 +280,13 @@ export default function ProjectsPage() {
             </table>
           </ResponsiveTable>
 
-          {projects.length >= limit && (
+          {Array.isArray(rawProjects) && rawProjects.length >= limit && (
             <button
               type="button"
-              onClick={() => setLimit((n) => n + LIST_PAGE_SIZE)}
+              onClick={() => setLimit((n) => n + PROJECTS_PAGE_SIZE)}
               className="w-full py-2.5 rounded-xl border text-sm font-semibold text-indigo-700 bg-white hover:bg-indigo-50"
             >
-              تحميل المزيد ({LIST_PAGE_SIZE})
+              تحميل المزيد ({PROJECTS_PAGE_SIZE})
             </button>
           )}
         </>
