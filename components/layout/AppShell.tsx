@@ -1,14 +1,19 @@
 'use client';
 
-import { Suspense, useEffect } from 'react';
+import { Suspense, useEffect, useState } from 'react';
+import dynamic from 'next/dynamic';
 import { usePathname, useRouter } from 'next/navigation';
 import AppHeader from '@/components/layout/AppHeader';
 import ActivityTracker from '@/components/layout/ActivityTracker';
 import { ModuleSubNavProvider } from '@/components/layout/ModuleSubNavContext';
 import SupabaseConfigBanner from '@/components/ui/SupabaseConfigBanner';
-import DocumentPreviewSheet from '@/components/ui/DocumentPreviewSheet';
+import { onDocumentPreviewMountRequest } from '@/lib/print/document-preview';
 import { useAuth } from '@/lib/auth/AuthProvider';
 import type { DepartmentId } from '@/lib/constants/navigation';
+
+const DocumentPreviewSheet = dynamic(() => import('@/components/ui/DocumentPreviewSheet'), {
+  ssr: false,
+});
 
 const PUBLIC_PATHS = ['/login'];
 
@@ -35,8 +40,11 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
   const router = useRouter();
   const { session, loading, canAccess, canManageStaff } = useAuth();
+  const [previewMounted, setPreviewMounted] = useState(false);
 
   const isPublic = PUBLIC_PATHS.some((path) => pathname === path || pathname.startsWith(`${path}/`));
+
+  useEffect(() => onDocumentPreviewMountRequest(() => setPreviewMounted(true)), []);
 
   useEffect(() => {
     if (loading) return;
@@ -81,7 +89,7 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
     return (
       <div className="min-h-screen w-full bg-[#eef2ef] overflow-x-hidden">
         {children}
-        <DocumentPreviewSheet />
+        {previewMounted ? <DocumentPreviewSheet /> : null}
       </div>
     );
   }
@@ -97,7 +105,7 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
         <main className="flex-1 p-3 sm:p-5 md:p-6 overflow-y-auto overflow-x-hidden w-full max-w-none">
           {children}
         </main>
-        <DocumentPreviewSheet />
+        {previewMounted ? <DocumentPreviewSheet /> : null}
       </div>
     </ModuleSubNavProvider>
   );

@@ -1,6 +1,7 @@
 import type { Metadata, Viewport } from 'next';
 import { Cairo } from 'next/font/google';
 import { AuthProvider } from '@/lib/auth/AuthProvider';
+import SwrProvider from '@/components/providers/SwrProvider';
 import AppShell from '@/components/layout/AppShell';
 import { PLATFORM_DESCRIPTION, PLATFORM_NAME } from '@/lib/constants/branding';
 import './globals.css';
@@ -27,7 +28,9 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
     <html lang="ar" dir="rtl">
       <body className={`${cairo.className} bg-[#f0f2f5] flex h-screen overflow-hidden overflow-x-hidden`}>
         <AuthProvider>
-          <AppShell>{children}</AppShell>
+          <SwrProvider>
+            <AppShell>{children}</AppShell>
+          </SwrProvider>
         </AuthProvider>
       </body>
     </html>

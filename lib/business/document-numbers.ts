@@ -127,19 +127,30 @@ async function bootstrapLocalCountersFromData() {
   localBootstrapped = true;
 
   try {
-    const [clients, docs, contracts, returns, journals, vouchers] = await Promise.all([
-      supabase.from('clients').select('client_code, quotation_number, project_engineering_data'),
-      supabase.from('sales_documents').select('doc_type, doc_number'),
-      supabase.from('sales_contracts').select('contract_number'),
-      supabase.from('sales_returns').select('return_number'),
-      supabase.from('journal_entries').select('entry_number'),
-      supabase.from('vouchers').select('voucher_type, voucher_number'),
+    // لا نجلب project_engineering_data كاملاً (قد يحتوي صوراً base64) — نكتفي بأرقام المستندات الظاهرة
+    const [clients, docs, contracts, returns, journals, vouchers, techLite] = await Promise.all([
+      supabase.from('clients').select('client_code, quotation_number').limit(500),
+      supabase.from('sales_documents').select('doc_type, doc_number').limit(500),
+      supabase.from('sales_contracts').select('contract_number').limit(500),
+      supabase.from('sales_returns').select('return_number').limit(200),
+      supabase.from('journal_entries').select('entry_number').limit(500),
+      supabase.from('vouchers').select('voucher_type, voucher_number').limit(500),
+      // مسار خفيف اختياري: أعمدة الرقم الصادر/الشهادة إن وُجدت كحقول مسطّحة مستقبلاً
+      supabase
+        .from('clients')
+        .select('project_engineering_data')
+        .not('project_engineering_data', 'is', null)
+        .limit(50),
     ]);
 
     for (const row of clients.data || []) {
       considerExisting('client', row.client_code as string);
       considerExisting('lead', row.client_code as string);
       considerExisting('quotation', row.quotation_number as string);
+    }
+
+    // عيّنة محدودة فقط لاستخراج أرقام الصادر/الشهادة دون تحميل كل السجلات
+    for (const row of techLite.data || []) {
       considerExisting('outgoing', extractOutgoingFromEngineering(row.project_engineering_data));
       considerExisting('certificate', extractCertificateFromEngineering(row.project_engineering_data));
     }
@@ -165,7 +176,6 @@ async function bootstrapLocalCountersFromData() {
       const kind = row.voucher_type === 'payment' ? 'payment' : 'receipt';
       considerExisting(kind, row.voucher_number as string);
     }
-
   } catch {
     // الوضع الاحتياطي يبقى صالحاً حتى لو فشل الجلب
   }

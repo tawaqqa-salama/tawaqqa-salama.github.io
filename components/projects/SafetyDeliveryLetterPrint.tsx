@@ -297,12 +297,22 @@ export function printSafetyDeliveryLetter(params: {
   delivery: EngineeringDeliveryReport;
   company: CompanyProfile;
 }) {
-  const html = buildSafetyDeliveryLetterHtml(params);
-  void import('@/lib/print/document-preview').then(({ openDocumentPreview }) => {
-    openDocumentPreview({
-      title: `خطاب تسليم دراسة — ${params.client.business_name || params.client.name}`,
-      html,
-      fileName: `safety-delivery-${params.client.client_code || params.client.id}`,
+  // بناء HTML وطباعة خارج المسار الحرج — لا html2canvas / لا rasterization
+  const schedule = (cb: () => void) => {
+    const ric = (window as Window & { requestIdleCallback?: (fn: () => void, opts?: { timeout: number }) => number })
+      .requestIdleCallback;
+    if (typeof ric === 'function') ric(cb, { timeout: 400 });
+    else setTimeout(cb, 0);
+  };
+
+  schedule(() => {
+    const html = buildSafetyDeliveryLetterHtml(params);
+    void import('@/lib/print/document-preview').then(({ openDocumentPreview }) => {
+      openDocumentPreview({
+        title: `خطاب تسليم دراسة — ${params.client.business_name || params.client.name}`,
+        html,
+        fileName: `safety-delivery-${params.client.client_code || params.client.id}`,
+      });
     });
   });
 }

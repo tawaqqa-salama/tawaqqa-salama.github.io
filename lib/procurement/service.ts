@@ -115,7 +115,11 @@ function lineTotals(items: ProcurementLineItem[]) {
 
 export async function listVendors(type?: VendorType | 'all'): Promise<ProcurementVendor[]> {
   if (!isDemoMode) {
-    let q = supabase.from('procurement_vendors').select('*').order('created_at', { ascending: false });
+    let q = supabase
+      .from('procurement_vendors')
+      .select('*')
+      .order('created_at', { ascending: false })
+      .limit(40);
     if (type && type !== 'all') q = q.eq('vendor_type', type);
     const { data, error } = await q;
     if (!error && data) return data as ProcurementVendor[];
@@ -169,7 +173,8 @@ export async function listPurchaseOrders(): Promise<PurchaseOrder[]> {
     const { data, error } = await supabase
       .from('purchase_orders')
       .select('*')
-      .order('created_at', { ascending: false });
+      .order('created_at', { ascending: false })
+      .limit(40);
     if (!error && data) {
       return (data as PurchaseOrder[]).map((o) => ({
         ...o,
@@ -224,7 +229,8 @@ export async function listRfqs(): Promise<ProcurementRfq[]> {
     const { data, error } = await supabase
       .from('procurement_rfqs')
       .select('*')
-      .order('created_at', { ascending: false });
+      .order('created_at', { ascending: false })
+      .limit(40);
     if (!error && data) {
       return (data as ProcurementRfq[]).map((r) => ({
         ...r,
