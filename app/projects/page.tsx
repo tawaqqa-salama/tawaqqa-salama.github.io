@@ -1,15 +1,20 @@
 'use client';
 
-import { memo, useCallback, useMemo, useState } from 'react';
+import { memo, useCallback, useEffect, useMemo, useState } from 'react';
 import dynamic from 'next/dynamic';
 import { ACTIVITY_RULES } from '@/lib/constants/clients';
-import { resolvePipelineStage, shouldShowInProjects } from '@/lib/business/pipeline';
+import {
+  hasEngineeringWork,
+  resolvePipelineStage,
+  shouldShowInProjects,
+} from '@/lib/business/pipeline';
 import { getProjectReportProgress, parseProjectEngineeringData } from '@/lib/business/project-reports';
 import ModuleSubNavSlot from '@/components/layout/ModuleSubNavSlot';
 import ResponsiveTable from '@/components/ui/ResponsiveTable';
 import { useProjectsList, invalidateErpLists, invalidateClient } from '@/lib/data/hooks';
 import { PROJECTS_PAGE_SIZE } from '@/lib/data/query-config';
 import { fetchClientById } from '@/lib/data/fetchers';
+import { mergeLocalClientOverrides } from '@/lib/supabase/safe-client-write';
 import type { ClientRecord } from '@/lib/types/client';
 
 const ProjectReportModal = dynamic(() => import('@/components/projects/ProjectReportModal'), {
@@ -33,13 +38,14 @@ const ComplianceEnginePanel = dynamic(() => import('@/components/compliance/Comp
 });
 
 type TabId = 'list' | 'inspection' | 'blueprints' | 'compliance';
-type StatusFilter = 'all' | 'in_study' | 'completed' | 'archive';
+type StatusFilter = 'all' | 'in_study' | 'completed' | 'archive' | 'everything';
 
 const STATUS_FILTERS: { id: StatusFilter; label: string }[] = [
   { id: 'all', label: 'الكل' },
   { id: 'in_study', label: 'قيد الدراسة' },
   { id: 'completed', label: 'المكتملة' },
   { id: 'archive', label: 'الأرشيف' },
+  { id: 'everything', label: 'كل السجلات' },
 ];
 
 function PanelSkeleton({ label }: { label: string }) {
@@ -51,10 +57,14 @@ function PanelSkeleton({ label }: { label: string }) {
 }
 
 function matchesStatusFilter(project: ClientRecord, filter: StatusFilter): boolean {
-  if (filter === 'all') return true;
+  if (filter === 'all' || filter === 'everything') return true;
   const stage = resolvePipelineStage(project);
   if (filter === 'in_study') {
-    return stage === 'projects' && project.engineering_status !== 'مكتمل';
+    return (
+      (stage === 'projects' || hasEngineeringWork(project)) &&
+      project.engineering_status !== 'مكتمل' &&
+      stage !== 'completed'
+    );
   }
   if (filter === 'completed') {
     return (
@@ -63,7 +73,6 @@ function matchesStatusFilter(project: ClientRecord, filter: StatusFilter): boole
       project.final_report_status === 'معتمد'
     );
   }
-  // الأرشيف: مشاريع مكتملة بترخيص أو شهادة
   return (
     stage === 'completed' &&
     Boolean(project.license_number || project.final_report_status === 'معتمد')
@@ -98,6 +107,9 @@ const ProjectRow = memo(function ProjectRow({
       <td className="p-4">
         <div className="font-semibold">{title}</div>
         <div className="text-xs text-gray-400">{subtitle}</div>
+        {hasEngineeringWork(project) ? (
+          <div className="text-[10px] text-emerald-700 mt-0.5">يحتوي تقارير محفوظة</div>
+        ) : null}
       </td>
       <td className="p-4">{project.quotation_visits_count || 1} زيارة</td>
       <td className="p-4">
@@ -139,20 +151,39 @@ export default function ProjectsPage() {
   const [statusFilter, setStatusFilter] = useState<StatusFilter>('all');
   const [opening, setOpening] = useState(false);
 
-  const projects = useMemo(() => {
+  // ادمج أي نسخ محلية للتقارير فور التحميل
+  const hydrated = useMemo(() => {
     const list = Array.isArray(rawProjects) ? rawProjects : [];
-    return list.filter((row) => shouldShowInProjects(row) && matchesStatusFilter(row, statusFilter));
-  }, [rawProjects, statusFilter]);
+    return list.map((row) => mergeLocalClientOverrides(row));
+  }, [rawProjects]);
+
+  useEffect(() => {
+    // إن كانت القائمة فارغة بعد التحميل — افتح وضع الاستعادة تلقائياً
+    if (!loading && hydrated.length > 0) {
+      const visible = hydrated.filter(shouldShowInProjects);
+      if (visible.length === 0 && statusFilter === 'all') {
+        setStatusFilter('everything');
+      }
+    }
+  }, [loading, hydrated, statusFilter]);
+
+  const projects = useMemo(() => {
+    if (statusFilter === 'everything') return hydrated;
+    return hydrated.filter(
+      (row) => shouldShowInProjects(row) && matchesStatusFilter(row, statusFilter)
+    );
+  }, [hydrated, statusFilter]);
 
   const counts = useMemo(() => {
-    const list = Array.isArray(rawProjects) ? rawProjects.filter(shouldShowInProjects) : [];
+    const asProjects = hydrated.filter(shouldShowInProjects);
     return {
-      all: list.length,
-      in_study: list.filter((p) => matchesStatusFilter(p, 'in_study')).length,
-      completed: list.filter((p) => matchesStatusFilter(p, 'completed')).length,
-      archive: list.filter((p) => matchesStatusFilter(p, 'archive')).length,
+      all: asProjects.length,
+      in_study: asProjects.filter((p) => matchesStatusFilter(p, 'in_study')).length,
+      completed: asProjects.filter((p) => matchesStatusFilter(p, 'completed')).length,
+      archive: asProjects.filter((p) => matchesStatusFilter(p, 'archive')).length,
+      everything: hydrated.length,
     };
-  }, [rawProjects]);
+  }, [hydrated]);
 
   const handleUpdated = useCallback(async () => {
     await invalidateErpLists();
@@ -162,12 +193,13 @@ export default function ProjectsPage() {
 
   const openProject = useCallback(async (project: ClientRecord) => {
     setOpening(true);
-    setSelected(project);
+    const withLocal = mergeLocalClientOverrides(project);
+    setSelected(withLocal);
     try {
       const full = await fetchClientById(project.id);
-      if (full) setSelected(full);
+      if (full) setSelected(mergeLocalClientOverrides(full));
     } catch {
-      // أبقِ صف القائمة إن فشل جلب التفاصيل
+      // أبقِ النسخة المحلية
     } finally {
       setOpening(false);
     }
@@ -178,7 +210,7 @@ export default function ProjectsPage() {
       <div>
         <h1 className="text-xl font-bold text-gray-900">إدارة المشاريع</h1>
         <p className="text-sm text-gray-500 mt-1">
-          المعاينة الهندسية، المخططات/BIM، والامتثال SBC/NFPA — للمشاريع المعتمدة مالياً
+          المعاينة الهندسية، المخططات/BIM، والامتثال SBC/NFPA — بما فيها المشاريع التي حُفظت تقاريرها
         </p>
       </div>
 
@@ -226,14 +258,21 @@ export default function ProjectsPage() {
             ))}
           </div>
 
-          <div className="rounded-xl border border-indigo-100 bg-indigo-50 p-4 text-sm text-indigo-800">
-            كل مشروع يحتوي: معلومات المخطط، BOQ، الجدول الزمني، الزيارات الميدانية، الملاحظات الفنية، خطاب تسليم
-            الدراسة، التقرير النهائي، وشهادة إنهاء الأعمال.
-          </div>
+          {statusFilter === 'everything' ? (
+            <div className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">
+              وضع استعادة: تُعرض كل السجلات المحمّلة حتى لو لم تُصنَّف كمشاريع. افتح المشروع لاسترجاع
+              التقارير المحفوظة.
+            </div>
+          ) : (
+            <div className="rounded-xl border border-indigo-100 bg-indigo-50 p-4 text-sm text-indigo-800">
+              كل مشروع يحتوي: معلومات المخطط، BOQ، الجدول الزمني، الزيارات، الملاحظات، خطاب التسليم،
+              التقرير النهائي، وشهادة إنهاء الأعمال.
+            </div>
+          )}
 
           {error ? (
             <div className="rounded-xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-800">
-              تعذّر تحديث قائمة المشاريع. يتم عرض البيانات المتوفرة إن وُجدت.
+              تعذّر تحديث قائمة المشاريع.
               <button
                 type="button"
                 onClick={() => void refresh()}
@@ -266,9 +305,7 @@ export default function ProjectsPage() {
                 ) : projects.length === 0 ? (
                   <tr>
                     <td colSpan={6} className="p-8 text-center text-gray-400">
-                      {statusFilter === 'all'
-                        ? 'لا توجد مشاريع معتمدة مالياً'
-                        : 'لا توجد مشاريع ضمن هذا التصنيف'}
+                      لا توجد سجلات. جرّب تبويب «كل السجلات» أو حدّث الصفحة بعد اكتمال النشر.
                     </td>
                   </tr>
                 ) : (
@@ -280,13 +317,13 @@ export default function ProjectsPage() {
             </table>
           </ResponsiveTable>
 
-          {Array.isArray(rawProjects) && rawProjects.length >= limit && (
+          {hydrated.length >= limit && (
             <button
               type="button"
               onClick={() => setLimit((n) => n + PROJECTS_PAGE_SIZE)}
               className="w-full py-2.5 rounded-xl border text-sm font-semibold text-indigo-700 bg-white hover:bg-indigo-50"
             >
-              تحميل المزيد ({PROJECTS_PAGE_SIZE})
+              تحميل المزيد
             </button>
           )}
         </>

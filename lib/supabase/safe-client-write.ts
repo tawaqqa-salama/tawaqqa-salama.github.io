@@ -1,6 +1,7 @@
 import { supabase } from '@/lib/supabase';
 
 const LOCAL_CLIENT_OVERRIDES_KEY = 'tawaqqa_client_field_overrides_v1';
+const LOCAL_ENGINEERING_BACKUP_KEY = 'tawaqqa_engineering_backup_v1';
 
 /** حقول يُفضّل حفظها محلياً إن لم تكن في قاعدة البيانات بعد */
 const LOCAL_FALLBACK_FIELDS = new Set([
@@ -9,6 +10,11 @@ const LOCAL_FALLBACK_FIELDS = new Set([
   'commercial_register',
   'tax_number',
   'client_kind',
+  'project_engineering_data',
+  'pipeline_stage',
+  'financial_status',
+  'engineering_status',
+  'final_report_status',
 ]);
 
 function extractMissingColumn(message: string): string | null {
@@ -41,8 +47,43 @@ function saveOverrides(map: Record<string, Record<string, unknown>>) {
 
 export function mergeLocalClientOverrides<T extends { id: string }>(client: T): T {
   const overrides = loadOverrides()[client.id];
-  if (!overrides) return client;
-  return { ...client, ...overrides };
+  let merged: T = overrides ? { ...client, ...overrides } : client;
+
+  // دمج نسخة احتياطية للتقارير الهندسية إن كان السجل بدونها
+  try {
+    if (typeof window !== 'undefined') {
+      const raw = localStorage.getItem(LOCAL_ENGINEERING_BACKUP_KEY);
+      if (raw) {
+        const map = JSON.parse(raw) as Record<string, unknown>;
+        const backup = map[client.id];
+        const current = (merged as { project_engineering_data?: unknown }).project_engineering_data;
+        if (backup && (current == null || current === undefined)) {
+          merged = { ...merged, project_engineering_data: backup } as T;
+        }
+      }
+    }
+  } catch {
+    // تجاهل أخطاء التخزين المحلي
+  }
+
+  return merged;
+}
+
+/** يحفظ نسخة احتياطية محلية للتقارير الهندسية بعد كل حفظ ناجح */
+export function backupEngineeringDataLocally(clientId: string, data: unknown) {
+  if (typeof window === 'undefined' || !clientId || data == null) return;
+  try {
+    const raw = localStorage.getItem(LOCAL_ENGINEERING_BACKUP_KEY);
+    const map = raw ? (JSON.parse(raw) as Record<string, unknown>) : {};
+    map[clientId] = data;
+    localStorage.setItem(LOCAL_ENGINEERING_BACKUP_KEY, JSON.stringify(map));
+    saveLocalClientOverrides(clientId, {
+      project_engineering_data: data,
+      pipeline_stage: 'projects',
+    });
+  } catch {
+    // قد يفشل إن تجاوز الحجم — لا نكسر الحفظ الرئيسي
+  }
 }
 
 export function saveLocalClientOverrides(clientId: string, fields: Record<string, unknown>) {
