@@ -9,6 +9,7 @@ import {
   downloadTextFile,
 } from '@/lib/export/compliance-report';
 import { openDocumentPreview } from '@/lib/print/document-preview';
+import { openWhatsAppChat } from '@/lib/notifications/whatsapp-link';
 import type { ClientRecord } from '@/lib/types/client';
 import type { ComplianceValidationResult } from '@/lib/compliance/types';
 
@@ -73,34 +74,41 @@ export default function ComplianceEnginePanel({ clients }: ComplianceEnginePanel
   };
 
   const notifyWhatsApp = async () => {
-    if (!result || !whatsappTo) {
-      setNotifyMsg('أدخل رقم الجوال');
+    if (!result || !whatsappTo.trim()) {
+      setNotifyMsg('أدخل رقم الجوال (مثال: 05xxxxxxxx)');
       return;
     }
     setNotifyMsg(null);
+
+    const message = [
+      'تقرير امتثال SBC/NFPA',
+      `المشروع: ${selected?.business_name || selected?.name || '—'}`,
+      `النتيجة: ${result.summary}`,
+      `الدرجة: ${result.score}/100`,
+      result.ok ? 'الحالة: مطابق نسبياً' : 'الحالة: يوجد ملاحظات تحتاج مراجعة',
+    ].join('\n');
+
+    // 1) فتح واتساب مباشرة عبر wa.me — يعمل على GitHub Pages دون API
+    const direct = openWhatsAppChat(whatsappTo, message);
+    if (!direct.ok) {
+      setNotifyMsg(direct.error || 'تعذر فتح واتساب');
+      return;
+    }
+    setNotifyMsg('تم فتح واتساب لإرسال التقرير. أكّد الإرسال من تطبيق واتساب.');
+
+    // 2) محاولة اختيارية عبر Webhook إن وُجدت واجهة Node (لا تُعطّل الإرسال المباشر)
     try {
-      const res = await fetch('/api/notifications/whatsapp', {
+      await fetch('/api/notifications/whatsapp', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           to: whatsappTo,
-          message: `تقرير امتثال: ${result.summary} (درجة ${result.score}) — ${selected?.business_name || ''}`,
+          message,
           metadata: { score: result.score, ok: result.ok },
         }),
       });
-      const data = (await res.json()) as { ok?: boolean; result?: { provider?: string; messageId?: string }; error?: string };
-      if (!res.ok || !data.ok) {
-        setNotifyMsg(data.error || 'فشل إرسال الإشعار');
-        return;
-      }
-      setNotifyMsg(
-        data.result?.provider === 'stub'
-          ? `تم تسجيل الإشعار محلياً (${data.result.messageId}) — اضبط WHATSAPP_WEBHOOK_URL للإرسال الفعلي`
-          : `تم الإرسال عبر Webhook (${data.result?.messageId})`
-      );
     } catch {
-      // وضع التصدير الثابت قد لا يدعم /api — نُظهر رسالة واضحة
-      setNotifyMsg('تعذر الوصول لواجهة WhatsApp API في هذا النشر. استخدم نشراً على Node أو اضبط Webhook.');
+      // تجاهل — النشر الثابت غالباً بلا /api
     }
   };
 
@@ -244,13 +252,14 @@ export default function ComplianceEnginePanel({ clients }: ComplianceEnginePanel
 
           <div className="border-t pt-3 flex flex-col sm:flex-row gap-2 sm:items-end">
             <label className="text-sm flex-1">
-              <span className="text-xs font-semibold text-gray-600 mb-1 block">إشعار WhatsApp</span>
+              <span className="text-xs font-semibold text-gray-600 mb-1 block">إرسال عبر واتساب</span>
               <input
                 value={whatsappTo}
                 onChange={(e) => setWhatsappTo(e.target.value)}
                 placeholder="05xxxxxxxx"
                 className="w-full border rounded-xl px-3 py-2 text-sm"
                 dir="ltr"
+                inputMode="tel"
               />
             </label>
             <button
@@ -258,10 +267,18 @@ export default function ComplianceEnginePanel({ clients }: ComplianceEnginePanel
               onClick={() => void notifyWhatsApp()}
               className="px-4 py-2.5 rounded-xl bg-emerald-700 text-white text-sm font-semibold"
             >
-              إرسال إشعار
+              إرسال واتساب
             </button>
           </div>
-          {notifyMsg ? <p className="text-xs text-gray-600">{notifyMsg}</p> : null}
+          {notifyMsg ? (
+            <p className={`text-xs ${notifyMsg.includes('تعذر') || notifyMsg.includes('غير صالح') ? 'text-rose-600' : 'text-emerald-700'}`}>
+              {notifyMsg}
+            </p>
+          ) : (
+            <p className="text-[11px] text-gray-500">
+              يفتح تطبيق واتساب برسالة جاهزة — اضغط إرسال داخل واتساب لإتمام المشاركة.
+            </p>
+          )}
         </div>
       ) : null}
     </div>
