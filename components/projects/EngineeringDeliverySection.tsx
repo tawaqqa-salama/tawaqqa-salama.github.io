@@ -43,13 +43,24 @@ export default function EngineeringDeliverySection({
     if (partial.delivery_date && partial.hijri_date === undefined) {
       next.hijri_date = formatHijriDate(partial.delivery_date);
     }
+    if (partial.delivered_to && partial.civil_defense_city === undefined) {
+      const fromAddr = partial.delivered_to.match(/محافظة\s+([^\s،,]+)/)?.[1];
+      if (fromAddr) next.civil_defense_city = fromAddr;
+    }
     onChange(next);
   };
 
   const updateScopeRow = (id: SafetyScopeRow['id'], partial: Partial<SafetyScopeRow>) => {
-    const rows = mergeSafetyScope(delivery.safety_scope, DEFAULT_SAFETY_SCOPE).map((row) =>
-      row.id === id ? { ...row, ...partial } : row
-    );
+    const rows = mergeSafetyScope(delivery.safety_scope, DEFAULT_SAFETY_SCOPE).map((row) => {
+      if (row.id !== id) return row;
+      const merged = { ...row, ...partial };
+      if (partial.applicable === 'لا' && partial.option === undefined) {
+        merged.option = 'not_required';
+      }
+      if (partial.option === 'not_required') merged.applicable = 'لا';
+      if (partial.option && partial.option !== 'not_required') merged.applicable = 'نعم';
+      return merged;
+    });
     patch({ safety_scope: rows });
   };
 
@@ -111,10 +122,14 @@ export default function EngineeringDeliverySection({
         </label>
         <label className="text-sm md:col-span-2">
           <span className="text-xs font-semibold text-gray-600 mb-1 block">صورة إلى</span>
-          <input
-            value={delivery.copy_to || ''}
+          <textarea
+            rows={2}
+            value={
+              delivery.copy_to ||
+              `صورة لمركز السلامة الميدانية\nصورة للمالك / المستثمر: ${client.owner_name || client.name || ''}`
+            }
             onChange={(e) => patch({ copy_to: e.target.value })}
-            placeholder="مركز السلامة الميداني — المالك / المستثمر"
+            placeholder={'صورة لمركز السلامة الميدانية\nصورة للمالك / المستثمر: ...'}
             className="w-full border rounded-xl px-3 py-2.5 text-sm"
           />
         </label>
@@ -162,8 +177,7 @@ export default function EngineeringDeliverySection({
             <thead className="bg-[#1f4d3a] text-white">
               <tr>
                 <th className="p-2">النظام</th>
-                <th className="p-2">الخيار</th>
-                <th className="p-2">نعم / لا</th>
+                <th className="p-2">حالة الأعمال في الدراسة</th>
               </tr>
             </thead>
             <tbody>
@@ -172,13 +186,13 @@ export default function EngineeringDeliverySection({
                   <td className="p-2 font-semibold">{row.label}</td>
                   <td className="p-2">
                     <select
-                      value={row.option || ''}
+                      value={row.option || (row.applicable === 'لا' ? 'not_required' : '')}
                       onChange={(e) =>
                         updateScopeRow(row.id, { option: e.target.value as SafetyScopeOption })
                       }
                       className="w-full border rounded-lg px-2 py-1.5"
                     >
-                      <option value="">—</option>
+                      <option value="">— اختر الحالة —</option>
                       {(Object.keys(SAFETY_SCOPE_OPTION_LABELS) as Exclude<SafetyScopeOption, ''>[]).map(
                         (key) => (
                           <option key={key} value={key}>
@@ -186,18 +200,6 @@ export default function EngineeringDeliverySection({
                           </option>
                         )
                       )}
-                    </select>
-                  </td>
-                  <td className="p-2">
-                    <select
-                      value={row.applicable}
-                      onChange={(e) =>
-                        updateScopeRow(row.id, { applicable: e.target.value as 'نعم' | 'لا' })
-                      }
-                      className="w-full border rounded-lg px-2 py-1.5"
-                    >
-                      <option value="نعم">نعم</option>
-                      <option value="لا">لا</option>
                     </select>
                   </td>
                 </tr>
