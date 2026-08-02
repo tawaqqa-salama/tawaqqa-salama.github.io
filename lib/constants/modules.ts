@@ -11,7 +11,7 @@ export const PROJECT_REPORT_SECTIONS = [
   { id: 'timeline', label: 'الجدول الزمني' },
   { id: 'field_visits', label: 'الزيارات الميدانية' },
   { id: 'technical_notes', label: 'الملاحظات الفنية' },
-  { id: 'engineering_delivery', label: 'تسليم الدراسة الهندسية' },
+  { id: 'engineering_delivery', label: 'خطاب تسليم الدراسة' },
   { id: 'final_inspection', label: 'التقرير النهائي' },
   { id: 'completion_certificate', label: 'شهادة إنهاء الأعمال' },
 ] as const;

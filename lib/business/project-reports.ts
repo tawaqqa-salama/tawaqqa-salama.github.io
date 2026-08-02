@@ -8,6 +8,7 @@ import {
 } from '@/lib/types/project-reports';
 import { mergeBuildingPlanDefaults } from '@/lib/projects/building-plan';
 import { seedTechnicalReportFromClient } from '@/lib/projects/technical-report';
+import { mergeSafetyScope, seedEngineeringDelivery } from '@/lib/projects/safety-delivery-letter';
 
 export function parseProjectEngineeringData(raw: ClientRecord['project_engineering_data']): ProjectEngineeringData {
   if (!raw || typeof raw !== 'object') {
@@ -41,7 +42,14 @@ export function parseProjectEngineeringData(raw: ClientRecord['project_engineeri
       deficiencies: data.technical_notes?.deficiencies || [],
       ...data.technical_notes,
     },
-    engineering_delivery: { ...EMPTY_PROJECT_ENGINEERING_DATA.engineering_delivery, ...data.engineering_delivery },
+    engineering_delivery: {
+      ...EMPTY_PROJECT_ENGINEERING_DATA.engineering_delivery,
+      ...data.engineering_delivery,
+      safety_scope: mergeSafetyScope(
+        data.engineering_delivery?.safety_scope,
+        EMPTY_PROJECT_ENGINEERING_DATA.engineering_delivery.safety_scope
+      ),
+    },
     final_inspection: { ...EMPTY_PROJECT_ENGINEERING_DATA.final_inspection, ...data.final_inspection },
     completion_certificate: { ...EMPTY_PROJECT_ENGINEERING_DATA.completion_certificate, ...data.completion_certificate },
   };
@@ -79,6 +87,7 @@ export function seedProjectEngineeringFromClient(
   return {
     ...data,
     technical_report: seedTechnicalReportFromClient(client, data.technical_report),
+    engineering_delivery: seedEngineeringDelivery(client, data, data.engineering_delivery),
   };
 }
 

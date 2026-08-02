@@ -1,0 +1,293 @@
+'use client';
+
+import type { CompanyProfile } from '@/lib/company-profile';
+import type { ClientRecord } from '@/lib/types/client';
+import type { EngineeringDeliveryReport, ProjectEngineeringData } from '@/lib/types/project-reports';
+import {
+  formatGregorianDate,
+  formatHijriDate,
+  getFacilitySnapshotForLetter,
+  SAFETY_SCOPE_OPTION_LABELS,
+} from '@/lib/projects/safety-delivery-letter';
+import type { SafetyScopeOption } from '@/lib/types/project-reports';
+
+function esc(value: string | number | null | undefined): string {
+  return String(value ?? '—')
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;');
+}
+
+function mark(active: boolean): string {
+  return active ? '✓' : '';
+}
+
+function scopeCell(option: SafetyScopeOption | '', key: Exclude<SafetyScopeOption, ''>): string {
+  return `<td class="c">${mark(option === key)}</td>`;
+}
+
+export function buildSafetyDeliveryLetterHtml(params: {
+  client: ClientRecord;
+  data: ProjectEngineeringData;
+  delivery: EngineeringDeliveryReport;
+  company: CompanyProfile;
+}): string {
+  const { client, data, delivery, company } = params;
+  const facility = getFacilitySnapshotForLetter(client, data);
+  const deliveryDate = delivery.delivery_date || new Date().toISOString().slice(0, 10);
+  const hijri = delivery.hijri_date || formatHijriDate(deliveryDate);
+  const gregorian = formatGregorianDate(deliveryDate);
+  const city = delivery.civil_defense_city || facility.city || company.city || 'الرياض';
+  const addressee =
+    delivery.delivered_to || `سعادة مدير الإدارة العامة للدفاع المدني بمحافظة ${city}`;
+  const copyTo = delivery.copy_to || 'مركز السلامة الميداني — المالك / المستثمر';
+  const logo = company.logo_url
+    ? `<img class="logo" src="${company.logo_url}" alt="شعار" />`
+    : `<div class="logo-fallback">${esc(company.name)}</div>`;
+  const stamp = company.stamp_url
+    ? `<img class="stamp" src="${company.stamp_url}" alt="ختم" />`
+    : `<div class="stamp-box">${esc(company.stamp_text || company.name)}</div>`;
+
+  const scopeRows = (delivery.safety_scope || [])
+    .map((row) => {
+      const option = (row.option || '') as SafetyScopeOption;
+      return `<tr>
+        <td class="sys">${esc(row.label)}</td>
+        ${scopeCell(option, 'new_design')}
+        ${scopeCell(option, 'modify_existing')}
+        ${scopeCell(option, 'approve_existing')}
+        ${scopeCell(option, 'not_required')}
+        <td class="c">${esc(row.applicable || '—')}</td>
+      </tr>`;
+    })
+    .join('');
+
+  return `<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+  <meta charset="UTF-8" />
+  <title>خطاب تسليم دراسة السلامة — ${esc(facility.facilityName)}</title>
+  <style>
+    @page { size: A4 portrait; margin: 8mm; }
+    * { box-sizing: border-box; }
+    html, body {
+      margin: 0; padding: 0; background: #fff; color: #111;
+      font-family: "Tahoma", "Segoe UI", Arial, sans-serif;
+      font-size: 9.5px; line-height: 1.35;
+      -webkit-print-color-adjust: exact; print-color-adjust: exact;
+    }
+    header, footer { display: none !important; }
+    .sheet {
+      width: 100%;
+      max-width: 194mm;
+      min-height: 0;
+      margin: 0 auto;
+      padding: 0;
+    }
+    .top {
+      display: grid;
+      grid-template-columns: 1fr 1.2fr 1fr;
+      gap: 6px;
+      align-items: start;
+      border-bottom: 2px solid #1f4d3a;
+      padding-bottom: 5px;
+      margin-bottom: 6px;
+    }
+    .meta-box { font-size: 8.5px; line-height: 1.4; }
+    .meta-box div { margin: 0 0 1px; }
+    .center { text-align: center; }
+    .logo, .logo-fallback {
+      width: 48px; height: 48px; object-fit: contain; margin: 0 auto 2px; display: block;
+    }
+    .logo-fallback {
+      border: 1px solid #cbd5e1; border-radius: 6px;
+      display: flex; align-items: center; justify-content: center;
+      font-size: 8px; font-weight: 800; color: #1f4d3a; padding: 3px;
+    }
+    .brand { margin: 0; font-size: 12px; font-weight: 900; color: #1f4d3a; }
+    .doc-title { margin: 2px 0 0; font-size: 13px; font-weight: 900; }
+    .left { text-align: left; font-size: 8.5px; }
+    .addressee {
+      margin: 4px 0 5px;
+      padding: 5px 7px;
+      border: 1px solid #cbd5e1;
+      border-radius: 5px;
+      background: #f8fafc;
+    }
+    .addressee p { margin: 0 0 2px; }
+    .preamble { margin: 0 0 5px; text-align: justify; }
+    h3 {
+      margin: 0 0 3px; font-size: 10px; color: #1f4d3a;
+      border-right: 3px solid #1f4d3a; padding-right: 5px;
+    }
+    table.grid, table.scope {
+      width: 100%; border-collapse: collapse; margin: 0 0 5px;
+    }
+    table.grid td, table.scope th, table.scope td {
+      border: 1px solid #64748b; padding: 2.5px 4px; vertical-align: middle;
+    }
+    table.grid td.k { width: 28%; background: #f1f5f9; font-weight: 700; }
+    table.scope th {
+      background: #1f4d3a; color: #fff; font-size: 8px; font-weight: 700;
+    }
+    table.scope td.sys { font-weight: 700; width: 26%; }
+    table.scope td.c { text-align: center; width: 14.8%; font-weight: 800; }
+    .notes {
+      border: 1px solid #cbd5e1; border-radius: 5px; padding: 4px 6px; margin-bottom: 5px;
+      min-height: 28px;
+    }
+    .signs {
+      display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 8px;
+      margin-top: 4px; page-break-inside: avoid;
+    }
+    .sign { text-align: center; }
+    .sign .t { font-weight: 800; margin-bottom: 2px; font-size: 9px; }
+    .sign .d { font-size: 8px; color: #334155; line-height: 1.3; }
+    .stamp { width: 52px; height: 52px; object-fit: contain; margin: 2px auto; display: block; }
+    .stamp-box {
+      width: 52px; height: 52px; margin: 2px auto; border: 1.5px dashed #94a3b8;
+      border-radius: 999px; display: flex; align-items: center; justify-content: center;
+      text-align: center; font-size: 7px; font-weight: 700; color: #475569; padding: 3px;
+    }
+    .sign-line {
+      margin-top: 14px; border-top: 1px solid #64748b; padding-top: 2px;
+      font-size: 8px; color: #475569;
+    }
+    .legend { font-size: 7.5px; color: #64748b; margin: 0 0 3px; }
+    @media print {
+      @page { size: A4 portrait; margin: 8mm; }
+      html, body { margin: 0 !important; padding: 0 !important; }
+      .sheet { max-width: none; }
+      a[href]::after { content: none !important; }
+    }
+  </style>
+</head>
+<body>
+  <div class="sheet">
+    <div class="top">
+      <div class="meta-box">
+        <div><strong>ترخيص المكتب لدى الدفاع المدني</strong></div>
+        <div>${esc(company.membership_id || '—')}</div>
+        <div>الرقم الصادر: <strong>${esc(delivery.outgoing_number || data.technical_report.outgoing_number || '—')}</strong></div>
+        <div>التاريخ الميلادي: <strong>${esc(gregorian)}</strong></div>
+        <div>التاريخ الهجري: <strong>${esc(hijri)}</strong></div>
+      </div>
+      <div class="center">
+        ${logo}
+        <p class="brand">${esc(company.legal_name || company.name)}</p>
+        <h1 class="doc-title">خطاب تسليم دراسة السلامة</h1>
+        <div style="font-size:8px;color:#64748b">وفق كود البناء السعودي SBC واشتراطات NFPA</div>
+      </div>
+      <div class="left meta-box">
+        <div>المرفقات: <strong>${esc(delivery.attachments_count ?? 1)}</strong></div>
+        <div>س.ت: ${esc(company.commercial_register || '—')}</div>
+        <div>جوال المكتب: ${esc(company.phone || '—')}</div>
+        <div>المدينة: ${esc(company.city || city)}</div>
+      </div>
+    </div>
+
+    <div class="addressee">
+      <p><strong>${esc(addressee)}</strong></p>
+      <p>السلام عليكم ورحمة الله وبركاته،،،</p>
+      <p>صورة إلى: ${esc(copyTo)}</p>
+    </div>
+
+    <p class="preamble">
+      إشارةً إلى طلب دراسة أنظمة السلامة والوقاية من الحريق للمنشأة الموضحة بياناتها أدناه،
+      نفيد سعادتكم بأنه قد تم إنجاز الدراسة الهندسية وفق متطلبات <strong>كود البناء السعودي (SBC)</strong>
+      واشتراطات <strong>الجمعية الوطنية للحماية من الحرائق (NFPA)</strong> والأنظمة المعتمدة لدى الدفاع المدني،
+      ونرفع لسعادتكم هذا الخطاب لتسليم الدراسة واعتمادها وفق الإجراءات النظامية.
+    </p>
+
+    <h3>أولاً: بيانات المنشأة</h3>
+    <table class="grid">
+      <tr>
+        <td class="k">مسمى المنشأة</td><td>${esc(facility.facilityName)}</td>
+        <td class="k">المالك</td><td>${esc(facility.ownerName)}</td>
+      </tr>
+      <tr>
+        <td class="k">النشاط</td><td>${esc(facility.activityLabel)}</td>
+        <td class="k">تصنيف النشاط / الإشغال</td><td>${esc(facility.occupancyLabel)}</td>
+      </tr>
+      <tr>
+        <td class="k">مساحة الموقع العام</td><td>${esc(facility.landArea)} م²</td>
+        <td class="k">مساحة البناء</td><td>${esc(facility.buildingArea)} م²</td>
+      </tr>
+      <tr>
+        <td class="k">عدد الأدوار</td><td>${esc(facility.floorsCount)}</td>
+        <td class="k">تصنيف المبنى</td><td>${esc(facility.buildingStatus)}</td>
+      </tr>
+      <tr>
+        <td class="k">رقم / تاريخ رخصة البناء</td><td>${esc(facility.permitNumber)} — ${esc(formatGregorianDate(facility.permitDate === '—' ? null : facility.permitDate))}</td>
+        <td class="k">وسيلة التواصل</td><td dir="ltr">${esc(facility.phone)}</td>
+      </tr>
+      <tr>
+        <td class="k">الموقع</td><td colspan="3">${esc(facility.location)}</td>
+      </tr>
+    </table>
+
+    <h3>ثانياً: الأعمال التي تمت في الدراسة</h3>
+    <p class="legend">✓ = الخيار المحدد · أعمدة: ${Object.values(SAFETY_SCOPE_OPTION_LABELS).join(' | ')} | نعم/لا</p>
+    <table class="scope">
+      <thead>
+        <tr>
+          <th>النظام</th>
+          <th>تصميم جديد</th>
+          <th>تعديل على نظام موجود</th>
+          <th>اعتماد نظام موجود</th>
+          <th>لا يتطلب</th>
+          <th>نعم / لا</th>
+        </tr>
+      </thead>
+      <tbody>${scopeRows}</tbody>
+    </table>
+
+    <h3>ثالثاً: ملاحظات</h3>
+    <div class="notes">${esc(delivery.notes || delivery.study_summary || 'لا يوجد')}</div>
+
+    <div class="signs">
+      <div class="sign">
+        <div class="t">ختم الغرفة / المكتب</div>
+        ${stamp}
+        <div class="sign-line">الختم الرسمي</div>
+      </div>
+      <div class="sign">
+        <div class="t">مهندس السلامة المعتمد</div>
+        <div class="d">
+          ${esc(delivery.safety_engineer_name || '—')}<br/>
+          ${esc(delivery.safety_engineer_title || 'مهندس سلامة معتمد')}<br/>
+          ${esc(delivery.safety_engineer_phone || '—')}
+        </div>
+        <div class="sign-line">التوقيع</div>
+      </div>
+      <div class="sign">
+        <div class="t">مدير المكتب</div>
+        <div class="d">
+          ${esc(delivery.manager_name || '—')}<br/>
+          ${esc(delivery.manager_title || 'مدير المكتب')}<br/>
+          ${esc(delivery.manager_phone || company.phone || '—')}
+        </div>
+        <div class="sign-line">التوقيع</div>
+      </div>
+    </div>
+  </div>
+</body>
+</html>`;
+}
+
+export function printSafetyDeliveryLetter(params: {
+  client: ClientRecord;
+  data: ProjectEngineeringData;
+  delivery: EngineeringDeliveryReport;
+  company: CompanyProfile;
+}) {
+  const html = buildSafetyDeliveryLetterHtml(params);
+  void import('@/lib/print/document-preview').then(({ openDocumentPreview }) => {
+    openDocumentPreview({
+      title: `خطاب تسليم دراسة — ${params.client.business_name || params.client.name}`,
+      html,
+      fileName: `safety-delivery-${params.client.client_code || params.client.id}`,
+    });
+  });
+}
