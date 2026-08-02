@@ -14,10 +14,26 @@ import { usePathname } from 'next/navigation';
 const STORAGE_KEY = 'tawaqqa_module_subnav_v1';
 const MOBILE_QUERY = '(max-width: 767px)';
 
-/** أقسام لديها قوائم/تبويبات فرعية قابلة للإخفاء */
-const MODULES_WITH_SUBNAV = new Set(['marketing', 'sales', 'finance', 'settings']);
+/** أقسام لديها قوائم/تبويبات فرعية قابلة للإخفاء عبر زر ☰ */
+const MODULES_WITH_SUBNAV = new Set([
+  'marketing',
+  'sales',
+  'procurement',
+  'finance',
+  'hr',
+  'projects',
+  'settings',
+]);
 
-export type ModuleSubNavKey = 'marketing' | 'sales' | 'finance' | 'settings' | null;
+export type ModuleSubNavKey =
+  | 'marketing'
+  | 'sales'
+  | 'procurement'
+  | 'finance'
+  | 'hr'
+  | 'projects'
+  | 'settings'
+  | null;
 
 type StoredPrefs = Record<string, boolean>;
 
@@ -37,7 +53,10 @@ const ModuleSubNavContext = createContext<ModuleSubNavContextValue | null>(null)
 function resolveModuleKey(pathname: string): ModuleSubNavKey {
   if (pathname.startsWith('/marketing')) return 'marketing';
   if (pathname.startsWith('/sales')) return 'sales';
+  if (pathname.startsWith('/procurement')) return 'procurement';
   if (pathname.startsWith('/finance')) return 'finance';
+  if (pathname.startsWith('/hr')) return 'hr';
+  if (pathname.startsWith('/projects')) return 'projects';
   if (pathname.startsWith('/settings')) return 'settings';
   return null;
 }

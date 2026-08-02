@@ -3,7 +3,7 @@
 import { useEffect, useId } from 'react';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
-import { SIDEBAR_NAV, SYSTEM_MODULES } from '@/lib/constants/navigation';
+import { getVisibleSidebarNav, SYSTEM_MODULES } from '@/lib/constants/navigation';
 import { useAuth } from '@/lib/auth/AuthProvider';
 
 type AppSwitcherProps = {
@@ -15,9 +15,11 @@ export default function AppSwitcher({ open, onClose }: AppSwitcherProps) {
   const pathname = usePathname();
   const { canAccess, canManageStaff } = useAuth();
   const titleId = useId();
+  const visibleNav = getVisibleSidebarNav();
 
   const modules = SYSTEM_MODULES.filter((module) => {
-    const nav = SIDEBAR_NAV.find((item) => item.href === module.href);
+    if (module.status !== 'active') return false;
+    const nav = visibleNav.find((item) => item.href === module.href);
     if (!nav) return false;
     if (nav.department === 'settings') return canAccess('settings') || canManageStaff;
     return canAccess(nav.department);

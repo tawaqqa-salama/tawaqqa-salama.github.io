@@ -2,20 +2,25 @@
 
 import Link from 'next/link';
 import { useAuth } from '@/lib/auth/AuthProvider';
-import { SIDEBAR_NAV, SYSTEM_MODULES } from '@/lib/constants/navigation';
-import { departmentsFromPermissions } from '@/lib/auth/permissions';
+import { getVisibleSidebarNav, SYSTEM_MODULES } from '@/lib/constants/navigation';
+import { ALL_DEPARTMENTS, departmentsFromPermissions } from '@/lib/auth/permissions';
 
 export default function MyPage() {
   const { session, profile, permissions, canManageStaff } = useAuth();
 
   if (!session || !profile) return null;
 
-  const allowedDepartments = profile.page_modules?.length
-    ? profile.page_modules
-    : departmentsFromPermissions(permissions);
+  // المدير (*) يرى كل الأقسام المفعّلة حتى لو page_modules قديمة بدون المشتريات
+  const allowedDepartments = permissions.includes('*')
+    ? ALL_DEPARTMENTS
+    : profile.page_modules?.length
+      ? profile.page_modules
+      : departmentsFromPermissions(permissions);
 
+  const visibleNav = getVisibleSidebarNav();
   const modules = SYSTEM_MODULES.filter((module) => {
-    const nav = SIDEBAR_NAV.find((item) => item.href === module.href);
+    if (module.status !== 'active') return false;
+    const nav = visibleNav.find((item) => item.href === module.href);
     return nav ? allowedDepartments.includes(nav.department) : false;
   });
 
