@@ -14,7 +14,8 @@ import { printCompletionCertificate } from '@/components/projects/CompletionCert
 import BuildingPlanReportSection from '@/components/projects/BuildingPlanReportSection';
 import TechnicalReportSection from '@/components/projects/TechnicalReportSection';
 import { printTechnicalReport } from '@/components/projects/TechnicalReportPrint';
-import { loadCompanyProfile } from '@/lib/company-profile';
+import EngineeringDeliverySection from '@/components/projects/EngineeringDeliverySection';
+import { loadCompanyProfile, type CompanyProfile } from '@/lib/company-profile';
 import { ensureCertificateNumber, ensureOutgoingNumber } from '@/lib/business/document-numbers';
 import NumericInput from '@/components/ui/NumericInput';
 import type { ClientRecord } from '@/lib/types/client';
@@ -33,6 +34,11 @@ export default function ProjectReportModal({ client, onClose, onUpdated }: Proje
   const [data, setData] = useState<ProjectEngineeringData | null>(null);
   const [saving, setSaving] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
+  const [company, setCompany] = useState<CompanyProfile | null>(null);
+
+  useEffect(() => {
+    void loadCompanyProfile().then(setCompany);
+  }, []);
 
   useEffect(() => {
     if (!client) return;
@@ -253,18 +259,13 @@ export default function ProjectReportModal({ client, onClose, onUpdated }: Proje
             )}
 
             {activeSection === 'engineering_delivery' && (
-              <ReportForm
-                status={data.engineering_delivery.status}
-                onStatus={(status) => patch({ engineering_delivery: { ...data.engineering_delivery, status } })}
-                fields={[
-                  ['delivery_date', 'تاريخ التسليم', data.engineering_delivery.delivery_date || '', 'date'],
-                  ['delivered_to', 'تم التسليم إلى', data.engineering_delivery.delivered_to || ''],
-                ]}
-                onChange={(key, value) => patch({ engineering_delivery: { ...data.engineering_delivery, [key]: value } })}
-                notes={data.engineering_delivery.study_summary || ''}
-                onNotes={(study_summary) => patch({ engineering_delivery: { ...data.engineering_delivery, study_summary } })}
-                onSave={() => save(data, 'تم حفظ تقرير التسليم.')}
+              <EngineeringDeliverySection
+                client={client}
+                data={data}
+                company={company}
                 saving={saving}
+                onChange={(engineering_delivery) => patch({ engineering_delivery })}
+                onSave={() => save(data, 'تم حفظ خطاب تسليم الدراسة.')}
               />
             )}
 

@@ -66,7 +66,7 @@ export default function ProjectsPage() {
       {tab === 'list' && (
         <>
           <div className="rounded-xl border border-indigo-100 bg-indigo-50 p-4 text-sm text-indigo-800">
-            كل مشروع يحتوي: معلومات المخطط، BOQ، الجدول الزمني، الزيارات الميدانية، الملاحظات الفنية، تسليم الدراسة، التقرير النهائي، وشهادة إنهاء الأعمال.
+            كل مشروع يحتوي: معلومات المخطط، BOQ، الجدول الزمني، الزيارات الميدانية، الملاحظات الفنية، خطاب تسليم الدراسة، التقرير النهائي، وشهادة إنهاء الأعمال.
           </div>
 
           <ResponsiveTable className="bg-white rounded-xl border shadow-sm">

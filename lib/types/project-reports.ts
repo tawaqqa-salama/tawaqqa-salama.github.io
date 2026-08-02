@@ -110,11 +110,44 @@ export interface TechnicalNotesReport extends ReportMeta {
   compliance_status?: string;
 }
 
+/** خيار نطاق أعمال نظام السلامة في خطاب التسليم */
+export type SafetyScopeOption =
+  | 'new_design'
+  | 'modify_existing'
+  | 'approve_existing'
+  | 'not_required'
+  | '';
+
+export type SafetyScopeRow = {
+  id: 'firefighting' | 'alarm' | 'smoke_control' | 'emergency_exits' | 'supervision_contract';
+  label: string;
+  option: SafetyScopeOption;
+  /** عمود نعم / لا */
+  applicable: 'نعم' | 'لا';
+};
+
 export interface EngineeringDeliveryReport extends ReportMeta {
   delivery_date?: string;
+  /** الجهة المسلَّم إليها — مثال: الإدارة العامة للدفاع المدني بمحافظة ... */
   delivered_to?: string;
+  /** صورة إلى: مركز السلامة / المالك */
+  copy_to?: string;
   study_summary?: string;
+  notes?: string;
   attachments_note?: string;
+  attachments_count?: number | string;
+  outgoing_number?: string;
+  /** تاريخ هجري اختياري (نص) — يُولَّد تلقائياً إن تُرك فارغاً */
+  hijri_date?: string;
+  civil_defense_city?: string;
+  safety_engineer_name?: string;
+  safety_engineer_title?: string;
+  safety_engineer_phone?: string;
+  manager_name?: string;
+  manager_title?: string;
+  manager_phone?: string;
+  /** مصفوفة نطاق أعمال أنظمة السلامة */
+  safety_scope?: SafetyScopeRow[];
 }
 
 export interface FinalInspectionReport extends ReportMeta {
@@ -283,7 +316,16 @@ export const EMPTY_PROJECT_ENGINEERING_DATA: ProjectEngineeringData = {
   timeline: { status: 'مسودة', milestones: [] },
   field_visits: [],
   technical_notes: { status: 'مسودة', deficiencies: [] },
-  engineering_delivery: { status: 'مسودة' },
+  engineering_delivery: {
+    status: 'مسودة',
+    safety_scope: [
+      { id: 'firefighting', label: 'نظام الإطفاء', option: '', applicable: 'نعم' },
+      { id: 'alarm', label: 'نظام الإنذار', option: '', applicable: 'نعم' },
+      { id: 'smoke_control', label: 'نظام سحب والتحكم بالدخان', option: '', applicable: 'نعم' },
+      { id: 'emergency_exits', label: 'مخارج الطوارئ', option: '', applicable: 'نعم' },
+      { id: 'supervision_contract', label: 'عقد الإشراف', option: '', applicable: 'نعم' },
+    ],
+  },
   final_inspection: { status: 'مسودة' },
   completion_certificate: { status: 'مسودة' },
 };
