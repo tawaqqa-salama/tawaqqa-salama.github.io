@@ -304,6 +304,7 @@ export default function ClientDetailModal({
       const nextClient = { ...client, ...merged } as ClientRecord;
       const financiallyApprovedNow =
         ['تم السداد', 'معتمد مالياً'].includes(String(finalPayload.financial_status || financialStatus));
+      let keepOpenForInvoice = false;
 
       if ((quotationApprovedNow || financiallyApprovedNow) && Number(merged.quotation_amount || 0) > 0) {
         try {
@@ -316,6 +317,7 @@ export default function ClientDetailModal({
             );
             setPromptInvoice(null);
             setInvoicePromptOpen(true);
+            keepOpenForInvoice = true;
           }
         } catch (contractError) {
           message += ` — العقد: ${contractError instanceof Error ? contractError.message : 'تعذر إنشاء العقد'}`;
@@ -348,6 +350,7 @@ export default function ClientDetailModal({
 
       setSuccessMessage(message);
       onUpdated();
+      if (!keepOpenForInvoice) onClose();
       return true;
     } catch (error) {
       setErrorMessage(error instanceof Error ? error.message : 'حدث خطأ غير متوقع');
@@ -1183,6 +1186,7 @@ export default function ClientDetailModal({
         onClose={() => {
           setInvoicePromptOpen(false);
           setPromptInvoice(null);
+          onClose();
         }}
         onIssue={() => {
           void (async () => {
