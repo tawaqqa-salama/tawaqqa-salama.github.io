@@ -154,6 +154,9 @@ export default function ProjectReportModal({ client, onClose, onUpdated }: Proje
       setPendingInvoiceEvent('completion');
       setPromptInvoice(null);
       setInvoicePromptOpen(true);
+    } else {
+      // بعد الحفظ الناجح أقفل النافذة مباشرة
+      onClose();
     }
   };
 
@@ -388,6 +391,7 @@ export default function ProjectReportModal({ client, onClose, onUpdated }: Proje
         setInvoicePromptOpen(false);
         setPromptInvoice(null);
         setPendingInvoiceEvent(null);
+        onClose();
       }}
       onIssue={() => {
         void (async () => {
