@@ -31,8 +31,9 @@ export const DEFAULT_ACCOUNT_CODES = {
 export const FINANCE_NAV = [
   { href: '/finance', label: 'لوحة التحكم', icon: '▦' },
   { href: '/finance/vouchers?tab=approvals', label: 'الاعتماد المالي', icon: '✅' },
+  { href: '/finance/invoices', label: 'الفواتير الضريبية', icon: '🧾' },
   { href: '/finance/journal', label: 'القيود اليومية', icon: '📝' },
-  { href: '/finance/vouchers', label: 'السندات', icon: '🧾' },
+  { href: '/finance/vouchers', label: 'السندات', icon: '📄' },
   { href: '/finance/accounts', label: 'دليل الحسابات', icon: '🌳' },
   { href: '/finance/cost-centers', label: 'مراكز التكلفة', icon: '🏢' },
   { href: '/finance/reports', label: 'التقارير والإقرار الضريبي', icon: '📈' },

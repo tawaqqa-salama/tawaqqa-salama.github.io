@@ -36,6 +36,10 @@ export interface ClientRecord {
   plot_number?: string | null;
   /** السجل التجاري للعميل / المنشأة (الطرف الثاني في العقود) */
   commercial_register?: string | null;
+  /** الرقم الضريبي للعميل (B2B — فاتورة ضريبية قياسية) */
+  tax_number?: string | null;
+  /** business = منشأة/حكومة، consumer = فرد */
+  client_kind?: 'business' | 'consumer' | null;
   business_name?: string | null;
   activity_type?: string | null;
   land_area?: number | null;

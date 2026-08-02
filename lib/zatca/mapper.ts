@@ -73,6 +73,7 @@ export function mapClientToZatcaInput(options: {
     },
     buyer: {
       name: client.business_name || client.name,
+      vatNumber: client.tax_number || undefined,
       street: client.street || client.district || undefined,
       city: client.city || undefined,
       countryCode: 'SA',

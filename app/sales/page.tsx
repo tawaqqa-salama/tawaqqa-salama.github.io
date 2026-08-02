@@ -21,10 +21,11 @@ import RowActionsMenu from '@/components/ui/RowActionsMenu';
 import ModuleSubNavSlot from '@/components/layout/ModuleSubNavSlot';
 import { insertClientSafe, mergeLocalClientOverrides } from '@/lib/supabase/safe-client-write';
 import { logActivity } from '@/lib/activity/logger';
+import TaxInvoicesPanel from '@/components/invoices/TaxInvoicesPanel';
 import type { ClientFormData, ClientRecord, FinancialDocument } from '@/lib/types/client';
 import type { SalesContract, SalesDocument, SalesReturn } from '@/lib/types/sales';
 
-type TabId = 'sales' | 'quotations' | 'documents' | 'credit' | 'contracts' | 'accounts';
+type TabId = 'sales' | 'quotations' | 'documents' | 'credit' | 'contracts' | 'tax-invoices' | 'accounts';
 
 function inDateRange(iso: string | undefined | null, from: string, to: string): boolean {
   if (!from && !to) return true;
@@ -214,6 +215,7 @@ export default function SalesPage() {
             { id: 'documents' as const, label: 'أرشيف المستندات' },
             { id: 'credit' as const, label: 'الآجل والمرتجعات' },
             { id: 'contracts' as const, label: 'العقود' },
+            { id: 'tax-invoices' as const, label: 'الفواتير الضريبية' },
             { id: 'accounts' as const, label: 'حساب العميل الشامل' },
           ]).map((t) => (
             <button
@@ -349,6 +351,8 @@ export default function SalesPage() {
           </table>
         </ResponsiveTable>
       )}
+
+      {tab === 'tax-invoices' && <TaxInvoicesPanel clients={allClients} />}
 
       {tab === 'accounts' && (
         <div className="grid gap-4">
