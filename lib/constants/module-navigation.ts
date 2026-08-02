@@ -49,6 +49,7 @@ export const DEPARTMENT_SUB_MODULES: Record<DepartmentId, DepartmentSubModule[]>
     { id: 'documents', label: 'أرشيف المستندات', tab: 'documents' },
     { id: 'credit', label: 'الآجل والمرتجعات', tab: 'credit' },
     { id: 'contracts', label: 'العقود', tab: 'contracts' },
+    { id: 'tax-invoices', label: 'الفواتير الضريبية', tab: 'tax-invoices' },
     { id: 'accounts', label: 'حساب العميل الشامل', tab: 'accounts' },
   ],
   procurement: [
@@ -63,6 +64,7 @@ export const DEPARTMENT_SUB_MODULES: Record<DepartmentId, DepartmentSubModule[]>
   finance: [
     { id: 'dashboard', label: 'لوحة التحكم', href: '/finance' },
     { id: 'approvals', label: 'الاعتماد المالي', href: '/finance/vouchers?tab=approvals' },
+    { id: 'invoices', label: 'الفواتير الضريبية', href: '/finance/invoices' },
     { id: 'journal', label: 'القيود اليومية', href: '/finance/journal' },
     { id: 'vouchers', label: 'السندات', href: '/finance/vouchers' },
     { id: 'accounts', label: 'دليل الحسابات', href: '/finance/accounts' },

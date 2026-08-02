@@ -15,11 +15,22 @@ import BuildingPlanReportSection from '@/components/projects/BuildingPlanReportS
 import TechnicalReportSection from '@/components/projects/TechnicalReportSection';
 import { printTechnicalReport } from '@/components/projects/TechnicalReportPrint';
 import EngineeringDeliverySection from '@/components/projects/EngineeringDeliverySection';
+import InvoicePromptModal from '@/components/invoices/InvoicePromptModal';
+import {
+  downloadTaxInvoice,
+  printTaxInvoice,
+  shareTaxInvoiceWhatsApp,
+} from '@/components/invoices/TaxInvoiceTemplate';
+import {
+  generateInvoiceForEngineeringEvent,
+  generateTaxInvoiceFromMilestone,
+} from '@/lib/invoices/tax-invoice-service';
 import { loadCompanyProfile, type CompanyProfile } from '@/lib/company-profile';
 import { ensureCertificateNumber, ensureOutgoingNumber } from '@/lib/business/document-numbers';
 import NumericInput from '@/components/ui/NumericInput';
 import type { ClientRecord } from '@/lib/types/client';
 import type { ProjectEngineeringData } from '@/lib/types/project-reports';
+import type { TaxInvoice } from '@/lib/types/tax-invoice';
 
 interface ProjectReportModalProps {
   client: ClientRecord | null;
@@ -35,6 +46,12 @@ export default function ProjectReportModal({ client, onClose, onUpdated }: Proje
   const [saving, setSaving] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
   const [company, setCompany] = useState<CompanyProfile | null>(null);
+  const [invoicePromptOpen, setInvoicePromptOpen] = useState(false);
+  const [promptInvoice, setPromptInvoice] = useState<TaxInvoice | null>(null);
+  const [invoiceBusy, setInvoiceBusy] = useState(false);
+  const [pendingInvoiceEvent, setPendingInvoiceEvent] = useState<
+    'engineering_delivery' | 'final_inspection' | 'completion' | 'manual' | null
+  >(null);
 
   useEffect(() => {
     void loadCompanyProfile().then(setCompany);
@@ -108,6 +125,23 @@ export default function ProjectReportModal({ client, onClose, onUpdated }: Proje
     setData(stamped);
     setMessage(successText);
     onUpdated();
+
+    const deliveryDone = ['مكتمل', 'معتمد'].includes(stamped.engineering_delivery.status || '');
+    const finalDone = ['مكتمل', 'معتمد'].includes(stamped.final_inspection.status || '');
+    const completionDone = ['مكتمل', 'معتمد'].includes(stamped.completion_certificate.status || '');
+    if (deliveryDone && successText.includes('تسليم')) {
+      setPendingInvoiceEvent('engineering_delivery');
+      setPromptInvoice(null);
+      setInvoicePromptOpen(true);
+    } else if (finalDone && successText.includes('النهائي')) {
+      setPendingInvoiceEvent('final_inspection');
+      setPromptInvoice(null);
+      setInvoicePromptOpen(true);
+    } else if (completionDone && successText.includes('شهادة')) {
+      setPendingInvoiceEvent('completion');
+      setPromptInvoice(null);
+      setInvoicePromptOpen(true);
+    }
   };
 
   const patch = (partial: Partial<ProjectEngineeringData>) => setData({ ...data, ...partial });
@@ -128,6 +162,7 @@ export default function ProjectReportModal({ client, onClose, onUpdated }: Proje
   };
 
   return (
+    <>
     <div className="fixed inset-0 bg-black/50 flex items-end sm:items-center justify-center z-50 p-0 sm:p-4">
       <div className="bg-white rounded-t-2xl sm:rounded-2xl shadow-xl w-full max-w-5xl max-h-[94vh] flex flex-col overflow-hidden">
         <div className="p-5 border-b">
@@ -259,14 +294,28 @@ export default function ProjectReportModal({ client, onClose, onUpdated }: Proje
             )}
 
             {activeSection === 'engineering_delivery' && (
-              <EngineeringDeliverySection
-                client={client}
-                data={data}
-                company={company}
-                saving={saving}
-                onChange={(engineering_delivery) => patch({ engineering_delivery })}
-                onSave={() => save(data, 'تم حفظ خطاب تسليم الدراسة.')}
-              />
+              <div className="space-y-3">
+                <EngineeringDeliverySection
+                  client={client}
+                  data={data}
+                  company={company}
+                  saving={saving}
+                  onChange={(engineering_delivery) => patch({ engineering_delivery })}
+                  onSave={() => save(data, 'تم حفظ خطاب تسليم الدراسة.')}
+                />
+                <button
+                  type="button"
+                  disabled={invoiceBusy}
+                  onClick={() => {
+                    setPendingInvoiceEvent('manual');
+                    setPromptInvoice(null);
+                    setInvoicePromptOpen(true);
+                  }}
+                  className="px-4 py-2.5 rounded-xl bg-[#1f4d3a] text-white text-sm font-semibold disabled:opacity-50"
+                >
+                  اصدار فاتورة جديدة
+                </button>
+              </div>
             )}
 
             {activeSection === 'final_inspection' && (
@@ -331,6 +380,47 @@ export default function ProjectReportModal({ client, onClose, onUpdated }: Proje
         </div>
       </div>
     </div>
+
+    <InvoicePromptModal
+      open={invoicePromptOpen}
+      message="تم اعتماد المرحلة. هل تريد استعراض وإصدار الفاتورة الضريبية المعتمدة؟"
+      invoice={promptInvoice}
+      loading={invoiceBusy}
+      onClose={() => {
+        setInvoicePromptOpen(false);
+        setPromptInvoice(null);
+        setPendingInvoiceEvent(null);
+      }}
+      onIssue={() => {
+        void (async () => {
+          setInvoiceBusy(true);
+          const result =
+            pendingInvoiceEvent && pendingInvoiceEvent !== 'manual'
+              ? await generateInvoiceForEngineeringEvent(client, pendingInvoiceEvent)
+              : await generateTaxInvoiceFromMilestone({
+                  clientId: client.id,
+                  triggerSource: 'manual',
+                });
+          setInvoiceBusy(false);
+          if (!result.ok || !result.invoice) {
+            setMessage(result.error || result.messages.join(' — ') || 'تعذر إصدار الفاتورة');
+            return;
+          }
+          setPromptInvoice(result.invoice);
+          setMessage(result.messages.join(' — '));
+        })();
+      }}
+      onPreview={() => {
+        if (promptInvoice) void printTaxInvoice(promptInvoice);
+      }}
+      onDownload={() => {
+        if (promptInvoice) void downloadTaxInvoice(promptInvoice);
+      }}
+      onWhatsApp={() => {
+        if (promptInvoice) void shareTaxInvoiceWhatsApp(promptInvoice, client.phone);
+      }}
+    />
+    </>
   );
 }
 

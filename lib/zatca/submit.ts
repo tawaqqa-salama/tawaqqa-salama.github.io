@@ -7,6 +7,7 @@ import { buildZatcaInvoice } from '@/lib/zatca/engine';
 import { mapClientToZatcaInput } from '@/lib/zatca/mapper';
 import { loadZatcaSettings } from '@/lib/zatca/settings';
 import { submitInvoiceToZatca } from '@/lib/zatca/api-client';
+import { resolveInvoiceType } from '@/lib/invoices/payment-schedule';
 import type { ClientRecord } from '@/lib/types/client';
 import type { ZatcaApiResponse, ZatcaSubmissionStatus } from '@/lib/zatca/types';
 
@@ -120,7 +121,13 @@ export async function processZatcaOnQuotationApproval(
   const invoiceNumber =
     client.quotation_number?.replace(/^Q-/i, 'INV-') || (await generateSalesDocNumber('invoice'));
   const previousInvoiceHash = await getPreviousInvoiceHash();
-  const invoiceKind = settings.invoice_kind;
+  const detected = resolveInvoiceType(client);
+  const invoiceKind =
+    detected === 'STANDARD'
+      ? 'standard'
+      : detected === 'SIMPLIFIED'
+        ? 'simplified'
+        : settings.invoice_kind;
 
   const mapped = mapClientToZatcaInput({
     client,

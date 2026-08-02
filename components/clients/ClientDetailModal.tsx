@@ -53,9 +53,20 @@ import { loadCompanyProfile } from '@/lib/company-profile';
 import PrintQuotationModal from '@/components/sales/PrintQuotationModal';
 import { processZatcaOnQuotationApproval } from '@/lib/zatca/submit';
 import { processAutoContractOnApproval } from '@/lib/business/contract-service';
+import {
+  generateTaxInvoiceFromMilestone,
+  generateUpfrontInvoiceOnContract,
+} from '@/lib/invoices/tax-invoice-service';
+import InvoicePromptModal from '@/components/invoices/InvoicePromptModal';
+import {
+  downloadTaxInvoice,
+  printTaxInvoice,
+  shareTaxInvoiceWhatsApp,
+} from '@/components/invoices/TaxInvoiceTemplate';
 import { mergeLocalClientOverrides, updateClientSafe } from '@/lib/supabase/safe-client-write';
 import { logActivity } from '@/lib/activity/logger';
 import type { ClientRecord, DepartmentMode, FloorLevel, InspectionChecklistItem } from '@/lib/types/client';
+import type { TaxInvoice } from '@/lib/types/tax-invoice';
 
 type TabId = 'basic' | 'finance' | 'engineering' | 'reports';
 
@@ -134,6 +145,14 @@ export default function ClientDetailModal({
   const [street, setStreet] = useState('');
   const [plotNumber, setPlotNumber] = useState('');
   const [commercialRegister, setCommercialRegister] = useState('');
+  const [clientTaxNumber, setClientTaxNumber] = useState('');
+  const [clientKind, setClientKind] = useState<'business' | 'consumer'>('consumer');
+  const [invoicePromptOpen, setInvoicePromptOpen] = useState(false);
+  const [promptInvoice, setPromptInvoice] = useState<TaxInvoice | null>(null);
+  const [invoiceBusy, setInvoiceBusy] = useState(false);
+  const [invoicePromptMessage, setInvoicePromptMessage] = useState(
+    'تم اعتماد المرحلة. هل تريد استعراض وإصدار الفاتورة الضريبية المعتمدة؟'
+  );
   const [nationalAddress, setNationalAddress] = useState('');
   const [businessName, setBusinessName] = useState('');
   const [activityType, setActivityType] = useState('');
@@ -186,6 +205,12 @@ export default function ClientDetailModal({
     setStreet(hydrated.street || '');
     setPlotNumber(hydrated.plot_number || '');
     setCommercialRegister(hydrated.commercial_register || '');
+    setClientTaxNumber(hydrated.tax_number || '');
+    setClientKind(
+      hydrated.client_kind === 'business' || hydrated.commercial_register || hydrated.tax_number
+        ? 'business'
+        : 'consumer'
+    );
     setNationalAddress(hydrated.national_address || '');
     setBusinessName(hydrated.business_name || '');
     setActivityType(hydrated.activity_type || '');
@@ -285,6 +310,13 @@ export default function ClientDetailModal({
           const contractResult = await processAutoContractOnApproval(client, nextClient);
           if (contractResult.messages.length) message += ` — ${contractResult.messages.join(' ')}`;
           if (contractResult.error) message += ` — العقد: ${contractResult.error}`;
+          if (contractResult.contract) {
+            setInvoicePromptMessage(
+              'تم اعتماد العقد / العرض. هل تريد استعراض وإصدار الفاتورة الضريبية المعتمدة؟'
+            );
+            setPromptInvoice(null);
+            setInvoicePromptOpen(true);
+          }
         } catch (contractError) {
           message += ` — العقد: ${contractError instanceof Error ? contractError.message : 'تعذر إنشاء العقد'}`;
         }
@@ -495,6 +527,8 @@ export default function ClientDetailModal({
         street: street.trim() || null,
         plot_number: plotNumber.trim() || null,
         commercial_register: commercialRegister.trim() || null,
+        tax_number: clientTaxNumber.trim() || null,
+        client_kind: clientKind,
         national_address: nationalAddress.trim() || null,
         business_name: businessName.trim() || ownerName.trim(),
         name: businessName.trim() || ownerName.trim(),
@@ -657,6 +691,27 @@ export default function ClientDetailModal({
                     dir="ltr"
                     className="w-full p-2.5 border rounded-xl text-sm"
                   />
+                </div>
+                <div>
+                  <label className="block text-xs font-semibold text-gray-700 mb-1">الرقم الضريبي للعميل (VAT)</label>
+                  <input
+                    value={clientTaxNumber}
+                    onChange={(e) => setClientTaxNumber(e.target.value)}
+                    dir="ltr"
+                    placeholder="لفاتورة B2B قياسية"
+                    className="w-full p-2.5 border rounded-xl text-sm"
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs font-semibold text-gray-700 mb-1">نوع العميل (فوترة)</label>
+                  <select
+                    value={clientKind}
+                    onChange={(e) => setClientKind(e.target.value as 'business' | 'consumer')}
+                    className="w-full p-2.5 border rounded-xl text-sm"
+                  >
+                    <option value="consumer">فرد / مستهلك (فاتورة مبسطة)</option>
+                    <option value="business">منشأة / جهة (فاتورة قياسية)</option>
+                  </select>
                 </div>
                 <div>
                   <label className="block text-xs font-semibold text-gray-700 mb-1">العنوان الوطني</label>
@@ -913,14 +968,30 @@ export default function ClientDetailModal({
                 </div>
               </div>
 
-              <button
-                type="button"
-                onClick={handleSaveFinance}
-                disabled={saving}
-                className="px-4 py-2 bg-emerald-600 text-white rounded-xl text-sm font-semibold hover:bg-emerald-700 disabled:opacity-50"
-              >
-                {saving ? 'جاري الحفظ...' : 'حفظ الحالة المالية'}
-              </button>
+              <div className="flex flex-wrap gap-2">
+                <button
+                  type="button"
+                  onClick={handleSaveFinance}
+                  disabled={saving}
+                  className="px-4 py-2 bg-emerald-600 text-white rounded-xl text-sm font-semibold hover:bg-emerald-700 disabled:opacity-50"
+                >
+                  {saving ? 'جاري الحفظ...' : 'حفظ الحالة المالية'}
+                </button>
+                <button
+                  type="button"
+                  disabled={invoiceBusy || Number(subtotal || client.quotation_amount || 0) <= 0}
+                  onClick={() => {
+                    setInvoicePromptMessage(
+                      'هل تريد إصدار فاتورة ضريبية جديدة لهذا المشروع؟'
+                    );
+                    setPromptInvoice(null);
+                    setInvoicePromptOpen(true);
+                  }}
+                  className="px-4 py-2 bg-[#1f4d3a] text-white rounded-xl text-sm font-semibold disabled:opacity-50"
+                >
+                  اصدار فاتورة جديدة
+                </button>
+              </div>
             </div>
           )}
 
@@ -1103,6 +1174,51 @@ export default function ClientDetailModal({
           }}
         />
       ) : null}
+
+      <InvoicePromptModal
+        open={invoicePromptOpen}
+        message={invoicePromptMessage}
+        invoice={promptInvoice}
+        loading={invoiceBusy}
+        onClose={() => {
+          setInvoicePromptOpen(false);
+          setPromptInvoice(null);
+        }}
+        onIssue={() => {
+          void (async () => {
+            setInvoiceBusy(true);
+            const nextClient = {
+              ...client,
+              tax_number: clientTaxNumber.trim() || null,
+              client_kind: clientKind,
+              commercial_register: commercialRegister.trim() || null,
+              quotation_amount: subtotal || client.quotation_amount,
+            } as ClientRecord;
+            const result = invoicePromptMessage.includes('العقد')
+              ? await generateUpfrontInvoiceOnContract(nextClient, null)
+              : await generateTaxInvoiceFromMilestone({
+                  clientId: client.id,
+                  triggerSource: 'manual',
+                });
+            setInvoiceBusy(false);
+            if (!result.ok || !result.invoice) {
+              setErrorMessage(result.error || 'تعذر إصدار الفاتورة');
+              return;
+            }
+            setPromptInvoice(result.invoice);
+            if (result.messages?.length) setSuccessMessage(result.messages.join(' — '));
+          })();
+        }}
+        onPreview={() => {
+          if (promptInvoice) void printTaxInvoice(promptInvoice);
+        }}
+        onDownload={() => {
+          if (promptInvoice) void downloadTaxInvoice(promptInvoice);
+        }}
+        onWhatsApp={() => {
+          if (promptInvoice) void shareTaxInvoiceWhatsApp(promptInvoice, client.phone);
+        }}
+      />
     </div>
   );
 }

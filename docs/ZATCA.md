@@ -18,11 +18,25 @@
 
 ## تفعيل
 
-1. نفّذ SQL: `scripts/sql/018_zatca_einvoicing.sql`
+1. نفّذ SQL: `scripts/sql/018_zatca_einvoicing.sql` ثم `scripts/sql/021_tax_invoices_milestones.sql`
 2. عبّئ **معلومات الشركة** (الرقم الضريبي إلزامي)
 3. من **الإعدادات → ZATCA**: فعّل الربط، اختر Sandbox/Production، أدخل OTP + CSR
 4. اضغط **تسجيل الجهاز** للحصول على Compliance CSID
 5. عند اعتماد عرض سعر (`معتمد` / `بانتظار السداد`) تُنشأ فاتورة ويُستدعى ZATCA تلقائياً
+6. عند اعتماد العقد تُقترح **فاتورة الدفعة المقدمة**؛ عند اكتمال مرحلة هندسية تُقترح فاتورة الدفعة المرتبطة
+7. الإصدار اليدوي من **المبيعات → الفواتير الضريبية** أو **المالية → الفواتير الضريبية** أو زر **اصدار فاتورة جديدة**
+
+## أنواع الفواتير
+
+| النوع | الشرط | المسار ZATCA |
+|---|---|---|
+| قياسية STANDARD (B2B) | عميل بمنشأة / سجل تجاري / رقم ضريبي | Clearance |
+| مبسطة SIMPLIFIED (B2C) | فرد / مالك بدون VAT | Reporting + QR Phase 2 |
+
+## API
+
+- `POST /api/invoices/generate-from-milestone` — `{ clientId, milestoneId?, percentage?, triggerSource?, submitToZatca? }`
+- `POST /api/zatca/submit` — إرسال XML إلى ZATCA
 
 ## ملاحظة النشر
 

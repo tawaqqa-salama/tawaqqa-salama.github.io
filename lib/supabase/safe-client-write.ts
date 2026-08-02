@@ -7,6 +7,8 @@ const LOCAL_FALLBACK_FIELDS = new Set([
   'quotation_services',
   'floor_levels',
   'commercial_register',
+  'tax_number',
+  'client_kind',
 ]);
 
 function extractMissingColumn(message: string): string | null {
