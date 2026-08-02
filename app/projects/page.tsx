@@ -6,7 +6,7 @@ import { ACTIVITY_RULES } from '@/lib/constants/clients';
 import { shouldShowInProjects } from '@/lib/business/pipeline';
 import { getProjectReportProgress, parseProjectEngineeringData } from '@/lib/business/project-reports';
 import ProjectReportModal from '@/components/projects/ProjectReportModal';
-import BlueprintViewer from '@/components/projects/BlueprintViewer';
+import ProjectBlueprintsPanel from '@/components/projects/ProjectBlueprintsPanel';
 import SmartInspectionForm from '@/components/projects/SmartInspectionForm';
 import ComplianceEnginePanel from '@/components/compliance/ComplianceEnginePanel';
 import ModuleSubNavSlot from '@/components/layout/ModuleSubNavSlot';
@@ -131,7 +131,9 @@ export default function ProjectsPage() {
         <SmartInspectionForm clients={projects} onOpenProject={setSelected} />
       )}
 
-      {tab === 'blueprints' && <BlueprintViewer />}
+      {tab === 'blueprints' && (
+        <ProjectBlueprintsPanel projects={projects} onUpdated={fetchProjects} />
+      )}
 
       {tab === 'compliance' && <ComplianceEnginePanel clients={projects} />}
 

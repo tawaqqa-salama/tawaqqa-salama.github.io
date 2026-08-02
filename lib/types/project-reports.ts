@@ -266,9 +266,70 @@ export interface TechnicalReport extends ReportMeta {
   executive_director_name?: string;
 }
 
+/** نوع ملف مخطط السلامة / المعماري */
+export type SafetyBlueprintKind =
+  | 'architectural_base'
+  | 'fire_fighting_file'
+  | 'fire_alarm_file'
+  | 'life_safety_file';
+
+export type BlueprintAuditStatus = 'idle' | 'scanning' | 'pass' | 'warn' | 'fail';
+
+export type BlueprintAuditFinding = {
+  id: string;
+  standard: 'SBC' | 'NFPA';
+  code: string;
+  severity: 'info' | 'pass' | 'warning' | 'fail';
+  title: string;
+  detail: string;
+  refs: string[];
+  checkpoint:
+    | 'life_safety'
+    | 'fire_alarm'
+    | 'fire_fighting'
+    | 'general'
+    | 'file';
+};
+
+export type BlueprintAiAuditResult = {
+  ok: boolean;
+  score: number;
+  summary: string;
+  status: Exclude<BlueprintAuditStatus, 'idle' | 'scanning'>;
+  findings: BlueprintAuditFinding[];
+  standards: Array<'SBC' | 'NFPA'>;
+  ekbHints: string[];
+  auditedAt: string;
+  blueprintKind: SafetyBlueprintKind;
+  fileName: string;
+};
+
+export type SafetyBlueprintFile = {
+  id: string;
+  kind: SafetyBlueprintKind;
+  fileName: string;
+  format: string;
+  sizeBytes: number;
+  mimeType?: string | null;
+  /** معاينة اختيارية للملفات الصغيرة (PDF/صور) — لا تُخزَّن الملفات الثنائية الكبيرة */
+  dataUrl?: string | null;
+  uploadedAt: string;
+  auditStatus: BlueprintAuditStatus;
+  auditResult?: BlueprintAiAuditResult | null;
+};
+
+/** مخططات معمارية + سلامة داخل ملف المشروع */
+export type SafetyBlueprintsState = {
+  architectural_base: SafetyBlueprintFile | null;
+  fire_fighting_file: SafetyBlueprintFile | null;
+  fire_alarm_file: SafetyBlueprintFile | null;
+  life_safety_file: SafetyBlueprintFile | null;
+};
+
 export interface ProjectEngineeringData {
   technical_report: TechnicalReport;
   building_plan: BuildingPlanReport;
+  safety_blueprints: SafetyBlueprintsState;
   boq: BoqReport;
   timeline: TimelineReport;
   field_visits: FieldVisitReport[];
@@ -309,9 +370,17 @@ export const EMPTY_TECHNICAL_REPORT: TechnicalReport = {
   site_photo: null,
 };
 
+export const EMPTY_SAFETY_BLUEPRINTS: SafetyBlueprintsState = {
+  architectural_base: null,
+  fire_fighting_file: null,
+  fire_alarm_file: null,
+  life_safety_file: null,
+};
+
 export const EMPTY_PROJECT_ENGINEERING_DATA: ProjectEngineeringData = {
   technical_report: { ...EMPTY_TECHNICAL_REPORT },
   building_plan: { ...EMPTY_BUILDING_PLAN },
+  safety_blueprints: { ...EMPTY_SAFETY_BLUEPRINTS },
   boq: { status: 'مسودة', items: [] },
   timeline: { status: 'مسودة', milestones: [] },
   field_visits: [],
