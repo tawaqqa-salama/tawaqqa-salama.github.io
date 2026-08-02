@@ -10,13 +10,13 @@ import {
   seedProjectEngineeringFromClient,
 } from '@/lib/business/project-reports';
 import { PROJECT_REPORT_SECTIONS, type ProjectReportSectionId } from '@/lib/constants/modules';
-import { printCompletionCertificate } from '@/components/projects/CompletionCertificatePrint';
 import BuildingPlanReportSection from '@/components/projects/BuildingPlanReportSection';
 import SafetyBlueprintsUpload from '@/components/projects/SafetyBlueprintsUpload';
 import TechnicalReportSection from '@/components/projects/TechnicalReportSection';
 import { printTechnicalReport } from '@/components/projects/TechnicalReportPrint';
 import EngineeringDeliverySection from '@/components/projects/EngineeringDeliverySection';
 import FinalInspectionSection from '@/components/projects/FinalInspectionSection';
+import CompletionCertificateSection from '@/components/projects/CompletionCertificateSection';
 import InvoicePromptModal from '@/components/invoices/InvoicePromptModal';
 import {
   downloadTaxInvoice,
@@ -357,45 +357,22 @@ export default function ProjectReportModal({ client, onClose, onUpdated }: Proje
             )}
 
             {activeSection === 'completion_certificate' && (
-              <div className="space-y-3">
-                <StatusSelect value={data.completion_certificate.status} onChange={(status) => patch({ completion_certificate: { ...data.completion_certificate, status } })} />
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                  <div>
-                    <label className="block text-xs font-semibold mb-1">رقم الشهادة</label>
-                    <input
-                      readOnly
-                      value={data.completion_certificate.certificate_number || 'يُصدر تلقائياً عند الحفظ'}
-                      className="w-full p-2.5 border rounded-xl text-sm bg-gray-50 text-gray-700"
-                    />
-                    <p className="text-[11px] text-gray-400 mt-1">تسلسل سنوي تلقائي بصيغة CERT-YYYY-NNN</p>
-                  </div>
-                  <Field label="تاريخ الإصدار" type="date" value={data.completion_certificate.issue_date || ''} onChange={(v) => patch({ completion_certificate: { ...data.completion_certificate, issue_date: v } })} />
-                  <Field label="تاريخ الإنجاز" type="date" value={data.completion_certificate.completion_date || ''} onChange={(v) => patch({ completion_certificate: { ...data.completion_certificate, completion_date: v } })} />
-                  <Field label="المهندس" value={data.completion_certificate.engineer_name || client.assigned_engineer || ''} onChange={(v) => patch({ completion_certificate: { ...data.completion_certificate, engineer_name: v } })} />
-                </div>
-                <textarea rows={3} placeholder="نطاق الأعمال" value={data.completion_certificate.scope_of_work || ''} onChange={(e) => patch({ completion_certificate: { ...data.completion_certificate, scope_of_work: e.target.value } })} className="w-full p-2.5 border rounded-xl text-sm" />
-                <div className="flex gap-2">
-                  <button onClick={() => save(data, 'تم حفظ الشهادة.', { issueCertificate: true })} disabled={saving} className="px-4 py-2 bg-indigo-600 text-white rounded-xl text-sm">حفظ</button>
-                  <button
-                    onClick={async () => {
-                      let cert = data.completion_certificate;
-                      if (!cert.certificate_number?.trim()) {
-                        const certificateNumber = await ensureCertificateNumber(cert.certificate_number);
-                        const nextData = {
-                          ...data,
-                          completion_certificate: { ...cert, certificate_number: certificateNumber },
-                        };
-                        await save(nextData, 'تم إصدار رقم الشهادة تلقائياً.', { issueCertificate: false });
-                        cert = nextData.completion_certificate;
-                      }
-                      printCompletionCertificate(client, cert);
-                    }}
-                    className="px-4 py-2 bg-[#1f4d3a] text-white rounded-xl text-sm"
-                  >
-                    طباعة / تصدير
-                  </button>
-                </div>
-              </div>
+              <CompletionCertificateSection
+                client={client}
+                data={data}
+                company={company}
+                saving={saving}
+                onChange={(completion_certificate) => patch({ completion_certificate })}
+                onSave={(opts) => save(data, 'تم حفظ الشهادة.', opts)}
+                onSaveAndPrint={async (cert) => {
+                  const nextData = { ...data, completion_certificate: cert };
+                  await save(nextData, 'تم إصدار رقم الشهادة تلقائياً.', { issueCertificate: false });
+                  const { printCompletionCertificate } = await import(
+                    '@/components/projects/CompletionCertificatePrint'
+                  );
+                  printCompletionCertificate(client, cert, company);
+                }}
+              />
             )}
           </div>
         </div>
