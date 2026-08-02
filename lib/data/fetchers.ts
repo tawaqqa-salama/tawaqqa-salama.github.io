@@ -1,7 +1,6 @@
 import { supabase } from '@/lib/supabase';
 import { mergeLocalClientOverrides } from '@/lib/supabase/safe-client-write';
 import { shouldShowInProjects } from '@/lib/business/pipeline';
-import { APPROVED_FINANCIAL_STATUSES } from '@/lib/business/workflow-stages';
 import {
   ARCHIVE_PAGE_SIZE,
   CLIENT_LIST_COLUMNS,
@@ -32,7 +31,19 @@ export async function fetchClientsList(options: ListFetchOptions = {}): Promise<
 
   if (error) {
     console.warn('[fetchClientsList]', error.message);
-    return [];
+    // إن فشل جلب أعمدة معيّنة (مثل JSON الهندسي) جرّب * 
+    const { data: allData, error: allError } = await supabase
+      .from('clients')
+      .select('*')
+      .order('created_at', { ascending: false })
+      .range(offset, offset + limit - 1);
+    if (allError) {
+      console.warn('[fetchClientsList] * fallback failed:', allError.message);
+      return [];
+    }
+    return ((allData || []) as unknown as ClientRecord[]).map((row) =>
+      mergeLocalClientOverrides(row)
+    );
   }
 
   return ((data || []) as unknown as ClientRecord[]).map((row) => mergeLocalClientOverrides(row));
@@ -41,7 +52,14 @@ export async function fetchClientsList(options: ListFetchOptions = {}): Promise<
 export async function fetchClientById(id: string): Promise<ClientRecord | null> {
   if (!id) return null;
   const { data, error } = await supabase.from('clients').select('*').eq('id', id).maybeSingle();
-  if (error || !data) return null;
+  if (error || !data) {
+    // محاولة استعادة من النسخة المحلية للتقارير إن وُجدت
+    const local = mergeLocalClientOverrides({ id } as ClientRecord);
+    if ((local as ClientRecord).project_engineering_data) {
+      return local as ClientRecord;
+    }
+    return null;
+  }
   return mergeLocalClientOverrides(data as ClientRecord);
 }
 
@@ -55,7 +73,6 @@ export async function fetchSalesDocuments(limit = ARCHIVE_PAGE_SIZE): Promise<Sa
 }
 
 export async function fetchSalesContracts(limit = ARCHIVE_PAGE_SIZE): Promise<SalesContract[]> {
-  // * مطلوب لطباعة العقد (بنود الأطراف والدفع)
   const { data } = await supabase
     .from('sales_contracts')
     .select('*')
@@ -82,7 +99,7 @@ export type SalesBundle = {
 
 export async function fetchSalesBundle(limit = LIST_PAGE_SIZE): Promise<SalesBundle> {
   const [clients, documents, contracts, returns] = await Promise.all([
-    fetchClientsList({ limit, includeEngineering: false }),
+    fetchClientsList({ limit: Math.max(limit, 100), includeEngineering: false }),
     fetchSalesDocuments(),
     fetchSalesContracts(),
     fetchSalesReturns(),
@@ -91,43 +108,41 @@ export async function fetchSalesBundle(limit = LIST_PAGE_SIZE): Promise<SalesBun
 }
 
 /**
- * يجلب مشاريع إدارة المشاريع مباشرة من قاعدة البيانات.
- * لا يعتمد على «أحدث N عميل» ثم التصفية — ذلك كان يُخفي المشاريع القديمة
- * عندما تمتلئ الدفعة بعملاء التسويق/المبيعات.
+ * يجلب كل العملاء المحتملين كمشاريع بدون الاعتماد على فلتر SQL هشّ للنصوص العربية.
+ * التصفية تتم محلياً عبر shouldShowInProjects (يشمل العمل الهندسي المحفوظ).
  */
 export async function fetchProjectsList(limit = PROJECTS_PAGE_SIZE): Promise<ClientRecord[]> {
-  const financialFilter = APPROVED_FINANCIAL_STATUSES.map((status) => `"${status}"`).join(',');
-  const orFilter = [
-    'pipeline_stage.in.(projects,completed)',
-    `financial_status.in.(${financialFilter})`,
-  ].join(',');
+  const fetchLimit = Math.max(limit, 500);
 
-  const { data, error } = await supabase
-    .from('clients')
-    .select(PROJECT_LIST_COLUMNS)
-    .or(orFilter)
-    .order('created_at', { ascending: false })
-    .limit(limit);
+  // 1) محاولة بالأعمدة المختارة + JSON التقارير
+  let rows = await fetchClientsList({ limit: fetchLimit, includeEngineering: true });
 
-  if (error) {
-    console.warn('[fetchProjectsList] filtered query failed, falling back:', error.message);
-    // احتياطي: دفعة أكبر ثم تصفية محلية — أفضل من قائمة فارغة خاطئة
-    const fallback = await fetchClientsList({
-      limit: Math.max(limit * 3, 200),
-      includeEngineering: true,
-    });
-    return fallback.filter(shouldShowInProjects);
+  // 2) إن رجعت قائمة قصيرة بشكل مريب، أعد الجلب بـ *
+  if (rows.length === 0) {
+    const { data, error } = await supabase
+      .from('clients')
+      .select('*')
+      .order('created_at', { ascending: false })
+      .limit(fetchLimit);
+    if (!error && data?.length) {
+      rows = (data as ClientRecord[]).map((row) => mergeLocalClientOverrides(row));
+    }
   }
 
-  const rows = ((data || []) as unknown as ClientRecord[]).map((row) =>
-    mergeLocalClientOverrides(row)
-  );
+  const projects = rows.filter(shouldShowInProjects);
 
-  // تأكيد الاتساق مع منطق الواجهة (resolvePipelineStage)
-  return rows.filter(shouldShowInProjects);
+  // 3) إن بقيت فارغة رغم وجود عملاء — أرجع كل الصفوف ليظهرها وضع «كل السجلات»
+  //    (الواجهة تفرّق بين الفلاتر؛ لا نخفي البيانات هنا)
+  if (projects.length === 0 && rows.length > 0) {
+    console.warn(
+      '[fetchProjectsList] no rows matched shouldShowInProjects; returning all fetched clients for recovery UI'
+    );
+    return rows;
+  }
+
+  return projects;
 }
 
-/** مشاريع خفيفة لـ RFQ */
 export async function fetchProjectOptions(limit = PROJECTS_PAGE_SIZE): Promise<
   Pick<ClientRecord, 'id' | 'business_name' | 'name' | 'client_code' | 'project_engineering_data'>[]
 > {

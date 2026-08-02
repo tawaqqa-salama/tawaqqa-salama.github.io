@@ -50,11 +50,17 @@ export default function ProjectBlueprintsPanel({ projects, onUpdated }: ProjectB
     setSaving(true);
     const { error } = await supabase
       .from('clients')
-      .update({ project_engineering_data: next })
+      .update({
+        project_engineering_data: next,
+        pipeline_stage: client.pipeline_stage === 'completed' ? 'completed' : 'projects',
+      })
       .eq('id', client.id);
     setSaving(false);
+    const { backupEngineeringDataLocally } = await import('@/lib/supabase/safe-client-write');
+    backupEngineeringDataLocally(client.id, next);
     if (error) {
-      setMessage(error.message);
+      setMessage(`تعذّر الحفظ على السيرفر — نسخة محلية محفوظة: ${error.message}`);
+      setData(next);
       return;
     }
     setData(next);

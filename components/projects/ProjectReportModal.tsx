@@ -108,13 +108,23 @@ export default function ProjectReportModal({ client, onClose, onUpdated }: Proje
     };
     const { error } = await supabase
       .from('clients')
-      .update({ project_engineering_data: stamped })
+      .update({
+        project_engineering_data: stamped,
+        // اضمن بقاء السجل ظاهراً في إدارة المشاريع بعد أي حفظ تقرير
+        pipeline_stage: client.pipeline_stage === 'completed' ? 'completed' : 'projects',
+      })
       .eq('id', client.id);
     setSaving(false);
     if (error) {
-      setMessage(error.message);
+      // حتى لو فشل السيرفر — احفظ محلياً حتى لا تُفقد التقارير
+      const { backupEngineeringDataLocally } = await import('@/lib/supabase/safe-client-write');
+      backupEngineeringDataLocally(client.id, stamped);
+      setMessage(`تعذّر الحفظ على السيرفر — تم حفظ نسخة محلية: ${error.message}`);
+      setData(stamped);
       return;
     }
+    const { backupEngineeringDataLocally } = await import('@/lib/supabase/safe-client-write');
+    backupEngineeringDataLocally(client.id, stamped);
     void import('@/lib/activity/logger').then(({ logActivity }) =>
       logActivity({
         actionType: 'UPDATE',
