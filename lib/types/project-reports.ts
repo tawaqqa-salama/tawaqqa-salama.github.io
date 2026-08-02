@@ -158,7 +158,41 @@ export interface FinalInspectionReport extends ReportMeta {
   overall_result?: string;
   compliance_summary?: string;
   license_recommendation?: string;
+  /** فرع / موقع المنشأة المعروض في غلاف تقرير باندا */
+  branch_name?: string;
+  /** ملاحظات الملخص التنفيذي */
+  executive_summary?: string;
+  /** نسب اكتمال الأنظمة المعتمدة */
+  system_completion?: FinalReportSystemRow[];
+  /** ملاحظات المقارنة قبل/بعد */
+  observations?: FinalReportObservation[];
 }
+
+/** صف نسبة اكتمال نظام في جدول الملخص التنفيذي */
+export type FinalReportSystemRow = {
+  id: string;
+  label: string;
+  /** 0–100 */
+  percent: number;
+  verified: boolean;
+};
+
+export type FinalObservationStatus = 'pending' | 'fixed';
+
+/** ملاحظة ميدانية مع صورة قبل (تلقائية) وصورة بعد (يدوية) */
+export type FinalReportObservation = {
+  id: string;
+  title: string;
+  description?: string;
+  system_id?: string;
+  source: 'field_visit' | 'technical_notes' | 'technical_report' | 'checklist' | 'manual';
+  source_ref?: string;
+  before_photo?: TechnicalReportPhoto | null;
+  after_photo?: TechnicalReportPhoto | null;
+  status: FinalObservationStatus;
+  /** 100 عند الإصلاح مع صورة بعد */
+  completion_percent: number;
+};
 
 export interface CompletionCertificateReport extends ReportMeta {
   certificate_number?: string;

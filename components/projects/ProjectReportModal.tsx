@@ -16,6 +16,7 @@ import SafetyBlueprintsUpload from '@/components/projects/SafetyBlueprintsUpload
 import TechnicalReportSection from '@/components/projects/TechnicalReportSection';
 import { printTechnicalReport } from '@/components/projects/TechnicalReportPrint';
 import EngineeringDeliverySection from '@/components/projects/EngineeringDeliverySection';
+import FinalInspectionSection from '@/components/projects/FinalInspectionSection';
 import InvoicePromptModal from '@/components/invoices/InvoicePromptModal';
 import {
   downloadTaxInvoice,
@@ -345,19 +346,13 @@ export default function ProjectReportModal({ client, onClose, onUpdated }: Proje
             )}
 
             {activeSection === 'final_inspection' && (
-              <ReportForm
-                status={data.final_inspection.status}
-                onStatus={(status) => patch({ final_inspection: { ...data.final_inspection, status } })}
-                fields={[
-                  ['inspection_date', 'تاريخ المعاينة', data.final_inspection.inspection_date || '', 'date'],
-                  ['inspector_name', 'المفتش', data.final_inspection.inspector_name || ''],
-                  ['overall_result', 'النتيجة العامة', data.final_inspection.overall_result || ''],
-                ]}
-                onChange={(key, value) => patch({ final_inspection: { ...data.final_inspection, [key]: value } })}
-                notes={data.final_inspection.compliance_summary || ''}
-                onNotes={(compliance_summary) => patch({ final_inspection: { ...data.final_inspection, compliance_summary } })}
-                onSave={() => save(data, 'تم حفظ التقرير النهائي.')}
+              <FinalInspectionSection
+                client={client}
+                data={data}
+                company={company}
                 saving={saving}
+                onChange={(final_inspection) => patch({ final_inspection })}
+                onSave={() => save(data, 'تم حفظ التقرير النهائي.')}
               />
             )}
 
