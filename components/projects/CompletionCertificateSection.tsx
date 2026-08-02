@@ -65,7 +65,7 @@ export default function CompletionCertificateSection({
   return (
     <div className="space-y-4">
       <div className="rounded-xl border border-emerald-100 bg-emerald-50 px-3 py-2 text-sm text-emerald-900">
-        شهادة الإنهاء ومطابقة الأعمال — قالب رسمي للدفاع المدني / الغرفة التجارية (صفحة A4 واحدة).
+        شهادة الإنهاء ومطابقة الأعمال — قالب رسمي للدفاع المدني / الغرفة التجارية (A4 أفقي / Landscape).
       </div>
 
       <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
