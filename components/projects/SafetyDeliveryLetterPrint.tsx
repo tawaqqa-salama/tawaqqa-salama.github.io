@@ -1,15 +1,22 @@
 'use client';
 
+/**
+ * خطاب تسليم دراسة السلامة — قالب طباعة A4 رسمي (يُعاد بناؤه بالكامل).
+ * لا تعتمد على delivery.hijri_date المخزّن؛ يُحسب الهجري/الميلادي من تاريخ التسليم فقط.
+ */
+
 import type { CompanyProfile } from '@/lib/company-profile';
 import type { ClientRecord } from '@/lib/types/client';
 import type { EngineeringDeliveryReport, ProjectEngineeringData } from '@/lib/types/project-reports';
 import {
+  extractCityFromAddressee,
+  formatCopyToLines,
   formatGregorianDate,
   formatHijriDate,
   getFacilitySnapshotForLetter,
-  SAFETY_SCOPE_OPTION_LABELS,
+  resolveOfficeCivilDefenseLicense,
+  toSafetySystemMatrix,
 } from '@/lib/projects/safety-delivery-letter';
-import type { SafetyScopeOption } from '@/lib/types/project-reports';
 
 function esc(value: string | number | null | undefined): string {
   return String(value ?? '—')
@@ -19,12 +26,14 @@ function esc(value: string | number | null | undefined): string {
     .replace(/"/g, '&quot;');
 }
 
-function mark(active: boolean): string {
-  return active ? '✓' : '';
+function yesNo(active: boolean): string {
+  return active ? 'نعم' : 'لا';
 }
 
-function scopeCell(option: SafetyScopeOption | '', key: Exclude<SafetyScopeOption, ''>): string {
-  return `<td class="c">${mark(option === key)}</td>`;
+function formatPermitDate(raw: string): string {
+  const match = String(raw).match(/^(\d{4})[/-](\d{2})[/-](\d{2})/);
+  if (match) return formatGregorianDate(`${match[1]}-${match[2]}-${match[3]}`);
+  return raw;
 }
 
 export function buildSafetyDeliveryLetterHtml(params: {
@@ -35,32 +44,44 @@ export function buildSafetyDeliveryLetterHtml(params: {
 }): string {
   const { client, data, delivery, company } = params;
   const facility = getFacilitySnapshotForLetter(client, data);
+
   const deliveryDate = delivery.delivery_date || new Date().toISOString().slice(0, 10);
-  const hijri = delivery.hijri_date || formatHijriDate(deliveryDate);
+  // فصل صارم: الميلادي لاتيني، الهجري نص عربي فقط — لا خلط
   const gregorian = formatGregorianDate(deliveryDate);
-  const city = delivery.civil_defense_city || facility.city || company.city || 'الرياض';
+  const hijri = formatHijriDate(deliveryDate);
+
+  const city =
+    delivery.civil_defense_city?.trim() ||
+    extractCityFromAddressee(delivery.delivered_to) ||
+    (facility.city !== '—' ? facility.city : '') ||
+    company.city ||
+    'الرياض';
+
   const addressee =
-    delivery.delivered_to || `سعادة مدير الإدارة العامة للدفاع المدني بمحافظة ${city}`;
-  const copyTo = delivery.copy_to || 'مركز السلامة الميداني — المالك / المستثمر';
+    delivery.delivered_to?.trim() ||
+    `سعادة مدير الإدارة العامة للدفاع المدني بمحافظة ${city}`;
+
+  const copyLines = formatCopyToLines(facility.ownerName, delivery.copy_to);
+  const officeLicense = resolveOfficeCivilDefenseLicense(company);
+  const systems = toSafetySystemMatrix(delivery.safety_scope);
+
   const logo = company.logo_url
-    ? `<img class="logo" src="${company.logo_url}" alt="شعار" />`
+    ? `<img class="logo" src="${esc(company.logo_url)}" alt="شعار" />`
     : `<div class="logo-fallback">${esc(company.name)}</div>`;
   const stamp = company.stamp_url
-    ? `<img class="stamp" src="${company.stamp_url}" alt="ختم" />`
+    ? `<img class="stamp" src="${esc(company.stamp_url)}" alt="ختم" />`
     : `<div class="stamp-box">${esc(company.stamp_text || company.name)}</div>`;
 
-  const scopeRows = (delivery.safety_scope || [])
-    .map((row) => {
-      const option = (row.option || '') as SafetyScopeOption;
-      return `<tr>
-        <td class="sys">${esc(row.label)}</td>
-        ${scopeCell(option, 'new_design')}
-        ${scopeCell(option, 'modify_existing')}
-        ${scopeCell(option, 'approve_existing')}
-        ${scopeCell(option, 'not_required')}
-        <td class="c">${esc(row.applicable || '—')}</td>
-      </tr>`;
-    })
+  const scopeRows = systems
+    .map(
+      (sys) => `<tr>
+        <td class="sys">${esc(sys.name)}</td>
+        <td class="c">${yesNo(sys.newDesign)}</td>
+        <td class="c">${yesNo(sys.modified)}</td>
+        <td class="c">${yesNo(sys.approved)}</td>
+        <td class="c">${yesNo(sys.notRequired)}</td>
+      </tr>`
+    )
     .join('');
 
   return `<!DOCTYPE html>
@@ -69,7 +90,7 @@ export function buildSafetyDeliveryLetterHtml(params: {
   <meta charset="UTF-8" />
   <title>خطاب تسليم دراسة السلامة — ${esc(facility.facilityName)}</title>
   <style>
-    @page { size: A4 portrait; margin: 8mm; }
+    @page { size: A4 portrait; margin: 10mm; }
     * { box-sizing: border-box; }
     html, body {
       margin: 0; padding: 0; background: #fff; color: #111;
@@ -78,24 +99,18 @@ export function buildSafetyDeliveryLetterHtml(params: {
       -webkit-print-color-adjust: exact; print-color-adjust: exact;
     }
     header, footer { display: none !important; }
-    .sheet {
-      width: 100%;
-      max-width: 194mm;
-      min-height: 0;
-      margin: 0 auto;
-      padding: 0;
-    }
+    .sheet { width: 100%; max-width: 190mm; margin: 0 auto; }
     .top {
       display: grid;
-      grid-template-columns: 1fr 1.2fr 1fr;
+      grid-template-columns: 1fr 1.25fr 1fr;
       gap: 6px;
       align-items: start;
       border-bottom: 2px solid #1f4d3a;
-      padding-bottom: 5px;
-      margin-bottom: 6px;
+      padding-bottom: 6px;
+      margin-bottom: 7px;
     }
-    .meta-box { font-size: 8.5px; line-height: 1.4; }
-    .meta-box div { margin: 0 0 1px; }
+    .meta-box { font-size: 8.5px; line-height: 1.45; }
+    .meta-box div { margin: 0 0 2px; }
     .center { text-align: center; }
     .logo, .logo-fallback {
       width: 48px; height: 48px; object-fit: contain; margin: 0 auto 2px; display: block;
@@ -107,35 +122,33 @@ export function buildSafetyDeliveryLetterHtml(params: {
     }
     .brand { margin: 0; font-size: 12px; font-weight: 900; color: #1f4d3a; }
     .doc-title { margin: 2px 0 0; font-size: 13px; font-weight: 900; }
-    .left { text-align: left; font-size: 8.5px; }
+    .left { text-align: left; }
     .addressee {
-      margin: 4px 0 5px;
-      padding: 5px 7px;
-      border: 1px solid #cbd5e1;
-      border-radius: 5px;
-      background: #f8fafc;
+      margin: 4px 0 6px; padding: 5px 7px;
+      border: 1px solid #cbd5e1; border-radius: 5px; background: #f8fafc;
     }
     .addressee p { margin: 0 0 2px; }
-    .preamble { margin: 0 0 5px; text-align: justify; }
+    .preamble { margin: 0 0 6px; text-align: justify; }
     h3 {
       margin: 0 0 3px; font-size: 10px; color: #1f4d3a;
       border-right: 3px solid #1f4d3a; padding-right: 5px;
     }
     table.grid, table.scope {
-      width: 100%; border-collapse: collapse; margin: 0 0 5px;
+      width: 100%; border-collapse: collapse; margin: 0 0 6px;
     }
     table.grid td, table.scope th, table.scope td {
-      border: 1px solid #64748b; padding: 2.5px 4px; vertical-align: middle;
+      border: 1px solid #64748b; padding: 3px 4px; vertical-align: middle;
     }
-    table.grid td.k { width: 28%; background: #f1f5f9; font-weight: 700; }
+    table.grid td.k { width: 22%; background: #f1f5f9; font-weight: 700; }
     table.scope th {
-      background: #1f4d3a; color: #fff; font-size: 8px; font-weight: 700;
+      background: #f3f4f6; color: #111; font-size: 7.5px; font-weight: 800;
+      text-align: center; line-height: 1.25;
     }
-    table.scope td.sys { font-weight: 700; width: 26%; }
-    table.scope td.c { text-align: center; width: 14.8%; font-weight: 800; }
+    table.scope td.sys { font-weight: 800; width: 22%; text-align: right; }
+    table.scope td.c { text-align: center; width: 19.5%; font-weight: 800; }
     .notes {
-      border: 1px solid #cbd5e1; border-radius: 5px; padding: 4px 6px; margin-bottom: 5px;
-      min-height: 28px;
+      border: 1px solid #cbd5e1; border-radius: 5px; padding: 4px 6px;
+      margin-bottom: 6px; min-height: 28px;
     }
     .signs {
       display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 8px;
@@ -154,10 +167,13 @@ export function buildSafetyDeliveryLetterHtml(params: {
       margin-top: 14px; border-top: 1px solid #64748b; padding-top: 2px;
       font-size: 8px; color: #475569;
     }
-    .legend { font-size: 7.5px; color: #64748b; margin: 0 0 3px; }
     @media print {
-      @page { size: A4 portrait; margin: 8mm; }
-      html, body { margin: 0 !important; padding: 0 !important; }
+      @page { size: A4 portrait; margin: 10mm; }
+      html, body {
+        margin: 0 !important; padding: 0 !important;
+        -webkit-print-color-adjust: exact; print-color-adjust: exact;
+      }
+      header, footer, .no-print { display: none !important; }
       .sheet { max-width: none; }
       a[href]::after { content: none !important; }
     }
@@ -168,10 +184,10 @@ export function buildSafetyDeliveryLetterHtml(params: {
     <div class="top">
       <div class="meta-box">
         <div><strong>ترخيص المكتب لدى الدفاع المدني</strong></div>
-        <div>${esc(company.membership_id || '—')}</div>
-        <div>الرقم الصادر: <strong>${esc(delivery.outgoing_number || data.technical_report.outgoing_number || '—')}</strong></div>
-        <div>التاريخ الميلادي: <strong>${esc(gregorian)}</strong></div>
+        <div><strong dir="ltr">${esc(officeLicense)}</strong></div>
+        <div>الرقم الصادر: <strong>${esc(delivery.outgoing_number || data.technical_report.outgoing_number || 'تحت الإجراء')}</strong></div>
         <div>التاريخ الهجري: <strong>${esc(hijri)}</strong></div>
+        <div>التاريخ الميلادي: <strong dir="ltr">${esc(gregorian)}</strong></div>
       </div>
       <div class="center">
         ${logo}
@@ -181,16 +197,16 @@ export function buildSafetyDeliveryLetterHtml(params: {
       </div>
       <div class="left meta-box">
         <div>المرفقات: <strong>${esc(delivery.attachments_count ?? 1)}</strong></div>
-        <div>س.ت: ${esc(company.commercial_register || '—')}</div>
-        <div>جوال المكتب: ${esc(company.phone || '—')}</div>
-        <div>المدينة: ${esc(company.city || city)}</div>
+        <div>س.ت: ${esc(company.commercial_register || 'تحت الإجراء')}</div>
+        <div>جوال المكتب: ${esc(delivery.manager_phone || company.phone || '—')}</div>
+        <div>المدينة: <strong>${esc(city)}</strong></div>
       </div>
     </div>
 
     <div class="addressee">
       <p><strong>${esc(addressee)}</strong></p>
       <p>السلام عليكم ورحمة الله وبركاته،،،</p>
-      <p>صورة إلى: ${esc(copyTo)}</p>
+      ${copyLines.map((line) => `<p>${esc(line)}</p>`).join('')}
     </div>
 
     <p class="preamble">
@@ -219,25 +235,24 @@ export function buildSafetyDeliveryLetterHtml(params: {
         <td class="k">تصنيف المبنى</td><td>${esc(facility.buildingStatus)}</td>
       </tr>
       <tr>
-        <td class="k">رقم / تاريخ رخصة البناء</td><td>${esc(facility.permitNumber)} — ${esc(formatGregorianDate(facility.permitDate === '—' ? null : facility.permitDate))}</td>
-        <td class="k">وسيلة التواصل</td><td dir="ltr">${esc(facility.phone)}</td>
+        <td class="k">رقم رخصة البناء</td><td>${esc(facility.permitNumber)}</td>
+        <td class="k">تاريخ الرخصة</td><td>${esc(formatPermitDate(facility.permitDate))}</td>
       </tr>
       <tr>
-        <td class="k">الموقع</td><td colspan="3">${esc(facility.location)}</td>
+        <td class="k">وسيلة التواصل</td><td dir="ltr">${esc(facility.phone)}</td>
+        <td class="k">الموقع</td><td>${esc(facility.location)}</td>
       </tr>
     </table>
 
     <h3>ثانياً: الأعمال التي تمت في الدراسة</h3>
-    <p class="legend">✓ = الخيار المحدد · أعمدة: ${Object.values(SAFETY_SCOPE_OPTION_LABELS).join(' | ')} | نعم/لا</p>
     <table class="scope">
       <thead>
         <tr>
           <th>النظام</th>
-          <th>تصميم جديد</th>
-          <th>تعديل على نظام موجود</th>
-          <th>اعتماد نظام موجود</th>
-          <th>لا يتطلب</th>
-          <th>نعم / لا</th>
+          <th>تم تصميم النظام من جديد</th>
+          <th>تم التعديل على النظام الموجود</th>
+          <th>تم اعتماد النظام الموجود</th>
+          <th>لا يتطلب وجود النظام</th>
         </tr>
       </thead>
       <tbody>${scopeRows}</tbody>
