@@ -22,7 +22,7 @@ export default function SettingsPage() {
     },
     {
       title: 'قوالب المستندات',
-      desc: 'قالب عرض السعر A4 يعتمد على معلومات الشركة تلقائياً',
+      desc: 'قالب عرض السعر والعقود يعتمد على معلومات الشركة تلقائياً',
       href: '/settings/company',
       enabled: canAccess('settings'),
     },
@@ -39,9 +39,9 @@ export default function SettingsPage() {
       enabled: canManageStaff,
     },
     {
-      title: 'كود البناء',
-      desc: 'اشتراطات الأنشطة والمساحات',
-      href: null,
+      title: 'كود البناء SBC / NFPA',
+      desc: 'اشتراطات الأنشطة والمساحات ومحرك الامتثال لأنظمة السلامة',
+      href: '/settings/building-code',
       enabled: canAccess('settings'),
     },
   ];
@@ -63,8 +63,8 @@ export default function SettingsPage() {
                 فتح ←
               </Link>
             ) : (
-              <span className="text-xs font-semibold text-amber-700 bg-amber-50 px-3 py-1 rounded-full">
-                {item.enabled ? 'قريباً' : 'لا صلاحية'}
+              <span className="text-xs font-semibold text-rose-700 bg-rose-50 px-3 py-1 rounded-full">
+                لا صلاحية
               </span>
             )}
           </div>

@@ -11,6 +11,7 @@ const SETTINGS_LINKS = [
   { href: '/settings/users', label: 'المستخدمون' },
   { href: '/settings/activity', label: 'سجل النشاطات' },
   { href: '/settings/zatca', label: 'ZATCA' },
+  { href: '/settings/building-code', label: 'كود البناء' },
 ] as const;
 
 export default function SettingsSubNav() {

@@ -69,7 +69,7 @@ export function pageTitleFromPath(pathname: string): string {
     '/me': 'صفحتي',
     '/marketing': 'إدارة التسويق',
     '/sales': 'إدارة المبيعات',
-    '/procurement': 'إدارة المشتريات',
+    '/procurement': 'إدارة المشتريات والتعاقدات',
     '/finance': 'الحسابات المالية',
     '/finance/journal': 'القيود اليومية',
     '/finance/vouchers': 'السندات',
@@ -83,6 +83,7 @@ export function pageTitleFromPath(pathname: string): string {
     '/settings/users': 'المستخدمون والصلاحيات',
     '/settings/company': 'معلومات الشركة',
     '/settings/zatca': 'الفوترة الإلكترونية',
+    '/settings/building-code': 'كود البناء SBC/NFPA',
     '/settings/activity': 'سجل النشاطات',
     '/login': 'تسجيل الدخول',
   };

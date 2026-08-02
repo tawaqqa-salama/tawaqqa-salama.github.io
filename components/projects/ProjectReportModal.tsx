@@ -12,6 +12,7 @@ import {
 import { PROJECT_REPORT_SECTIONS, type ProjectReportSectionId } from '@/lib/constants/modules';
 import { printCompletionCertificate } from '@/components/projects/CompletionCertificatePrint';
 import BuildingPlanReportSection from '@/components/projects/BuildingPlanReportSection';
+import SafetyBlueprintsUpload from '@/components/projects/SafetyBlueprintsUpload';
 import TechnicalReportSection from '@/components/projects/TechnicalReportSection';
 import { printTechnicalReport } from '@/components/projects/TechnicalReportPrint';
 import EngineeringDeliverySection from '@/components/projects/EngineeringDeliverySection';
@@ -25,6 +26,7 @@ import {
   generateInvoiceForEngineeringEvent,
   generateTaxInvoiceFromMilestone,
 } from '@/lib/invoices/tax-invoice-service';
+import { EMPTY_SAFETY_BLUEPRINTS } from '@/lib/types/project-reports';
 import { loadCompanyProfile, type CompanyProfile } from '@/lib/company-profile';
 import { ensureCertificateNumber, ensureOutgoingNumber } from '@/lib/business/document-numbers';
 import NumericInput from '@/components/ui/NumericInput';
@@ -224,13 +226,27 @@ export default function ProjectReportModal({ client, onClose, onUpdated }: Proje
             )}
 
             {activeSection === 'building_plan' && (
-              <BuildingPlanReportSection
-                client={client}
-                report={data.building_plan}
-                saving={saving}
-                onChange={(building_plan) => patch({ building_plan })}
-                onSave={(building_plan, successText) => save({ ...data, building_plan }, successText)}
-              />
+              <div className="space-y-6">
+                <BuildingPlanReportSection
+                  client={client}
+                  report={data.building_plan}
+                  saving={saving}
+                  onChange={(building_plan) => patch({ building_plan })}
+                  onSave={(building_plan, successText) => save({ ...data, building_plan }, successText)}
+                />
+                <section className="border-t pt-5">
+                  <h3 className="text-sm font-bold text-gray-900 mb-3">قسم السلامة — رفع المخططات</h3>
+                  <SafetyBlueprintsUpload
+                    client={client}
+                    buildingPlan={data.building_plan}
+                    value={data.safety_blueprints || EMPTY_SAFETY_BLUEPRINTS}
+                    onChange={(safety_blueprints) => patch({ safety_blueprints })}
+                    onPersist={async (safety_blueprints) => {
+                      await save({ ...data, safety_blueprints }, 'تم حفظ مخططات السلامة وتشغيل الفحص الآلي.');
+                    }}
+                  />
+                </section>
+              </div>
             )}
 
             {activeSection === 'boq' && (

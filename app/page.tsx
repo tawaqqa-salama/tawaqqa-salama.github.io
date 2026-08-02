@@ -55,11 +55,6 @@ export default function HomePage() {
               <div className="min-w-0 flex-1">
                 <div className="flex items-center gap-2 flex-wrap">
                   <h3 className="font-bold text-gray-800 group-hover:text-[#1f4d3a] transition">{module.title}</h3>
-                  {'badge' in module && module.badge && (
-                    <span className="text-[10px] px-2 py-0.5 rounded-full bg-amber-100 text-amber-800 font-semibold">
-                      {module.badge}
-                    </span>
-                  )}
                 </div>
                 <p className="text-sm text-gray-500 mt-1 leading-relaxed">{module.description}</p>
               </div>

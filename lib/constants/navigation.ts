@@ -28,7 +28,7 @@ export const SIDEBAR_NAV: {
 }[] = [
   { href: '/marketing', label: 'إدارة التسويق', icon: '📣', department: 'marketing' },
   { href: '/sales', label: 'إدارة المبيعات', icon: '💼', department: 'sales' },
-  { href: '/procurement', label: 'إدارة المشتريات', icon: '📦', department: 'procurement' },
+  { href: '/procurement', label: 'إدارة المشتريات والتعاقدات', icon: '📦', department: 'procurement' },
   { href: '/finance', label: 'الحسابات المالية', icon: '💰', department: 'finance' },
   { href: '/hr', label: 'الموارد البشرية', icon: '👷', department: 'hr' },
   { href: '/projects', label: 'المشاريع', icon: '🏗️', department: 'projects' },
@@ -52,12 +52,10 @@ export const SYSTEM_MODULES = [
   },
   {
     href: '/procurement',
-    title: 'إدارة المشتريات',
-    description: 'الموردون وفواتير الشراء',
+    title: 'إدارة المشتريات والتعاقدات',
+    description: 'الموردون المعتمدون، العقود الخارجية، أوامر الشراء، وتحويل BOQ إلى RFQ',
     icon: '📦',
     color: 'from-orange-400 to-orange-500',
-    badge: 'قيد التطوير',
-    status: 'under_development' as const,
   },
   {
     href: '/finance',
