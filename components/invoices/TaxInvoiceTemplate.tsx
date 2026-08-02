@@ -276,16 +276,10 @@ export async function downloadTaxInvoice(invoice: TaxInvoice) {
 export async function shareTaxInvoiceWhatsApp(invoice: TaxInvoice, phone?: string | null) {
   const total = formatCurrency(Number(invoice.total_amount || 0));
   const text = `فاتورة ضريبية رقم ${invoice.invoice_number}\nالمبلغ: ${total}\nالتاريخ: ${formatDate(invoice.issue_date || invoice.created_at)}\nالحالة: ${invoice.business_status || invoice.status}`;
-  const { openWhatsAppChat, buildWhatsAppShareUrl } = await import('@/lib/notifications/whatsapp-link');
+  const { openWhatsAppChat } = await import('@/lib/notifications/whatsapp-link');
   if (phone?.trim()) {
     const result = openWhatsAppChat(phone, text);
-    if (!result.ok) {
-      // رقم غير صالح — افتح واتساب بدون رقم محدد
-      window.open(`https://wa.me/?text=${encodeURIComponent(text)}`, '_blank', 'noopener,noreferrer');
-    }
-    return;
+    if (result.ok) return;
   }
-  const url = buildWhatsAppShareUrl('0500000000', text);
   window.open(`https://wa.me/?text=${encodeURIComponent(text)}`, '_blank', 'noopener,noreferrer');
-  void url;
 }
