@@ -1,6 +1,9 @@
 /** حدود الجلب الافتراضية لقوائم الواجهة — تقلّل زمن الاستجابة وحجم الـ payload */
 export const LIST_PAGE_SIZE = 20;
 
+/** قائمة المشاريع يجب أن تجلب المعتمدين مالياً مباشرة (لا أحدث N عميل ثم تصفية) */
+export const PROJECTS_PAGE_SIZE = 100;
+
 /** حجم أكبر قليلاً لأرشيف المستندات / السندات */
 export const ARCHIVE_PAGE_SIZE = 40;
 
@@ -30,6 +33,8 @@ export const CLIENT_LIST_COLUMNS = [
   'sales_payment_type',
   'assigned_engineer',
   'quotation_visits_count',
+  'final_report_status',
+  'license_number',
   'created_at',
   'updated_at',
 ].join(',');

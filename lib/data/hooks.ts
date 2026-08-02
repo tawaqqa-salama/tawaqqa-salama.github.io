@@ -1,7 +1,7 @@
 'use client';
 
 import useSWR, { mutate as globalMutate, type KeyedMutator } from 'swr';
-import { SWR_DEFAULTS, LIST_PAGE_SIZE } from '@/lib/data/query-config';
+import { SWR_DEFAULTS, LIST_PAGE_SIZE, PROJECTS_PAGE_SIZE } from '@/lib/data/query-config';
 import {
   fetchClientById,
   fetchProjectsList,
@@ -36,7 +36,7 @@ export function useSalesBundle(limit = LIST_PAGE_SIZE) {
   };
 }
 
-export function useProjectsList(limit = LIST_PAGE_SIZE) {
+export function useProjectsList(limit = PROJECTS_PAGE_SIZE) {
   const { data, error, isLoading, isValidating, mutate } = useSWR(
     swrKeys.projectsList(limit),
     () => fetchProjectsList(limit),
@@ -44,7 +44,7 @@ export function useProjectsList(limit = LIST_PAGE_SIZE) {
   );
 
   return {
-    projects: data ?? [],
+    projects: Array.isArray(data) ? data : [],
     loading: isLoading,
     refreshing: isValidating && !isLoading,
     error,

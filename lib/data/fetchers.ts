@@ -1,10 +1,13 @@
 import { supabase } from '@/lib/supabase';
 import { mergeLocalClientOverrides } from '@/lib/supabase/safe-client-write';
+import { shouldShowInProjects } from '@/lib/business/pipeline';
+import { APPROVED_FINANCIAL_STATUSES } from '@/lib/business/workflow-stages';
 import {
   ARCHIVE_PAGE_SIZE,
   CLIENT_LIST_COLUMNS,
   LIST_PAGE_SIZE,
   PROJECT_LIST_COLUMNS,
+  PROJECTS_PAGE_SIZE,
 } from '@/lib/data/query-config';
 import type { ClientRecord } from '@/lib/types/client';
 import type { SalesContract, SalesDocument, SalesReturn } from '@/lib/types/sales';
@@ -87,18 +90,53 @@ export async function fetchSalesBundle(limit = LIST_PAGE_SIZE): Promise<SalesBun
   return { clients, documents, contracts, returns };
 }
 
-export async function fetchProjectsList(limit = LIST_PAGE_SIZE): Promise<ClientRecord[]> {
-  return fetchClientsList({ limit, includeEngineering: true });
-}
+/**
+ * يجلب مشاريع إدارة المشاريع مباشرة من قاعدة البيانات.
+ * لا يعتمد على «أحدث N عميل» ثم التصفية — ذلك كان يُخفي المشاريع القديمة
+ * عندما تمتلئ الدفعة بعملاء التسويق/المبيعات.
+ */
+export async function fetchProjectsList(limit = PROJECTS_PAGE_SIZE): Promise<ClientRecord[]> {
+  const financialFilter = APPROVED_FINANCIAL_STATUSES.map((status) => `"${status}"`).join(',');
+  const orFilter = [
+    'pipeline_stage.in.(projects,completed)',
+    `financial_status.in.(${financialFilter})`,
+  ].join(',');
 
-/** مشاريع خفيفة لـ RFQ بدون JSON الهندسي الكامل */
-export async function fetchProjectOptions(limit = LIST_PAGE_SIZE): Promise<
-  Pick<ClientRecord, 'id' | 'business_name' | 'name' | 'client_code' | 'project_engineering_data'>[]
-> {
-  const { data } = await supabase
+  const { data, error } = await supabase
     .from('clients')
-    .select('id, business_name, name, client_code, project_engineering_data')
+    .select(PROJECT_LIST_COLUMNS)
+    .or(orFilter)
     .order('created_at', { ascending: false })
     .limit(limit);
-  return (data || []) as ClientRecord[];
+
+  if (error) {
+    console.warn('[fetchProjectsList] filtered query failed, falling back:', error.message);
+    // احتياطي: دفعة أكبر ثم تصفية محلية — أفضل من قائمة فارغة خاطئة
+    const fallback = await fetchClientsList({
+      limit: Math.max(limit * 3, 200),
+      includeEngineering: true,
+    });
+    return fallback.filter(shouldShowInProjects);
+  }
+
+  const rows = ((data || []) as unknown as ClientRecord[]).map((row) =>
+    mergeLocalClientOverrides(row)
+  );
+
+  // تأكيد الاتساق مع منطق الواجهة (resolvePipelineStage)
+  return rows.filter(shouldShowInProjects);
+}
+
+/** مشاريع خفيفة لـ RFQ */
+export async function fetchProjectOptions(limit = PROJECTS_PAGE_SIZE): Promise<
+  Pick<ClientRecord, 'id' | 'business_name' | 'name' | 'client_code' | 'project_engineering_data'>[]
+> {
+  const projects = await fetchProjectsList(limit);
+  return projects.map((p) => ({
+    id: p.id,
+    business_name: p.business_name,
+    name: p.name,
+    client_code: p.client_code,
+    project_engineering_data: p.project_engineering_data,
+  }));
 }
