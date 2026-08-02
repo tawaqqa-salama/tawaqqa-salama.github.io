@@ -25,5 +25,12 @@ DWG · RVT · IFC · PDF · XLSX · DOCX
 ## APIs
 - `POST /api/compliance/validate`
 - `GET /api/compliance/ekb`
+- `POST /api/audit/blueprint` — فحص مخطط سلامة بالذكاء الاصطناعي (SBC/NFPA)
 - `POST /api/notifications/whatsapp` (`WHATSAPP_WEBHOOK_URL`)
 - `POST /api/export/compliance-report`
+
+## مخططات السلامة (Safety Blueprints)
+- الواجهة: `SafetyBlueprintsUpload` داخل **معلومات المخطط** وتبويب **المخططات / BIM**
+- الحقول: `architectural_base` · `fire_fighting_file` · `fire_alarm_file` · `life_safety_file`
+- التخزين: `project_engineering_data.safety_blueprints` (+ SQL `022_safety_blueprints.sql` لعمود `attachments.blueprint_kind`)
+- بعد الرفع: حالة `جاري الفحص...` ثم مطابق / ملاحظات + زر تقرير AI

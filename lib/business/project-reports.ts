@@ -3,6 +3,7 @@ import {
   EMPTY_PROJECT_ENGINEERING_DATA,
   EMPTY_BUILDING_PLAN,
   EMPTY_TECHNICAL_REPORT,
+  EMPTY_SAFETY_BLUEPRINTS,
   type FieldVisitReport,
   type ProjectEngineeringData,
 } from '@/lib/types/project-reports';
@@ -34,6 +35,10 @@ export function parseProjectEngineeringData(raw: ClientRecord['project_engineeri
       general_recommendations: data.technical_report?.general_recommendations || [],
     },
     building_plan: mergeBuildingPlanDefaults({ ...EMPTY_BUILDING_PLAN, ...data.building_plan }),
+    safety_blueprints: {
+      ...EMPTY_SAFETY_BLUEPRINTS,
+      ...data.safety_blueprints,
+    },
     boq: { ...EMPTY_PROJECT_ENGINEERING_DATA.boq, items: data.boq?.items || [], ...data.boq },
     timeline: { ...EMPTY_PROJECT_ENGINEERING_DATA.timeline, milestones: data.timeline?.milestones || [], ...data.timeline },
     field_visits: Array.isArray(data.field_visits) ? data.field_visits : [],
