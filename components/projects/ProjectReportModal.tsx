@@ -15,6 +15,7 @@ import SafetyBlueprintsUpload from '@/components/projects/SafetyBlueprintsUpload
 import TechnicalReportSection from '@/components/projects/TechnicalReportSection';
 import { printTechnicalReport } from '@/components/projects/TechnicalReportPrint';
 import EngineeringDeliverySection from '@/components/projects/EngineeringDeliverySection';
+import CdCoverLetterSection from '@/components/projects/CdCoverLetterSection';
 import FinalInspectionSection from '@/components/projects/FinalInspectionSection';
 import CompletionCertificateSection from '@/components/projects/CompletionCertificateSection';
 import SupervisionReportSection from '@/components/projects/SupervisionReportSection';
@@ -386,6 +387,29 @@ export default function ProjectReportModal({ client, onClose, onUpdated }: Proje
                   اصدار فاتورة جديدة
                 </button>
               </div>
+            )}
+
+            {activeSection === 'cd_cover_letter' && (
+              <CdCoverLetterSection
+                client={client}
+                data={data}
+                company={company}
+                saving={saving}
+                onChange={(cd_cover_letter) => patch({ cd_cover_letter })}
+                onSave={async (letter) => {
+                  const next = letter
+                    ? { ...data, cd_cover_letter: letter }
+                    : data;
+                  // Mirror outgoing number onto technical report when issued
+                  if (letter?.outgoing_number && !next.technical_report.outgoing_number) {
+                    next.technical_report = {
+                      ...next.technical_report,
+                      outgoing_number: letter.outgoing_number,
+                    };
+                  }
+                  await save(next, 'تم حفظ / إصدار خطاب تسليم الدفاع المدني.');
+                }}
+              />
             )}
 
             {activeSection === 'final_inspection' && (

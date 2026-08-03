@@ -13,6 +13,7 @@ export const PROJECT_REPORT_SECTIONS = [
   { id: 'supervision_report', label: 'تقرير الإشراف' },
   { id: 'technical_notes', label: 'الملاحظات الفنية' },
   { id: 'engineering_delivery', label: 'خطاب تسليم الدراسة' },
+  { id: 'cd_cover_letter', label: 'خطاب تسليم الدفاع المدني (CD)' },
   { id: 'final_inspection', label: 'التقرير النهائي' },
   { id: 'completion_certificate', label: 'شهادة إنهاء الأعمال' },
 ] as const;

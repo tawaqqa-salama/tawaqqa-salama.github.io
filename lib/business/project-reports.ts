@@ -11,6 +11,7 @@ import {
 import { mergeBuildingPlanDefaults } from '@/lib/projects/building-plan';
 import { seedTechnicalReportFromClient } from '@/lib/projects/technical-report';
 import { mergeSafetyScope, seedEngineeringDelivery } from '@/lib/projects/safety-delivery-letter';
+import { seedCdCoverLetter } from '@/lib/projects/cd-cover-letter';
 import { seedFinalInspectionReport } from '@/lib/projects/final-safety-report';
 import { ensureTaskMonths } from '@/lib/projects/supervision-report';
 
@@ -68,6 +69,10 @@ export function parseProjectEngineeringData(raw: ClientRecord['project_engineeri
         EMPTY_PROJECT_ENGINEERING_DATA.engineering_delivery.safety_scope
       ),
     },
+    cd_cover_letter: {
+      ...EMPTY_PROJECT_ENGINEERING_DATA.cd_cover_letter,
+      ...data.cd_cover_letter,
+    },
     final_inspection: {
       ...EMPTY_PROJECT_ENGINEERING_DATA.final_inspection,
       ...data.final_inspection,
@@ -117,6 +122,7 @@ export function seedProjectEngineeringFromClient(
     ...data,
     technical_report: seedTechnicalReportFromClient(client, data.technical_report),
     engineering_delivery: seedEngineeringDelivery(client, data, data.engineering_delivery),
+    cd_cover_letter: seedCdCoverLetter(client, data, data.cd_cover_letter),
     final_inspection: seedFinalInspectionReport(client, data, data.final_inspection),
   };
 }
@@ -129,6 +135,7 @@ export function getProjectReportProgress(data: ProjectEngineeringData): number {
     data.timeline.status,
     data.technical_notes.status,
     data.engineering_delivery.status,
+    data.cd_cover_letter?.status,
     data.final_inspection.status,
     data.completion_certificate.status,
     data.supervision_report?.status,
