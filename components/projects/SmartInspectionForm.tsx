@@ -2,6 +2,7 @@
 
 import { useState } from 'react';
 import type { ClientRecord } from '@/lib/types/client';
+import { useLanguage } from '@/lib/i18n/LanguageProvider';
 
 type SmartInspectionFormProps = {
   clients: ClientRecord[];
@@ -10,6 +11,7 @@ type SmartInspectionFormProps = {
 
 /** نموذج ديناميكي للمعاينة الميدانية — يجهّز تقريراً سريعاً قبل فتح ملف المشروع */
 export default function SmartInspectionForm({ clients, onOpenProject }: SmartInspectionFormProps) {
+  const { t } = useLanguage();
   const [clientId, setClientId] = useState(clients[0]?.id || '');
   const [visitDate, setVisitDate] = useState(new Date().toISOString().slice(0, 10));
   const [accessOk, setAccessOk] = useState(true);
@@ -21,12 +23,14 @@ export default function SmartInspectionForm({ clients, onOpenProject }: SmartIns
 
   const submit = () => {
     if (!selected) return;
+    const yes = t('common.yes');
+    const no = t('common.no');
     const summary = [
-      `معاينة ${selected.business_name || selected.name}`,
-      `التاريخ: ${visitDate}`,
-      `سهولة الوصول: ${accessOk ? 'نعم' : 'لا'}`,
-      `مخارج واضحة: ${exitsClear ? 'نعم' : 'لا'}`,
-      notes ? `ملاحظات: ${notes}` : '',
+      t('projects.inspection.summary', { name: selected.business_name || selected.name || '' }),
+      t('projects.inspection.dateLabel', { date: visitDate }),
+      t('projects.inspection.accessLabel', { value: accessOk ? yes : no }),
+      t('projects.inspection.exitsLabel', { value: exitsClear ? yes : no }),
+      notes ? t('projects.inspection.notesLabel', { notes }) : '',
     ]
       .filter(Boolean)
       .join(' — ');
@@ -61,15 +65,15 @@ export default function SmartInspectionForm({ clients, onOpenProject }: SmartIns
   return (
     <div className="rounded-xl border border-[var(--erp-border)] bg-white p-4 space-y-4">
       <div>
-        <h2 className="text-lg font-bold">خانة المعاينة الهندسية</h2>
-        <p className="text-sm text-[var(--erp-muted)] mt-1">
-          نموذج ميداني سريع — ثم أكمل التقرير الفني من ملف المشروع.
-        </p>
+        <h2 className="text-lg font-bold">{t('projects.inspection.title')}</h2>
+        <p className="text-sm text-[var(--erp-muted)] mt-1">{t('projects.inspection.subtitle')}</p>
       </div>
 
       <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
         <label className="text-sm">
-          <span className="text-xs font-semibold text-gray-600 mb-1 block">المشروع</span>
+          <span className="text-xs font-semibold text-gray-600 mb-1 block">
+            {t('projects.inspection.project')}
+          </span>
           <select
             value={clientId}
             onChange={(e) => setClientId(e.target.value)}
@@ -83,7 +87,9 @@ export default function SmartInspectionForm({ clients, onOpenProject }: SmartIns
           </select>
         </label>
         <label className="text-sm">
-          <span className="text-xs font-semibold text-gray-600 mb-1 block">تاريخ المعاينة</span>
+          <span className="text-xs font-semibold text-gray-600 mb-1 block">
+            {t('projects.inspection.date')}
+          </span>
           <input
             type="date"
             value={visitDate}
@@ -96,16 +102,18 @@ export default function SmartInspectionForm({ clients, onOpenProject }: SmartIns
       <div className="flex flex-wrap gap-4 text-sm">
         <label className="inline-flex items-center gap-2">
           <input type="checkbox" checked={accessOk} onChange={(e) => setAccessOk(e.target.checked)} />
-          سهولة الوصول للموقع
+          {t('projects.inspection.accessOk')}
         </label>
         <label className="inline-flex items-center gap-2">
           <input type="checkbox" checked={exitsClear} onChange={(e) => setExitsClear(e.target.checked)} />
-          مخارج الطوارئ واضحة
+          {t('projects.inspection.exitsClear')}
         </label>
       </div>
 
       <label className="block text-sm">
-        <span className="text-xs font-semibold text-gray-600 mb-1 block">ملاحظات ميدانية</span>
+        <span className="text-xs font-semibold text-gray-600 mb-1 block">
+          {t('projects.inspection.notes')}
+        </span>
         <textarea
           value={notes}
           onChange={(e) => setNotes(e.target.value)}
@@ -121,7 +129,7 @@ export default function SmartInspectionForm({ clients, onOpenProject }: SmartIns
           disabled={!selected}
           className="px-4 py-2.5 rounded-xl bg-indigo-600 text-white text-sm font-semibold disabled:opacity-50"
         >
-          حفظ المعاينة
+          {t('projects.inspection.save')}
         </button>
         {selected && onOpenProject ? (
           <button
@@ -129,7 +137,7 @@ export default function SmartInspectionForm({ clients, onOpenProject }: SmartIns
             onClick={() => onOpenProject(selected)}
             className="px-4 py-2.5 rounded-xl border text-sm font-semibold"
           >
-            فتح ملف المشروع الكامل
+            {t('projects.inspection.openProject')}
           </button>
         ) : null}
       </div>

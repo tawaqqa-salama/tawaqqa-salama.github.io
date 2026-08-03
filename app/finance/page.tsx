@@ -13,6 +13,8 @@ import { useLanguage } from '@/lib/i18n/LanguageProvider';
 import type { AccountingDashboardStats } from '@/lib/types/accounting';
 
 function StatusBadge({ status }: { status: string }) {
+  const { tFinanceLabel } = useLanguage();
+  const label = tFinanceLabel(status);
   const posted = status === 'مرحّل';
   return (
     <span
@@ -20,15 +22,16 @@ function StatusBadge({ status }: { status: string }) {
         posted ? 'bg-emerald-50 text-emerald-700' : 'bg-amber-50 text-amber-700'
       }`}
     >
-      {status}
+      {label}
     </span>
   );
 }
 
 export default function FinanceDashboardPage() {
-  const { t } = useLanguage();
+  const { t, tFinanceLabel, lang } = useLanguage();
   const [stats, setStats] = useState<AccountingDashboardStats | null>(null);
   const [loading, setLoading] = useState(true);
+  const locale = lang === 'en' ? 'en-SA' : 'ar-SA';
 
   useEffect(() => {
     loadAccountingDashboard()
@@ -41,6 +44,15 @@ export default function FinanceDashboardPage() {
   }
 
   if (!stats) return null;
+
+  const typeItems = stats.entryTypeDistribution.map((item) => ({
+    ...item,
+    label: tFinanceLabel(item.label),
+  }));
+  const costItems = stats.costCenterDistribution.map((item) => ({
+    ...item,
+    label: tFinanceLabel(item.label),
+  }));
 
   return (
     <div className="space-y-5">
@@ -58,46 +70,66 @@ export default function FinanceDashboardPage() {
       </div>
 
       <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-4">
-        <OmniStatCard label="عدد القيود" value={stats.journalCount.toLocaleString('ar-SA')} icon="📝" iconBg="bg-blue-50" />
-        <OmniStatCard label="عدد السندات" value={stats.voucherCount.toLocaleString('ar-SA')} icon="🧾" iconBg="bg-amber-50" />
-        <OmniStatCard label="عدد الحسابات" value={stats.accountCount.toLocaleString('ar-SA')} icon="🏦" iconBg="bg-indigo-50" />
-        <OmniStatCard label="عدد مراكز التكلفة" value={stats.costCenterCount.toLocaleString('ar-SA')} icon="🏢" iconBg="bg-rose-50" />
+        <OmniStatCard
+          label={t('finance.stat.journals')}
+          value={stats.journalCount.toLocaleString(locale)}
+          icon="📝"
+          iconBg="bg-blue-50"
+        />
+        <OmniStatCard
+          label={t('finance.stat.vouchers')}
+          value={stats.voucherCount.toLocaleString(locale)}
+          icon="🧾"
+          iconBg="bg-amber-50"
+        />
+        <OmniStatCard
+          label={t('finance.stat.accounts')}
+          value={stats.accountCount.toLocaleString(locale)}
+          icon="🏦"
+          iconBg="bg-indigo-50"
+        />
+        <OmniStatCard
+          label={t('finance.stat.costCenters')}
+          value={stats.costCenterCount.toLocaleString(locale)}
+          icon="🏢"
+          iconBg="bg-rose-50"
+        />
       </div>
 
       <div className="grid grid-cols-1 xl:grid-cols-3 gap-4">
-        <DonutChart title="القيود حسب مراكز التكلفة" items={stats.costCenterDistribution} />
-        <BarChartPanel title="القيود حسب النوع" items={stats.entryTypeDistribution} colorClass="bg-[#1f4d3a]" />
+        <DonutChart title={t('finance.chart.byCostCenter')} items={costItems} />
+        <BarChartPanel title={t('finance.chart.byType')} items={typeItems} colorClass="bg-[#1f4d3a]" />
         <IncomeBarChart revenue={stats.incomeSummary.revenue} expenses={stats.incomeSummary.expenses} />
       </div>
 
       <div className="grid grid-cols-1 xl:grid-cols-4 gap-4">
         <div className="xl:col-span-3">
-          <ErpCard title="آخر القيود المحاسبية" padding={false}>
+          <ErpCard title={t('finance.recent.title')} padding={false}>
             <div className="overflow-x-auto">
               <table className="w-full text-right text-sm">
                 <thead className="bg-gray-50 border-b border-gray-100 text-gray-500 text-xs">
                   <tr>
-                    <th className="p-3 font-semibold">رقم المستند</th>
-                    <th className="p-3 font-semibold">نوع القيد</th>
-                    <th className="p-3 font-semibold">رقم القيد</th>
-                    <th className="p-3 font-semibold">عنوان القيد</th>
-                    <th className="p-3 font-semibold">قيمة القيد</th>
-                    <th className="p-3 font-semibold">تاريخ القيد</th>
-                    <th className="p-3 font-semibold">حالة القيد</th>
+                    <th className="p-3 font-semibold">{t('finance.col.docNo')}</th>
+                    <th className="p-3 font-semibold">{t('finance.col.entryType')}</th>
+                    <th className="p-3 font-semibold">{t('finance.col.entryNo')}</th>
+                    <th className="p-3 font-semibold">{t('finance.col.entryTitle')}</th>
+                    <th className="p-3 font-semibold">{t('finance.col.amount')}</th>
+                    <th className="p-3 font-semibold">{t('finance.col.entryDate')}</th>
+                    <th className="p-3 font-semibold">{t('finance.col.entryStatus')}</th>
                   </tr>
                 </thead>
                 <tbody>
                   {stats.recentEntries.length === 0 ? (
                     <tr>
                       <td colSpan={7} className="p-10 text-center text-gray-400">
-                        لا توجد قيود محاسبية بعد
+                        {t('finance.recent.empty')}
                       </td>
                     </tr>
                   ) : (
                     stats.recentEntries.map((entry) => (
                       <tr key={entry.id} className="border-b border-gray-50 hover:bg-gray-50/80">
                         <td className="p-3 font-mono text-blue-600">{entry.documentNumber}</td>
-                        <td className="p-3 text-gray-600">{entry.entryType}</td>
+                        <td className="p-3 text-gray-600">{tFinanceLabel(entry.entryType)}</td>
                         <td className="p-3 font-mono">{entry.entryNumber}</td>
                         <td className="p-3 max-w-[200px] truncate">{entry.entryTitle}</td>
                         <td className="p-3 font-mono font-semibold">{formatCurrency(entry.entryValue)}</td>
@@ -114,28 +146,30 @@ export default function FinanceDashboardPage() {
           </ErpCard>
         </div>
 
-        <ErpCard title="ملخص الإقرار الضريبي">
+        <ErpCard title={t('finance.vat.title')}>
           <div className="space-y-4 text-sm">
             <div className="rounded-lg bg-gray-50 p-3 text-xs text-gray-500">
-              ضريبة القيمة المضافة {VAT_RATE * 100}% — تراخيص السلامة
+              {t('finance.vat.note', { rate: VAT_RATE * 100 })}
             </div>
             <div className="flex justify-between">
-              <span className="text-gray-500">الإيرادات الخاضعة</span>
+              <span className="text-gray-500">{t('finance.vat.taxable')}</span>
               <span className="font-mono font-semibold">{formatCurrency(stats.vatSummary.taxableRevenue)}</span>
             </div>
             <div className="flex justify-between">
-              <span className="text-gray-500">ضريبة المخرجات</span>
-              <span className="font-mono font-semibold text-[#1f4d3a]">{formatCurrency(stats.vatSummary.outputVat)}</span>
+              <span className="text-gray-500">{t('finance.vat.output')}</span>
+              <span className="font-mono font-semibold text-[#1f4d3a]">
+                {formatCurrency(stats.vatSummary.outputVat)}
+              </span>
             </div>
             <div className="flex justify-between border-t pt-3">
-              <span className="text-gray-500">عدد سندات القبض</span>
+              <span className="text-gray-500">{t('finance.vat.receiptCount')}</span>
               <span className="font-semibold">{stats.vatSummary.voucherCount}</span>
             </div>
             <Link
               href="/finance/reports"
               className="block text-center text-xs text-[#1f4d3a] font-semibold hover:underline pt-2"
             >
-              عرض التقرير الكامل ←
+              {t('finance.vat.fullReport')}
             </Link>
           </div>
         </ErpCard>

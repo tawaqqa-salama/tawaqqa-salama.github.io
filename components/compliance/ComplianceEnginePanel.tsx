@@ -10,6 +10,7 @@ import {
 } from '@/lib/export/compliance-report';
 import { openDocumentPreview } from '@/lib/print/document-preview';
 import { openWhatsAppChat } from '@/lib/notifications/whatsapp-link';
+import { useLanguage } from '@/lib/i18n/LanguageProvider';
 import type { ClientRecord } from '@/lib/types/client';
 import type { ComplianceValidationResult } from '@/lib/compliance/types';
 
@@ -18,6 +19,7 @@ type ComplianceEnginePanelProps = {
 };
 
 export default function ComplianceEnginePanel({ clients }: ComplianceEnginePanelProps) {
+  const { t } = useLanguage();
   const [clientId, setClientId] = useState(clients[0]?.id || '');
   const [occupants, setOccupants] = useState('');
   const [travelDistanceM, setTravelDistanceM] = useState('');
@@ -55,10 +57,10 @@ export default function ComplianceEnginePanel({ clients }: ComplianceEnginePanel
     if (!result || !selected) return;
     const html = buildComplianceReportHtml(result, {
       projectName: selected.business_name || selected.name,
-      preparedBy: 'محرك الامتثال',
+      preparedBy: t('compliance.report.preparedBy'),
     });
     openDocumentPreview({
-      title: `امتثال — ${selected.business_name || selected.name}`,
+      title: t('compliance.report.title', { name: selected.business_name || selected.name || '' }),
       html,
       fileName: `compliance-${selected.client_code || selected.id}`,
     });
@@ -68,14 +70,14 @@ export default function ComplianceEnginePanel({ clients }: ComplianceEnginePanel
     if (!result || !selected) return;
     const html = buildComplianceReportDocHtml(result, {
       projectName: selected.business_name || selected.name,
-      preparedBy: 'محرك الامتثال',
+      preparedBy: t('compliance.report.preparedBy'),
     });
     downloadTextFile(html, `compliance-${selected.client_code || 'report'}.doc`, 'application/msword;charset=utf-8');
   };
 
   const notifyWhatsApp = async () => {
     if (!result || !whatsappTo.trim()) {
-      setNotifyMsg('أدخل رقم الجوال (مثال: 05xxxxxxxx)');
+      setNotifyMsg(t('compliance.whatsapp.needPhone'));
       return;
     }
     setNotifyMsg(null);
@@ -88,15 +90,13 @@ export default function ComplianceEnginePanel({ clients }: ComplianceEnginePanel
       result.ok ? 'الحالة: مطابق نسبياً' : 'الحالة: يوجد ملاحظات تحتاج مراجعة',
     ].join('\n');
 
-    // 1) فتح واتساب مباشرة عبر wa.me — يعمل على GitHub Pages دون API
     const direct = openWhatsAppChat(whatsappTo, message);
     if (!direct.ok) {
-      setNotifyMsg(direct.error || 'تعذر فتح واتساب');
+      setNotifyMsg(direct.error || t('compliance.whatsapp.failed'));
       return;
     }
-    setNotifyMsg('تم فتح واتساب لإرسال التقرير. أكّد الإرسال من تطبيق واتساب.');
+    setNotifyMsg(t('compliance.whatsapp.opened'));
 
-    // 2) محاولة اختيارية عبر Webhook إن وُجدت واجهة Node (لا تُعطّل الإرسال المباشر)
     try {
       await fetch('/api/notifications/whatsapp', {
         method: 'POST',
@@ -115,14 +115,14 @@ export default function ComplianceEnginePanel({ clients }: ComplianceEnginePanel
   return (
     <div className="space-y-4">
       <div className="rounded-xl border border-[var(--erp-border)] bg-white p-4">
-        <h2 className="text-lg font-bold text-[var(--erp-text)]">محرك الامتثال الديناميكي (SBC &amp; NFPA)</h2>
-        <p className="text-sm text-[var(--erp-muted)] mt-1">
-          يتحقق من معلمات السلامة ويربط النتائج بقاعدة المعرفة الهندسية (EKB).
-        </p>
+        <h2 className="text-lg font-bold text-[var(--erp-text)]">{t('compliance.engine.title')}</h2>
+        <p className="text-sm text-[var(--erp-muted)] mt-1">{t('compliance.engine.subtitle')}</p>
 
         <div className="grid grid-cols-1 md:grid-cols-2 gap-3 mt-4">
           <label className="text-sm">
-            <span className="text-xs font-semibold text-gray-600 mb-1 block">المشروع / العميل</span>
+            <span className="text-xs font-semibold text-gray-600 mb-1 block">
+              {t('compliance.field.project')}
+            </span>
             <select
               value={clientId}
               onChange={(e) => setClientId(e.target.value)}
@@ -136,7 +136,9 @@ export default function ComplianceEnginePanel({ clients }: ComplianceEnginePanel
             </select>
           </label>
           <label className="text-sm">
-            <span className="text-xs font-semibold text-gray-600 mb-1 block">اسم ملف هندسي (اختياري)</span>
+            <span className="text-xs font-semibold text-gray-600 mb-1 block">
+              {t('compliance.field.fileName')}
+            </span>
             <input
               value={fileName}
               onChange={(e) => setFileName(e.target.value)}
@@ -146,7 +148,9 @@ export default function ComplianceEnginePanel({ clients }: ComplianceEnginePanel
             />
           </label>
           <label className="text-sm">
-            <span className="text-xs font-semibold text-gray-600 mb-1 block">عدد الشاغلين</span>
+            <span className="text-xs font-semibold text-gray-600 mb-1 block">
+              {t('compliance.field.occupants')}
+            </span>
             <input
               value={occupants}
               onChange={(e) => setOccupants(e.target.value)}
@@ -155,7 +159,9 @@ export default function ComplianceEnginePanel({ clients }: ComplianceEnginePanel
             />
           </label>
           <label className="text-sm">
-            <span className="text-xs font-semibold text-gray-600 mb-1 block">مسافة السفر إلى المخرج (م)</span>
+            <span className="text-xs font-semibold text-gray-600 mb-1 block">
+              {t('compliance.field.travelDistance')}
+            </span>
             <input
               value={travelDistanceM}
               onChange={(e) => setTravelDistanceM(e.target.value)}
@@ -168,15 +174,15 @@ export default function ComplianceEnginePanel({ clients }: ComplianceEnginePanel
         <div className="flex flex-wrap gap-4 mt-3 text-sm">
           <label className="inline-flex items-center gap-2">
             <input type="checkbox" checked={hasSprinklers} onChange={(e) => setHasSprinklers(e.target.checked)} />
-            مرشات تلقائية
+            {t('compliance.field.sprinklers')}
           </label>
           <label className="inline-flex items-center gap-2">
             <input type="checkbox" checked={hasFireAlarm} onChange={(e) => setHasFireAlarm(e.target.checked)} />
-            إنذار حريق
+            {t('compliance.field.fireAlarm')}
           </label>
           <label className="inline-flex items-center gap-2">
             <input type="checkbox" checked={hasDetection} onChange={(e) => setHasDetection(e.target.checked)} />
-            كشف دخان/حرارة
+            {t('compliance.field.detection')}
           </label>
         </div>
 
@@ -187,7 +193,7 @@ export default function ComplianceEnginePanel({ clients }: ComplianceEnginePanel
             disabled={!selected}
             className="px-4 py-2.5 rounded-xl bg-[var(--erp-primary)] text-white text-sm font-semibold disabled:opacity-50"
           >
-            تشغيل التحقق
+            {t('compliance.action.run')}
           </button>
           <button
             type="button"
@@ -195,7 +201,7 @@ export default function ComplianceEnginePanel({ clients }: ComplianceEnginePanel
             disabled={!result}
             className="px-4 py-2.5 rounded-xl border text-sm font-semibold disabled:opacity-50"
           >
-            تصدير PDF (معاينة طباعة)
+            {t('compliance.action.pdf')}
           </button>
           <button
             type="button"
@@ -203,13 +209,32 @@ export default function ComplianceEnginePanel({ clients }: ComplianceEnginePanel
             disabled={!result}
             className="px-4 py-2.5 rounded-xl border text-sm font-semibold disabled:opacity-50"
           >
-            تصدير DOCX/Word
+            {t('compliance.action.docx')}
           </button>
         </div>
       </div>
 
       {result ? (
         <div className="rounded-xl border bg-white p-4 space-y-3">
+          {!result.ok ? (
+            <p className="text-xs font-semibold text-rose-700 bg-rose-50 border border-rose-100 rounded-lg px-3 py-2">
+              {t('compliance.result.warnings')}
+            </p>
+          ) : null}
+          <div className="flex flex-wrap gap-2 text-[11px]">
+            <span className="px-2 py-1 rounded-md bg-slate-100 text-slate-700">
+              {t('compliance.result.occupancy')}
+            </span>
+            <span className="px-2 py-1 rounded-md bg-slate-100 text-slate-700">
+              {t('compliance.result.activityLimits')}
+            </span>
+            <span className="px-2 py-1 rounded-md bg-slate-100 text-slate-700">
+              {t('compliance.result.mandatorySprinklers')}
+            </span>
+            <span className="px-2 py-1 rounded-md bg-slate-100 text-slate-700">
+              {t('compliance.result.mandatoryAlarm')}
+            </span>
+          </div>
           <div className="flex flex-wrap items-center justify-between gap-2">
             <p className="font-bold text-gray-800">{result.summary}</p>
             <span
@@ -217,7 +242,7 @@ export default function ComplianceEnginePanel({ clients }: ComplianceEnginePanel
                 result.ok ? 'bg-emerald-50 text-emerald-800' : 'bg-rose-50 text-rose-800'
               }`}
             >
-              الدرجة {result.score}
+              {t('compliance.score', { score: result.score })}
             </span>
           </div>
 
@@ -236,7 +261,7 @@ export default function ComplianceEnginePanel({ clients }: ComplianceEnginePanel
           </div>
 
           <div>
-            <p className="text-sm font-bold mb-2">EKB — مواضيع مرتبطة</p>
+            <p className="text-sm font-bold mb-2">{t('compliance.ekb.title')}</p>
             <ul className="space-y-1">
               {result.ekbHints.map((id) => {
                 const topic = getEkbTopic(id);
@@ -252,7 +277,9 @@ export default function ComplianceEnginePanel({ clients }: ComplianceEnginePanel
 
           <div className="border-t pt-3 flex flex-col sm:flex-row gap-2 sm:items-end">
             <label className="text-sm flex-1">
-              <span className="text-xs font-semibold text-gray-600 mb-1 block">إرسال عبر واتساب</span>
+              <span className="text-xs font-semibold text-gray-600 mb-1 block">
+                {t('compliance.whatsapp.label')}
+              </span>
               <input
                 value={whatsappTo}
                 onChange={(e) => setWhatsappTo(e.target.value)}
@@ -267,17 +294,24 @@ export default function ComplianceEnginePanel({ clients }: ComplianceEnginePanel
               onClick={() => void notifyWhatsApp()}
               className="px-4 py-2.5 rounded-xl bg-emerald-700 text-white text-sm font-semibold"
             >
-              إرسال واتساب
+              {t('compliance.whatsapp.send')}
             </button>
           </div>
           {notifyMsg ? (
-            <p className={`text-xs ${notifyMsg.includes('تعذر') || notifyMsg.includes('غير صالح') ? 'text-rose-600' : 'text-emerald-700'}`}>
+            <p
+              className={`text-xs ${
+                notifyMsg === t('compliance.whatsapp.failed') ||
+                notifyMsg === t('compliance.whatsapp.needPhone') ||
+                notifyMsg.includes('تعذر') ||
+                notifyMsg.includes('غير صالح')
+                  ? 'text-rose-600'
+                  : 'text-emerald-700'
+              }`}
+            >
               {notifyMsg}
             </p>
           ) : (
-            <p className="text-[11px] text-gray-500">
-              يفتح تطبيق واتساب برسالة جاهزة — اضغط إرسال داخل واتساب لإتمام المشاركة.
-            </p>
+            <p className="text-[11px] text-gray-500">{t('compliance.whatsapp.hint')}</p>
           )}
         </div>
       ) : null}
