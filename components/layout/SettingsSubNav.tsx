@@ -1,18 +1,18 @@
 'use client';
 
-import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { useAuth } from '@/lib/auth/AuthProvider';
 import ModuleSubNavSlot from '@/components/layout/ModuleSubNavSlot';
+import ModuleTabBar from '@/components/layout/ModuleTabBar';
 import { useLanguage } from '@/lib/i18n/LanguageProvider';
 
 const SETTINGS_LINKS = [
-  { href: '/settings', key: 'settings.overview', exact: true },
-  { href: '/settings/company', key: 'settings.companyShort' },
-  { href: '/settings/users', key: 'settings.usersShort' },
-  { href: '/settings/activity', key: 'settings.activity' },
-  { href: '/settings/zatca', key: 'settings.zatcaShort' },
-  { href: '/settings/building-code', key: 'settings.buildingCodeShort' },
+  { href: '/settings', id: 'overview', key: 'settings.overview', exact: true },
+  { href: '/settings/company', id: 'company', key: 'settings.companyShort' },
+  { href: '/settings/users', id: 'users', key: 'settings.usersShort' },
+  { href: '/settings/activity', id: 'activity', key: 'settings.activity' },
+  { href: '/settings/zatca', id: 'zatca', key: 'settings.zatcaShort' },
+  { href: '/settings/building-code', id: 'building-code', key: 'settings.buildingCodeShort' },
 ] as const;
 
 export default function SettingsSubNav() {
@@ -28,37 +28,29 @@ export default function SettingsSubNav() {
 
   if (links.length === 0) return null;
 
+  let activeId = links[0]?.id || 'overview';
+  for (const item of links) {
+    const active =
+      'exact' in item && item.exact
+        ? pathname === item.href
+        : pathname === item.href || pathname.startsWith(`${item.href}/`);
+    if (active) {
+      activeId = item.id;
+      break;
+    }
+  }
+
   return (
     <ModuleSubNavSlot label={t('settings.tabs')}>
-      <div className="bg-white border border-[var(--erp-border)] rounded-xl p-1.5 overflow-x-auto">
-        <div className="flex gap-1 min-w-max" role="tablist" aria-label={t('settings.tabs')}>
-          {links.map((item) => {
-            const active =
-              'exact' in item && item.exact
-                ? pathname === item.href
-                : pathname === item.href || pathname.startsWith(`${item.href}/`);
-
-            return (
-              <Link
-                key={item.href}
-                href={item.href}
-                role="tab"
-                aria-selected={active}
-                className={`
-                  touch-target !h-auto px-3.5 py-2 rounded-lg text-xs sm:text-sm font-semibold whitespace-nowrap transition
-                  ${
-                    active
-                      ? 'bg-[var(--erp-primary)] text-white shadow-sm'
-                      : 'text-[var(--erp-muted)] hover:bg-[var(--erp-page)] hover:text-[var(--erp-text)]'
-                  }
-                `}
-              >
-                {t(item.key)}
-              </Link>
-            );
-          })}
-        </div>
-      </div>
+      <ModuleTabBar
+        items={links.map((item) => ({
+          id: item.id,
+          label: t(item.key),
+          href: item.href,
+        }))}
+        activeId={activeId}
+        ariaLabel={t('settings.tabs')}
+      />
     </ModuleSubNavSlot>
   );
 }

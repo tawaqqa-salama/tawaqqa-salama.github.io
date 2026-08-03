@@ -1,7 +1,6 @@
 'use client';
 
 import { FormEvent, useEffect, useMemo, useState } from 'react';
-import Link from 'next/link';
 import PageHeader from '@/components/shared/PageHeader';
 import { useAuth } from '@/lib/auth/AuthProvider';
 import { listRoles, listUsers, updateEmployeeHr, upsertEmployee } from '@/lib/auth/service';
@@ -11,6 +10,9 @@ import { supabase } from '@/lib/supabase';
 import { shouldShowInProjects } from '@/lib/business/pipeline';
 import { ENGINEERS } from '@/lib/constants/clients';
 import ClientDetailModal from '@/components/clients/ClientDetailModal';
+import ModuleSubNavSlot from '@/components/layout/ModuleSubNavSlot';
+import ModuleTabBar from '@/components/layout/ModuleTabBar';
+import { useLanguage } from '@/lib/i18n/LanguageProvider';
 import type { ClientRecord } from '@/lib/types/client';
 
 const CONTRACT_TYPES = ['دائم', 'محدد المدة', 'تجربة'] as const;
@@ -69,6 +71,7 @@ function contractStatus(user: AppUser): { label: string; className: string } {
 
 export default function HRPage() {
   const { canManageStaff } = useAuth();
+  const { t } = useLanguage();
   const [tab, setTab] = useState<'employees' | 'assignments'>('employees');
   const [users, setUsers] = useState<AppUser[]>([]);
   const [roles, setRoles] = useState<AppRole[]>([]);
@@ -245,33 +248,26 @@ export default function HRPage() {
   return (
     <div className="space-y-6">
       <PageHeader
-        title="إدارة الموارد البشرية"
-        description="ملفات الموظفين، الرواتب، العقود، وتوزيع المهام على المهندسين"
+        title={t('hr.title')}
+        description={t('hr.subtitle')}
       />
 
-      <div className="flex flex-wrap gap-2">
-        <button
-          type="button"
-          onClick={() => setTab('employees')}
-          className={`px-4 py-2 rounded-xl text-sm font-semibold ${
-            tab === 'employees' ? 'bg-[#1f4d3a] text-white' : 'bg-white border text-gray-700'
-          }`}
-        >
-          الموظفون والعقود
-        </button>
-        <button
-          type="button"
-          onClick={() => setTab('assignments')}
-          className={`px-4 py-2 rounded-xl text-sm font-semibold ${
-            tab === 'assignments' ? 'bg-[#1f4d3a] text-white' : 'bg-white border text-gray-700'
-          }`}
-        >
-          توزيع المهام
-        </button>
-        <Link href="/settings/users" className="px-4 py-2 rounded-xl text-sm font-semibold bg-white border text-gray-700">
-          الصلاحيات وتسجيل الدخول
-        </Link>
-      </div>
+      <ModuleSubNavSlot label={t('subnav.hr')}>
+        <ModuleTabBar
+          ariaLabel={t('subnav.hr')}
+          activeId={tab}
+          onChange={(id) => setTab(id as 'employees' | 'assignments')}
+          activeClassName="bg-[#1f4d3a] text-white shadow-sm"
+          idleClassName="bg-white border border-gray-200 text-gray-700"
+          items={[
+            { id: 'employees', label: t('hr.tab.employees') },
+            { id: 'assignments', label: t('hr.tab.assignments') },
+            ...(canManageStaff
+              ? [{ id: 'permissions', label: t('hr.permissionsLink'), href: '/settings/users' }]
+              : []),
+          ]}
+        />
+      </ModuleSubNavSlot>
 
       {tab === 'employees' ? (
         <div className="grid grid-cols-1 xl:grid-cols-5 gap-6">

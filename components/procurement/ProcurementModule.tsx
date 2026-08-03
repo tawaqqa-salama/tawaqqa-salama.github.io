@@ -5,8 +5,10 @@ import { useSearchParams } from 'next/navigation';
 import { supabase } from '@/lib/supabase';
 import { formatCurrency } from '@/lib/format/currency';
 import ModuleSubNavSlot from '@/components/layout/ModuleSubNavSlot';
+import ModuleTabBar from '@/components/layout/ModuleTabBar';
 import ResponsiveTable from '@/components/ui/ResponsiveTable';
 import NumericInput from '@/components/ui/NumericInput';
+import { useLanguage } from '@/lib/i18n/LanguageProvider';
 import {
   createRfqFromProjectBoq,
   listPurchaseOrders,
@@ -47,6 +49,7 @@ const emptyVendor = (type: VendorType): Partial<ProcurementVendor> & { name: str
 });
 
 export default function ProcurementModule() {
+  const { t } = useLanguage();
   const searchParams = useSearchParams();
   const initialTab = (searchParams.get('tab') as TabId | null) || 'vendors';
   const [tab, setTab] = useState<TabId>(
@@ -213,38 +216,29 @@ export default function ProcurementModule() {
   return (
     <div className="space-y-5">
       <div>
-        <h1 className="text-xl font-bold text-gray-900">إدارة المشتريات والتعاقدات</h1>
-        <p className="text-sm text-gray-500 mt-1">
-          دليل الموردين المعتمدين، العقود الخارجية، أوامر الشراء، وتحويل BOQ إلى طلبات تسعير — لأنظمة السلامة وفق SBC/NFPA
-        </p>
+        <h1 className="text-xl font-bold text-gray-900">{t('procurement.title')}</h1>
+        <p className="text-sm text-gray-500 mt-1">{t('procurement.subtitle')}</p>
       </div>
 
-      <ModuleSubNavSlot label="تبويبات المشتريات">
-        <div id="module-subnav" className="flex flex-wrap gap-2">
-          {(
-            [
-              { id: 'vendors' as const, label: 'دليل الموردين المعتمدين' },
-              { id: 'subcontractors' as const, label: 'العقود الخارجية' },
-              { id: 'orders' as const, label: 'أوامر الشراء' },
-              { id: 'boq-rfq' as const, label: 'BOQ → RFQ' },
-            ] as const
-          ).map((t) => (
-            <button
-              key={t.id}
-              type="button"
-              onClick={() => {
-                setTab(t.id);
-                if (t.id === 'vendors') setVendorForm((f) => ({ ...f, vendor_type: 'supplier' }));
-                if (t.id === 'subcontractors') setVendorForm((f) => ({ ...f, vendor_type: 'subcontractor' }));
-              }}
-              className={`px-3 py-2 rounded-lg text-sm font-semibold ${
-                tab === t.id ? 'bg-[#1f4d3a] text-white' : 'bg-white border'
-              }`}
-            >
-              {t.label}
-            </button>
-          ))}
-        </div>
+      <ModuleSubNavSlot label={t('subnav.procurement')}>
+        <ModuleTabBar
+          ariaLabel={t('subnav.procurement')}
+          activeId={tab}
+          onChange={(id) => {
+            const next = id as TabId;
+            setTab(next);
+            if (next === 'vendors') setVendorForm((f) => ({ ...f, vendor_type: 'supplier' }));
+            if (next === 'subcontractors') setVendorForm((f) => ({ ...f, vendor_type: 'subcontractor' }));
+          }}
+          activeClassName="bg-[#1f4d3a] text-white shadow-sm"
+          idleClassName="bg-white border border-gray-200 text-gray-800"
+          items={[
+            { id: 'vendors', label: t('procurement.tab.vendors') },
+            { id: 'subcontractors', label: t('procurement.tab.subcontractors') },
+            { id: 'orders', label: t('procurement.tab.orders') },
+            { id: 'boq-rfq', label: t('procurement.tab.boqRfq') },
+          ]}
+        />
       </ModuleSubNavSlot>
 
       {message && (

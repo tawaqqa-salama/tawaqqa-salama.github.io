@@ -9,12 +9,15 @@ import FollowUpModal from '@/components/marketing/FollowUpModal';
 import PipelineStatusBoard from '@/components/marketing/PipelineStatusBoard';
 import ResponsiveTable from '@/components/ui/ResponsiveTable';
 import ModuleSubNavSlot from '@/components/layout/ModuleSubNavSlot';
+import ModuleTabBar from '@/components/layout/ModuleTabBar';
+import { useLanguage } from '@/lib/i18n/LanguageProvider';
 import type { ClientFollowUp } from '@/lib/types/sales';
 import type { ClientRecord } from '@/lib/types/client';
 
 type TabId = 'dashboard' | 'campaigns' | 'leads' | 'followups' | 'pipeline';
 
 export default function MarketingPage() {
+  const { t } = useLanguage();
   const [tab, setTab] = useState<TabId>('dashboard');
   const [leads, setLeads] = useState<ClientRecord[]>([]);
   const [allClients, setAllClients] = useState<ClientRecord[]>([]);
@@ -114,55 +117,49 @@ export default function MarketingPage() {
     <div className="space-y-5">
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
         <div>
-          <h1 className="text-xl font-bold text-gray-900">إدارة التسويق</h1>
-          <p className="text-sm text-gray-500 mt-1">لوحة الحملات ورحلة العميل — Leads ومتابعات التواصل</p>
+          <h1 className="text-xl font-bold text-gray-900">{t('marketing.title')}</h1>
+          <p className="text-sm text-gray-500 mt-1">{t('marketing.subtitle')}</p>
         </div>
         <button onClick={() => { setErrorMessage(null); setIsModalOpen(true); }} className="px-4 py-2 bg-purple-600 text-white rounded-lg text-sm font-semibold">
-          + Lead جديد
+          {t('marketing.create')}
         </button>
       </div>
 
-      <ModuleSubNavSlot label="تبويبات التسويق">
-        <div id="module-subnav" className="flex flex-wrap gap-2">
-          {([
-            { id: 'dashboard' as const, label: 'لوحة الحملات' },
-            { id: 'campaigns' as const, label: 'الحملات' },
-            { id: 'leads' as const, label: 'Leads' },
-            { id: 'followups' as const, label: 'متابعات التواصل' },
-            { id: 'pipeline' as const, label: 'لوحة حالة العميل' },
-          ]).map((t) => (
-            <button
-              key={t.id}
-              type="button"
-              onClick={() => setTab(t.id)}
-              className={`px-4 py-2 rounded-lg text-sm font-semibold ${tab === t.id ? 'bg-purple-600 text-white' : 'bg-white border'}`}
-            >
-              {t.label}
-            </button>
-          ))}
-        </div>
+      <ModuleSubNavSlot label={t('subnav.marketing')}>
+        <ModuleTabBar
+          ariaLabel={t('subnav.marketing')}
+          activeId={tab}
+          onChange={(id) => setTab(id as TabId)}
+          activeClassName="bg-purple-600 text-white shadow-sm"
+          idleClassName="bg-white border border-gray-200 text-gray-800"
+          items={[
+            { id: 'dashboard', label: t('marketing.tab.dashboard') },
+            { id: 'campaigns', label: t('marketing.tab.campaigns') },
+            { id: 'leads', label: t('marketing.tab.leads') },
+            { id: 'followups', label: t('marketing.tab.followups') },
+            { id: 'pipeline', label: t('marketing.tab.pipeline') },
+          ]}
+        />
       </ModuleSubNavSlot>
 
       {(tab === 'dashboard' || tab === 'campaigns') && (
         <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
           <div className="rounded-xl border bg-white p-4">
-            <p className="text-xs text-gray-500">Leads نشطة</p>
+            <p className="text-xs text-gray-500">{t('marketing.stat.activeLeads')}</p>
             <p className="text-2xl font-bold text-gray-900 mt-1">{leads.length}</p>
           </div>
           <div className="rounded-xl border bg-white p-4">
-            <p className="text-xs text-gray-500">متابعات مسجّلة</p>
+            <p className="text-xs text-gray-500">{t('marketing.stat.followups')}</p>
             <p className="text-2xl font-bold text-gray-900 mt-1">{followUps.length}</p>
           </div>
           <div className="rounded-xl border bg-white p-4">
-            <p className="text-xs text-gray-500">رحلة العميل</p>
+            <p className="text-xs text-gray-500">{t('marketing.stat.journey')}</p>
             <p className="text-sm text-gray-700 mt-2 leading-relaxed">
-              {tab === 'campaigns'
-                ? 'حملات التواصل والمتابعة — حوّل المهتمين إلى مبيعات عبر تبويب Leads.'
-                : 'لوحة متابعة رحلة العميل من الاهتمام حتى التحويل للمبيعات.'}
+              {tab === 'campaigns' ? t('marketing.campaignsHint') : t('marketing.dashboardHint')}
             </p>
           </div>
           <div className="md:col-span-3 rounded-xl border border-teal-100 bg-teal-50 p-4 text-sm text-teal-900">
-            استخدم تبويب «لوحة حالة العميل» لعرض مراحل المشاريع (قراءة)، وتبويب Leads لإدارة الحملات اليومية.
+            {t('marketing.banner')}
           </div>
         </div>
       )}
@@ -172,28 +169,28 @@ export default function MarketingPage() {
           <table className="w-full text-right text-sm table-as-cards">
             <thead className="bg-gray-50 border-b text-gray-600">
               <tr>
-                <th className="p-4">العميل</th>
-                <th className="p-4">الجوال</th>
-                <th className="p-4">حالة الاهتمام</th>
-                <th className="p-4">آخر تواصل</th>
-                <th className="p-4">إجراء</th>
+                <th className="p-4">{t('marketing.col.client')}</th>
+                <th className="p-4">{t('marketing.col.phone')}</th>
+                <th className="p-4">{t('marketing.col.interest')}</th>
+                <th className="p-4">{t('marketing.col.lastContact')}</th>
+                <th className="p-4">{t('marketing.col.action')}</th>
               </tr>
             </thead>
             <tbody>
               {loading ? (
-                <tr><td colSpan={5} className="p-8 text-center text-gray-400">جاري التحميل...</td></tr>
+                <tr><td colSpan={5} className="p-8 text-center text-gray-400">{t('common.loading')}</td></tr>
               ) : leads.length === 0 ? (
-                <tr><td colSpan={5} className="p-8 text-center text-gray-400">لا يوجد Leads</td></tr>
+                <tr><td colSpan={5} className="p-8 text-center text-gray-400">{t('marketing.emptyLeads')}</td></tr>
               ) : (
                 leads.map((lead) => (
                   <tr key={lead.id} className="border-b hover:bg-gray-50">
-                    <td className="p-4 font-semibold" data-label="العميل">{lead.owner_name || lead.name}</td>
-                    <td className="p-4 font-mono" data-label="الجوال">{lead.phone}</td>
-                    <td className="p-4" data-label="حالة الاهتمام">{lead.lead_status || 'مهتم'}</td>
-                    <td className="p-4 text-gray-500" data-label="آخر تواصل">{lead.last_contact_date || '—'}</td>
-                    <td className="p-4 flex flex-wrap gap-2" data-label="إجراء">
-                      <button onClick={() => setFollowUpClient(lead)} className="touch-target px-3 bg-gray-100 rounded-lg text-xs">متابعة</button>
-                      <button onClick={() => convertToSales(lead)} className="touch-target px-3 bg-blue-600 text-white rounded-lg text-xs">→ مبيعات</button>
+                    <td className="p-4 font-semibold" data-label={t('marketing.col.client')}>{lead.owner_name || lead.name}</td>
+                    <td className="p-4 font-mono isolate-ltr" data-label={t('marketing.col.phone')}>{lead.phone}</td>
+                    <td className="p-4" data-label={t('marketing.col.interest')}>{lead.lead_status || 'مهتم'}</td>
+                    <td className="p-4 text-gray-500 isolate-ltr" data-label={t('marketing.col.lastContact')}>{lead.last_contact_date || '—'}</td>
+                    <td className="p-4 flex flex-wrap gap-2" data-label={t('marketing.col.action')}>
+                      <button onClick={() => setFollowUpClient(lead)} className="touch-target px-3 bg-gray-100 rounded-lg text-xs">{t('marketing.followUp')}</button>
+                      <button onClick={() => convertToSales(lead)} className="touch-target px-3 bg-blue-600 text-white rounded-lg text-xs">{t('marketing.convertSales')}</button>
                     </td>
                   </tr>
                 ))
@@ -211,7 +208,7 @@ export default function MarketingPage() {
             </thead>
             <tbody>
               {followUps.length === 0 ? (
-                <tr><td colSpan={5} className="p-8 text-center text-gray-400">لا توجد متابعات</td></tr>
+                <tr><td colSpan={5} className="p-8 text-center text-gray-400">{t('marketing.emptyFollowups')}</td></tr>
               ) : (
                 followUps.map((fu) => (
                   <tr key={fu.id} className="border-b">

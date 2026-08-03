@@ -9,6 +9,7 @@ import { calculateTotalAmount, calculateVatAmount } from '@/lib/business/client-
 import { generateReturnNumber, generateSalesDocNumber } from '@/lib/constants/modules';
 import { nextClientCode } from '@/lib/business/document-numbers';
 import ModuleSubNavSlot from '@/components/layout/ModuleSubNavSlot';
+import ModuleTabBar from '@/components/layout/ModuleTabBar';
 import ResponsiveTable from '@/components/ui/ResponsiveTable';
 import RowActionsMenu from '@/components/ui/RowActionsMenu';
 import { insertClientSafe } from '@/lib/supabase/safe-client-write';
@@ -18,6 +19,7 @@ import { parseLocalizedInteger, parseLocalizedNumber } from '@/lib/validation/cl
 import { clientToFinancialDocument } from '@/lib/invoices/document-mapper';
 import { useSalesBundle, invalidateErpLists } from '@/lib/data/hooks';
 import { LIST_PAGE_SIZE } from '@/lib/data/query-config';
+import { useLanguage } from '@/lib/i18n/LanguageProvider';
 import type { ClientFormData, ClientRecord, FinancialDocument } from '@/lib/types/client';
 import type { SalesReturn } from '@/lib/types/sales';
 
@@ -63,6 +65,7 @@ async function printContractLazy(
 }
 
 export default function SalesPage() {
+  const { t } = useLanguage();
   const [tab, setTab] = useState<TabId>('sales');
   const [limit, setLimit] = useState(LIST_PAGE_SIZE);
   const { clients: allClients, documents, contracts, returns, loading, refresh } =
@@ -177,15 +180,15 @@ export default function SalesPage() {
     <div className="space-y-5">
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
         <div>
-          <h1 className="text-xl font-bold">إدارة المبيعات</h1>
-          <p className="text-sm text-gray-500">خانة المبيعات، خانة عرض السعر، العقود، الآجل والأرشيف</p>
+          <h1 className="text-xl font-bold">{t('sales.title')}</h1>
+          <p className="text-sm text-gray-500">{t('sales.subtitle')}</p>
         </div>
         <button
           type="button"
           onClick={() => setIsAddOpen(true)}
           className="px-4 py-2 bg-blue-600 text-white rounded-lg text-sm font-semibold"
         >
-          + عميل / عرض
+          {t('sales.create')}
         </button>
       </div>
 
@@ -214,31 +217,23 @@ export default function SalesPage() {
         </div>
       </div>
 
-      <ModuleSubNavSlot label="تبويبات المبيعات">
-        <div id="module-subnav" className="flex flex-wrap gap-2">
-          {(
-            [
-              { id: 'sales' as const, label: 'المبيعات' },
-              { id: 'quotations' as const, label: 'عرض السعر' },
-              { id: 'documents' as const, label: 'أرشيف المستندات' },
-              { id: 'credit' as const, label: 'الآجل والمرتجعات' },
-              { id: 'contracts' as const, label: 'العقود' },
-              { id: 'tax-invoices' as const, label: 'الفواتير الضريبية' },
-              { id: 'accounts' as const, label: 'حساب العميل الشامل' },
-            ] as const
-          ).map((t) => (
-            <button
-              key={t.id}
-              type="button"
-              onClick={() => setTab(t.id)}
-              className={`px-3 py-2 rounded-lg text-sm font-semibold ${
-                tab === t.id ? 'bg-blue-600 text-white' : 'bg-white border'
-              }`}
-            >
-              {t.label}
-            </button>
-          ))}
-        </div>
+      <ModuleSubNavSlot label={t('subnav.sales')}>
+        <ModuleTabBar
+          ariaLabel={t('subnav.sales')}
+          activeId={tab}
+          onChange={(id) => setTab(id as TabId)}
+          activeClassName="bg-blue-600 text-white shadow-sm"
+          idleClassName="bg-white border border-gray-200 text-gray-800"
+          items={[
+            { id: 'sales', label: t('sales.tab.sales') },
+            { id: 'quotations', label: t('sales.tab.quotations') },
+            { id: 'documents', label: t('sales.tab.documents') },
+            { id: 'credit', label: t('sales.tab.credit') },
+            { id: 'contracts', label: t('sales.tab.contracts') },
+            { id: 'tax-invoices', label: t('sales.tab.taxInvoices') },
+            { id: 'accounts', label: t('sales.tab.accounts') },
+          ]}
+        />
       </ModuleSubNavSlot>
 
       {tab === 'sales' && (
