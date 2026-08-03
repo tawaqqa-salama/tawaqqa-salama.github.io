@@ -2,10 +2,11 @@
 
 import { useEffect, type ReactNode } from 'react';
 import { useModuleSubNav } from '@/components/layout/ModuleSubNavContext';
+import { useLanguage } from '@/lib/i18n/LanguageProvider';
 
 type ModuleSubNavSlotProps = {
   children: ReactNode;
-  /** تسمية وصول للقائمة */
+  /** تسمية وصول للقائمة — يُفضّل مفتاح ترجمة أو نص جاهز */
   label?: string;
   className?: string;
 };
@@ -13,14 +14,16 @@ type ModuleSubNavSlotProps = {
 /**
  * يغلّف تبويبات/قوائم القسم الفرعية ويخضعها لزر ☰ في الهيدر.
  * - سطح المكتب: إظهار/إخفاء الشريط العلوي
- * - الجوال: قائمة منسدلة أنيقة تحت الهيدر
+ * - الجوال: قائمة منسدلة أنيقة تحت الهيدر (تبويبات عمودية بدون تداخل)
  */
 export default function ModuleSubNavSlot({
   children,
-  label = 'القائمة الفرعية للقسم',
+  label,
   className = '',
 }: ModuleSubNavSlotProps) {
   const { open, isMobile, closeSubNav, hasSubNav } = useModuleSubNav();
+  const { t } = useLanguage();
+  const resolvedLabel = label || t('subnav.default');
 
   useEffect(() => {
     if (!isMobile || !open) return;
@@ -38,14 +41,14 @@ export default function ModuleSubNavSlot({
       <>
         <button
           type="button"
-          aria-label="إغلاق القائمة الفرعية"
+          aria-label={t('subnav.close')}
           className="fixed inset-0 z-[45] bg-[#1a2420]/35 backdrop-blur-[1px] animate-[fadeIn_140ms_ease-out] md:hidden"
           onClick={closeSubNav}
         />
         <div
           id="module-subnav"
           role="navigation"
-          aria-label={label}
+          aria-label={resolvedLabel}
           className={`
             fixed top-[3.75rem] inset-x-2 z-[50] md:hidden
             rounded-2xl border border-[var(--erp-border)] bg-white
@@ -55,13 +58,13 @@ export default function ModuleSubNavSlot({
             ${className}
           `}
         >
-          <div className="flex items-center justify-between gap-2 mb-2 px-1">
-            <p className="text-xs font-bold text-[var(--erp-muted)]">{label}</p>
+          <div className="flex items-center justify-between gap-2 mb-3 px-1">
+            <p className="text-xs font-bold text-[var(--erp-muted)]">{resolvedLabel}</p>
             <button
               type="button"
               onClick={closeSubNav}
               className="touch-target rounded-lg border border-[var(--erp-border)] text-sm text-[var(--erp-muted)]"
-              aria-label="إغلاق"
+              aria-label={t('common.close')}
             >
               ×
             </button>
@@ -80,7 +83,7 @@ export default function ModuleSubNavSlot({
   }
 
   return (
-    <div role="navigation" aria-label={label} className={`mb-4 ${className}`}>
+    <div role="navigation" aria-label={resolvedLabel} className={`mb-4 ${className}`}>
       {children}
     </div>
   );

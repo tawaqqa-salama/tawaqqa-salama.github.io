@@ -9,6 +9,7 @@ import BarChartPanel, { IncomeBarChart } from '@/components/finance/BarChartPane
 import ErpCard from '@/components/ui/ErpCard';
 import { formatCurrency, formatDate } from '@/lib/format/currency';
 import { VAT_RATE } from '@/lib/constants/clients';
+import { useLanguage } from '@/lib/i18n/LanguageProvider';
 import type { AccountingDashboardStats } from '@/lib/types/accounting';
 
 function StatusBadge({ status }: { status: string }) {
@@ -25,6 +26,7 @@ function StatusBadge({ status }: { status: string }) {
 }
 
 export default function FinanceDashboardPage() {
+  const { t } = useLanguage();
   const [stats, setStats] = useState<AccountingDashboardStats | null>(null);
   const [loading, setLoading] = useState(true);
 
@@ -35,7 +37,7 @@ export default function FinanceDashboardPage() {
   }, []);
 
   if (loading) {
-    return <div className="text-center text-gray-400 py-20">جاري تحميل لوحة التحكم المحاسبية...</div>;
+    return <div className="text-center text-gray-400 py-20">{t('finance.page.dashboardLoading')}</div>;
   }
 
   if (!stats) return null;
@@ -44,14 +46,14 @@ export default function FinanceDashboardPage() {
     <div className="space-y-5">
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
         <div>
-          <h1 className="text-xl font-bold text-gray-900">لوحة التحكم المحاسبية</h1>
-          <p className="text-sm text-gray-500 mt-1">ملخص القيود والسندات والحسابات ومراكز التكلفة</p>
+          <h1 className="text-xl font-bold text-gray-900">{t('finance.page.dashboard')}</h1>
+          <p className="text-sm text-gray-500 mt-1">{t('finance.page.dashboardSubtitle')}</p>
         </div>
         <Link
           href="/finance/journal"
           className="inline-flex items-center justify-center px-4 py-2 bg-[#1f4d3a] text-white rounded-lg text-sm font-semibold hover:bg-[#163828] transition"
         >
-          + قيد يومية جديد
+          {t('finance.page.newJournal')}
         </Link>
       </div>
 

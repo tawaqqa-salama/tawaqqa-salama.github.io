@@ -10,11 +10,13 @@ import {
 } from '@/lib/business/pipeline';
 import { getProjectReportProgress, parseProjectEngineeringData } from '@/lib/business/project-reports';
 import ModuleSubNavSlot from '@/components/layout/ModuleSubNavSlot';
+import ModuleTabBar from '@/components/layout/ModuleTabBar';
 import ResponsiveTable from '@/components/ui/ResponsiveTable';
 import { useProjectsList, invalidateErpLists, invalidateClient } from '@/lib/data/hooks';
 import { PROJECTS_PAGE_SIZE } from '@/lib/data/query-config';
 import { fetchClientById } from '@/lib/data/fetchers';
 import { mergeLocalClientOverrides } from '@/lib/supabase/safe-client-write';
+import { useLanguage } from '@/lib/i18n/LanguageProvider';
 import type { ClientRecord } from '@/lib/types/client';
 
 const ProjectReportModal = dynamic(() => import('@/components/projects/ProjectReportModal'), {
@@ -40,13 +42,15 @@ const ComplianceEnginePanel = dynamic(() => import('@/components/compliance/Comp
 type TabId = 'list' | 'inspection' | 'blueprints' | 'compliance';
 type StatusFilter = 'all' | 'in_study' | 'completed' | 'archive' | 'everything';
 
-const STATUS_FILTERS: { id: StatusFilter; label: string }[] = [
-  { id: 'all', label: 'الكل' },
-  { id: 'in_study', label: 'قيد الدراسة' },
-  { id: 'completed', label: 'المكتملة' },
-  { id: 'archive', label: 'الأرشيف' },
-  { id: 'everything', label: 'كل السجلات' },
-];
+const STATUS_FILTER_IDS: StatusFilter[] = ['all', 'in_study', 'completed', 'archive', 'everything'];
+
+const STATUS_FILTER_KEYS: Record<StatusFilter, string> = {
+  all: 'projects.filter.all',
+  in_study: 'projects.filter.inStudy',
+  completed: 'projects.filter.completed',
+  archive: 'projects.filter.archive',
+  everything: 'projects.filter.everything',
+};
 
 function PanelSkeleton({ label }: { label: string }) {
   return (
@@ -144,6 +148,7 @@ const ProjectRow = memo(function ProjectRow({
 });
 
 export default function ProjectsPage() {
+  const { t } = useLanguage();
   const [limit, setLimit] = useState(PROJECTS_PAGE_SIZE);
   const { projects: rawProjects, loading, error, refresh } = useProjectsList(limit);
   const [selected, setSelected] = useState<ClientRecord | null>(null);
@@ -208,52 +213,42 @@ export default function ProjectsPage() {
   return (
     <div className="space-y-5">
       <div>
-        <h1 className="text-xl font-bold text-gray-900">إدارة المشاريع</h1>
-        <p className="text-sm text-gray-500 mt-1">
-          المعاينة الهندسية، المخططات/BIM، والامتثال SBC/NFPA — بما فيها المشاريع التي حُفظت تقاريرها
-        </p>
+        <h1 className="text-xl font-bold text-gray-900">{t('projects.title')}</h1>
+        <p className="text-sm text-gray-500 mt-1">{t('projects.subtitle')}</p>
       </div>
 
-      <ModuleSubNavSlot label="تبويبات المشاريع">
-        <div id="module-subnav" className="flex flex-wrap gap-2">
-          {(
-            [
-              { id: 'list' as const, label: 'المشاريع' },
-              { id: 'inspection' as const, label: 'المعاينة الهندسية' },
-              { id: 'blueprints' as const, label: 'المخططات / BIM' },
-              { id: 'compliance' as const, label: 'الامتثال SBC/NFPA' },
-            ] as const
-          ).map((t) => (
-            <button
-              key={t.id}
-              type="button"
-              onClick={() => setTab(t.id)}
-              className={`px-3 py-2 rounded-lg text-sm font-semibold ${
-                tab === t.id ? 'bg-indigo-600 text-white' : 'bg-white border'
-              }`}
-            >
-              {t.label}
-            </button>
-          ))}
-        </div>
+      <ModuleSubNavSlot label={t('subnav.projects')}>
+        <ModuleTabBar
+          ariaLabel={t('subnav.projects')}
+          activeId={tab}
+          onChange={(id) => setTab(id as TabId)}
+          activeClassName="bg-indigo-600 text-white shadow-sm"
+          idleClassName="bg-white border border-gray-200 text-gray-800"
+          items={[
+            { id: 'list', label: t('projects.tab.list') },
+            { id: 'inspection', label: t('projects.tab.inspection') },
+            { id: 'blueprints', label: t('projects.tab.blueprints') },
+            { id: 'compliance', label: t('projects.tab.compliance') },
+          ]}
+        />
       </ModuleSubNavSlot>
 
       {tab === 'list' && (
         <>
           <div className="flex flex-wrap gap-2">
-            {STATUS_FILTERS.map((f) => (
+            {STATUS_FILTER_IDS.map((id) => (
               <button
-                key={f.id}
+                key={id}
                 type="button"
-                onClick={() => setStatusFilter(f.id)}
+                onClick={() => setStatusFilter(id)}
                 className={`px-3 py-1.5 rounded-full text-xs font-semibold border transition ${
-                  statusFilter === f.id
+                  statusFilter === id
                     ? 'bg-[#1f4d3a] text-white border-[#1f4d3a]'
                     : 'bg-white text-gray-700 border-gray-200 hover:border-[#1f4d3a]/40'
                 }`}
               >
-                {f.label}
-                <span className="ms-1 opacity-80">({counts[f.id]})</span>
+                {t(STATUS_FILTER_KEYS[id])}
+                <span className="ms-1 opacity-80">({counts[id]})</span>
               </button>
             ))}
           </div>
