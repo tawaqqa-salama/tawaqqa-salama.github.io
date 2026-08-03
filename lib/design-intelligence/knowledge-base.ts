@@ -1,5 +1,6 @@
 import { EKB_TOPICS } from '@/lib/compliance/ekb-catalog';
 import { cosineSimilarity, embedText, chunkText, extractTextFromFile } from '@/lib/design-intelligence/embeddings';
+import { completeIndexingJob, enqueueIndexingJob } from '@/lib/design-intelligence/jobs';
 import type {
   DiKnowledgeChunk,
   DiKnowledgeDocument,
@@ -191,6 +192,8 @@ export async function indexDocumentText(
       issue_date: updated.issue_date,
       author_name: updated.author_name,
       version_label: updated.version_label,
+      version_no: updated.version_no || 1,
+      parent_document_id: updated.parent_document_id || null,
       tags: updated.tags,
       keywords: updated.keywords,
       project_type: updated.project_type,
@@ -222,12 +225,14 @@ export async function indexDocumentText(
           paragraph_ref: c.paragraph_ref,
           code_reference: c.code_reference,
           content: c.content,
+          token_estimate: Math.ceil(c.content.length / 4),
           embedding_json: c.embedding,
         }))
       );
     }
   }
 
+  await completeIndexingJob(doc.id, true);
   return { doc: updated, chunks };
 }
 
@@ -257,6 +262,8 @@ export async function uploadAndIndexKnowledgeFile(input: {
     issue_date: input.meta.issue_date || new Date().toISOString().slice(0, 10),
     author_name: input.meta.author_name || '',
     version_label: input.meta.version_label || '1.0',
+    version_no: input.meta.version_no || 1,
+    parent_document_id: input.meta.parent_document_id || null,
     tags: input.meta.tags || [],
     keywords: input.meta.keywords || [],
     project_type: input.meta.project_type || '',
@@ -279,7 +286,23 @@ export async function uploadAndIndexKnowledgeFile(input: {
     updated_at: new Date().toISOString(),
   };
 
+  await enqueueIndexingJob({ documentId: id, jobType: 'index' });
   const { doc } = await indexDocumentText(draft, text, ocrUsed);
+
+  void import('@/lib/activity/logger').then(({ logActivity }) =>
+    logActivity({
+      actionType: 'CREATE',
+      module: 'design',
+      details: `Knowledge document indexed: ${doc.title}`,
+      metadata: {
+        documentId: doc.id,
+        chunkCount: doc.chunk_count,
+        category: doc.category,
+        ocrUsed: doc.ocr_used,
+      },
+    })
+  );
+
   return doc;
 }
 

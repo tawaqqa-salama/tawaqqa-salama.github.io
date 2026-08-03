@@ -12,6 +12,7 @@ import {
   ensureSeedKnowledgeBase,
   knowledgeCategories,
   listChecklists,
+  listIndexingJobs,
   listKnowledgeDocumentsSync,
   listLessons,
   listNotifications,
@@ -19,10 +20,14 @@ import {
   listWorkspaces,
   markNotificationRead,
   ragQuery,
+  rescheduleWorkspaceTasks,
   saveChecklist,
+  seedSmartNotifications,
   suggestEngineeringSystems,
   timelineHealth,
   updateTask,
+  updateWorkspace,
+  addWorkspaceNote,
   uploadAndIndexKnowledgeFile,
   addLesson,
   type DesignIntelligenceTabId,
@@ -68,6 +73,13 @@ export default function DesignIntelligenceModule() {
   const [category, setCategory] = useState(knowledgeCategories()[0]);
   const [discipline, setDiscipline] = useState('Fire Protection');
   const [codes, setCodes] = useState('SBC 801, NFPA 13');
+  const [revision, setRevision] = useState('A');
+  const [author, setAuthor] = useState('');
+  const [versionLabel, setVersionLabel] = useState('1.0');
+  const [buildingTypeMeta, setBuildingTypeMeta] = useState('');
+  const [hazardMeta, setHazardMeta] = useState('');
+  const [tagsMeta, setTagsMeta] = useState('');
+  const [notesMeta, setNotesMeta] = useState('');
   const [file, setFile] = useState<File | null>(null);
 
   // RAG / Copilot
@@ -77,9 +89,11 @@ export default function DesignIntelligenceModule() {
   // Drawing review
   const [audit, setAudit] = useState<BlueprintAiAuditResult | null>(null);
 
-  // Lessons
+  // Lessons / workspace notes
   const [lessonProblem, setLessonProblem] = useState('');
   const [lessonSolution, setLessonSolution] = useState('');
+  const [wsNote, setWsNote] = useState('');
+  const [wsReq, setWsReq] = useState('');
 
   const label = useCallback(
     (key: string, fallback: string) => {
@@ -136,11 +150,20 @@ export default function DesignIntelligenceModule() {
           title: title.trim(),
           category,
           discipline,
+          revision,
+          author_name: author,
+          version_label: versionLabel,
+          building_type: buildingTypeMeta,
+          hazard_classification: hazardMeta,
+          tags: tagsMeta.split(/[,،]/).map((s) => s.trim()).filter(Boolean),
+          keywords: tagsMeta.split(/[,،]/).map((s) => s.trim()).filter(Boolean),
+          notes: notesMeta,
           applicable_codes: codes.split(/[,،]/).map((s) => s.trim()).filter(Boolean),
         },
       });
       setTitle('');
       setFile(null);
+      setNotesMeta('');
       setDocs(listKnowledgeDocumentsSync());
       setMessage(lang === 'en' ? 'Document uploaded, chunked, and indexed offline.' : 'تم الرفع والتجزئة والفهرسة دون اتصال.');
     } catch (e) {
@@ -169,6 +192,7 @@ export default function DesignIntelligenceModule() {
     });
     setWorkspaces(listWorkspaces());
     setActiveWsId(workspace.id);
+    setWsReq(workspace.requirements || '');
     setTasks(listTasks(workspace.id));
     setChecklists(listChecklists(workspace.id));
     setTab('planner');
@@ -261,8 +285,17 @@ export default function DesignIntelligenceModule() {
                 ))}
               </select>
             </label>
-            <Field label="Discipline" value={discipline} onChange={setDiscipline} />
+            <div className="grid grid-cols-2 gap-2">
+              <Field label="Discipline" value={discipline} onChange={setDiscipline} />
+              <Field label="Revision" value={revision} onChange={setRevision} />
+              <Field label="Author" value={author} onChange={setAuthor} />
+              <Field label="Version" value={versionLabel} onChange={setVersionLabel} />
+              <Field label="Building Type" value={buildingTypeMeta} onChange={setBuildingTypeMeta} />
+              <Field label="Hazard" value={hazardMeta} onChange={setHazardMeta} />
+            </div>
             <Field label="Applicable Codes" value={codes} onChange={setCodes} />
+            <Field label="Tags / Keywords" value={tagsMeta} onChange={setTagsMeta} />
+            <Field label="Notes" value={notesMeta} onChange={setNotesMeta} />
             <input
               type="file"
               accept=".pdf,.doc,.docx,.xls,.xlsx,.png,.jpg,.jpeg,.dwg,.dxf,.txt,.csv"
@@ -277,6 +310,9 @@ export default function DesignIntelligenceModule() {
             >
               {busy ? '…' : label('design.kb.index', 'Upload & Index')}
             </button>
+            <p className="text-[11px] text-gray-400">
+              Pipeline: OCR → extract → chunk → embed → index · jobs: {listIndexingJobs().filter((j) => j.status === 'queued').length} queued
+            </p>
           </div>
           <div className="xl:col-span-3">
             <ResponsiveTable className="bg-white rounded-xl border">
@@ -392,7 +428,10 @@ export default function DesignIntelligenceModule() {
               <button
                 key={w.id}
                 type="button"
-                onClick={() => setActiveWsId(w.id)}
+                onClick={() => {
+                  setActiveWsId(w.id);
+                  setWsReq(w.requirements || '');
+                }}
                 className={`w-full text-right border rounded-xl px-3 py-2 text-sm ${
                   w.id === activeWs?.id ? 'border-emerald-600 bg-emerald-50' : ''
                 }`}
@@ -404,9 +443,67 @@ export default function DesignIntelligenceModule() {
               </button>
             ))}
             {activeWs ? (
-              <div className="mt-3 text-xs space-y-1 border-t pt-3">
+              <div className="mt-3 text-xs space-y-2 border-t pt-3">
+                <div>Summary: {activeWs.summary}</div>
                 <div>Scope: {activeWs.fire_protection_scope}</div>
-                <div>Area: {activeWs.area_m2 ?? '—'} m² · Floors: {activeWs.floors_count ?? '—'}</div>
+                <div>
+                  Occupancy: {activeWs.occupancy || '—'} · Risk: {activeWs.risk_classification || '—'}
+                </div>
+                <div>
+                  Height: {activeWs.building_height_m ?? '—'} m · Area: {activeWs.area_m2 ?? '—'} m² · Floors:{' '}
+                  {activeWs.floors_count ?? '—'}
+                </div>
+                <div>Codes: {(activeWs.applicable_codes || []).join(', ')}</div>
+                <label className="block">
+                  <span className="font-semibold">Project requirements</span>
+                  <textarea
+                    rows={2}
+                    className="mt-1 w-full border rounded-lg px-2 py-1.5"
+                    value={wsReq}
+                    onChange={(e) => setWsReq(e.target.value)}
+                    onBlur={() => {
+                      updateWorkspace({ ...activeWs, requirements: wsReq });
+                      setWorkspaces(listWorkspaces());
+                    }}
+                  />
+                </label>
+                <div className="flex gap-2">
+                  <input
+                    className="flex-1 border rounded-lg px-2 py-1.5"
+                    placeholder="RFI / client comment"
+                    value={wsNote}
+                    onChange={(e) => setWsNote(e.target.value)}
+                  />
+                  <button
+                    type="button"
+                    className="px-2 py-1 rounded-lg bg-slate-800 text-white"
+                    onClick={() => {
+                      if (!wsNote.trim() || !activeWs) return;
+                      addWorkspaceNote(activeWs.id, 'rfi', { body: wsNote.trim() });
+                      setWsNote('');
+                      setWorkspaces(listWorkspaces());
+                    }}
+                  >
+                    RFI
+                  </button>
+                  <button
+                    type="button"
+                    className="px-2 py-1 rounded-lg border"
+                    onClick={() => {
+                      if (!wsNote.trim() || !activeWs) return;
+                      addWorkspaceNote(activeWs.id, 'client_comment', {
+                        author: 'Client',
+                        body: wsNote.trim(),
+                      });
+                      setWsNote('');
+                      setWorkspaces(listWorkspaces());
+                    }}
+                  >
+                    Client
+                  </button>
+                </div>
+                <div>RFIs: {(activeWs.rfis || []).length} · Comments: {(activeWs.client_comments || []).length}</div>
+                <div>Revisions: {(activeWs.revision_history || []).map((r) => r.revision).join(', ') || '—'}</div>
                 <div>Notes: {activeWs.engineering_notes || '—'}</div>
               </div>
             ) : null}
@@ -416,9 +513,24 @@ export default function DesignIntelligenceModule() {
 
       {tab === 'planner' && (
         <div className="rounded-xl border bg-white overflow-hidden">
-          <div className="p-3 border-b flex justify-between items-center">
+          <div className="p-3 border-b flex justify-between items-center gap-2 flex-wrap">
             <h2 className="font-bold text-sm">AI Design Planner — {activeWs?.project_name || '—'}</h2>
-            <span className="text-xs text-gray-500">{tasks.length} tasks</span>
+            <div className="flex items-center gap-2">
+              <span className="text-xs text-gray-500">{tasks.length} tasks</span>
+              <button
+                type="button"
+                disabled={!activeWsId}
+                onClick={() => {
+                  if (!activeWsId) return;
+                  const next = rescheduleWorkspaceTasks(activeWsId);
+                  setTasks(next);
+                  setMessage(lang === 'en' ? 'Timeline auto-rescheduled.' : 'تمت إعادة جدولة المهام تلقائياً.');
+                }}
+                className="px-3 py-1.5 rounded-lg border text-xs font-semibold disabled:opacity-40"
+              >
+                Auto-reschedule
+              </button>
+            </div>
           </div>
           <ResponsiveTable>
             <table className="w-full text-sm table-as-cards">
@@ -439,6 +551,9 @@ export default function DesignIntelligenceModule() {
                   <tr key={task.id} className="border-t">
                     <td className="p-2 font-medium" data-label="Task">
                       {task.title}
+                      {task.is_critical ? (
+                        <span className="ml-1 text-[10px] text-rose-600 font-bold">CP</span>
+                      ) : null}
                     </td>
                     <td className="p-2" data-label="Owner">
                       <input
@@ -521,7 +636,10 @@ export default function DesignIntelligenceModule() {
       {tab === 'drawings' && (
         <div className="rounded-xl border bg-white p-4 space-y-3">
           <h2 className="font-bold">Drawing Review AI</h2>
-          <p className="text-xs text-gray-500">PDF / DWG / Images — local rule audit linked to code references.</p>
+          <p className="text-xs text-gray-500">
+            PDF / DWG / Images — local rule audit. Checks: missing devices, hazard, exits, fire separation,
+            coverage, hydraulic warnings, code violations, coordination, notes & symbols — each linked to code refs.
+          </p>
           <input
             type="file"
             accept=".pdf,.dwg,.dxf,.png,.jpg,.jpeg"
@@ -541,6 +659,9 @@ export default function DesignIntelligenceModule() {
                     </span>
                   </div>
                   <p className="text-xs text-gray-600 mt-1">{f.detail}</p>
+                  {f.refs?.length ? (
+                    <p className="text-[10px] text-emerald-800 mt-1">Refs: {f.refs.join(' · ')}</p>
+                  ) : null}
                 </div>
               ))}
             </div>
@@ -552,21 +673,40 @@ export default function DesignIntelligenceModule() {
         <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
           <Panel title="Delayed / Critical path risks" items={health.delayed.map((t) => t.title)} />
           <Panel title="Upcoming tasks" items={health.upcoming.map((t) => `${t.title} (${t.start_date})`)} />
-          <Panel title="High priority open" items={health.critical.map((t) => t.title)} />
+          <Panel
+            title="Critical path (open)"
+            items={health.critical.map((t) => `${t.title}${t.is_critical ? ' ★' : ''}`)}
+          />
           <div className="md:col-span-3 rounded-xl border bg-white p-4">
-            <h3 className="font-bold text-sm mb-3">Gantt (simple)</h3>
+            <div className="flex justify-between items-center mb-3">
+              <h3 className="font-bold text-sm">Gantt + milestones</h3>
+              <button
+                type="button"
+                disabled={!activeWsId}
+                onClick={() => {
+                  if (!activeWsId) return;
+                  setTasks(rescheduleWorkspaceTasks(activeWsId));
+                }}
+                className="text-xs px-3 py-1.5 rounded-lg border font-semibold"
+              >
+                Automatic rescheduling
+              </button>
+            </div>
             <div className="space-y-2">
               {tasks.map((task) => (
                 <div key={task.id} className="text-xs">
                   <div className="flex justify-between mb-0.5">
-                    <span>{task.title}</span>
+                    <span>
+                      {task.title}
+                      {task.is_critical ? ' · CP' : ''}
+                    </span>
                     <span>
                       {task.start_date} → {task.end_date}
                     </span>
                   </div>
                   <div className="h-2 bg-gray-100 rounded overflow-hidden">
                     <div
-                      className="h-full bg-[#1f4d3a]"
+                      className={`h-full ${task.is_critical ? 'bg-rose-700' : 'bg-[#1f4d3a]'}`}
                       style={{ width: `${Math.max(task.progress_percent, 4)}%` }}
                     />
                   </div>
@@ -579,6 +719,16 @@ export default function DesignIntelligenceModule() {
 
       {tab === 'notifications' && (
         <div className="space-y-2">
+          <button
+            type="button"
+            onClick={() => {
+              seedSmartNotifications(activeWsId || undefined);
+              refresh();
+            }}
+            className="px-3 py-1.5 rounded-lg border text-xs font-semibold"
+          >
+            Seed smart alerts (NFPA / codes / deadlines)
+          </button>
           {listNotifications().map((n) => (
             <button
               key={n.id}
@@ -688,15 +838,34 @@ export default function DesignIntelligenceModule() {
       )}
 
       {tab === 'analytics' && (
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-          <Stat label="Workspaces" value={stats.workspaceCount} />
-          <Stat label="Tasks" value={stats.taskCount} />
-          <Stat label="Completion rate" value={`${stats.completionRate}%`} />
-          <Stat label="Avg design hours" value={stats.avgDesignHours} />
-          <Stat label="Actual hours" value={stats.actualHours} />
-          <Stat label="Lessons" value={stats.lessonsCount} />
-          <Stat label="Unread alerts" value={stats.unreadNotifications} />
-          <Stat label="KB documents" value={docs.length} />
+        <div className="space-y-4">
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+            <Stat label="Workspaces" value={stats.workspaceCount} />
+            <Stat label="Tasks" value={stats.taskCount} />
+            <Stat label="Completion rate" value={`${stats.completionRate}%`} />
+            <Stat label="Avg design hours" value={stats.avgDesignHours} />
+            <Stat label="Actual hours" value={stats.actualHours} />
+            <Stat label="Engineer productivity" value={`${stats.engineerProductivity}%`} />
+            <Stat label="Design accuracy" value={`${stats.designAccuracy}%`} />
+            <Stat label="Lessons / repeated issues" value={stats.lessonsCount} />
+            <Stat label="Unread alerts" value={stats.unreadNotifications} />
+            <Stat label="KB documents" value={docs.length} />
+            <Stat label="AI usage (RAG docs)" value={docs.filter((d) => d.index_status === 'indexed').length} />
+          </div>
+          <div className="rounded-xl border bg-white p-4">
+            <h3 className="font-bold text-sm mb-2">Most used codes</h3>
+            {(stats.mostUsedCodes || []).length === 0 ? (
+              <p className="text-xs text-gray-400">—</p>
+            ) : (
+              <ul className="text-sm space-y-1">
+                {stats.mostUsedCodes.map((c) => (
+                  <li key={c.code}>
+                    {c.code} · {c.count}
+                  </li>
+                ))}
+              </ul>
+            )}
+          </div>
         </div>
       )}
     </div>

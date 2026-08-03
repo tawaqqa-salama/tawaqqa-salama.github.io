@@ -42,12 +42,13 @@ export function buildDefaultDesignPlan(opts?: {
       estimated_hours: hours[i] || 4,
       actual_hours: 0,
       sort_order: i + 1,
+      is_critical: true, // linear pipeline — all on critical path by default
     });
     prevId = id;
     cursor = end;
   });
 
-  return tasks;
+  return markCriticalPath(tasks);
 }
 
 export function buildOccupancyChecklist(input: {
@@ -193,6 +194,72 @@ export function timelineHealth(tasks: DiDesignTask[]) {
   const upcoming = tasks
     .filter((t) => t.start_date && t.start_date >= today && t.status !== 'done')
     .slice(0, 5);
-  const critical = tasks.filter((t) => t.priority === 'high' && t.status !== 'done');
+  const critical = tasks.filter(
+    (t) => (t.is_critical || t.priority === 'high') && t.status !== 'done'
+  );
   return { delayed, upcoming, critical };
+}
+
+/** Mark dependency chain as critical path (longest unfinished chain). */
+export function markCriticalPath(tasks: DiDesignTask[]): DiDesignTask[] {
+  const byId = new Map(tasks.map((t) => [t.id, t]));
+  const depth = new Map<string, number>();
+
+  const compute = (id: string, visiting = new Set<string>()): number => {
+    if (depth.has(id)) return depth.get(id)!;
+    if (visiting.has(id)) return 0;
+    visiting.add(id);
+    const task = byId.get(id);
+    if (!task) return 0;
+    const deps = task.depends_on || [];
+    const parent = deps.reduce((max, depId) => Math.max(max, compute(depId, visiting)), 0);
+    const value = parent + (task.status === 'done' ? 0 : 1);
+    depth.set(id, value);
+    visiting.delete(id);
+    return value;
+  };
+
+  tasks.forEach((t) => compute(t.id));
+  const maxDepth = Math.max(0, ...Array.from(depth.values()));
+  return tasks.map((t) => ({
+    ...t,
+    is_critical: (depth.get(t.id) || 0) === maxDepth && maxDepth > 0,
+  }));
+}
+
+/**
+ * Automatic rescheduling: push dependent tasks forward when predecessors slip.
+ * Returns a new task list with updated dates.
+ */
+export function autoRescheduleTasks(tasks: DiDesignTask[], today = new Date().toISOString().slice(0, 10)): DiDesignTask[] {
+  const sorted = [...tasks].sort((a, b) => a.sort_order - b.sort_order);
+  const byId = new Map(sorted.map((t) => [t.id, { ...t }]));
+
+  for (const task of sorted) {
+    const current = byId.get(task.id)!;
+    if (current.status === 'done') continue;
+
+    let minStart = current.start_date || today;
+    for (const depId of current.depends_on || []) {
+      const dep = byId.get(depId);
+      if (dep?.end_date && dep.end_date > minStart) minStart = dep.end_date;
+    }
+    if (current.end_date && current.end_date < today && (current.progress_percent || 0) < 100) {
+      // delayed open task — start from today
+      minStart = today > minStart ? today : minStart;
+    }
+
+    const spanDays = Math.max(
+      1,
+      Math.round(
+        (new Date(current.end_date || minStart).getTime() - new Date(current.start_date || minStart).getTime()) /
+          86400000
+      ) || 2
+    );
+    current.start_date = minStart;
+    current.end_date = addDays(minStart, spanDays);
+    byId.set(task.id, current);
+  }
+
+  return markCriticalPath(Array.from(byId.values()).sort((a, b) => a.sort_order - b.sort_order));
 }

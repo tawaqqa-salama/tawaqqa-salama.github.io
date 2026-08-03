@@ -13,6 +13,8 @@ export type DiKnowledgeDocument = {
   issue_date?: string | null;
   author_name?: string | null;
   version_label?: string | null;
+  version_no?: number;
+  parent_document_id?: string | null;
   tags?: string[];
   keywords?: string[];
   project_type?: string | null;
@@ -68,6 +70,29 @@ export type RagAnswer = {
   message?: string;
 };
 
+export type DiWorkspaceAttachment = {
+  id: string;
+  name: string;
+  kind: string;
+  note?: string;
+  created_at: string;
+};
+
+export type DiWorkspaceComment = {
+  id: string;
+  author: string;
+  body: string;
+  created_at: string;
+};
+
+export type DiRevisionEntry = {
+  id: string;
+  revision: string;
+  summary: string;
+  author?: string;
+  created_at: string;
+};
+
 export type DiDesignWorkspace = {
   id: string;
   client_id?: string | null;
@@ -83,6 +108,11 @@ export type DiDesignWorkspace = {
   fire_protection_scope?: string | null;
   applicable_codes?: string[];
   engineering_notes?: string | null;
+  uploaded_drawings?: DiWorkspaceAttachment[];
+  calculation_files?: DiWorkspaceAttachment[];
+  rfis?: DiWorkspaceComment[];
+  client_comments?: DiWorkspaceComment[];
+  revision_history?: DiRevisionEntry[];
   status: string;
   created_at?: string;
   updated_at?: string;
@@ -102,6 +132,18 @@ export type DiDesignTask = {
   estimated_hours?: number | null;
   actual_hours?: number | null;
   sort_order: number;
+  is_critical?: boolean;
+};
+
+export type DiIndexingJob = {
+  id: string;
+  document_id: string;
+  job_type: 'index' | 'reindex' | 'ocr';
+  status: 'queued' | 'running' | 'done' | 'failed';
+  attempts: number;
+  error_message?: string | null;
+  created_at: string;
+  updated_at?: string;
 };
 
 export type DiChecklistItem = {
