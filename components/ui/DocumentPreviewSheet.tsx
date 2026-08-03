@@ -32,11 +32,17 @@ export default function DocumentPreviewSheet() {
       `<style id="mobile-fit">
         @media screen {
           html, body { width: 100% !important; max-width: 100vw !important; overflow-x: hidden !important; }
-          .sheet, .page, body > div { width: 100% !important; max-width: 100% !important; min-height: auto !important; max-height: none !important; }
-          table { display: block; width: 100% !important; overflow-x: auto; }
-          .grid, .party-grid, .footer-grid, .meta-grid, .signs, .header {
+          .sheet, .page, .cover-letter-page, body > div {
+            width: 100% !important; max-width: 100% !important;
+            min-height: auto !important; max-height: none !important;
+          }
+          table.meta { display: table !important; width: 100% !important; }
+          table.meta td.k { white-space: normal !important; }
+          .grid, .party-grid, .footer-grid, .meta-grid, .signs {
             grid-template-columns: 1fr !important;
           }
+          .cover-letter-page .header { grid-template-columns: 1fr !important; }
+          .cover-letter-page .signatures { grid-template-columns: 1fr !important; }
           .doc-title { font-size: 20px !important; }
         }
       </style></head>`
@@ -46,15 +52,31 @@ export default function DocumentPreviewSheet() {
   if (!payload) return null;
 
   const printNow = () => {
-    const w = window.open('', '_blank', 'width=900,height=700');
+    // about:blank avoids leaking the app URL into browser print headers/footers
+    const w = window.open('about:blank', '_blank', 'noopener,noreferrer,width=900,height=700');
     if (!w) {
       alert('تعذّر فتح نافذة الطباعة. اسمح بالنوافذ المنبثقة.');
       return;
     }
+    w.document.open();
     w.document.write(payload.html);
     w.document.close();
-    w.focus();
-    setTimeout(() => w.print(), 300);
+    // Short/blank title further reduces Chrome/Edge print header noise
+    try {
+      w.document.title = ' ';
+    } catch {
+      /* ignore */
+    }
+    const trigger = () => {
+      w.focus();
+      w.print();
+    };
+    // Wait briefly for fonts/images before print dialog
+    if (w.document.fonts?.ready) {
+      void w.document.fonts.ready.then(() => setTimeout(trigger, 120));
+    } else {
+      setTimeout(trigger, 350);
+    }
   };
 
   return (
