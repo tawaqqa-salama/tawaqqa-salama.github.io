@@ -318,8 +318,6 @@ const en: Dict = {
   'login.processing': 'Processing...',
   'login.demoOtp': 'Demo verification code:',
   'login.pageTitle': 'Sign in',
-  'me.customLink': 'Personal page link',
-  'me.customLinkHint': 'Share your internal page via:',
 
   'subnav.close': 'Close sub-navigation',
   'subnav.default': 'Department sub-navigation',
