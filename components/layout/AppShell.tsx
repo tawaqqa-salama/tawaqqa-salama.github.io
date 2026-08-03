@@ -26,6 +26,7 @@ const ROUTE_DEPARTMENT: Record<string, DepartmentId> = {
   '/finance': 'finance',
   '/hr': 'hr',
   '/projects': 'projects',
+  '/design': 'design',
   '/settings': 'settings',
 };
 

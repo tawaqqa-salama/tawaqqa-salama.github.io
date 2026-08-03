@@ -38,6 +38,7 @@ export function moduleFromPath(pathname: string): string {
   if (pathname.startsWith('/finance')) return 'finance';
   if (pathname.startsWith('/hr')) return 'hr';
   if (pathname.startsWith('/projects')) return 'projects';
+  if (pathname.startsWith('/design')) return 'design';
   if (pathname.startsWith('/settings')) return 'settings';
   if (pathname.startsWith('/login')) return 'auth';
   if (pathname.startsWith('/u')) return 'employee';
