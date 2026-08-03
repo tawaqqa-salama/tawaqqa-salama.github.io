@@ -1,3 +1,5 @@
+import { recommendFromRules } from '@/lib/design-intelligence/rules-engine';
+import type { EngineeringSelection } from '@/lib/design-intelligence/rules-types';
 import type { DiDesignTask, DiChecklistItem, EngineeringSuggestion } from '@/lib/design-intelligence/types';
 import { DESIGN_PLANNER_STEPS } from '@/lib/design-intelligence/types';
 
@@ -56,8 +58,31 @@ export function buildOccupancyChecklist(input: {
   occupancy?: string;
   hazard?: string;
   codes?: string[];
+  selection?: EngineeringSelection;
 }): { title: string; items: DiChecklistItem[] } {
   const codes = input.codes?.length ? input.codes : ['SBC 801', 'NFPA 13', 'NFPA 72'];
+
+  // Prefer checklist items locked by Engineering Rules Engine
+  const fromRules = recommendFromRules({
+    building_type: input.buildingType || input.selection?.building_type || null,
+    occupancy: input.occupancy || input.selection?.occupancy || null,
+    risk_classification: input.hazard || input.selection?.risk_classification || null,
+    applicable_codes: input.codes || input.selection?.applicable_codes || null,
+    ...input.selection,
+  }).recommendations.find((r) => r.field_key === 'required_checklists');
+
+  if (fromRules?.locked_value && Array.isArray(fromRules.locked_value) && fromRules.locked_value.length) {
+    return {
+      title: `Design checklist — ${input.occupancy || input.buildingType || 'Project'} (rules)`,
+      items: fromRules.locked_value.map((label) => ({
+        id: uid('ck'),
+        label,
+        checked: false,
+        code_ref: fromRules.code_refs[0] || codes[0],
+      })),
+    };
+  }
+
   const items: DiChecklistItem[] = [
     { id: uid('ck'), label: 'Confirm occupancy classification', checked: false, code_ref: 'SBC 801' },
     { id: uid('ck'), label: 'Confirm hazard classification', checked: false, code_ref: codes[0] },
@@ -90,6 +115,10 @@ export function buildOccupancyChecklist(input: {
   };
 }
 
+/**
+ * Smart assistant — recommendations ONLY from Engineering Rules Engine.
+ * Does not invent densities, pump L/min, or tank m³ outside locked rule values.
+ */
 export function suggestEngineeringSystems(input: {
   buildingType?: string;
   occupancy?: string;
@@ -98,82 +127,73 @@ export function suggestEngineeringSystems(input: {
   areaM2?: number | null;
   floors?: number | null;
   codes?: string[];
+  selection?: EngineeringSelection;
 }): EngineeringSuggestion[] {
-  const area = Number(input.areaM2) || 0;
-  const height = Number(input.heightM) || 0;
-  const floors = Number(input.floors) || 0;
-  const out: EngineeringSuggestion[] = [];
+  const selection: EngineeringSelection = input.selection || {
+    building_type: input.buildingType || null,
+    occupancy: input.occupancy || null,
+    risk_classification: input.risk || null,
+    applicable_codes: input.codes || null,
+  };
 
-  out.push({
-    id: 'occ',
-    title: 'Occupancy / hazard classification',
-    detail: `Review occupancy «${input.occupancy || '—'}» and risk «${input.risk || '—'}» against SBC 801 tables before locking design density.`,
-    severity: 'info',
-    code_refs: ['SBC 801'],
-  });
+  const { recommendations, note } = recommendFromRules(selection);
+  const out: EngineeringSuggestion[] = [
+    {
+      id: 'rules-bound',
+      title: 'Rules-bound AI (no free engineering values)',
+      detail: note,
+      severity: 'info',
+      code_refs: ['SBC 801', 'NFPA 13', 'Civil Defense'],
+    },
+  ];
 
-  if (area >= 500 || floors >= 2) {
-    out.push({
-      id: 'spr',
-      title: 'Required fire system — automatic sprinklers',
-      detail: 'Area/floors suggest evaluating mandatory automatic sprinklers (density per hazard). Confirm municipal/platform limits.',
-      severity: 'warn',
-      code_refs: ['NFPA 13', 'SBC 801'],
-    });
+  for (const r of recommendations) {
+    if (r.locked_value != null) {
+      out.push({
+        id: `lock-${r.field_key}`,
+        title: r.label_en,
+        detail: `Locked by rules: ${Array.isArray(r.locked_value) ? r.locked_value.join(', ') : r.locked_value}. ${r.explanation}`,
+        severity: /pump|tank|density|demand/i.test(r.field_key) ? 'warn' : 'info',
+        code_refs: r.code_refs,
+      });
+    } else if (r.valid_options.length) {
+      out.push({
+        id: `opt-${r.field_key}`,
+        title: `${r.label_en} — valid options only`,
+        detail: `${r.valid_options.map((o) => o.label_en).join(' · ')}. ${r.explanation}`,
+        severity: 'info',
+        code_refs: r.code_refs,
+      });
+    }
   }
-
-  out.push({
-    id: 'alarm',
-    title: 'Alarm type',
-    detail: 'Recommend addressable fire alarm with smoke/heat detection and manual call points; verify notification appliances coverage.',
-    severity: 'info',
-    code_refs: ['NFPA 72'],
-  });
-
-  if (area >= 1000 || height >= 18 || floors >= 4) {
-    out.push({
-      id: 'pump',
-      title: 'Pump capacity / diesel consideration',
-      detail: 'Project scale may require dedicated fire pump (electric/diesel) and reliable water supply. Size after hydraulic calculation.',
-      severity: 'critical',
-      code_refs: ['NFPA 20', 'NFPA 13'],
-    });
-    out.push({
-      id: 'tank',
-      title: 'Tank size',
-      detail: 'Estimate fire water tank from demand × duration after hydraulic calc; document refill source.',
-      severity: 'warn',
-      code_refs: ['NFPA 22', 'Civil Defense'],
-    });
-  }
-
-  out.push({
-    id: 'density',
-    title: 'Sprinkler density',
-    detail: 'Select design density/area from hazard classification (light / ordinary / extra). Do not assume without commodity survey.',
-    severity: 'info',
-    code_refs: ['NFPA 13'],
-  });
-
-  out.push({
-    id: 'docs',
-    title: 'Required reports & drawings',
-    detail: 'Technical report, hydraulic calc sheets, alarm & sprinkler layouts, pump room details, BOQ, Civil Defense submission set.',
-    severity: 'info',
-    code_refs: input.codes?.length ? input.codes : ['SBC 801', 'NFPA 13', 'NFPA 72'],
-  });
 
   const missing: string[] = [];
-  if (!input.occupancy) missing.push('Occupancy');
+  if (!selection.building_type) missing.push('Building Type');
+  if (!selection.occupancy) missing.push('Occupancy');
+  if (!selection.risk_classification) missing.push('Risk / Hazard');
   if (!input.areaM2) missing.push('Area (m²)');
   if (!input.floors) missing.push('Number of floors');
   if (missing.length) {
     out.push({
       id: 'missing',
       title: 'Missing information',
-      detail: `Collect before final design: ${missing.join(', ')}.`,
+      detail: `Complete rules cascade first: ${missing.join(', ')}.`,
       severity: 'critical',
       code_refs: [],
+    });
+  }
+
+  // Contextual note only (not a free engineering value)
+  const area = Number(input.areaM2) || 0;
+  const height = Number(input.heightM) || 0;
+  if (area >= 1000 || height >= 18) {
+    out.push({
+      id: 'scale-note',
+      title: 'Project scale note',
+      detail:
+        'Large area / height — confirm the rules-engine pump & tank locked bands against the project hydraulic calculation sheet (do not invent L/min or m³ here).',
+      severity: 'warn',
+      code_refs: ['NFPA 20', 'NFPA 22'],
     });
   }
 

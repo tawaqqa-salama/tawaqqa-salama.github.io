@@ -131,6 +131,7 @@ export const DEPARTMENT_SUB_MODULES: Record<DepartmentId, DepartmentSubModule[]>
     { id: 'knowledge', label: 'قاعدة المعرفة', tab: 'knowledge', href: '/design' },
     { id: 'rag', label: 'محرك المعرفة AI', tab: 'rag', href: '/design' },
     { id: 'workspace', label: 'مساحة التصميم', tab: 'workspace', href: '/design' },
+    { id: 'rules', label: 'محرك القواعد الهندسية', tab: 'rules', href: '/design' },
     { id: 'planner', label: 'مخطط التصميم', tab: 'planner', href: '/design' },
     { id: 'assistant', label: 'المساعد الذكي', tab: 'assistant', href: '/design' },
     { id: 'drawings', label: 'مراجعة المخططات', tab: 'drawings', href: '/design' },

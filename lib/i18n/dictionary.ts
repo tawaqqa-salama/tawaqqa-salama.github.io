@@ -138,6 +138,7 @@ const ar: Dict = {
   'design.tab.knowledge': 'قاعدة المعرفة',
   'design.tab.rag': 'محرك المعرفة',
   'design.tab.workspace': 'مساحة التصميم',
+  'design.tab.rules': 'محرك القواعد',
   'design.tab.planner': 'مخطط التصميم',
   'design.tab.assistant': 'المساعد الذكي',
   'design.tab.drawings': 'مراجعة المخططات',
@@ -153,6 +154,12 @@ const ar: Dict = {
   'design.rag.title': 'محرك المعرفة (RAG)',
   'design.rag.ask': 'اسأل قاعدة المعرفة',
   'design.copilot.title': 'Copilot الهندسي',
+  'design.rules.title': 'محرك القواعد الهندسية',
+  'design.rules.subtitle':
+    'كل حقل يُتحكم به من قاعدة القواعد. التركيبات غير الصالحة تُخفى. القيم المقفلة تعرض مرجع الكود. الذكاء الاصطناعي يشرح الخيارات الصالحة فقط.',
+  'design.rules.ai': 'توصيات الذكاء الاصطناعي (ملزمة بالقواعد)',
+  'design.assistant.rulesNote':
+    'التوصيات من محرك القواعد فقط — افتح تبويب محرك القواعد. لا يولّد الذكاء الاصطناعي كثافة أو سعة مضخة أو خزان خارج القواعد.',
 
   'marketing.title': 'إدارة التسويق',
   'marketing.subtitle': 'لوحة الحملات ورحلة العميل — Leads ومتابعات التواصل',
@@ -490,6 +497,7 @@ const en: Dict = {
   'design.tab.knowledge': 'Knowledge Base',
   'design.tab.rag': 'AI Knowledge Engine',
   'design.tab.workspace': 'Design Workspace',
+  'design.tab.rules': 'Rules Engine',
   'design.tab.planner': 'AI Design Planner',
   'design.tab.assistant': 'Smart Assistant',
   'design.tab.drawings': 'Drawing Review AI',
@@ -505,6 +513,12 @@ const en: Dict = {
   'design.rag.title': 'AI Knowledge Engine (RAG)',
   'design.rag.ask': 'Ask knowledge base',
   'design.copilot.title': 'Engineering Copilot',
+  'design.rules.title': 'Engineering Rules Engine',
+  'design.rules.subtitle':
+    'Every field is controlled by the rules database. Invalid combinations are hidden. Locked values show code references. AI may only explain valid options.',
+  'design.rules.ai': 'AI recommendations (rules-bound)',
+  'design.assistant.rulesNote':
+    'Recommendations come only from the Engineering Rules Engine — open the Rules Engine tab. AI never invents density, pump, or tank numbers outside rules.',
 
   'marketing.title': 'Marketing Management',
   'marketing.subtitle': 'Campaigns, client journey & lead tracking',
