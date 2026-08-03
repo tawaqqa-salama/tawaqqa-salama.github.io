@@ -1,5 +1,5 @@
 import { ACTIVITY_RULES } from '@/lib/constants/clients';
-import type { CompanyProfile } from '@/lib/company-profile';
+import { DEFAULT_COMPANY_PROFILE, type CompanyProfile } from '@/lib/company-profile';
 import type { ClientRecord } from '@/lib/types/client';
 import type {
   ProjectEngineeringData,
@@ -25,9 +25,9 @@ function monthProgressFor(months: SupervisionMonthColumn[]): Record<string, Supe
 }
 
 export const DEFAULT_SUPERVISION_MONTHS: SupervisionMonthColumn[] = [
-  { id: 'm1', label: 'الشهر الأول' },
-  { id: 'm2', label: 'الشهر الثاني' },
-  { id: 'm3', label: 'الشهر الثالث' },
+  { id: 'm1', label: 'الشهر 1' },
+  { id: 'm2', label: 'الشهر 2' },
+  { id: 'm3', label: 'الشهر 3' },
 ];
 
 type TaskSeed = {
@@ -44,6 +44,18 @@ export const DEFAULT_SUPERVISION_TASK_SEEDS: TaskSeed[] = [
     category_label: 'الملاحظات الإنشائية',
     description: 'توريد وتركيب أبواب الحريق',
     work_type: 'توريد وتركيب',
+  },
+  {
+    category_id: 'structural',
+    category_label: 'الملاحظات الإنشائية',
+    description: 'مخارج الطوارئ ومسارات الإخلاء',
+    work_type: 'تركيب',
+  },
+  {
+    category_id: 'structural',
+    category_label: 'الملاحظات الإنشائية',
+    description: 'العزل الإنشائي المقاوم للحريق',
+    work_type: 'تركيب',
   },
   {
     category_id: 'firefighting',
@@ -84,13 +96,13 @@ export const DEFAULT_SUPERVISION_TASK_SEEDS: TaskSeed[] = [
   {
     category_id: 'alarm',
     category_label: 'أنظمة الإنذار',
-    description: 'لوحات الإنذار',
+    description: 'لوحات التحكم والإنذار',
     work_type: 'توريد وتركيب',
   },
   {
     category_id: 'alarm',
     category_label: 'أنظمة الإنذار',
-    description: 'مجاري EMT الرئيسية',
+    description: 'تمديدات EMT ومجاري الأسلاك',
     work_type: 'توريد وتركيب',
   },
   {
@@ -108,20 +120,20 @@ export const DEFAULT_SUPERVISION_TASK_SEEDS: TaskSeed[] = [
   {
     category_id: 'alarm',
     category_label: 'أنظمة الإنذار',
+    description: 'أجهزة التنبيه / السماعات',
+    work_type: 'توريد وتركيب',
+  },
+  {
+    category_id: 'alarm',
+    category_label: 'أنظمة الإنذار',
     description: 'إنارة الطوارئ',
     work_type: 'توريد وتركيب',
   },
   {
     category_id: 'alarm',
     category_label: 'أنظمة الإنذار',
-    description: 'نظام الإذاعة العامة',
+    description: 'نظام الإذاعة العامة وتكامل الأنظمة',
     work_type: 'توريد وتركيب',
-  },
-  {
-    category_id: 'alarm',
-    category_label: 'أنظمة الإنذار',
-    description: 'تكامل الأنظمة',
-    work_type: 'تركيب',
   },
   {
     category_id: 'smoke',
@@ -137,8 +149,8 @@ export const DEFAULT_SUPERVISION_TASK_SEEDS: TaskSeed[] = [
   },
   {
     category_id: 'restoration',
-    category_label: 'أعمال الترميم بالنظافة',
-    description: 'التنظيف والترميم العام',
+    category_label: 'أعمال الترميم والنظافة العامة',
+    description: 'أعمال الترميم والتنظيف العام',
     work_type: 'تركيب',
   },
 ];
@@ -155,6 +167,45 @@ export function buildDefaultSupervisionTasks(
     month_progress: monthProgressFor(months),
     total_percent: null,
   }));
+}
+
+/** ترقية الهيكل الافتراضي القديم دون طمس النسب المحفوظة يدوياً */
+function shouldUpgradeDefaultTasks(tasks: SupervisionTaskRow[]): boolean {
+  if (!tasks.length) return true;
+  if (tasks.length >= DEFAULT_SUPERVISION_TASK_SEEDS.length) return false;
+  const onlyDefaults = tasks.every(
+    (t) => t.id.startsWith('task-') && !t.id.includes('manual')
+  );
+  return onlyDefaults;
+}
+
+function mergeDefaultTasksPreservingProgress(
+  existing: SupervisionTaskRow[],
+  months: SupervisionMonthColumn[]
+): SupervisionTaskRow[] {
+  const byDescription = new Map(
+    existing.map((t) => [t.description.trim(), t] as const)
+  );
+  return DEFAULT_SUPERVISION_TASK_SEEDS.map((seed, index) => {
+    const prev = byDescription.get(seed.description);
+    const base: SupervisionTaskRow = {
+      id: prev?.id || `task-${seed.category_id}-${index + 1}`,
+      category_id: seed.category_id,
+      category_label: seed.category_label,
+      description: seed.description,
+      work_type: prev?.work_type || seed.work_type,
+      month_progress: monthProgressFor(months),
+      total_percent: prev?.total_percent ?? null,
+    };
+    if (prev?.month_progress) {
+      for (const month of months) {
+        if (prev.month_progress[month.id]) {
+          base.month_progress[month.id] = { ...prev.month_progress[month.id] };
+        }
+      }
+    }
+    return base;
+  });
 }
 
 export function ensureTaskMonths(
@@ -195,6 +246,17 @@ export function resolveOverallProgress(report: SupervisionReport): number | null
   return calcOverallProgress(report.tasks || []);
 }
 
+export function isSupervisionReportIncomplete(report?: SupervisionReport | null): boolean {
+  if (!report) return true;
+  return (
+    !(report.months?.length) ||
+    !(report.tasks?.length) ||
+    !String(report.owner_name || '').trim() ||
+    !String(report.project_name || '').trim() ||
+    !String(report.supervising_office || '').trim()
+  );
+}
+
 export function seedSupervisionReport(
   client: ClientRecord,
   data: ProjectEngineeringData,
@@ -207,13 +269,21 @@ export function seedSupervisionReport(
   const cert = data.completion_certificate;
   const timeline = data.timeline;
   const today = new Date().toISOString().slice(0, 10);
+  const officeFallback =
+    company?.legal_name ||
+    company?.name ||
+    cert.study_office_name ||
+    DEFAULT_COMPANY_PROFILE.legal_name ||
+    DEFAULT_COMPANY_PROFILE.name;
 
   const months =
     existing?.months?.length ? existing.months : [...DEFAULT_SUPERVISION_MONTHS];
 
   let tasks: SupervisionTaskRow[];
-  if (existing?.tasks?.length) {
+  if (existing?.tasks?.length && !shouldUpgradeDefaultTasks(existing.tasks)) {
     tasks = existing.tasks.map((t) => ensureTaskMonths(t, months));
+  } else if (existing?.tasks?.length) {
+    tasks = mergeDefaultTasksPreservingProgress(existing.tasks, months);
   } else {
     tasks = buildDefaultSupervisionTasks(months);
   }
@@ -254,10 +324,7 @@ export function seedSupervisionReport(
       existing?.study_number,
       cert.study_report_number || tech.outgoing_number || delivery?.outgoing_number || ''
     ),
-    supervising_office: pick(
-      existing?.supervising_office,
-      company?.legal_name || company?.name || cert.study_office_name || ''
-    ),
+    supervising_office: pick(existing?.supervising_office, officeFallback),
     branch_manager_name: pick(
       existing?.branch_manager_name,
       delivery?.manager_name || tech.executive_director_name || ''
@@ -290,7 +357,7 @@ export function addSupervisionMonth(report: SupervisionReport): SupervisionRepor
   const n = (report.months?.length || 0) + 1;
   const month: SupervisionMonthColumn = {
     id: `m${Date.now()}`,
-    label: `الشهر ${n === 1 ? 'الأول' : n === 2 ? 'الثاني' : n === 3 ? 'الثالث' : n}`,
+    label: `الشهر ${n}`,
   };
   const months = [...(report.months || []), month];
   const tasks = (report.tasks || []).map((t) => ensureTaskMonths(t, months));

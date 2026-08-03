@@ -20,16 +20,19 @@ export function parseProjectEngineeringData(raw: ClientRecord['project_engineeri
       ...EMPTY_PROJECT_ENGINEERING_DATA,
       technical_report: { ...EMPTY_TECHNICAL_REPORT },
       field_visits: [],
-      supervision_report: { ...EMPTY_SUPERVISION_REPORT },
+      supervision_report: { ...EMPTY_SUPERVISION_REPORT, months: [], tasks: [] },
     };
   }
   const data = raw as Partial<ProjectEngineeringData>;
   const months = Array.isArray(data.supervision_report?.months)
     ? data.supervision_report!.months
-    : EMPTY_SUPERVISION_REPORT.months;
-  const tasks = Array.isArray(data.supervision_report?.tasks)
-    ? data.supervision_report!.tasks.map((t) => ensureTaskMonths(t, months.length ? months : []))
     : [];
+  const rawTasks = Array.isArray(data.supervision_report?.tasks)
+    ? data.supervision_report!.tasks
+    : [];
+  const tasks = months.length
+    ? rawTasks.map((t) => ensureTaskMonths(t, months))
+    : rawTasks;
   return {
     technical_report: {
       ...EMPTY_TECHNICAL_REPORT,

@@ -105,7 +105,7 @@ export function buildSupervisionReportHtml(params: {
   <style>
     @page {
       size: A4 landscape;
-      margin: 8mm 10mm;
+      margin: 8mm;
     }
     * { box-sizing: border-box; }
     html, body {
@@ -255,6 +255,10 @@ export function buildSupervisionReportHtml(params: {
     }
 
     @media print {
+      @page {
+        size: A4 landscape;
+        margin: 8mm;
+      }
       html, body { background: #fff; }
       .report-page-container {
         width: 100%;
@@ -312,10 +316,10 @@ export function buildSupervisionReportHtml(params: {
       <thead>
         <tr>
           <th>الأعمال</th>
-          <th>الملاحظات</th>
-          <th>نوع العمل</th>
+          <th>الملاحظات والتفاصيل</th>
+          <th>نوع العمل (توريد / تركيب)</th>
           ${monthHeaders}
-          <th>نسبة الإنجاز الكلية %</th>
+          <th>نسبة الإنجاز %</th>
         </tr>
       </thead>
       <tbody>
