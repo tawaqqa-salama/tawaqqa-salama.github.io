@@ -5,6 +5,7 @@ import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { getVisibleSidebarNav, SYSTEM_MODULES } from '@/lib/constants/navigation';
 import { useAuth } from '@/lib/auth/AuthProvider';
+import { useLanguage } from '@/lib/i18n/LanguageProvider';
 
 type AppSwitcherProps = {
   open: boolean;
@@ -14,6 +15,7 @@ type AppSwitcherProps = {
 export default function AppSwitcher({ open, onClose }: AppSwitcherProps) {
   const pathname = usePathname();
   const { canAccess, canManageStaff } = useAuth();
+  const { t, tNav, tNavDesc } = useLanguage();
   const titleId = useId();
   const visibleNav = getVisibleSidebarNav();
 
@@ -45,7 +47,7 @@ export default function AppSwitcher({ open, onClose }: AppSwitcherProps) {
     <div className="fixed inset-0 z-[80] flex items-start justify-center px-3 pt-[4.5rem] sm:pt-20 sm:px-4">
       <button
         type="button"
-        aria-label="إغلاق قائمة الأقسام"
+        aria-label={t('switcher.closeOverlay')}
         className="absolute inset-0 bg-[#1a2420]/45 backdrop-blur-[2px] animate-[fadeIn_160ms_ease-out]"
         onClick={onClose}
       />
@@ -59,15 +61,15 @@ export default function AppSwitcher({ open, onClose }: AppSwitcherProps) {
         <div className="flex items-center justify-between gap-3 border-b border-[var(--erp-border)] px-4 py-3 sm:px-5">
           <div>
             <p id={titleId} className="text-base font-bold text-[var(--erp-text)]">
-              أقسام المنصة
+              {t('switcher.title')}
             </p>
-            <p className="text-xs text-[var(--erp-muted)] mt-0.5">اختر قسماً للانتقال إليه مباشرة</p>
+            <p className="text-xs text-[var(--erp-muted)] mt-0.5">{t('switcher.subtitle')}</p>
           </div>
           <button
             type="button"
             onClick={onClose}
             className="touch-target rounded-xl border border-[var(--erp-border)] text-[var(--erp-muted)] hover:bg-[var(--erp-page)]"
-            aria-label="إغلاق"
+            aria-label={t('common.close')}
           >
             ×
           </button>
@@ -75,7 +77,7 @@ export default function AppSwitcher({ open, onClose }: AppSwitcherProps) {
 
         <div className="overflow-y-auto p-3 sm:p-4">
           {modules.length === 0 ? (
-            <p className="text-sm text-[var(--erp-muted)] p-4 text-center">لا توجد أقسام متاحة لحسابك.</p>
+            <p className="text-sm text-[var(--erp-muted)] p-4 text-center">{t('switcher.empty')}</p>
           ) : (
             <div className="grid grid-cols-2 sm:grid-cols-3 gap-2.5 sm:gap-3">
               {modules.map((module, index) => {
@@ -87,6 +89,10 @@ export default function AppSwitcher({ open, onClose }: AppSwitcherProps) {
                   pathname === module.href ||
                   pathname.startsWith(`${module.href}/`) ||
                   (module.href === '/finance' && pathname.startsWith('/finance'));
+                const title =
+                  module.href === '/projects'
+                    ? t('nav.projects.manage')
+                    : tNav(module.href, module.title);
 
                 return (
                   <Link
@@ -114,10 +120,10 @@ export default function AppSwitcher({ open, onClose }: AppSwitcherProps) {
                       {module.icon}
                     </span>
                     <p className="mt-3 text-sm font-bold text-[var(--erp-text)] leading-snug">
-                      {module.title}
+                      {title}
                     </p>
                     <p className="mt-1 text-[11px] text-[var(--erp-muted)] leading-relaxed line-clamp-2">
-                      {module.description}
+                      {tNavDesc(module.href, module.description)}
                     </p>
                   </Link>
                 );

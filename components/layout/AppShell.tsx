@@ -5,10 +5,12 @@ import dynamic from 'next/dynamic';
 import { usePathname, useRouter } from 'next/navigation';
 import AppHeader from '@/components/layout/AppHeader';
 import ActivityTracker from '@/components/layout/ActivityTracker';
+import LanguageSwitcher from '@/components/layout/LanguageSwitcher';
 import { ModuleSubNavProvider } from '@/components/layout/ModuleSubNavContext';
 import SupabaseConfigBanner from '@/components/ui/SupabaseConfigBanner';
 import { onDocumentPreviewMountRequest } from '@/lib/print/document-preview';
 import { useAuth } from '@/lib/auth/AuthProvider';
+import { useLanguage } from '@/lib/i18n/LanguageProvider';
 import type { DepartmentId } from '@/lib/constants/navigation';
 
 const DocumentPreviewSheet = dynamic(() => import('@/components/ui/DocumentPreviewSheet'), {
@@ -40,6 +42,7 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
   const router = useRouter();
   const { session, loading, canAccess, canManageStaff } = useAuth();
+  const { t } = useLanguage();
   const [previewMounted, setPreviewMounted] = useState(false);
 
   const isPublic = PUBLIC_PATHS.some((path) => pathname === path || pathname.startsWith(`${path}/`));
@@ -80,14 +83,17 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
   if (loading) {
     return (
       <div className="min-h-screen w-full flex items-center justify-center bg-[#eef2ef] text-[#1f4d3a]">
-        جاري التحقق من الجلسة...
+        {t('shell.checkingSession')}
       </div>
     );
   }
 
   if (isPublic || !session) {
     return (
-      <div className="min-h-screen w-full bg-[#eef2ef] overflow-x-hidden">
+      <div className="min-h-screen w-full bg-[#eef2ef] overflow-x-hidden relative">
+        <div className="absolute top-4 left-4 z-50">
+          <LanguageSwitcher />
+        </div>
         {children}
         {previewMounted ? <DocumentPreviewSheet /> : null}
       </div>

@@ -7,22 +7,28 @@ import { FINANCE_NAV } from '@/lib/constants/accounting';
 import { getVisibleSidebarNav } from '@/lib/constants/navigation';
 import { useAuth } from '@/lib/auth/AuthProvider';
 import AppSwitcher from '@/components/layout/AppSwitcher';
+import LanguageSwitcher from '@/components/layout/LanguageSwitcher';
 import { useModuleSubNav } from '@/components/layout/ModuleSubNavContext';
+import { useLanguage } from '@/lib/i18n/LanguageProvider';
 
 const LAUNCHER_HREF = '/me';
 
 function resolveSection(
   pathname: string,
-  searchTab?: string | null
+  searchTab: string | null | undefined,
+  t: (key: string) => string,
+  tNav: (href: string, fallback?: string) => string,
+  tFinance: (href: string, fallback: string) => string,
+  tSettingsSub: (pathname: string) => string | null
 ): { title: string; subtitle?: string } {
   if (pathname === '/' || pathname === '/me' || pathname.startsWith('/me/')) {
-    return { title: 'الأنظمة', subtitle: 'الصفحة الرئيسية' };
+    return { title: t('shell.systems'), subtitle: t('shell.homeSubtitle') };
   }
   if (pathname.startsWith('/u')) {
-    return { title: 'صفحة موظف' };
+    return { title: t('shell.employeePage') };
   }
   if (pathname.startsWith('/login')) {
-    return { title: 'تسجيل الدخول' };
+    return { title: t('shell.login') };
   }
 
   const main = getVisibleSidebarNav().find(
@@ -30,12 +36,14 @@ function resolveSection(
   );
 
   if (!main) {
-    return { title: 'الأنظمة' };
+    return { title: t('shell.systems') };
   }
+
+  const mainLabel = tNav(main.href, main.label);
 
   if (pathname.startsWith('/finance')) {
     if (pathname.startsWith('/finance/vouchers') && searchTab === 'approvals') {
-      return { title: main.label, subtitle: 'الاعتماد المالي' };
+      return { title: mainLabel, subtitle: t('finance.approvals') };
     }
     const sub = FINANCE_NAV.find((item) => {
       const path = item.href.split('?')[0];
@@ -43,23 +51,16 @@ function resolveSection(
       return pathname === path || pathname.startsWith(`${path}/`);
     });
     if (sub && sub.href !== '/finance') {
-      return { title: main.label, subtitle: sub.label };
+      return { title: mainLabel, subtitle: tFinance(sub.href, sub.label) };
     }
   }
 
   if (pathname.startsWith('/settings/') && pathname !== '/settings') {
-    const settingsSubs: Record<string, string> = {
-      '/settings/users': 'المستخدمون والصلاحيات',
-      '/settings/company': 'بيانات الشركة',
-      '/settings/activity': 'سجل النشاطات',
-      '/settings/zatca': 'الفوترة الإلكترونية',
-      '/settings/building-code': 'كود البناء SBC/NFPA',
-    };
-    const sub = settingsSubs[pathname];
-    if (sub) return { title: main.label, subtitle: sub };
+    const sub = tSettingsSub(pathname);
+    if (sub) return { title: mainLabel, subtitle: sub };
   }
 
-  return { title: main.label };
+  return { title: mainLabel };
 }
 
 function HomeIcon() {
@@ -99,12 +100,20 @@ function HamburgerIcon() {
 export default function AppHeader() {
   const pathname = usePathname();
   const searchParams = useSearchParams();
-  const section = resolveSection(pathname, searchParams.get('tab'));
+  const { lang, t, tNav, tFinance, tSettingsSub, dir } = useLanguage();
+  const section = resolveSection(
+    pathname,
+    searchParams.get('tab'),
+    t,
+    tNav,
+    tFinance,
+    tSettingsSub
+  );
   const { session, logout } = useAuth();
   const { hasSubNav, open: subNavOpen, toggleSubNav, isMobile } = useModuleSubNav();
   const [switcherOpen, setSwitcherOpen] = useState(false);
   const closeSwitcher = useCallback(() => setSwitcherOpen(false), []);
-  const initial = (session?.fullName || 'م').trim().charAt(0);
+  const initial = (session?.fullName || (lang === 'ar' ? 'م' : 'S')).trim().charAt(0);
   const isLauncher = pathname === '/me' || pathname === '/' || pathname.startsWith('/me/');
 
   const navBtnBase =
@@ -116,16 +125,16 @@ export default function AppHeader() {
 
   return (
     <>
-      <header className="bg-white border-b border-[var(--erp-border)] px-3 sm:px-5 py-2.5 flex items-center justify-between gap-2 shrink-0 z-[55] relative">
+      <header className="bg-white border-b border-[var(--erp-border)] px-3 sm:px-5 py-2.5 flex items-center justify-between gap-2 shrink-0 z-[55] relative pl-[6.75rem]">
+        <div className="absolute left-3 top-1/2 -translate-y-1/2 z-[60]">
+          <LanguageSwitcher />
+        </div>
+
         <div className="flex flex-row items-center justify-start gap-2 min-w-0">
-          {/*
-            ترتيب بصري من اليمين لليسار (RTL):
-            1) ☰  2) الشبكة  3) البيت
-          */}
           <nav
-            aria-label="أزرار التنقل"
+            aria-label={t('shell.navAria')}
             className="header-nav-controls shrink-0"
-            dir="rtl"
+            dir={dir}
             style={{
               display: 'flex',
               flexDirection: 'row',
@@ -140,8 +149,10 @@ export default function AppHeader() {
                 onClick={toggleSubNav}
                 className={`${navBtnBase} ${subNavOpen ? navBtnActive : navBtnIdle}`}
                 style={{ order: 1 }}
-                title={subNavOpen ? 'إخفاء قائمة القسم' : 'إظهار قائمة القسم'}
-                aria-label={subNavOpen ? 'إخفاء القائمة الفرعية' : 'إظهار القائمة الفرعية'}
+                title={subNavOpen ? t('shell.toggleSubnavHide') : t('shell.toggleSubnavShow')}
+                aria-label={
+                  subNavOpen ? t('shell.toggleSubnavHideAria') : t('shell.toggleSubnavShowAria')
+                }
                 aria-expanded={subNavOpen}
                 aria-controls="module-subnav"
               >
@@ -154,8 +165,8 @@ export default function AppHeader() {
               onClick={() => setSwitcherOpen(true)}
               className={`${navBtnBase} ${switcherOpen ? navBtnActive : navBtnIdle}`}
               style={{ order: 2 }}
-              title="قائمة الأقسام"
-              aria-label="فتح قائمة الأقسام"
+              title={t('shell.appsTitle')}
+              aria-label={t('shell.openApps')}
               aria-haspopup="dialog"
               aria-expanded={switcherOpen}
             >
@@ -166,8 +177,8 @@ export default function AppHeader() {
               href={LAUNCHER_HREF}
               className={`${navBtnBase} ${isLauncher ? navBtnActive : navBtnIdle}`}
               style={{ order: 3 }}
-              title="الصفحة الرئيسية للأنظمة"
-              aria-label="الصفحة الرئيسية للأنظمة"
+              title={t('shell.homeTitle')}
+              aria-label={t('shell.homeAria')}
             >
               <HomeIcon />
             </Link>
@@ -185,13 +196,13 @@ export default function AppHeader() {
               <p className="text-[11px] sm:text-xs text-[var(--erp-muted)] truncate mt-0.5 hidden sm:block">
                 {subNavOpen
                   ? isMobile
-                    ? 'القائمة الفرعية مفتوحة'
-                    : 'التبويبات ظاهرة — اضغط القائمة لإخفائها'
-                  : 'التبويبات مخفية — اضغط القائمة لإظهارها'}
+                    ? t('shell.subnavOpenMobile')
+                    : t('shell.subnavVisible')
+                  : t('shell.subnavHidden')}
               </p>
             ) : (
               <p className="text-[11px] sm:text-xs text-[var(--erp-muted)] truncate mt-0.5 hidden sm:block">
-                نظام مستقل · اختر قسماً من الشبكة
+                {t('shell.standaloneHint')}
               </p>
             )}
           </div>
@@ -202,14 +213,16 @@ export default function AppHeader() {
             <span className="h-7 w-7 rounded-full bg-[var(--erp-primary)] text-white flex items-center justify-center text-xs">
               {initial}
             </span>
-            <span className="hidden sm:inline max-w-[9rem] truncate">{session?.fullName || 'موظف'}</span>
+            <span className="hidden sm:inline max-w-[9rem] truncate">
+              {session?.fullName || t('common.employee')}
+            </span>
           </span>
           <button
             type="button"
             onClick={() => void logout()}
             className="touch-target text-xs font-semibold text-rose-700 bg-rose-50 border border-rose-100 rounded-xl px-3 hover:bg-rose-100"
           >
-            خروج
+            {t('common.logout')}
           </button>
         </div>
       </header>
