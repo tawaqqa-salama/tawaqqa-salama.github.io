@@ -17,6 +17,7 @@ import { printTechnicalReport } from '@/components/projects/TechnicalReportPrint
 import EngineeringDeliverySection from '@/components/projects/EngineeringDeliverySection';
 import FinalInspectionSection from '@/components/projects/FinalInspectionSection';
 import CompletionCertificateSection from '@/components/projects/CompletionCertificateSection';
+import SupervisionReportSection from '@/components/projects/SupervisionReportSection';
 import InvoicePromptModal from '@/components/invoices/InvoicePromptModal';
 import {
   downloadTaxInvoice,
@@ -313,6 +314,17 @@ export default function ProjectReportModal({ client, onClose, onUpdated }: Proje
                 ))}
                 <button onClick={() => save(data, 'تم حفظ تقارير الزيارات.')} disabled={saving} className="px-4 py-2 bg-indigo-600 text-white rounded-xl text-sm">حفظ الزيارات</button>
               </div>
+            )}
+
+            {activeSection === 'supervision_report' && (
+              <SupervisionReportSection
+                client={client}
+                data={data}
+                company={company}
+                saving={saving}
+                onChange={(supervision_report) => patch({ supervision_report })}
+                onSave={() => save(data, 'تم حفظ تقرير الإشراف.')}
+              />
             )}
 
             {activeSection === 'technical_notes' && (

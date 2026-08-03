@@ -4,6 +4,7 @@ import {
   EMPTY_BUILDING_PLAN,
   EMPTY_TECHNICAL_REPORT,
   EMPTY_SAFETY_BLUEPRINTS,
+  EMPTY_SUPERVISION_REPORT,
   type FieldVisitReport,
   type ProjectEngineeringData,
 } from '@/lib/types/project-reports';
@@ -11,6 +12,7 @@ import { mergeBuildingPlanDefaults } from '@/lib/projects/building-plan';
 import { seedTechnicalReportFromClient } from '@/lib/projects/technical-report';
 import { mergeSafetyScope, seedEngineeringDelivery } from '@/lib/projects/safety-delivery-letter';
 import { seedFinalInspectionReport } from '@/lib/projects/final-safety-report';
+import { ensureTaskMonths } from '@/lib/projects/supervision-report';
 
 export function parseProjectEngineeringData(raw: ClientRecord['project_engineering_data']): ProjectEngineeringData {
   if (!raw || typeof raw !== 'object') {
@@ -18,9 +20,16 @@ export function parseProjectEngineeringData(raw: ClientRecord['project_engineeri
       ...EMPTY_PROJECT_ENGINEERING_DATA,
       technical_report: { ...EMPTY_TECHNICAL_REPORT },
       field_visits: [],
+      supervision_report: { ...EMPTY_SUPERVISION_REPORT },
     };
   }
   const data = raw as Partial<ProjectEngineeringData>;
+  const months = Array.isArray(data.supervision_report?.months)
+    ? data.supervision_report!.months
+    : EMPTY_SUPERVISION_REPORT.months;
+  const tasks = Array.isArray(data.supervision_report?.tasks)
+    ? data.supervision_report!.tasks.map((t) => ensureTaskMonths(t, months.length ? months : []))
+    : [];
   return {
     technical_report: {
       ...EMPTY_TECHNICAL_REPORT,
@@ -63,6 +72,12 @@ export function parseProjectEngineeringData(raw: ClientRecord['project_engineeri
       observations: data.final_inspection?.observations || [],
     },
     completion_certificate: { ...EMPTY_PROJECT_ENGINEERING_DATA.completion_certificate, ...data.completion_certificate },
+    supervision_report: {
+      ...EMPTY_SUPERVISION_REPORT,
+      ...data.supervision_report,
+      months,
+      tasks,
+    },
   };
 }
 
@@ -113,6 +128,7 @@ export function getProjectReportProgress(data: ProjectEngineeringData): number {
     data.engineering_delivery.status,
     data.final_inspection.status,
     data.completion_certificate.status,
+    data.supervision_report?.status,
     ...data.field_visits.map((v) => v.status),
   ];
   const done = sections.filter((s) => s === 'مكتمل' || s === 'معتمد').length;
