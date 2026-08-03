@@ -152,6 +152,22 @@ export interface EngineeringDeliveryReport extends ReportMeta {
   safety_scope?: SafetyScopeRow[];
 }
 
+/** خطاب تسليم الدفاع المدني — توريد CD بالمخططات والتقرير الفني (A4 عمودي) */
+export interface CdCoverLetterReport extends ReportMeta {
+  letter_date?: string;
+  outgoing_number?: string;
+  /** جهة التوجيه */
+  addressee?: string;
+  /** صورة / مركز إقليمي إن وُجد */
+  copy_to?: string;
+  /** مبنى قائم | تحت الإنشاء */
+  building_status?: string;
+  manager_name?: string;
+  manager_title?: string;
+  safety_engineer_name?: string;
+  safety_engineer_title?: string;
+}
+
 export interface FinalInspectionReport extends ReportMeta {
   inspection_date?: string;
   inspector_name?: string;
@@ -460,6 +476,8 @@ export interface ProjectEngineeringData {
   field_visits: FieldVisitReport[];
   technical_notes: TechnicalNotesReport;
   engineering_delivery: EngineeringDeliveryReport;
+  /** خطاب تسليم CD للدفاع المدني */
+  cd_cover_letter: CdCoverLetterReport;
   final_inspection: FinalInspectionReport;
   completion_certificate: CompletionCertificateReport;
   supervision_report: SupervisionReport;
@@ -529,6 +547,7 @@ export const EMPTY_PROJECT_ENGINEERING_DATA: ProjectEngineeringData = {
       { id: 'supervision_contract', label: 'عقد الإشراف', option: '', applicable: 'نعم' },
     ],
   },
+  cd_cover_letter: { status: 'مسودة' },
   final_inspection: { status: 'مسودة' },
   completion_certificate: { status: 'مسودة' },
   supervision_report: { ...EMPTY_SUPERVISION_REPORT },
