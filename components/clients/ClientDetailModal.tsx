@@ -429,7 +429,7 @@ export default function ClientDetailModal({
       setErrorMessage('المبلغ المدفوع لا يمكن أن يكون سالباً.');
       return;
     }
-    await saveUpdate(
+    const ok = await saveUpdate(
       {
         financial_status: financialStatus,
         payment_reference: paymentReference || null,
@@ -439,6 +439,16 @@ export default function ClientDetailModal({
       },
       'تم تحديث الحالة المالية.'
     );
+    if (ok) {
+      const { accrueCommissionForClient } = await import('@/lib/referrals/service');
+      void accrueCommissionForClient({
+        ...client,
+        financial_status: financialStatus,
+        paid_amount: paid,
+        quotation_amount: client.quotation_amount,
+        total_amount: client.total_amount,
+      });
+    }
   };
 
   const handleSaveEngineering = async () => {

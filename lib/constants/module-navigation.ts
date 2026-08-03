@@ -51,6 +51,8 @@ export const DEPARTMENT_SUB_MODULES: Record<DepartmentId, DepartmentSubModule[]>
     { id: 'contracts', label: 'العقود', tab: 'contracts' },
     { id: 'tax-invoices', label: 'الفواتير الضريبية', tab: 'tax-invoices' },
     { id: 'accounts', label: 'حساب العميل الشامل', tab: 'accounts' },
+    { id: 'referrals', label: 'المسوقون والمحيلون', tab: 'referrals' },
+    { id: 'commissions', label: 'نظام العمولات', tab: 'commissions' },
   ],
   procurement: [
     {

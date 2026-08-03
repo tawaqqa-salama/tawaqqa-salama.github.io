@@ -13,6 +13,7 @@ import ActivityRequirementsPanel from '@/components/clients/ActivityRequirements
 import NumericInput from '@/components/ui/NumericInput';
 import { parseLocalizedNumber } from '@/lib/validation/numeric-input';
 import type { ClientFormData, FloorLevel } from '@/lib/types/client';
+import ReferralPicker from '@/components/referrals/ReferralPicker';
 
 const EMPTY_FORM: ClientFormData = {
   owner_name: '',
@@ -30,6 +31,9 @@ const EMPTY_FORM: ClientFormData = {
   floors_count: '',
   project_status: '',
   floor_levels: [],
+  project_name: '',
+  owner_account_id: '',
+  referrer_id: '',
 };
 
 interface AddClientModalProps {
@@ -106,8 +110,10 @@ export default function AddClientModal({
   return (
     <div className="fixed inset-0 bg-black/50 flex items-end sm:items-center justify-center z-50 p-0 sm:p-4 overflow-y-auto">
       <div className="bg-white rounded-2xl p-6 w-full max-w-2xl shadow-xl max-h-[90vh] overflow-y-auto my-8">
-        <h2 className="text-xl font-bold text-gray-800 mb-2">إضافة عميل ونشاط جديد</h2>
-        <p className="text-xs text-gray-500 mb-6">* الحقول التي لا تحمل ملاحظة (اختياري) هي حقول إلزامية.</p>
+        <h2 className="text-xl font-bold text-gray-800 mb-2">إضافة مشروع / نشاط جديد</h2>
+        <p className="text-xs text-gray-500 mb-6">
+          عميل (مالك) واحد يمكن أن يملك عدة مشاريع — اربط المحيل عبر «من طرف مين جاء؟».
+        </p>
 
         {displayError && (
           <div className="mb-4 p-3 bg-red-50 border border-red-200 text-red-700 rounded-xl text-sm font-medium">
@@ -116,9 +122,14 @@ export default function AddClientModal({
         )}
 
         <form onSubmit={handleSubmit} className="space-y-4">
+          <ReferralPicker
+            value={formData.referrer_id || ''}
+            onChange={(referrer_id) => setFormData((prev) => ({ ...prev, referrer_id }))}
+          />
+
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             <div>
-              <label className="block text-xs font-semibold text-gray-700 mb-1">اسم المالك</label>
+              <label className="block text-xs font-semibold text-gray-700 mb-1">اسم المالك / المستثمر</label>
               <input
                 type="text"
                 required
@@ -129,7 +140,7 @@ export default function AddClientModal({
               />
             </div>
             <div>
-              <label className="block text-xs font-semibold text-gray-700 mb-1">رقم الجوال</label>
+              <label className="block text-xs font-semibold text-gray-700 mb-1">رقم جوال المالك</label>
               <NumericInput
                 required
                 maxLength={10}
@@ -139,6 +150,19 @@ export default function AddClientModal({
                 className="w-full p-2.5 border rounded-xl text-sm focus:ring-2 focus:ring-blue-500 outline-none dir-ltr text-right"
               />
             </div>
+          </div>
+
+          <div>
+            <label className="block text-xs font-semibold text-gray-700 mb-1">
+              اسم المشروع <span className="text-gray-400 font-normal">(اختياري — غير اسم المنشأة)</span>
+            </label>
+            <input
+              type="text"
+              value={formData.project_name || ''}
+              onChange={(e) => setFormData((prev) => ({ ...prev, project_name: e.target.value }))}
+              placeholder="مثال: برج السلام — المرحلة الأولى"
+              className="w-full p-2.5 border rounded-xl text-sm focus:ring-2 focus:ring-blue-500 outline-none"
+            />
           </div>
 
           <div className="grid grid-cols-1 md:grid-cols-3 gap-4">

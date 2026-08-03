@@ -15,6 +15,9 @@ const LOCAL_FALLBACK_FIELDS = new Set([
   'financial_status',
   'engineering_status',
   'final_report_status',
+  'referrer_id',
+  'owner_account_id',
+  'project_name',
 ]);
 
 function extractMissingColumn(message: string): string | null {

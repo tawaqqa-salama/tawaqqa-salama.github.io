@@ -78,6 +78,12 @@ export interface ClientRecord {
   receipt_voucher_id?: string | null;
   accounting_journal_id?: string | null;
   national_address?: string | null;
+  /** حساب المالك/المستثمر — عميل واحد لعدة مشاريع */
+  owner_account_id?: string | null;
+  /** المحيل (مسوق / مهندس / مقاول) */
+  referrer_id?: string | null;
+  /** اسم المشروع ضمن حساب المالك */
+  project_name?: string | null;
 }
 
 export interface ClientFormData {
@@ -96,6 +102,10 @@ export interface ClientFormData {
   floors_count: string;
   project_status: string;
   floor_levels?: FloorLevel[];
+  /** اسم المشروع (قد يختلف عن اسم النشاط/المنشأة) */
+  project_name?: string;
+  owner_account_id?: string;
+  referrer_id?: string;
 }
 
 export type FinancialDocumentType = 'quotation' | 'invoice';

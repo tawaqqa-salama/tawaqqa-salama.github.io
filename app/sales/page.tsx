@@ -18,6 +18,7 @@ import { parseLocalizedInteger, parseLocalizedNumber } from '@/lib/validation/cl
 import { clientToFinancialDocument } from '@/lib/invoices/document-mapper';
 import { useSalesBundle, invalidateErpLists } from '@/lib/data/hooks';
 import { LIST_PAGE_SIZE } from '@/lib/data/query-config';
+import { listOwnerAccounts, upsertOwnerAccount } from '@/lib/referrals/service';
 import type { ClientFormData, ClientRecord, FinancialDocument } from '@/lib/types/client';
 import type { SalesReturn } from '@/lib/types/sales';
 
@@ -37,8 +38,23 @@ const TaxInvoicesPanel = dynamic(() => import('@/components/invoices/TaxInvoices
     </div>
   ),
 });
+const ReferralsDirectory = dynamic(() => import('@/components/referrals/ReferralsDirectory'), {
+  ssr: false,
+});
+const CommissionLedger = dynamic(() => import('@/components/referrals/CommissionLedger'), {
+  ssr: false,
+});
 
-type TabId = 'sales' | 'quotations' | 'documents' | 'credit' | 'contracts' | 'tax-invoices' | 'accounts';
+type TabId =
+  | 'sales'
+  | 'quotations'
+  | 'documents'
+  | 'credit'
+  | 'contracts'
+  | 'tax-invoices'
+  | 'accounts'
+  | 'referrals'
+  | 'commissions';
 
 function inDateRange(iso: string | undefined | null, from: string, to: string): boolean {
   if (!from && !to) return true;
@@ -100,9 +116,33 @@ export default function SalesPage() {
     setIsSubmitting(true);
     setErrorMessage(null);
     const clientCode = await nextClientCode();
+
+    // حساب مالك متعدد المشاريع — أعد استخدام نفس المالك عند تطابق الجوال
+    let ownerAccountId = formData.owner_account_id || '';
+    if (!ownerAccountId && formData.owner_name.trim()) {
+      const existingOwners = await listOwnerAccounts();
+      const phone = String(formData.phone || '').replace(/\s+/g, '');
+      const hit = existingOwners.find(
+        (o) => phone && String(o.phone || '').replace(/\s+/g, '') === phone
+      );
+      if (hit) {
+        ownerAccountId = hit.id;
+      } else {
+        const created = await upsertOwnerAccount({
+          name: formData.owner_name.trim(),
+          phone: formData.phone,
+          city: formData.city || null,
+        });
+        if (created.owner) ownerAccountId = created.owner.id;
+      }
+    }
+
+    const projectLabel =
+      formData.project_name?.trim() || formData.business_name || formData.owner_name;
+
     const { error } = await insertClientSafe({
       client_code: clientCode,
-      name: formData.business_name || formData.owner_name,
+      name: projectLabel,
       owner_name: formData.owner_name,
       phone: formData.phone,
       region: formData.region,
@@ -112,6 +152,7 @@ export default function SalesPage() {
       plot_number: formData.plot_number || null,
       national_address: formData.national_address || null,
       business_name: formData.business_name,
+      project_name: projectLabel,
       activity_type: formData.activity_type,
       land_area: parseLocalizedNumber(formData.land_area),
       building_area: parseLocalizedNumber(formData.building_area),
@@ -127,6 +168,8 @@ export default function SalesPage() {
       quotation_services: [],
       visit_status: 'لم تُجدول',
       final_report_status: 'قيد الإعداد',
+      referrer_id: formData.referrer_id || null,
+      owner_account_id: ownerAccountId || null,
     });
     setIsSubmitting(false);
     if (error) {
@@ -137,7 +180,7 @@ export default function SalesPage() {
       actionType: 'CREATE',
       module: 'sales',
       pageUrl: '/sales',
-      details: `تم إنشاء عميل/عرض: ${formData.business_name || formData.owner_name}`,
+      details: `تم إنشاء مشروع: ${projectLabel}${formData.referrer_id ? ' (مع محيل)' : ''}`,
     });
     setIsAddOpen(false);
     await handleRefresh();
@@ -185,7 +228,7 @@ export default function SalesPage() {
           onClick={() => setIsAddOpen(true)}
           className="px-4 py-2 bg-blue-600 text-white rounded-lg text-sm font-semibold"
         >
-          + عميل / عرض
+          + مشروع / عميل
         </button>
       </div>
 
@@ -225,6 +268,8 @@ export default function SalesPage() {
               { id: 'contracts' as const, label: 'العقود' },
               { id: 'tax-invoices' as const, label: 'الفواتير الضريبية' },
               { id: 'accounts' as const, label: 'حساب العميل الشامل' },
+              { id: 'referrals' as const, label: 'المسوقون والمحيلون' },
+              { id: 'commissions' as const, label: 'نظام العمولات' },
             ] as const
           ).map((t) => (
             <button
@@ -496,6 +541,10 @@ export default function SalesPage() {
       )}
 
       {tab === 'tax-invoices' && <TaxInvoicesPanel clients={allClients} />}
+
+      {tab === 'referrals' && <ReferralsDirectory clients={allClients} />}
+
+      {tab === 'commissions' && <CommissionLedger clients={allClients} />}
 
       {tab === 'accounts' && (
         <div className="grid gap-4">
