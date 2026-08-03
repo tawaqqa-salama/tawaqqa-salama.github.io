@@ -8,7 +8,7 @@ import { useLanguage } from '@/lib/i18n/LanguageProvider';
 
 export default function MyPage() {
   const { session, profile, permissions, canManageStaff } = useAuth();
-  const { t, tNav, tNavDesc } = useLanguage();
+  const { t, tNav, tNavDesc, tProfile, tRole } = useLanguage();
 
   if (!session || !profile) return null;
 
@@ -26,19 +26,19 @@ export default function MyPage() {
     return nav ? allowedDepartments.includes(nav.department) : false;
   });
 
+  const pageTitle = tProfile(profile.page_title, undefined) || t('me.welcome', { name: profile.full_name });
+  const pageBio = tProfile(profile.page_bio) || t('me.defaultBio');
+  const jobTitle = tProfile(profile.job_title) || tRole(profile.role_code);
+
   return (
     <div className="space-y-6">
       <section className="rounded-2xl bg-gradient-to-l from-[#1f4d3a] to-[#2f6b4f] text-white p-6 md:p-8">
         <p className="text-sm text-white/70">{t('me.myPage')}</p>
-        <h1 className="text-2xl md:text-3xl font-bold mt-1">
-          {profile.page_title || t('me.welcome', { name: profile.full_name })}
-        </h1>
-        <p className="mt-2 text-white/85 max-w-2xl">
-          {profile.page_bio || t('me.defaultBio')}
-        </p>
+        <h1 className="text-2xl md:text-3xl font-bold mt-1">{pageTitle}</h1>
+        <p className="mt-2 text-white/85 max-w-2xl">{pageBio}</p>
         <div className="mt-5 flex flex-wrap gap-3 text-sm">
           <span className="bg-white/10 rounded-lg px-3 py-1.5 isolate-ltr">@{profile.username}</span>
-          <span className="bg-white/10 rounded-lg px-3 py-1.5">{profile.job_title || profile.role_code}</span>
+          <span className="bg-white/10 rounded-lg px-3 py-1.5">{jobTitle}</span>
           <span className="bg-white/10 rounded-lg px-3 py-1.5 isolate-ltr">{profile.email}</span>
           {profile.phone && (
             <span className="bg-white/10 rounded-lg px-3 py-1.5 isolate-ltr">{profile.phone}</span>
@@ -47,7 +47,7 @@ export default function MyPage() {
       </section>
 
       <section className="grid grid-cols-1 md:grid-cols-3 gap-4">
-        <InfoCard title={t('me.role')} value={profile.role_code} />
+        <InfoCard title={t('me.role')} value={tRole(profile.role_code)} />
         <InfoCard
           title={t('me.permissionsCount')}
           value={String(permissions.includes('*') ? t('common.fullAccess') : permissions.length)}

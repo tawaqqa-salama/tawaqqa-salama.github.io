@@ -87,7 +87,19 @@ const ar: Dict = {
   'me.mySections': 'أقسام صفحتي',
   'me.manageStaff': 'إدارة الموظفين ←',
   'me.noSections': 'لا توجد أقسام مفعّلة لحسابك بعد. تواصل مع المدير لإضافة صلاحيات.',
-
+  'me.adminDashboard': 'لوحة المدير',
+  'me.platformAdmin': 'مدير المنصة',
+  'me.systemAdmin': 'مدير النظام',
+  'me.role.admin': 'مدير النظام',
+  'me.role.engineer': 'مهندس',
+  'me.role.sales': 'مبيعات',
+  'me.role.accountant': 'محاسب',
+  'me.role.staff': 'موظف',
+  'me.space.engineer': 'مساحة المهندس',
+  'me.space.sales': 'مساحة المبيعات',
+  'me.space.finance': 'مساحة الحسابات',
+  'me.customLink': 'رابط الصفحة المخصصة',
+  'me.customLinkHint': 'يمكنك مشاركة صفحتك الداخلية عبر:',
   'login.platformTag': 'منصة استشارات السلامة',
   'login.welcomeBack': 'مرحباً بعودتك',
   'login.subtitle': 'سجّل الدخول للمتابعة إلى لوحة التحكم',
@@ -108,8 +120,6 @@ const ar: Dict = {
   'login.processing': 'جاري المعالجة...',
   'login.demoOtp': 'كود التحقق التجريبي:',
   'login.pageTitle': 'تسجيل الدخول',
-  'me.customLink': 'رابط الصفحة المخصصة',
-  'me.customLinkHint': 'يمكنك مشاركة صفحتك الداخلية عبر:',
 
   'subnav.close': 'إغلاق القائمة الفرعية',
   'subnav.default': 'القائمة الفرعية للقسم',
@@ -226,22 +236,22 @@ const en: Dict = {
   'switcher.empty': 'No departments available for your account.',
   'switcher.closeOverlay': 'Close departments menu',
 
-  'nav.marketing': 'Marketing',
-  'nav.sales': 'Sales',
-  'nav.procurement': 'Procurement & Contracting',
-  'nav.finance': 'Finance',
+  'nav.marketing': 'Marketing Management',
+  'nav.sales': 'Sales Management',
+  'nav.procurement': 'Procurement & Contracts',
+  'nav.finance': 'Financial Accounting',
   'nav.hr': 'Human Resources',
   'nav.projects': 'Projects',
   'nav.settings': 'Settings',
 
-  'nav.marketing.desc': 'Campaigns, customer journey, leads, and follow-ups',
-  'nav.sales.desc': 'Sales desk, quotations, contracts, and document archive',
-  'nav.procurement.desc': 'Approved vendors, external contracts, POs, and BOQ to RFQ',
-  'nav.finance.desc': 'Approvals, invoicing, journals, vouchers, and reports',
-  'nav.hr.desc': 'Employees, payroll, contracts, and task assignment',
-  'nav.projects.desc': 'Engineering inspection, drawings/BIM, and SBC/NFPA compliance',
+  'nav.marketing.desc': 'Campaigns, client journey & lead tracking',
+  'nav.sales.desc': 'Sales pipeline, quotes & archive',
+  'nav.procurement.desc': 'Approved vendors, contracts & RFQs',
+  'nav.finance.desc': 'Approvals, invoicing, ledger & vouchers',
+  'nav.hr.desc': 'Employees, payroll, contracts & tasks',
+  'nav.projects.desc': 'Engineering inspection, BIM & compliance',
   'nav.projects.manage': 'Project Management',
-  'nav.settings.desc': 'System settings, users, and activity log',
+  'nav.settings.desc': 'System settings, users & activity log',
 
   'settings.users': 'Users & permissions',
   'settings.company': 'Company profile',
@@ -271,9 +281,22 @@ const en: Dict = {
   'me.role': 'Role',
   'me.permissionsCount': 'Permissions',
   'me.lastLogin': 'Last login',
-  'me.mySections': 'My departments',
-  'me.manageStaff': 'Manage staff →',
+  'me.mySections': 'My Sections',
+  'me.manageStaff': 'Employee Management →',
   'me.noSections': 'No departments are enabled for your account yet. Contact an admin.',
+  'me.adminDashboard': 'Admin Dashboard',
+  'me.platformAdmin': 'Platform Admin',
+  'me.systemAdmin': 'System Admin',
+  'me.role.admin': 'System Admin',
+  'me.role.engineer': 'Engineer',
+  'me.role.sales': 'Sales',
+  'me.role.accountant': 'Accountant',
+  'me.role.staff': 'Staff',
+  'me.space.engineer': 'Engineer workspace',
+  'me.space.sales': 'Sales workspace',
+  'me.space.finance': 'Finance workspace',
+  'me.customLink': 'Custom Page Link',
+  'me.customLinkHint': 'Share your internal page via:',
 
   'login.platformTag': 'Safety consulting platform',
   'login.welcomeBack': 'Welcome back',
@@ -295,8 +318,6 @@ const en: Dict = {
   'login.processing': 'Processing...',
   'login.demoOtp': 'Demo verification code:',
   'login.pageTitle': 'Sign in',
-  'me.customLink': 'Personal page link',
-  'me.customLinkHint': 'Share your internal page via:',
 
   'subnav.close': 'Close sub-navigation',
   'subnav.default': 'Department sub-navigation',
@@ -307,8 +328,8 @@ const en: Dict = {
   'subnav.hr': 'HR tabs',
   'subnav.projects': 'Projects tabs',
 
-  'marketing.title': 'Marketing',
-  'marketing.subtitle': 'Campaign desk and customer journey — leads & follow-ups',
+  'marketing.title': 'Marketing Management',
+  'marketing.subtitle': 'Campaigns, client journey & lead tracking',
   'marketing.create': '+ New lead',
   'marketing.tab.dashboard': 'Campaign desk',
   'marketing.tab.campaigns': 'Campaigns',
@@ -331,8 +352,8 @@ const en: Dict = {
   'marketing.convertSales': 'Move to sales',
   'marketing.followUp': 'Follow up',
 
-  'sales.title': 'Sales',
-  'sales.subtitle': 'Clients, quotations, contracts, and invoices',
+  'sales.title': 'Sales Management',
+  'sales.subtitle': 'Sales pipeline, quotes & archive',
   'sales.tab.sales': 'Sales',
   'sales.tab.quotations': 'Quotations',
   'sales.tab.documents': 'Document archive',
@@ -342,21 +363,21 @@ const en: Dict = {
   'sales.tab.accounts': 'Full client account',
   'sales.create': '+ Client / quote',
 
-  'procurement.title': 'Procurement & contracting',
-  'procurement.subtitle': 'Vendors, external contracts, purchase orders, and BOQ → RFQ',
+  'procurement.title': 'Procurement & Contracts',
+  'procurement.subtitle': 'Approved vendors, contracts & RFQs',
   'procurement.tab.vendors': 'Approved vendors',
   'procurement.tab.subcontractors': 'External contracts',
   'procurement.tab.orders': 'Purchase orders',
   'procurement.tab.boqRfq': 'BOQ → RFQ',
 
-  'hr.title': 'Human resources',
-  'hr.subtitle': 'Employee files, payroll, contracts, and engineer task assignment',
+  'hr.title': 'Human Resources',
+  'hr.subtitle': 'Employees, payroll, contracts & tasks',
   'hr.tab.employees': 'Employees & contracts',
   'hr.tab.assignments': 'Task assignment',
   'hr.permissionsLink': 'Permissions & login',
 
-  'projects.title': 'Project management',
-  'projects.subtitle': 'Engineering inspection, drawings, and compliance',
+  'projects.title': 'Project Management',
+  'projects.subtitle': 'Engineering inspection, BIM & compliance',
   'projects.tab.list': 'Projects',
   'projects.tab.inspection': 'Engineering inspection',
   'projects.tab.blueprints': 'Drawings / BIM',
@@ -367,9 +388,9 @@ const en: Dict = {
   'projects.filter.archive': 'Archive',
   'projects.filter.everything': 'All records',
 
-  'finance.page.dashboard': 'Accounting dashboard',
+  'finance.page.dashboard': 'Financial Accounting',
   'finance.page.dashboardLoading': 'Loading accounting dashboard...',
-  'finance.page.dashboardSubtitle': 'Journals, vouchers, accounts, and cost centers overview',
+  'finance.page.dashboardSubtitle': 'Approvals, invoicing, ledger & vouchers',
   'finance.page.newJournal': '+ New journal entry',
   'finance.page.invoices': 'Finance — tax invoices',
   'finance.page.vouchers': 'Vouchers',
@@ -456,4 +477,51 @@ const SETTINGS_SUB_KEYS: Record<string, TranslationKey> = {
 export function translateSettingsSub(locale: AppLocale, pathname: string): string | null {
   const key = SETTINGS_SUB_KEYS[pathname];
   return key ? translate(locale, key) : null;
+}
+
+/** يترجم عناوين/أدوار البروفايل المخزّنة عربياً في البذرة عند عرض الإنجليزية */
+const PROFILE_TITLE_MAP: Record<string, TranslationKey> = {
+  'لوحة المدير': 'me.adminDashboard',
+  'مدير المنصة': 'me.platformAdmin',
+  'مدير النظام': 'me.systemAdmin',
+  'مساحة المهندس خالد': 'me.space.engineer',
+  'مساحة المبيعات — نورة': 'me.space.sales',
+  'مساحة الحسابات — سعود': 'me.space.finance',
+};
+
+const ROLE_CODE_KEYS: Record<string, TranslationKey> = {
+  admin: 'me.role.admin',
+  engineer: 'me.role.engineer',
+  sales: 'me.role.sales',
+  accountant: 'me.role.accountant',
+  staff: 'me.role.staff',
+};
+
+export function translateProfileText(
+  locale: AppLocale,
+  text: string | null | undefined,
+  fallbackKey?: TranslationKey
+): string {
+  const raw = String(text || '').trim();
+  if (!raw) return fallbackKey ? translate(locale, fallbackKey) : '';
+  if (locale === 'ar') return raw;
+  const mapped = PROFILE_TITLE_MAP[raw];
+  if (mapped) return translate(locale, mapped);
+  // عناوين مساحة مخصصة تبدأ بنفس البادئة
+  if (raw.startsWith('مساحة المهندس')) return translate(locale, 'me.space.engineer');
+  if (raw.startsWith('مساحة المبيعات')) return translate(locale, 'me.space.sales');
+  if (raw.startsWith('مساحة الحسابات')) return translate(locale, 'me.space.finance');
+  return raw;
+}
+
+export function translateRoleCode(locale: AppLocale, roleCode: string | null | undefined): string {
+  const code = String(roleCode || '').trim();
+  if (!code) return '—';
+  const key = ROLE_CODE_KEYS[code];
+  if (key) return translate(locale, key);
+  if (locale === 'en') {
+    const mapped = PROFILE_TITLE_MAP[code];
+    if (mapped) return translate(locale, mapped);
+  }
+  return code;
 }
