@@ -10,6 +10,7 @@ export const PROJECT_REPORT_SECTIONS = [
   { id: 'boq', label: 'جدول الكميات BOQ' },
   { id: 'timeline', label: 'الجدول الزمني' },
   { id: 'field_visits', label: 'الزيارات الميدانية' },
+  { id: 'supervision_report', label: 'تقرير الإشراف' },
   { id: 'technical_notes', label: 'الملاحظات الفنية' },
   { id: 'engineering_delivery', label: 'خطاب تسليم الدراسة' },
   { id: 'final_inspection', label: 'التقرير النهائي' },

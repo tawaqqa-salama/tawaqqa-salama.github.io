@@ -236,6 +236,64 @@ export interface CompletionCertificateReport extends ReportMeta {
   chamber_footer_note?: string;
 }
 
+/** حالة خلية إنجاز شهرية في تقرير الإشراف */
+export type SupervisionProgressStatus = 'late' | 'on_time' | 'not_due' | '';
+
+export type SupervisionWorkType = 'توريد' | 'تركيب' | 'توريد وتركيب' | '';
+
+export type SupervisionMonthColumn = {
+  id: string;
+  label: string;
+};
+
+export type SupervisionProgressCell = {
+  /** نسبة إنجاز الشهر (0–100) — فارغ إن لم يُدخل */
+  percent: number | null;
+  status: SupervisionProgressStatus;
+};
+
+export type SupervisionTaskRow = {
+  id: string;
+  /** مفتاح المجموعة لدمج عمود «الأعمال» */
+  category_id: string;
+  category_label: string;
+  description: string;
+  work_type: SupervisionWorkType;
+  /** تقدم كل شهر بمفتاح معرف العمود */
+  month_progress: Record<string, SupervisionProgressCell>;
+  /** نسبة الإنجاز الكلية للبند — محسوبة أو يدوية */
+  total_percent: number | null;
+};
+
+/** تقرير الإشراف الدوري ومتابعة الإنجاز (TEEM) */
+export interface SupervisionReport extends ReportMeta {
+  /** من التسويق / المبيعات */
+  owner_name?: string;
+  project_name?: string;
+  building_type?: string;
+  area_m2?: string;
+  contractor_name?: string;
+
+  /** من التقرير الفني والمكتب */
+  inspection_form_number?: string;
+  study_number?: string;
+  supervising_office?: string;
+  branch_manager_name?: string;
+  safety_engineer_name?: string;
+
+  /** مدخلات المتابعة */
+  report_date?: string;
+  total_duration?: string;
+  start_date?: string;
+  /** نسبة الإنجاز الكلي — تُحسب من البنود ما لم تُفعَّل اليدوية */
+  overall_progress_percent?: number | null;
+  overall_progress_manual?: boolean;
+
+  months: SupervisionMonthColumn[];
+  tasks: SupervisionTaskRow[];
+  notes?: string;
+}
+
 /** صورة مرفقة داخل التقرير الفني */
 export interface TechnicalReportPhoto {
   id: string;
@@ -404,6 +462,7 @@ export interface ProjectEngineeringData {
   engineering_delivery: EngineeringDeliveryReport;
   final_inspection: FinalInspectionReport;
   completion_certificate: CompletionCertificateReport;
+  supervision_report: SupervisionReport;
 }
 
 export const EMPTY_BUILDING_PLAN: BuildingPlanReport = {
@@ -444,6 +503,14 @@ export const EMPTY_SAFETY_BLUEPRINTS: SafetyBlueprintsState = {
   life_safety_file: null,
 };
 
+export const EMPTY_SUPERVISION_REPORT: SupervisionReport = {
+  status: 'مسودة',
+  months: [],
+  tasks: [],
+  overall_progress_percent: null,
+  overall_progress_manual: false,
+};
+
 export const EMPTY_PROJECT_ENGINEERING_DATA: ProjectEngineeringData = {
   technical_report: { ...EMPTY_TECHNICAL_REPORT },
   building_plan: { ...EMPTY_BUILDING_PLAN },
@@ -464,4 +531,5 @@ export const EMPTY_PROJECT_ENGINEERING_DATA: ProjectEngineeringData = {
   },
   final_inspection: { status: 'مسودة' },
   completion_certificate: { status: 'مسودة' },
+  supervision_report: { ...EMPTY_SUPERVISION_REPORT },
 };
