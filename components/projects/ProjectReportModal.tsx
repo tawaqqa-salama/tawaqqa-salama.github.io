@@ -29,7 +29,8 @@ import {
   generateTaxInvoiceFromMilestone,
 } from '@/lib/invoices/tax-invoice-service';
 import { EMPTY_SAFETY_BLUEPRINTS } from '@/lib/types/project-reports';
-import { loadCompanyProfile, type CompanyProfile } from '@/lib/company-profile';
+import { loadCompanyProfile, loadLocalCompanyProfile, type CompanyProfile } from '@/lib/company-profile';
+import { seedSupervisionReport } from '@/lib/projects/supervision-report';
 import { ensureCertificateNumber, ensureOutgoingNumber } from '@/lib/business/document-numbers';
 import { backupEngineeringDataLocally } from '@/lib/supabase/safe-client-write';
 import NumericInput from '@/components/ui/NumericInput';
@@ -71,10 +72,30 @@ export default function ProjectReportModal({ client, onClose, onUpdated }: Proje
       building_plan: seedBuildingPlanFromClient(client, parsed.building_plan),
     };
     const seeded = seedProjectEngineeringFromClient(client, withPlan);
-    setData(syncProjectVisitsFromQuotation(seeded, visitsCount));
+    const companySnapshot = company || loadLocalCompanyProfile();
+    const withSupervision = {
+      ...seeded,
+      supervision_report: seedSupervisionReport(
+        client,
+        seeded,
+        companySnapshot,
+        seeded.supervision_report
+      ),
+    };
+    setData(syncProjectVisitsFromQuotation(withSupervision, visitsCount));
     setActiveSection('technical_report');
     setMessage(null);
   }, [client]);
+
+  // أكمل بيانات المكتب المشرف عند وصول ملف الشركة دون طمس التعديلات اليدوية
+  useEffect(() => {
+    if (!client || !data || !company) return;
+    const current = data.supervision_report;
+    if (current?.supervising_office?.trim() && current?.tasks?.length) return;
+    const next = seedSupervisionReport(client, data, company, current);
+    setData({ ...data, supervision_report: next });
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- only when company profile arrives
+  }, [company?.legal_name, company?.name, client?.id]);
 
   const progress = useMemo(() => (data ? getProjectReportProgress(data) : 0), [data]);
 

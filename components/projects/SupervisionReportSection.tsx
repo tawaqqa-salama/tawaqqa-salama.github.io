@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect } from 'react';
+import { useEffect, useMemo } from 'react';
 import type { ClientRecord } from '@/lib/types/client';
 import type {
   ProjectEngineeringData,
@@ -9,12 +9,13 @@ import type {
   SupervisionTaskRow,
   SupervisionWorkType,
 } from '@/lib/types/project-reports';
-import type { CompanyProfile } from '@/lib/company-profile';
+import { loadLocalCompanyProfile, type CompanyProfile } from '@/lib/company-profile';
 import {
   SUPERVISION_LEGEND,
   addSupervisionMonth,
   calcOverallProgress,
   calcTaskTotalPercent,
+  isSupervisionReportIncomplete,
   removeSupervisionMonth,
   resolveOverallProgress,
   seedSupervisionReport,
@@ -48,18 +49,46 @@ export default function SupervisionReportSection({
   onChange,
   onSave,
 }: SupervisionReportSectionProps) {
-  const report = data.supervision_report;
+  const companySnapshot = useMemo(
+    () => company || loadLocalCompanyProfile(),
+    [company]
+  );
+
+  /** Hydrate synchronously so the tab never paints an empty skeleton */
+  const report = useMemo(
+    () => seedSupervisionReport(client, data, companySnapshot, data.supervision_report),
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- seed from live engineering payload + company
+    [
+      client,
+      companySnapshot,
+      data.supervision_report,
+      data.technical_report,
+      data.engineering_delivery,
+      data.completion_certificate,
+      data.timeline,
+    ]
+  );
 
   useEffect(() => {
-    const seeded = seedSupervisionReport(client, data, company, report);
-    const needsSeed =
-      !report.owner_name ||
-      !report.supervising_office ||
-      !(report.months?.length) ||
-      !(report.tasks?.length);
-    if (needsSeed) onChange(seeded);
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- seed when section opens / company loads
-  }, [client.id, company?.legal_name, company?.name]);
+    const current = data.supervision_report;
+    const needsSync =
+      isSupervisionReportIncomplete(current) ||
+      (current?.tasks?.length || 0) < report.tasks.length ||
+      (!current?.supervising_office?.trim() && !!report.supervising_office) ||
+      (!current?.safety_engineer_name?.trim() && !!report.safety_engineer_name) ||
+      (!current?.owner_name?.trim() && !!report.owner_name);
+    if (needsSync) onChange(report);
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- sync incomplete → parent once structure/header fills
+  }, [
+    client.id,
+    companySnapshot.legal_name,
+    companySnapshot.name,
+    report.tasks.length,
+    report.months.length,
+    report.owner_name,
+    report.supervising_office,
+    report.safety_engineer_name,
+  ]);
 
   const patch = (partial: Partial<SupervisionReport>) => {
     const next = { ...report, ...partial };
@@ -75,7 +104,22 @@ export default function SupervisionReportSection({
   };
 
   const refreshFromProject = () => {
-    onChange(seedSupervisionReport(client, data, company, report));
+    onChange(
+      seedSupervisionReport(client, data, companySnapshot, {
+        ...report,
+        owner_name: '',
+        project_name: '',
+        building_type: '',
+        area_m2: '',
+        supervising_office: '',
+        safety_engineer_name: '',
+        branch_manager_name: '',
+        inspection_form_number: '',
+        study_number: '',
+        months: [],
+        tasks: [],
+      })
+    );
   };
 
   const addTask = () => {
@@ -86,7 +130,9 @@ export default function SupervisionReportSection({
       category_label: 'بند إضافي',
       description: '',
       work_type: 'توريد وتركيب',
-      month_progress: Object.fromEntries(months.map((m) => [m.id, { percent: null, status: '' as const }])),
+      month_progress: Object.fromEntries(
+        months.map((m) => [m.id, { percent: null, status: '' as const }])
+      ),
       total_percent: null,
     };
     patch({ tasks: [...(report.tasks || []), row] });
@@ -96,29 +142,49 @@ export default function SupervisionReportSection({
     patch({ tasks: (report.tasks || []).filter((t) => t.id !== taskId) });
   };
 
+  const handlePrint = () => {
+    printSupervisionReport(client, report, companySnapshot);
+  };
+
   const overall = resolveOverallProgress(report);
+  const months = report.months || [];
+  const tasks = report.tasks || [];
 
   return (
     <div className="space-y-4">
-      <div className="rounded-xl border border-emerald-100 bg-emerald-50 px-3 py-2 text-sm text-emerald-900">
-        تقرير الإشراف الدوري ومتابعة الإنجاز — يسحب البيانات تلقائياً من التسويق/المبيعات والتقرير الفني، والطباعة A4 أفقية متعددة الصفحات.
+      <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-3 rounded-xl border border-emerald-100 bg-emerald-50 px-3 py-3">
+        <div>
+          <p className="text-sm font-bold text-emerald-950">تقرير الإشراف الدوري ومتابعة الإنجاز</p>
+          <p className="text-xs text-emerald-900 mt-1">
+            يُبنى تلقائياً من بيانات المشروع والمكتب — جدول متابعة كامل قابل للطباعة A4 أفقي.
+          </p>
+        </div>
+        <div className="flex flex-wrap gap-2 shrink-0">
+          <button
+            type="button"
+            onClick={refreshFromProject}
+            className="px-3 py-2 rounded-xl border border-emerald-200 text-sm bg-white hover:bg-white/80"
+          >
+            تحديث من بيانات المشروع
+          </button>
+          <button
+            type="button"
+            onClick={handlePrint}
+            className="px-4 py-2 rounded-xl bg-[#1f4d3a] text-white text-sm font-semibold hover:bg-[#163828]"
+          >
+            طباعة التقرير (PDF)
+          </button>
+        </div>
       </div>
 
-      <div className="flex flex-wrap gap-2">
-        <button
-          type="button"
-          onClick={refreshFromProject}
-          className="px-3 py-2 rounded-xl border text-sm bg-white hover:bg-gray-50"
-        >
-          تحديث من بيانات المشروع
-        </button>
-        <button
-          type="button"
-          onClick={() => printSupervisionReport(client, report, company)}
-          className="px-3 py-2 rounded-xl border border-emerald-600 text-emerald-800 text-sm bg-white hover:bg-emerald-50"
-        >
-          معاينة / طباعة A4 أفقي
-        </button>
+      {/* Header snapshot — always visible */}
+      <div className="rounded-xl border bg-white p-4 grid grid-cols-1 md:grid-cols-2 gap-x-6 gap-y-2 text-sm">
+        <MetaRow label="المشروع" value={report.project_name} />
+        <MetaRow label="المستثمر / المالك" value={report.owner_name} />
+        <MetaRow label="المكتب المشرف" value={report.supervising_office} />
+        <MetaRow label="مهندس السلامة" value={report.safety_engineer_name} />
+        <MetaRow label="نسبة الإنجاز الكلي" value={overall != null ? `${overall}%` : '—'} />
+        <MetaRow label="تاريخ التقرير" value={report.report_date || '—'} />
       </div>
 
       <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
@@ -259,7 +325,7 @@ export default function SupervisionReportSection({
       </div>
 
       <div className="flex flex-wrap items-center gap-2">
-        <p className="text-sm font-bold text-gray-800 grow">جدول متابعة الأعمال</p>
+        <p className="text-sm font-bold text-gray-800 grow">جدول متابعة الأعمال ({tasks.length} بند)</p>
         <button
           type="button"
           onClick={() => onChange(addSupervisionMonth(report))}
@@ -270,6 +336,13 @@ export default function SupervisionReportSection({
         <button type="button" onClick={addTask} className="px-3 py-1.5 rounded-lg border text-xs bg-white">
           + إضافة بند
         </button>
+        <button
+          type="button"
+          onClick={handlePrint}
+          className="px-3 py-1.5 rounded-lg bg-[#1f4d3a] text-white text-xs font-semibold"
+        >
+          طباعة التقرير (PDF)
+        </button>
       </div>
 
       <div className="overflow-x-auto border rounded-xl">
@@ -277,22 +350,22 @@ export default function SupervisionReportSection({
           <thead>
             <tr className="bg-emerald-900 text-white">
               <th className="p-2 border border-emerald-800">الأعمال</th>
-              <th className="p-2 border border-emerald-800">الملاحظات</th>
-              <th className="p-2 border border-emerald-800">نوع العمل</th>
-              {(report.months || []).map((m) => (
+              <th className="p-2 border border-emerald-800">الملاحظات والتفاصيل</th>
+              <th className="p-2 border border-emerald-800">نوع العمل (توريد / تركيب)</th>
+              {months.map((m) => (
                 <th key={m.id} className="p-2 border border-emerald-800 min-w-[88px]">
                   <div className="flex flex-col gap-1 items-center">
                     <input
                       value={m.label}
                       onChange={(e) => {
-                        const months = (report.months || []).map((x) =>
+                        const nextMonths = months.map((x) =>
                           x.id === m.id ? { ...x, label: e.target.value } : x
                         );
-                        patch({ months });
+                        patch({ months: nextMonths });
                       }}
                       className="w-full text-center text-[11px] rounded px-1 py-0.5 text-gray-900"
                     />
-                    {(report.months?.length || 0) > 1 && (
+                    {months.length > 1 && (
                       <button
                         type="button"
                         className="text-[10px] text-red-200 hover:text-white"
@@ -305,123 +378,131 @@ export default function SupervisionReportSection({
                 </th>
               ))}
               <th className="p-2 border border-emerald-800">نسبة الإنجاز %</th>
-              <th className="p-2 border border-emerald-800 no-print">حذف</th>
+              <th className="p-2 border border-emerald-800">حذف</th>
             </tr>
           </thead>
           <tbody>
-            {(report.tasks || []).map((task) => (
-              <tr key={task.id} className="bg-white odd:bg-slate-50">
-                <td className="p-1.5 border align-top">
-                  <input
-                    value={task.category_label}
-                    onChange={(e) =>
-                      updateTask(task.id, (t) => ({ ...t, category_label: e.target.value }))
-                    }
-                    className="w-28 border rounded px-1.5 py-1"
-                  />
-                </td>
-                <td className="p-1.5 border align-top">
-                  <input
-                    value={task.description}
-                    onChange={(e) =>
-                      updateTask(task.id, (t) => ({ ...t, description: e.target.value }))
-                    }
-                    className="w-40 border rounded px-1.5 py-1"
-                  />
-                </td>
-                <td className="p-1.5 border align-top">
-                  <select
-                    value={task.work_type || ''}
-                    onChange={(e) =>
-                      updateTask(task.id, (t) => ({
-                        ...t,
-                        work_type: e.target.value as SupervisionWorkType,
-                      }))
-                    }
-                    className="border rounded px-1.5 py-1"
-                  >
-                    {WORK_TYPES.map((w) => (
-                      <option key={w || 'empty'} value={w}>
-                        {w || '—'}
-                      </option>
-                    ))}
-                  </select>
-                </td>
-                {(report.months || []).map((m) => {
-                  const cell = task.month_progress?.[m.id] || { percent: null, status: '' as const };
-                  return (
-                    <td
-                      key={m.id}
-                      className="p-1.5 border align-top"
-                      style={{ background: statusCellColor(cell.status) }}
-                    >
-                      <input
-                        type="number"
-                        min={0}
-                        max={100}
-                        value={cell.percent ?? ''}
-                        onChange={(e) => {
-                          const percent = e.target.value === '' ? null : Number(e.target.value);
-                          updateTask(task.id, (t) => ({
-                            ...t,
-                            month_progress: {
-                              ...t.month_progress,
-                              [m.id]: { ...cell, percent },
-                            },
-                            total_percent: null,
-                          }));
-                        }}
-                        className="w-14 border rounded px-1 py-1 text-center bg-white/80"
-                        placeholder="%"
-                      />
-                      <select
-                        value={cell.status}
-                        onChange={(e) => {
-                          const status = e.target.value as SupervisionProgressStatus;
-                          updateTask(task.id, (t) => ({
-                            ...t,
-                            month_progress: {
-                              ...t.month_progress,
-                              [m.id]: { ...cell, status },
-                            },
-                          }));
-                        }}
-                        className="mt-1 w-full border rounded px-1 py-0.5 text-[10px] bg-white/80"
-                      >
-                        {CELL_STATUSES.map((s) => (
-                          <option key={s.value || 'empty'} value={s.value}>
-                            {s.label}
-                          </option>
-                        ))}
-                      </select>
-                    </td>
-                  );
-                })}
-                <td className="p-1.5 border align-top text-center font-semibold">
-                  <input
-                    type="number"
-                    min={0}
-                    max={100}
-                    value={task.total_percent ?? calcTaskTotalPercent(task) ?? ''}
-                    onChange={(e) => {
-                      const total_percent = e.target.value === '' ? null : Number(e.target.value);
-                      updateTask(task.id, (t) => ({ ...t, total_percent }));
-                    }}
-                    className="w-14 border rounded px-1 py-1 text-center"
-                    title="اتركه فارغاً ليُحسب من الأشهر، أو أدخل قيمة يدوية"
-                  />
-                </td>
-                <td className="p-1.5 border align-top text-center">
-                  <button
-                    type="button"
-                    onClick={() => removeTask(task.id)}
-                    className="text-red-600 hover:underline text-[11px]"
-                  >
-                    حذف
-                  </button>
+            {tasks.length === 0 ? (
+              <tr>
+                <td colSpan={5 + months.length} className="p-8 text-center text-gray-400">
+                  جاري بناء هيكل التقرير…
                 </td>
               </tr>
-            ))}
+            ) : (
+              tasks.map((task) => (
+                <tr key={task.id} className="bg-white odd:bg-slate-50">
+                  <td className="p-1.5 border align-top">
+                    <input
+                      value={task.category_label}
+                      onChange={(e) =>
+                        updateTask(task.id, (t) => ({ ...t, category_label: e.target.value }))
+                      }
+                      className="w-28 border rounded px-1.5 py-1"
+                    />
+                  </td>
+                  <td className="p-1.5 border align-top">
+                    <input
+                      value={task.description}
+                      onChange={(e) =>
+                        updateTask(task.id, (t) => ({ ...t, description: e.target.value }))
+                      }
+                      className="w-44 border rounded px-1.5 py-1"
+                    />
+                  </td>
+                  <td className="p-1.5 border align-top">
+                    <select
+                      value={task.work_type || ''}
+                      onChange={(e) =>
+                        updateTask(task.id, (t) => ({
+                          ...t,
+                          work_type: e.target.value as SupervisionWorkType,
+                        }))
+                      }
+                      className="border rounded px-1.5 py-1"
+                    >
+                      {WORK_TYPES.map((w) => (
+                        <option key={w || 'empty'} value={w}>
+                          {w || '—'}
+                        </option>
+                      ))}
+                    </select>
+                  </td>
+                  {months.map((m) => {
+                    const cell = task.month_progress?.[m.id] || { percent: null, status: '' as const };
+                    return (
+                      <td
+                        key={m.id}
+                        className="p-1.5 border align-top"
+                        style={{ background: statusCellColor(cell.status) }}
+                      >
+                        <input
+                          type="number"
+                          min={0}
+                          max={100}
+                          value={cell.percent ?? ''}
+                          onChange={(e) => {
+                            const percent = e.target.value === '' ? null : Number(e.target.value);
+                            updateTask(task.id, (t) => ({
+                              ...t,
+                              month_progress: {
+                                ...t.month_progress,
+                                [m.id]: { ...cell, percent },
+                              },
+                              total_percent: null,
+                            }));
+                          }}
+                          className="w-14 border rounded px-1 py-1 text-center bg-white/80"
+                          placeholder="%"
+                        />
+                        <select
+                          value={cell.status}
+                          onChange={(e) => {
+                            const status = e.target.value as SupervisionProgressStatus;
+                            updateTask(task.id, (t) => ({
+                              ...t,
+                              month_progress: {
+                                ...t.month_progress,
+                                [m.id]: { ...cell, status },
+                              },
+                            }));
+                          }}
+                          className="mt-1 w-full border rounded px-1 py-0.5 text-[10px] bg-white/80"
+                        >
+                          {CELL_STATUSES.map((s) => (
+                            <option key={s.value || 'empty'} value={s.value}>
+                              {s.label}
+                            </option>
+                          ))}
+                        </select>
+                      </td>
+                    );
+                  })}
+                  <td className="p-1.5 border align-top text-center font-semibold">
+                    <input
+                      type="number"
+                      min={0}
+                      max={100}
+                      value={task.total_percent ?? calcTaskTotalPercent(task) ?? ''}
+                      onChange={(e) => {
+                        const total_percent = e.target.value === '' ? null : Number(e.target.value);
+                        updateTask(task.id, (t) => ({ ...t, total_percent }));
+                      }}
+                      className="w-14 border rounded px-1 py-1 text-center"
+                      title="اتركه فارغاً ليُحسب من الأشهر، أو أدخل قيمة يدوية"
+                    />
+                  </td>
+                  <td className="p-1.5 border align-top text-center">
+                    <button
+                      type="button"
+                      onClick={() => removeTask(task.id)}
+                      className="text-red-600 hover:underline text-[11px]"
+                    >
+                      حذف
+                    </button>
+                  </td>
+                </tr>
+              ))
+            )}
           </tbody>
         </table>
       </div>
@@ -434,14 +515,32 @@ export default function SupervisionReportSection({
         className="w-full p-2.5 border rounded-xl text-sm"
       />
 
-      <button
-        type="button"
-        onClick={onSave}
-        disabled={saving}
-        className="px-4 py-2 bg-indigo-600 text-white rounded-xl text-sm disabled:opacity-50"
-      >
-        {saving ? 'جاري الحفظ...' : 'حفظ تقرير الإشراف'}
-      </button>
+      <div className="flex flex-wrap gap-2">
+        <button
+          type="button"
+          onClick={onSave}
+          disabled={saving}
+          className="px-4 py-2 bg-indigo-600 text-white rounded-xl text-sm disabled:opacity-50"
+        >
+          {saving ? 'جاري الحفظ...' : 'حفظ تقرير الإشراف'}
+        </button>
+        <button
+          type="button"
+          onClick={handlePrint}
+          className="px-4 py-2 rounded-xl border border-[#1f4d3a] text-[#1f4d3a] text-sm font-semibold"
+        >
+          طباعة التقرير (PDF)
+        </button>
+      </div>
+    </div>
+  );
+}
+
+function MetaRow({ label, value }: { label: string; value?: string | null }) {
+  return (
+    <div className="flex gap-2 min-w-0">
+      <span className="text-xs font-semibold text-emerald-800 shrink-0">{label}:</span>
+      <span className="text-sm text-gray-900 truncate">{value?.trim() || '—'}</span>
     </div>
   );
 }
