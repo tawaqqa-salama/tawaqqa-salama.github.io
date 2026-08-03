@@ -8,6 +8,7 @@ export const ALL_DEPARTMENTS: DepartmentId[] = [
   'finance',
   'hr',
   'projects',
+  'design',
   'settings',
 ];
 
@@ -28,12 +29,14 @@ export const DEPARTMENT_PERMISSIONS: { code: PermissionCode; label: string; depa
                 ? 'الموارد البشرية'
                 : department === 'projects'
                   ? 'المشاريع'
-                  : 'الإعدادات',
+                  : department === 'design'
+                    ? 'الذكاء التصميمي'
+                    : 'الإعدادات',
   }));
 
 export const DEFAULT_ROLE_PERMISSIONS: Record<string, PermissionCode[]> = {
   admin: ['*'],
-  engineer: ['dept.projects', 'dept.hr', 'dept.procurement', 'me.page'],
+  engineer: ['dept.projects', 'dept.design', 'dept.hr', 'dept.procurement', 'me.page'],
   sales: ['dept.marketing', 'dept.sales', 'dept.procurement', 'me.page'],
   accountant: ['dept.finance', 'me.page'],
   staff: ['me.page'],

@@ -439,7 +439,7 @@ export function createDemoSeed(): Record<string, Row[]> {
         company_id: COMPANY_ID,
         code: 'engineer',
         name: 'مهندس سلامة',
-        permissions: ['dept.projects', 'dept.hr', 'dept.procurement', 'me.page'],
+        permissions: ['dept.projects', 'dept.design', 'dept.hr', 'dept.procurement', 'me.page'],
         is_system: true,
         created_at: now,
       },

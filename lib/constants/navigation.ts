@@ -17,11 +17,12 @@ export type DepartmentId =
   | 'finance'
   | 'hr'
   | 'projects'
+  | 'design'
   | 'settings';
 
 export type NavModuleStatus = 'active' | 'under_development' | 'beta';
 
-/** Module launcher / app switcher — exactly 7 departments (all active). */
+/** Module launcher / app switcher — department grid */
 export const SIDEBAR_NAV: {
   href: string;
   label: string;
@@ -44,6 +45,13 @@ export const SIDEBAR_NAV: {
   { href: '/finance', label: 'الحسابات المالية', icon: '💰', department: 'finance', status: 'active' },
   { href: '/hr', label: 'الموارد البشرية', icon: '👷', department: 'hr', status: 'active' },
   { href: '/projects', label: 'المشاريع', icon: '🏗️', department: 'projects', status: 'active' },
+  {
+    href: '/design',
+    label: 'مركز الذكاء التصميمي',
+    icon: '🧠',
+    department: 'design',
+    status: 'active',
+  },
   { href: '/settings', label: 'الإعدادات', icon: '⚙️', department: 'settings', status: 'active' },
 ];
 
@@ -103,6 +111,14 @@ export const SYSTEM_MODULES = [
     description: 'المعاينة الهندسية، المخططات/BIM، والامتثال SBC/NFPA',
     icon: '🏗️',
     color: 'from-indigo-500 to-indigo-600',
+    status: 'active' as const,
+  },
+  {
+    href: '/design',
+    title: 'مركز الذكاء التصميمي',
+    description: 'قاعدة المعرفة الهندسية، RAG، مساحة التصميم، والمساعد الذكي',
+    icon: '🧠',
+    color: 'from-violet-500 to-violet-600',
     status: 'active' as const,
   },
   {
