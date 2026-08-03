@@ -4,19 +4,21 @@ import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { useAuth } from '@/lib/auth/AuthProvider';
 import ModuleSubNavSlot from '@/components/layout/ModuleSubNavSlot';
+import { useLanguage } from '@/lib/i18n/LanguageProvider';
 
 const SETTINGS_LINKS = [
-  { href: '/settings', label: 'نظرة عامة', exact: true },
-  { href: '/settings/company', label: 'معلومات الشركة' },
-  { href: '/settings/users', label: 'المستخدمون' },
-  { href: '/settings/activity', label: 'سجل النشاطات' },
-  { href: '/settings/zatca', label: 'ZATCA' },
-  { href: '/settings/building-code', label: 'كود البناء' },
+  { href: '/settings', key: 'settings.overview', exact: true },
+  { href: '/settings/company', key: 'settings.companyShort' },
+  { href: '/settings/users', key: 'settings.usersShort' },
+  { href: '/settings/activity', key: 'settings.activity' },
+  { href: '/settings/zatca', key: 'settings.zatcaShort' },
+  { href: '/settings/building-code', key: 'settings.buildingCodeShort' },
 ] as const;
 
 export default function SettingsSubNav() {
   const pathname = usePathname();
   const { canAccess, canManageStaff } = useAuth();
+  const { t } = useLanguage();
 
   const links = SETTINGS_LINKS.filter((item) => {
     if (item.href === '/settings/users' || item.href === '/settings/activity') return canManageStaff;
@@ -27,13 +29,14 @@ export default function SettingsSubNav() {
   if (links.length === 0) return null;
 
   return (
-    <ModuleSubNavSlot label="تبويبات الإعدادات">
+    <ModuleSubNavSlot label={t('settings.tabs')}>
       <div className="bg-white border border-[var(--erp-border)] rounded-xl p-1.5 overflow-x-auto">
-        <div className="flex gap-1 min-w-max" role="tablist" aria-label="تبويبات الإعدادات">
+        <div className="flex gap-1 min-w-max" role="tablist" aria-label={t('settings.tabs')}>
           {links.map((item) => {
-            const active = 'exact' in item && item.exact
-              ? pathname === item.href
-              : pathname === item.href || pathname.startsWith(`${item.href}/`);
+            const active =
+              'exact' in item && item.exact
+                ? pathname === item.href
+                : pathname === item.href || pathname.startsWith(`${item.href}/`);
 
             return (
               <Link
@@ -50,7 +53,7 @@ export default function SettingsSubNav() {
                   }
                 `}
               >
-                {item.label}
+                {t(item.key)}
               </Link>
             );
           })}
