@@ -12,6 +12,7 @@ import {
 import {
   translate,
   translateFinanceNavLabel,
+  translateFinanceStoredLabel,
   translateNavDescription,
   translateNavLabel,
   translateProfileText,
@@ -35,6 +36,7 @@ type LanguageContextValue = {
   tNav: (href: string, fallback?: string) => string;
   tNavDesc: (href: string, fallback?: string) => string;
   tFinance: (href: string, fallback: string) => string;
+  tFinanceLabel: (text: string | null | undefined) => string;
   tSettingsSub: (pathname: string) => string | null;
   tProfile: (text: string | null | undefined, fallbackKey?: TranslationKey) => string;
   tRole: (roleCode: string | null | undefined) => string;
@@ -97,6 +99,7 @@ export function LanguageProvider({ children }: { children: ReactNode }) {
       tNav: (href, fallback) => translateNavLabel(lang, href, fallback),
       tNavDesc: (href, fallback) => translateNavDescription(lang, href, fallback),
       tFinance: (href, fallback) => translateFinanceNavLabel(lang, href, fallback),
+      tFinanceLabel: (text) => translateFinanceStoredLabel(lang, text),
       tSettingsSub: (pathname) => translateSettingsSub(lang, pathname),
       tProfile: (text, fallbackKey) => translateProfileText(lang, text, fallbackKey),
       tRole: (roleCode) => translateRoleCode(lang, roleCode),
@@ -139,6 +142,7 @@ export function useLanguageOptional(): LanguageContextValue {
     tNav: (href, fallback) => translateNavLabel('ar', href, fallback),
     tNavDesc: (href, fallback) => translateNavDescription('ar', href, fallback),
     tFinance: (href, fallback) => translateFinanceNavLabel('ar', href, fallback),
+    tFinanceLabel: (text) => translateFinanceStoredLabel('ar', text),
     tSettingsSub: (pathname) => translateSettingsSub('ar', pathname),
     tProfile: (text, fallbackKey) => translateProfileText('ar', text, fallbackKey),
     tRole: (roleCode) => translateRoleCode('ar', roleCode),

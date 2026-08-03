@@ -4,10 +4,12 @@ import { useEffect, useState } from 'react';
 import { supabase } from '@/lib/supabase';
 import ComplianceEnginePanel from '@/components/compliance/ComplianceEnginePanel';
 import PageHeader from '@/components/shared/PageHeader';
+import { useLanguage } from '@/lib/i18n/LanguageProvider';
 import type { ClientRecord } from '@/lib/types/client';
 
 /** صفحة اشتراطات كود البناء — SBC/NFPA من الإعدادات */
 export default function BuildingCodeSettingsPage() {
+  const { t } = useLanguage();
   const [clients, setClients] = useState<ClientRecord[]>([]);
 
   useEffect(() => {
@@ -20,10 +22,7 @@ export default function BuildingCodeSettingsPage() {
 
   return (
     <div className="space-y-5">
-      <PageHeader
-        title="كود البناء واشتراطات السلامة"
-        description="محرك الامتثال SBC 801 وNFPA — اشتراطات الأنشطة والمساحات والأنظمة"
-      />
+      <PageHeader title={t('compliance.page.title')} description={t('compliance.page.subtitle')} />
       <ComplianceEnginePanel clients={clients} />
     </div>
   );

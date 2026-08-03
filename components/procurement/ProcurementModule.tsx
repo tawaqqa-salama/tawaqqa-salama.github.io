@@ -251,44 +251,44 @@ export default function ProcurementModule() {
         <div className="grid grid-cols-1 xl:grid-cols-5 gap-4">
           <div className="xl:col-span-2 rounded-xl border bg-white p-4 space-y-3">
             <h2 className="font-bold text-gray-900">
-              {tab === 'vendors' ? 'إضافة / تعديل مورد معتمد' : 'إضافة / تعديل مقاول أو استشاري خارجي'}
+              {tab === 'vendors' ? t('procurement.vendor.formTitle') : t('procurement.sub.formTitle')}
             </h2>
             <Field
-              label="الاسم"
+              label={t('procurement.vendor.name')}
               value={vendorForm.name}
               onChange={(v) => setVendorForm({ ...vendorForm, name: v })}
             />
             <Field
-              label="التخصص (إطفاء / إنذار / اختبارات…)"
+              label={t('procurement.vendor.specialty')}
               value={vendorForm.specialty || ''}
               onChange={(v) => setVendorForm({ ...vendorForm, specialty: v })}
             />
             <div className="grid grid-cols-2 gap-2">
               <Field
-                label="الجوال"
+                label={t('procurement.vendor.phone')}
                 value={vendorForm.phone || ''}
                 onChange={(v) => setVendorForm({ ...vendorForm, phone: v })}
               />
               <Field
-                label="المدينة"
+                label={t('procurement.vendor.city')}
                 value={vendorForm.city || ''}
                 onChange={(v) => setVendorForm({ ...vendorForm, city: v })}
               />
             </div>
             <div className="grid grid-cols-2 gap-2">
               <Field
-                label="السجل التجاري"
+                label={t('procurement.vendor.cr')}
                 value={vendorForm.commercial_register || ''}
                 onChange={(v) => setVendorForm({ ...vendorForm, commercial_register: v })}
               />
               <Field
-                label="الرقم الضريبي"
+                label={t('procurement.vendor.tax')}
                 value={vendorForm.tax_number || ''}
                 onChange={(v) => setVendorForm({ ...vendorForm, tax_number: v })}
               />
             </div>
             <Field
-              label="شهادات / اعتمادات"
+              label={t('procurement.vendor.certs')}
               value={vendorForm.certification_notes || ''}
               onChange={(v) => setVendorForm({ ...vendorForm, certification_notes: v })}
             />
@@ -298,7 +298,7 @@ export default function ProcurementModule() {
               onClick={() => void saveVendor()}
               className="w-full px-4 py-2.5 rounded-xl bg-[#1f4d3a] text-white text-sm font-semibold disabled:opacity-50"
             >
-              حفظ
+              {t('procurement.vendor.save')}
             </button>
           </div>
 
@@ -307,36 +307,36 @@ export default function ProcurementModule() {
               <table className="w-full text-right text-sm table-as-cards">
                 <thead className="bg-gray-50 border-b text-gray-600">
                   <tr>
-                    <th className="p-3">الاسم</th>
-                    <th className="p-3">التخصص</th>
-                    <th className="p-3">المدينة</th>
-                    <th className="p-3">الحالة</th>
-                    <th className="p-3">إجراء</th>
+                    <th className="p-3">{t('procurement.col.name')}</th>
+                    <th className="p-3">{t('procurement.col.specialty')}</th>
+                    <th className="p-3">{t('procurement.col.city')}</th>
+                    <th className="p-3">{t('procurement.col.status')}</th>
+                    <th className="p-3">{t('procurement.col.action')}</th>
                   </tr>
                 </thead>
                 <tbody>
                   {(tab === 'vendors' ? suppliers : subcontractors).map((v) => (
                     <tr key={v.id} className="border-b hover:bg-gray-50">
-                      <td className="p-3" data-label="الاسم">
+                      <td className="p-3" data-label={t('procurement.col.name')}>
                         <div className="font-semibold">{v.name}</div>
                         <div className="text-xs text-gray-400">{v.phone || '—'}</div>
                       </td>
-                      <td className="p-3" data-label="التخصص">
+                      <td className="p-3" data-label={t('procurement.col.specialty')}>
                         {v.specialty || '—'}
                       </td>
-                      <td className="p-3" data-label="المدينة">
+                      <td className="p-3" data-label={t('procurement.col.city')}>
                         {v.city || '—'}
                       </td>
-                      <td className="p-3" data-label="الحالة">
-                        {v.status === 'active' ? 'نشط' : v.status}
+                      <td className="p-3" data-label={t('procurement.col.status')}>
+                        {v.status === 'active' ? t('procurement.status.active') : v.status}
                       </td>
-                      <td className="p-3" data-label="إجراء">
+                      <td className="p-3" data-label={t('procurement.col.action')}>
                         <button
                           type="button"
                           className="text-xs font-semibold text-[#1f4d3a] underline"
                           onClick={() => openVendorEditor(v.vendor_type, v)}
                         >
-                          تعديل
+                          {t('procurement.action.edit')}
                         </button>
                       </td>
                     </tr>
@@ -344,7 +344,7 @@ export default function ProcurementModule() {
                   {(tab === 'vendors' ? suppliers : subcontractors).length === 0 && (
                     <tr>
                       <td colSpan={5} className="p-8 text-center text-gray-400">
-                        لا توجد سجلات بعد
+                        {t('procurement.empty.vendors')}
                       </td>
                     </tr>
                   )}
@@ -358,10 +358,16 @@ export default function ProcurementModule() {
       {tab === 'orders' && (
         <div className="grid grid-cols-1 xl:grid-cols-5 gap-4">
           <div className="xl:col-span-2 rounded-xl border bg-white p-4 space-y-3">
-            <h2 className="font-bold text-gray-900">أمر شراء جديد</h2>
-            <Field label="العنوان" value={poForm.title} onChange={(v) => setPoForm({ ...poForm, title: v })} />
+            <h2 className="font-bold text-gray-900">{t('procurement.po.formTitle')}</h2>
+            <Field
+              label={t('procurement.po.title')}
+              value={poForm.title}
+              onChange={(v) => setPoForm({ ...poForm, title: v })}
+            />
             <label className="block text-sm">
-              <span className="text-xs font-semibold text-gray-600 mb-1 block">التصنيف</span>
+              <span className="text-xs font-semibold text-gray-600 mb-1 block">
+                {t('procurement.po.category')}
+              </span>
               <select
                 value={poForm.category}
                 onChange={(e) => setPoForm({ ...poForm, category: e.target.value as PurchaseCategory })}
@@ -375,7 +381,9 @@ export default function ProcurementModule() {
               </select>
             </label>
             <label className="block text-sm">
-              <span className="text-xs font-semibold text-gray-600 mb-1 block">المورد</span>
+              <span className="text-xs font-semibold text-gray-600 mb-1 block">
+                {t('procurement.po.vendor')}
+              </span>
               <select
                 value={poForm.vendor_id}
                 onChange={(e) => setPoForm({ ...poForm, vendor_id: e.target.value })}
@@ -390,13 +398,15 @@ export default function ProcurementModule() {
               </select>
             </label>
             <Field
-              label="وصف البند"
+              label={t('procurement.po.itemDesc')}
               value={poForm.description}
               onChange={(v) => setPoForm({ ...poForm, description: v })}
             />
             <div className="grid grid-cols-2 gap-2">
               <label className="text-sm">
-                <span className="text-xs font-semibold text-gray-600 mb-1 block">الكمية</span>
+                <span className="text-xs font-semibold text-gray-600 mb-1 block">
+                  {t('procurement.po.qty')}
+                </span>
                 <NumericInput
                   mode="decimal"
                   value={poForm.quantity}
@@ -405,7 +415,9 @@ export default function ProcurementModule() {
                 />
               </label>
               <label className="text-sm">
-                <span className="text-xs font-semibold text-gray-600 mb-1 block">سعر الوحدة</span>
+                <span className="text-xs font-semibold text-gray-600 mb-1 block">
+                  {t('procurement.po.unitPrice')}
+                </span>
                 <NumericInput
                   mode="decimal"
                   value={poForm.unit_price}
@@ -420,7 +432,7 @@ export default function ProcurementModule() {
               onClick={() => void saveOrder()}
               className="w-full px-4 py-2.5 rounded-xl bg-[#1f4d3a] text-white text-sm font-semibold disabled:opacity-50"
             >
-              إنشاء أمر الشراء
+              {t('procurement.po.create')}
             </button>
           </div>
 
@@ -429,39 +441,39 @@ export default function ProcurementModule() {
               <table className="w-full text-right text-sm table-as-cards">
                 <thead className="bg-gray-50 border-b text-gray-600">
                   <tr>
-                    <th className="p-3">رقم الأمر</th>
-                    <th className="p-3">العنوان</th>
-                    <th className="p-3">المورد</th>
-                    <th className="p-3">الإجمالي</th>
-                    <th className="p-3">الحالة</th>
+                    <th className="p-3">{t('procurement.po.col.number')}</th>
+                    <th className="p-3">{t('procurement.po.col.title')}</th>
+                    <th className="p-3">{t('procurement.po.col.vendor')}</th>
+                    <th className="p-3">{t('procurement.po.col.total')}</th>
+                    <th className="p-3">{t('procurement.po.col.status')}</th>
                   </tr>
                 </thead>
                 <tbody>
                   {orders.length === 0 ? (
                     <tr>
                       <td colSpan={5} className="p-8 text-center text-gray-400">
-                        لا توجد أوامر شراء بعد
+                        {t('procurement.po.empty')}
                       </td>
                     </tr>
                   ) : (
                     orders.map((o) => (
                       <tr key={o.id} className="border-b">
-                        <td className="p-3 font-mono" data-label="رقم الأمر">
+                        <td className="p-3 font-mono" data-label={t('procurement.po.col.number')}>
                           {o.po_number}
                         </td>
-                        <td className="p-3" data-label="العنوان">
+                        <td className="p-3" data-label={t('procurement.po.col.title')}>
                           <div className="font-semibold">{o.title}</div>
                           <div className="text-xs text-gray-400">
                             {PURCHASE_CATEGORY_LABELS[o.category] || o.category}
                           </div>
                         </td>
-                        <td className="p-3" data-label="المورد">
+                        <td className="p-3" data-label={t('procurement.po.col.vendor')}>
                           {(o.vendor_id && vendorMap.get(o.vendor_id)?.name) || '—'}
                         </td>
-                        <td className="p-3 font-mono" data-label="الإجمالي">
+                        <td className="p-3 font-mono" data-label={t('procurement.po.col.total')}>
                           {formatCurrency(o.total_amount)}
                         </td>
-                        <td className="p-3" data-label="الحالة">
+                        <td className="p-3" data-label={t('procurement.po.col.status')}>
                           {PO_STATUS_LABELS[o.status] || o.status}
                         </td>
                       </tr>
@@ -477,29 +489,33 @@ export default function ProcurementModule() {
       {tab === 'boq-rfq' && (
         <div className="space-y-4">
           <div className="rounded-xl border border-indigo-100 bg-indigo-50 px-3 py-2 text-sm text-indigo-900">
-            حوّل بنود جدول الكميات (BOQ) من مشروع هندسي إلى طلب تسعير (RFQ) يُرسل للموردين المعتمدين.
+            {t('procurement.rfq.hint')}
           </div>
           <div className="rounded-xl border bg-white p-4 grid grid-cols-1 md:grid-cols-3 gap-3">
             <label className="text-sm md:col-span-1">
-              <span className="text-xs font-semibold text-gray-600 mb-1 block">المشروع</span>
+              <span className="text-xs font-semibold text-gray-600 mb-1 block">
+                {t('procurement.rfq.project')}
+              </span>
               <select
                 value={rfqProjectId}
                 onChange={(e) => setRfqProjectId(e.target.value)}
                 className="w-full border rounded-xl px-3 py-2.5 text-sm"
               >
-                <option value="">اختر مشروعاً</option>
+                <option value="">{t('procurement.rfq.selectProject')}</option>
                 {projects.map((p) => {
                   const boqCount = parseProjectEngineeringData(p.project_engineering_data).boq.items?.length || 0;
                   return (
                     <option key={p.id} value={p.id}>
-                      {p.business_name || p.name} — BOQ: {boqCount} بند
+                      {p.business_name || p.name} — BOQ: {boqCount} {t('procurement.rfq.boqItems')}
                     </option>
                   );
                 })}
               </select>
             </label>
             <label className="text-sm">
-              <span className="text-xs font-semibold text-gray-600 mb-1 block">المورد (اختياري)</span>
+              <span className="text-xs font-semibold text-gray-600 mb-1 block">
+                {t('procurement.rfq.vendorOptional')}
+              </span>
               <select
                 value={rfqVendorId}
                 onChange={(e) => setRfqVendorId(e.target.value)}
@@ -520,7 +536,7 @@ export default function ProcurementModule() {
                 onClick={() => void createBoqRfq()}
                 className="w-full px-4 py-2.5 rounded-xl bg-[#1f4d3a] text-white text-sm font-semibold disabled:opacity-50"
               >
-                تحويل BOQ إلى RFQ
+                {t('procurement.rfq.convert')}
               </button>
             </div>
           </div>
@@ -529,56 +545,56 @@ export default function ProcurementModule() {
             <table className="w-full text-right text-sm table-as-cards">
               <thead className="bg-gray-50 border-b text-gray-600">
                 <tr>
-                  <th className="p-3">رقم RFQ</th>
-                  <th className="p-3">العنوان</th>
-                  <th className="p-3">البنود</th>
-                  <th className="p-3">المورد</th>
-                  <th className="p-3">الحالة</th>
-                  <th className="p-3">إجراء</th>
+                  <th className="p-3">{t('procurement.rfq.col.number')}</th>
+                  <th className="p-3">{t('procurement.rfq.col.title')}</th>
+                  <th className="p-3">{t('procurement.rfq.col.items')}</th>
+                  <th className="p-3">{t('procurement.rfq.col.vendor')}</th>
+                  <th className="p-3">{t('procurement.rfq.col.status')}</th>
+                  <th className="p-3">{t('procurement.rfq.col.action')}</th>
                 </tr>
               </thead>
               <tbody>
                 {rfqs.length === 0 ? (
                   <tr>
                     <td colSpan={6} className="p-8 text-center text-gray-400">
-                      لا توجد طلبات تسعير بعد
+                      {t('procurement.rfq.empty')}
                     </td>
                   </tr>
                 ) : (
                   rfqs.map((r) => (
                     <tr key={r.id} className="border-b">
-                      <td className="p-3 font-mono" data-label="رقم RFQ">
+                      <td className="p-3 font-mono" data-label={t('procurement.rfq.col.number')}>
                         {r.rfq_number}
                       </td>
-                      <td className="p-3" data-label="العنوان">
+                      <td className="p-3" data-label={t('procurement.rfq.col.title')}>
                         {r.title}
                         {r.source_boq ? (
                           <span className="ml-2 text-[10px] font-bold text-indigo-700 bg-indigo-50 px-1.5 py-0.5 rounded">
-                            من BOQ
+                            {t('procurement.rfq.fromBoq')}
                           </span>
                         ) : null}
                       </td>
-                      <td className="p-3" data-label="البنود">
+                      <td className="p-3" data-label={t('procurement.rfq.col.items')}>
                         {r.line_items?.length || 0}
                       </td>
-                      <td className="p-3" data-label="المورد">
+                      <td className="p-3" data-label={t('procurement.rfq.col.vendor')}>
                         {(r.vendor_id && vendorMap.get(r.vendor_id)?.name) || '—'}
                       </td>
-                      <td className="p-3" data-label="الحالة">
+                      <td className="p-3" data-label={t('procurement.rfq.col.status')}>
                         {RFQ_STATUS_LABELS[r.status] || r.status}
                       </td>
-                      <td className="p-3" data-label="إجراء">
+                      <td className="p-3" data-label={t('procurement.rfq.col.action')}>
                         <button
                           type="button"
                           className="text-xs font-semibold text-[#1f4d3a] underline"
                           onClick={() => {
                             void upsertRfq({ ...r, status: 'sent' }).then(() => {
-                              setMessage(`تم تعليم ${r.rfq_number} كـ مُرسل`);
+                              setMessage(t('procurement.rfq.markedSent', { number: r.rfq_number }));
                               void refresh();
                             });
                           }}
                         >
-                          تعليم كمرسل
+                          {t('procurement.rfq.markSent')}
                         </button>
                       </td>
                     </tr>

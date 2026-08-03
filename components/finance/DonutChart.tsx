@@ -1,5 +1,7 @@
 'use client';
 
+import { useLanguage } from '@/lib/i18n/LanguageProvider';
+
 interface DonutChartProps {
   title: string;
   items: { label: string; value: number; color?: string }[];
@@ -8,6 +10,7 @@ interface DonutChartProps {
 const FALLBACK_COLORS = ['#1f4d3a', '#b8e986', '#6366f1', '#f59e0b', '#ec4899', '#14b8a6'];
 
 export default function DonutChart({ title, items }: DonutChartProps) {
+  const { t } = useLanguage();
   const total = items.reduce((sum, item) => sum + item.value, 0) || 1;
   let cumulative = 0;
 
@@ -25,7 +28,7 @@ export default function DonutChart({ title, items }: DonutChartProps) {
     <div className="bg-white rounded-xl border border-gray-200 shadow-sm p-5 h-full">
       <h3 className="font-bold text-gray-800 text-sm mb-4">{title}</h3>
       {items.length === 0 ? (
-        <p className="text-sm text-gray-400 text-center py-12">لا توجد بيانات</p>
+        <p className="text-sm text-gray-400 text-center py-12">{t('finance.chart.noData')}</p>
       ) : (
         <div className="flex flex-col sm:flex-row items-center gap-6">
           <div
@@ -35,7 +38,7 @@ export default function DonutChart({ title, items }: DonutChartProps) {
             <div className="absolute inset-5 bg-white rounded-full flex items-center justify-center">
               <div className="text-center">
                 <p className="text-lg font-bold text-gray-800">{total}</p>
-                <p className="text-[10px] text-gray-400">قيد</p>
+                <p className="text-[10px] text-gray-400">{t('finance.chart.entryUnit')}</p>
               </div>
             </div>
           </div>

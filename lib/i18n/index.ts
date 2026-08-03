@@ -7,6 +7,7 @@ export {
   translateNavLabel,
   translateNavDescription,
   translateFinanceNavLabel,
+  translateFinanceStoredLabel,
   translateSettingsSub,
   translateProfileText,
   translateRoleCode,

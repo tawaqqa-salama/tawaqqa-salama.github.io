@@ -1,6 +1,7 @@
 'use client';
 
 import { formatCurrency } from '@/lib/format/currency';
+import { useLanguage } from '@/lib/i18n/LanguageProvider';
 
 interface BarChartPanelProps {
   title: string;
@@ -15,13 +16,14 @@ export default function BarChartPanel({
   colorClass = 'bg-[#1f4d3a]',
   valueFormatter = (v) => String(v),
 }: BarChartPanelProps) {
+  const { t } = useLanguage();
   const max = Math.max(...items.map((item) => item.value), 1);
 
   return (
     <div className="bg-white rounded-xl border border-gray-200 shadow-sm p-5 h-full">
       <h3 className="font-bold text-gray-800 text-sm mb-4">{title}</h3>
       {items.length === 0 ? (
-        <p className="text-sm text-gray-400 text-center py-12">لا توجد بيانات</p>
+        <p className="text-sm text-gray-400 text-center py-12">{t('finance.chart.noData')}</p>
       ) : (
         <div className="space-y-3">
           {items.map((item) => (
@@ -51,17 +53,20 @@ export function IncomeBarChart({
   revenue: number;
   expenses: number;
 }) {
+  const { t } = useLanguage();
   const max = Math.max(revenue, expenses, 1);
 
   return (
     <div className="bg-white rounded-xl border border-gray-200 shadow-sm p-5 h-full">
-      <h3 className="font-bold text-gray-800 text-sm mb-4">ملخص قائمة الدخل</h3>
+      <h3 className="font-bold text-gray-800 text-sm mb-4">{t('finance.chart.incomeSummary')}</h3>
       <div className="space-y-4">
-        <BarRow label="الإيرادات" value={revenue} max={max} color="bg-[#6366f1]" />
-        <BarRow label="المصروفات" value={expenses} max={max} color="bg-[#1f4d3a]" />
+        <BarRow label={t('finance.chart.revenue')} value={revenue} max={max} color="bg-[#6366f1]" />
+        <BarRow label={t('finance.chart.expenses')} value={expenses} max={max} color="bg-[#1f4d3a]" />
         <div className="pt-2 border-t flex justify-between text-xs">
-          <span className="text-gray-500">صافي الدخل</span>
-          <span className={`font-bold font-mono ${revenue - expenses >= 0 ? 'text-emerald-700' : 'text-rose-700'}`}>
+          <span className="text-gray-500">{t('finance.chart.netIncome')}</span>
+          <span
+            className={`font-bold font-mono ${revenue - expenses >= 0 ? 'text-emerald-700' : 'text-rose-700'}`}
+          >
             {formatCurrency(revenue - expenses)}
           </span>
         </div>
