@@ -37,7 +37,9 @@ import {
   type DiKnowledgeDocument,
   type RagAnswer,
 } from '@/lib/design-intelligence';
+import EngineeringRulesPanel from '@/components/design/EngineeringRulesPanel';
 import { runBlueprintAiAudit } from '@/lib/compliance/blueprint-audit';
+import type { EngineeringSelection } from '@/lib/design-intelligence/rules-types';
 import type { ClientRecord } from '@/lib/types/client';
 import type { BlueprintAiAuditResult } from '@/lib/types/project-reports';
 
@@ -45,6 +47,7 @@ const TABS: { id: DesignIntelligenceTabId; labelKey: string; fallback: string }[
   { id: 'knowledge', labelKey: 'design.tab.knowledge', fallback: 'Knowledge Base' },
   { id: 'rag', labelKey: 'design.tab.rag', fallback: 'AI Knowledge Engine' },
   { id: 'workspace', labelKey: 'design.tab.workspace', fallback: 'Design Workspace' },
+  { id: 'rules', labelKey: 'design.tab.rules', fallback: 'Rules Engine' },
   { id: 'planner', labelKey: 'design.tab.planner', fallback: 'AI Design Planner' },
   { id: 'assistant', labelKey: 'design.tab.assistant', fallback: 'Smart Assistant' },
   { id: 'drawings', labelKey: 'design.tab.drawings', fallback: 'Drawing Review AI' },
@@ -94,6 +97,7 @@ export default function DesignIntelligenceModule() {
   const [lessonSolution, setLessonSolution] = useState('');
   const [wsNote, setWsNote] = useState('');
   const [wsReq, setWsReq] = useState('');
+  const [rulesSelection, setRulesSelection] = useState<EngineeringSelection>({});
 
   const label = useCallback(
     (key: string, fallback: string) => {
@@ -200,17 +204,38 @@ export default function DesignIntelligenceModule() {
   };
 
   const assistant = useMemo(() => {
-    if (!activeWs) return [];
+    const buildingType =
+      (rulesSelection.building_type as string) ||
+      String(activeWs?.building_info?.building_type || '');
     return suggestEngineeringSystems({
-      buildingType: String(activeWs.building_info?.building_type || ''),
-      occupancy: activeWs.occupancy || '',
-      risk: activeWs.risk_classification || '',
-      heightM: activeWs.building_height_m,
-      areaM2: activeWs.area_m2,
-      floors: activeWs.floors_count,
-      codes: activeWs.applicable_codes,
+      buildingType,
+      occupancy: (rulesSelection.occupancy as string) || activeWs?.occupancy || '',
+      risk:
+        (rulesSelection.risk_classification as string) || activeWs?.risk_classification || '',
+      heightM: activeWs?.building_height_m,
+      areaM2: activeWs?.area_m2,
+      floors: activeWs?.floors_count,
+      codes:
+        (rulesSelection.applicable_codes as string[]) || activeWs?.applicable_codes || undefined,
+      selection: {
+        building_type: buildingType || null,
+        occupancy:
+          (rulesSelection.occupancy as string) || activeWs?.occupancy || null,
+        risk_classification:
+          (rulesSelection.risk_classification as string) ||
+          activeWs?.risk_classification ||
+          null,
+        applicable_codes:
+          (rulesSelection.applicable_codes as string[]) ||
+          activeWs?.applicable_codes ||
+          null,
+        fire_protection_system: (rulesSelection.fire_protection_system as string) || null,
+        sprinkler_type: (rulesSelection.sprinkler_type as string) || null,
+        pump_requirement: (rulesSelection.pump_requirement as string) || null,
+        alarm_category: (rulesSelection.alarm_category as string) || null,
+      },
     });
-  }, [activeWs]);
+  }, [activeWs, rulesSelection]);
 
   const onDrawingFile = async (f: File | null) => {
     if (!f) return;
@@ -511,6 +536,49 @@ export default function DesignIntelligenceModule() {
         </div>
       )}
 
+      {tab === 'rules' && (
+        <EngineeringRulesPanel
+          initial={
+            activeWs
+              ? {
+                  building_type: String(activeWs.building_info?.building_type || '') || null,
+                  occupancy: activeWs.occupancy || null,
+                  risk_classification: activeWs.risk_classification || null,
+                }
+              : rulesSelection
+          }
+          onSelectionChange={(selection) => {
+            setRulesSelection(selection);
+            if (activeWs) {
+              updateWorkspace({
+                ...activeWs,
+                occupancy: (selection.occupancy as string) || activeWs.occupancy,
+                risk_classification:
+                  (selection.risk_classification as string) || activeWs.risk_classification,
+                applicable_codes:
+                  (selection.applicable_codes as string[]) || activeWs.applicable_codes,
+                fire_protection_scope:
+                  (selection.fire_protection_system as string) || activeWs.fire_protection_scope,
+                building_info: {
+                  ...(activeWs.building_info || {}),
+                  building_type: selection.building_type || activeWs.building_info?.building_type,
+                  sprinkler_type: selection.sprinkler_type,
+                  pump_requirement: selection.pump_requirement,
+                  tank_size: selection.tank_size,
+                  sprinkler_density: selection.sprinkler_density,
+                  water_demand: selection.water_demand,
+                  alarm_category: selection.alarm_category,
+                  required_reports: selection.required_reports,
+                  required_drawings: selection.required_drawings,
+                  rules_selection: selection,
+                },
+              });
+              setWorkspaces(listWorkspaces());
+            }
+          }}
+        />
+      )}
+
       {tab === 'planner' && (
         <div className="rounded-xl border bg-white overflow-hidden">
           <div className="p-3 border-b flex justify-between items-center gap-2 flex-wrap">
@@ -610,8 +678,16 @@ export default function DesignIntelligenceModule() {
 
       {tab === 'assistant' && (
         <div className="space-y-3">
-          {!activeWs ? (
-            <p className="text-sm text-gray-500">Create a design workspace first.</p>
+          <p className="text-xs text-gray-500">
+            {label(
+              'design.assistant.rulesNote',
+              'Recommendations come only from the Engineering Rules Engine — open the Rules Engine tab to set Building Type → … → Required Reports. AI never invents density, pump, or tank numbers.'
+            )}
+          </p>
+          {!activeWs && !rulesSelection.building_type ? (
+            <p className="text-sm text-gray-500">
+              Select values in Rules Engine (or create a design workspace) first.
+            </p>
           ) : (
             assistant.map((s) => (
               <div

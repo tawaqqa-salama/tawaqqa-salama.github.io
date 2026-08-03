@@ -226,6 +226,7 @@ export type DesignIntelligenceTabId =
   | 'knowledge'
   | 'rag'
   | 'workspace'
+  | 'rules'
   | 'planner'
   | 'assistant'
   | 'drawings'

@@ -40,4 +40,15 @@ export {
   completeIndexingJob,
   queuedJobCount,
 } from '@/lib/design-intelligence/jobs';
+export {
+  evaluateEngineeringForm,
+  applyEngineeringChange,
+  recommendFromRules,
+  loadEngineeringRulesFromDb,
+  syncSeedRulesToSupabase,
+  selectionFromWorkspace,
+  getEngineeringFields,
+  getEngineeringRules,
+} from '@/lib/design-intelligence/rules-engine';
 export type * from '@/lib/design-intelligence/types';
+export type * from '@/lib/design-intelligence/rules-types';
