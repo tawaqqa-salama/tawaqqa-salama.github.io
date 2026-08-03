@@ -125,12 +125,8 @@ export default function AppHeader() {
 
   return (
     <>
-      <header className="bg-white border-b border-[var(--erp-border)] px-3 sm:px-5 py-2.5 flex items-center justify-between gap-2 shrink-0 z-[55] relative pl-[6.75rem]">
-        <div className="absolute left-3 top-1/2 -translate-y-1/2 z-[60]">
-          <LanguageSwitcher />
-        </div>
-
-        <div className="flex flex-row items-center justify-start gap-2 min-w-0">
+      <header className="bg-white border-b border-[var(--erp-border)] px-3 sm:px-5 py-2.5 flex items-center justify-between gap-2 sm:gap-3 shrink-0 z-[55] relative">
+        <div className="flex flex-row items-center justify-start gap-2 min-w-0 flex-1">
           <nav
             aria-label={t('shell.navAria')}
             className="header-nav-controls shrink-0"
@@ -209,6 +205,7 @@ export default function AppHeader() {
         </div>
 
         <div className="flex items-center gap-2 sm:gap-3 text-sm text-gray-600 shrink-0">
+          <LanguageSwitcher />
           <span className="flex items-center gap-2 bg-[var(--erp-page)] border border-[var(--erp-border)] rounded-full px-2 sm:px-3 py-1.5 min-h-[44px]">
             <span className="h-7 w-7 rounded-full bg-[var(--erp-primary)] text-white flex items-center justify-center text-xs">
               {initial}

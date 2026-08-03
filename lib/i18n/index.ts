@@ -8,5 +8,7 @@ export {
   translateNavDescription,
   translateFinanceNavLabel,
   translateSettingsSub,
+  translateProfileText,
+  translateRoleCode,
 } from '@/lib/i18n/dictionary';
 export { LanguageProvider, useLanguage, useLanguageOptional } from '@/lib/i18n/LanguageProvider';

@@ -14,6 +14,8 @@ import {
   translateFinanceNavLabel,
   translateNavDescription,
   translateNavLabel,
+  translateProfileText,
+  translateRoleCode,
   translateSettingsSub,
   type TranslationKey,
 } from '@/lib/i18n/dictionary';
@@ -34,6 +36,8 @@ type LanguageContextValue = {
   tNavDesc: (href: string, fallback?: string) => string;
   tFinance: (href: string, fallback: string) => string;
   tSettingsSub: (pathname: string) => string | null;
+  tProfile: (text: string | null | undefined, fallbackKey?: TranslationKey) => string;
+  tRole: (roleCode: string | null | undefined) => string;
 };
 
 const LanguageContext = createContext<LanguageContextValue | null>(null);
@@ -94,6 +98,8 @@ export function LanguageProvider({ children }: { children: ReactNode }) {
       tNavDesc: (href, fallback) => translateNavDescription(lang, href, fallback),
       tFinance: (href, fallback) => translateFinanceNavLabel(lang, href, fallback),
       tSettingsSub: (pathname) => translateSettingsSub(lang, pathname),
+      tProfile: (text, fallbackKey) => translateProfileText(lang, text, fallbackKey),
+      tRole: (roleCode) => translateRoleCode(lang, roleCode),
     };
   }, [lang, setLang, toggleLang]);
 
@@ -134,5 +140,7 @@ export function useLanguageOptional(): LanguageContextValue {
     tNavDesc: (href, fallback) => translateNavDescription('ar', href, fallback),
     tFinance: (href, fallback) => translateFinanceNavLabel('ar', href, fallback),
     tSettingsSub: (pathname) => translateSettingsSub('ar', pathname),
+    tProfile: (text, fallbackKey) => translateProfileText('ar', text, fallbackKey),
+    tRole: (roleCode) => translateRoleCode('ar', roleCode),
   };
 }
