@@ -25,10 +25,23 @@ Return ONLY valid JSON with these keys:
   "ownerName": string|null,
   "district": string|null,
   "city": string|null,
+  "street": string|null,
+  "plotNumber": string|null,
+  "municipality": string|null,
+  "commercialRegister": string|null,
+  "phone": string|null,
+  "landAreaM2": string|null,
+  "nationalAddress": string|null,
   "locationSummary": string|null,
   "rawTextPreview": string|null
 }
 Use Gregorian dates as YYYY-MM-DD when possible. Keep Arabic names as written.`;
+
+function strOrNull(value: unknown): string | null {
+  if (typeof value !== 'string') return null;
+  const trimmed = value.trim();
+  return trimmed || null;
+}
 
 function mergeVisionJson(raw: string): BuildingPermitExtraction {
   const start = raw.indexOf('{');
@@ -38,35 +51,40 @@ function mergeVisionJson(raw: string): BuildingPermitExtraction {
   }
   try {
     const data = JSON.parse(raw.slice(start, end + 1)) as Record<string, unknown>;
-    const fromJson: BuildingPermitExtraction = {
-      permitNumber: (data.permitNumber as string) || null,
-      permitDateGregorian: (data.permitDateGregorian as string) || null,
-      permitDateHijri: (data.permitDateHijri as string) || null,
-      ownerName: (data.ownerName as string) || null,
-      district: (data.district as string) || null,
-      city: (data.city as string) || null,
-      locationSummary: (data.locationSummary as string) || null,
-      rawTextPreview: (data.rawTextPreview as string) || raw.slice(0, 1200),
-      source: 'vision',
-      confidence: 'medium',
-    };
-    // Also regex-scan rawTextPreview for anything missing
     const fromText = parseBuildingPermitText(
       String(data.rawTextPreview || raw),
       'vision'
     );
+    const overlay: Partial<BuildingPermitExtraction> = {
+      permitNumber: strOrNull(data.permitNumber),
+      permitDateGregorian: strOrNull(data.permitDateGregorian),
+      permitDateHijri: strOrNull(data.permitDateHijri),
+      ownerName: strOrNull(data.ownerName),
+      district: strOrNull(data.district),
+      city: strOrNull(data.city),
+      street: strOrNull(data.street),
+      plotNumber: strOrNull(data.plotNumber),
+      municipality: strOrNull(data.municipality),
+      commercialRegister: strOrNull(data.commercialRegister),
+      phone: strOrNull(data.phone),
+      landAreaM2: strOrNull(data.landAreaM2),
+      nationalAddress: strOrNull(data.nationalAddress),
+      locationSummary: strOrNull(data.locationSummary),
+      rawTextPreview: strOrNull(data.rawTextPreview) || raw.slice(0, 1200),
+    };
     const merged: BuildingPermitExtraction = {
       ...fromText,
       ...Object.fromEntries(
-        Object.entries(fromJson).filter(([, v]) => v != null && v !== '')
+        Object.entries(overlay).filter(([, v]) => v != null && v !== '')
       ),
       source: 'vision',
-    } as BuildingPermitExtraction;
+    };
     const hits = [
       merged.permitNumber,
       merged.permitDateGregorian || merged.permitDateHijri,
       merged.ownerName,
       merged.district || merged.city,
+      merged.street,
     ].filter(Boolean).length;
     merged.confidence = hits >= 3 ? 'high' : hits >= 2 ? 'medium' : 'low';
     return merged;
