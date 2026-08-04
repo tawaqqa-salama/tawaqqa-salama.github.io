@@ -60,4 +60,39 @@ describe('building permit OCR parser', () => {
     expect(toIsoDate(result.permitDateGregorian)).toBe('2024-01-13');
     expect(result.ownerName).toContain('خالد');
   });
+
+  it('parses Balady Jeddah sparse OCR layout from scanned PDF', () => {
+    const sparse = `
+إصدار رخصة بناء تجارية
+9إجمادي
+رقم الرخصة
+4100097644
+التاريخ
+صلاحيتها
+الأول/1442
+الأول/1445
+اسم صاحب الرخصة
+فايز صالح مسعود الحارثي
+جوال رقم 0503300033
+البلدية
+ابحر الفرعية
+الحي
+النهضة
+اسم الشارع
+غير مسمى
+`;
+    const result = parseBuildingPermitText(sparse, 'tesseract');
+    expect(result.permitNumber).toBe('4100097644');
+    expect(result.permitDateHijri).toMatch(/1442/);
+    expect(result.ownerName).toContain('فايز');
+    expect(result.district).toMatch(/نهضة|النهضة/);
+    expect(result.city).toBe('جدة');
+    expect(hasUsefulPermitExtraction(result)).toBe(true);
+  });
+
+  it('parses Hijri date with Arabic month name', async () => {
+    const { parseHijriDate } = await import('@/lib/projects/building-permit-ocr');
+    expect(parseHijriDate('9/جمادي الأول/1442')).toContain('1442');
+    expect(parseHijriDate('9/جمادى الأولى/1442')).toContain('جماد');
+  });
 });

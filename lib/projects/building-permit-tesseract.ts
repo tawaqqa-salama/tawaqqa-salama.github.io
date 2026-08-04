@@ -1,5 +1,5 @@
 /**
- * Client-side OCR for building permit images (PNG/JPG).
+ * Client-side OCR for building permit images / scanned PDFs.
  * Works on static GitHub Pages without API routes.
  */
 
@@ -9,29 +9,23 @@ import {
   hasUsefulPermitExtraction,
   parseBuildingPermitText,
 } from '@/lib/projects/building-permit-ocr';
+import { isPdfPermitFile, pdfFileToOcrImage } from '@/lib/projects/building-permit-pdf-image';
 
 function isImageFile(file: File): boolean {
   const name = file.name.toLowerCase();
   const mime = file.type || '';
-  return (
-    mime.startsWith('image/') ||
-    /\.(png|jpe?g|webp|bmp|gif)$/i.test(name)
-  );
+  return mime.startsWith('image/') || /\.(png|jpe?g|webp|bmp|gif)$/i.test(name);
 }
 
 /** Downscale large images for faster OCR while keeping text readable */
-async function prepareImageForOcr(file: File): Promise<Blob | File> {
+async function prepareImageForOcr(source: Blob | File): Promise<Blob | File> {
   if (typeof createImageBitmap === 'undefined' || typeof document === 'undefined') {
-    return file;
+    return source;
   }
   try {
-    const bitmap = await createImageBitmap(file);
-    const maxSide = 1800;
+    const bitmap = await createImageBitmap(source);
+    const maxSide = 2000;
     const scale = Math.min(1, maxSide / Math.max(bitmap.width, bitmap.height));
-    if (scale >= 0.95) {
-      bitmap.close();
-      return file;
-    }
     const w = Math.round(bitmap.width * scale);
     const h = Math.round(bitmap.height * scale);
     const canvas = document.createElement('canvas');
@@ -40,7 +34,7 @@ async function prepareImageForOcr(file: File): Promise<Blob | File> {
     const ctx = canvas.getContext('2d');
     if (!ctx) {
       bitmap.close();
-      return file;
+      return source;
     }
     ctx.fillStyle = '#fff';
     ctx.fillRect(0, 0, w, h);
@@ -49,24 +43,23 @@ async function prepareImageForOcr(file: File): Promise<Blob | File> {
     const blob = await new Promise<Blob | null>((resolve) =>
       canvas.toBlob((b) => resolve(b), 'image/jpeg', 0.92)
     );
-    return blob || file;
+    return blob || source;
   } catch {
-    return file;
+    return source;
   }
 }
 
-export async function extractTextWithTesseract(
-  file: File,
+async function recognizeArabicForm(
+  image: Blob | File,
   onProgress?: (message: string) => void
 ): Promise<string> {
-  if (!isImageFile(file)) return '';
-
   onProgress?.('جاري تحميل محرك التعرف على النص...');
   const Tesseract = await import('tesseract.js');
-  const image = await prepareImageForOcr(file);
+  const prepared = await prepareImageForOcr(image);
 
   onProgress?.('جاري استخراج بيانات الرخصة تلقائياً...');
-  const result = await Tesseract.recognize(image, 'ara+eng', {
+  // SPARSE_TEXT is best for Balady table forms (رقم الرخصة / التاريخ in cells)
+  const worker = await Tesseract.createWorker('ara+eng', 1, {
     logger: (m) => {
       if (m.status === 'recognizing text' && typeof m.progress === 'number') {
         const pct = Math.round(m.progress * 100);
@@ -74,15 +67,47 @@ export async function extractTextWithTesseract(
       }
     },
   });
+  try {
+    await worker.setParameters({
+      tessedit_pageseg_mode: Tesseract.PSM.SPARSE_TEXT,
+      preserve_interword_spaces: '1',
+    });
+    const sparse = await worker.recognize(prepared);
+    const sparseText = String(sparse.data?.text || '').trim();
+    if ((sparseText.match(/\d/g) || []).length >= 8) {
+      return sparseText;
+    }
+    // Fallback AUTO if sparse missed digits
+    await worker.setParameters({
+      tessedit_pageseg_mode: Tesseract.PSM.AUTO,
+    });
+    const auto = await worker.recognize(prepared);
+    return String(auto.data?.text || sparseText).trim();
+  } finally {
+    await worker.terminate();
+  }
+}
 
-  return String(result.data?.text || '').trim();
+export async function extractTextWithTesseract(
+  file: File,
+  onProgress?: (message: string) => void
+): Promise<string> {
+  if (isImageFile(file)) {
+    return recognizeArabicForm(file, onProgress);
+  }
+  if (isPdfPermitFile(file)) {
+    const image = await pdfFileToOcrImage(file, onProgress);
+    if (!image) return '';
+    return recognizeArabicForm(image, onProgress);
+  }
+  return '';
 }
 
 export async function extractBuildingPermitWithTesseract(
   file: File,
   onProgress?: (message: string) => void
 ): Promise<BuildingPermitExtraction> {
-  if (!isImageFile(file)) {
+  if (!isImageFile(file) && !isPdfPermitFile(file)) {
     return emptyExtraction('none');
   }
 
@@ -93,7 +118,6 @@ export async function extractBuildingPermitWithTesseract(
     }
     const parsed = parseBuildingPermitText(text, 'tesseract');
     if (hasUsefulPermitExtraction(parsed)) return parsed;
-    // Still return partial text for debugging / manual cues
     return { ...parsed, rawTextPreview: text.slice(0, 1200), source: 'tesseract' };
   } catch {
     return emptyExtraction('none');
@@ -101,5 +125,5 @@ export async function extractBuildingPermitWithTesseract(
 }
 
 export function canRunClientOcr(file: File): boolean {
-  return isImageFile(file);
+  return isImageFile(file) || isPdfPermitFile(file);
 }
