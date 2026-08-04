@@ -49,7 +49,7 @@ export default function BuildingPermitOcrUpload({
         : hydration.building_permit_number
           ? '✓ تم استخراج رقم الرخصة — راجع التاريخ يدوياً إن لزم'
           : '✓ تم استخراج تاريخ الرخصة — راجع الرقم يدوياً إن لزم'
-      : 'تعذر استخراج رقم/تاريخ الرخصة من الصورة — جرّب صورة أوضح أو عبّئ يدوياً';
+      : 'تعذر استخراج البيانات، يرجى إدخال البيانات يدوياً أو إعادة رفع صورة/PDF أوضح';
 
     onReportPatch({
       building_permit_file: fileMeta,
