@@ -3,9 +3,17 @@
 كل شيء في **`tawaqqa-salama/tawaqqa-salama.github.io`**:
 
 - الكود المصدري (Next.js) على الفرع `main`
-- النشر التلقائي عبر GitHub Actions إلى **https://tawaqqa-salama.github.io/**
+- **واجهات ثابتة** عبر GitHub Pages → **https://tawaqqa-salama.github.io/**
+- **ERP حي (API + ZATCA)** عبر استضافة Node (Vercel موصى به) — انظر **[P0_PRODUCTION.md](./P0_PRODUCTION.md)**
 
 لا حاجة لمستودع `taha` منفصل ولا لـ `USER_PAGES_TOKEN`.
+
+## مساران للنشر
+
+| المسار | Workflow | `app/api` | متى تستخدمه |
+|--------|----------|-----------|-------------|
+| GitHub Pages | `deploy-pages.yml` | يُخفى أثناء البناء | عرض عام / بدون ZATCA حي |
+| Node / Vercel | تكامل Vercel + `deploy-node.yml` للتحقق | يبقى | إنتاج محاسبة + فوترة |
 
 ## تفعيل Pages (مرة واحدة)
 
@@ -20,10 +28,16 @@ Workflow: `.github/workflows/deploy-pages.yml`
 ## البناء محلياً
 
 ```bash
+# واجهة ثابتة (مثل Pages)
 npm run build:user-pages
 # المخرجات في ./out
+
+# استضافة Node مع API
+npm run build && npm start
 ```
 
 ## Supabase
 
-بدون مفاتيح يعمل وضع تجريبي. للربط الحقيقي انظر **[SUPABASE.md](./SUPABASE.md)**.
+بدون مفاتيح يعمل وضع تجريبي (dev / Pages).  
+للإنتاج Node: اضبط المفاتيح ولا تفعّل `ALLOW_DEMO_MODE` إلا للعرض.  
+انظر **[SUPABASE.md](./SUPABASE.md)** و **[P0_PRODUCTION.md](./P0_PRODUCTION.md)**.

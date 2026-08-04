@@ -25,7 +25,12 @@ export default function LoginPage() {
   const [busy, setBusy] = useState(false);
 
   useEffect(() => {
-    if (!loading && session) router.replace('/me');
+    if (loading || !session) return;
+    const next =
+      typeof window !== 'undefined'
+        ? new URLSearchParams(window.location.search).get('next')
+        : null;
+    router.replace(next && next.startsWith('/') ? next : '/me');
   }, [loading, session, router]);
 
   const onEmailSubmit = async (event: FormEvent) => {

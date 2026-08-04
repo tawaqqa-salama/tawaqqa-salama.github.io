@@ -41,6 +41,14 @@ export async function loadEnterpriseStateLive(): Promise<{
   const warnings: string[] = [];
 
   if (isDemoMode) {
+    const { isDemoAllowed } = await import('@/lib/runtime/mode');
+    if (!isDemoAllowed()) {
+      return {
+        state: base,
+        source: 'demo',
+        warnings: ['إنتاج بدون Supabase — اضبط المفاتيح أو ALLOW_DEMO_MODE=true'],
+      };
+    }
     return { state: base, source: 'demo', warnings: ['وضع تجريبي — لا يوجد اتصال Supabase'] };
   }
 

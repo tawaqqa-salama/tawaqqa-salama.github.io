@@ -1,0 +1,45 @@
+# نشر منصة توقع سلامة على استضافة Node (Vercel)
+# هذا المسار يُبقي app/api شغّالاً — مطلوب لـ ZATCA / OTP / WhatsApp / Finance API
+#
+# إعداد Vercel مرة واحدة:
+#   - اربط المستودع بمشروع Vercel
+#   - Environment: NEXT_PUBLIC_SUPABASE_URL, NEXT_PUBLIC_SUPABASE_ANON_KEY
+#   - لا تضبط USER_PAGES / GITHUB_PAGES
+#
+# هذا الـ workflow اختياري للتوثيق + فحص typecheck/test على PRs.
+# النشر الفعلي يتم عادة عبر تكامل Vercel Git.
+
+name: Node host checks
+
+on:
+  pull_request:
+    branches: [main]
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+      - run: npm ci
+      - name: Typecheck
+        run: npx tsc --noEmit
+      - name: Unit tests
+        run: npm test
+      - name: Build Node app (with API routes)
+        env:
+          # Force non-export build so Route Handlers remain
+          USER_PAGES: ""
+          GITHUB_PAGES: ""
+          ALLOW_DEMO_MODE: "true"
+          NEXT_PUBLIC_SUPABASE_URL: ${{ secrets.NEXT_PUBLIC_SUPABASE_URL }}
+          NEXT_PUBLIC_SUPABASE_ANON_KEY: ${{ secrets.NEXT_PUBLIC_SUPABASE_ANON_KEY }}
+        run: |
+          echo "Building Next.js for Node hosting (output export DISABLED)"
+          npm run build

@@ -1,6 +1,8 @@
 import { NextResponse } from 'next/server';
+import { requireApiSession } from '@/lib/api/require-session';
 import { requestComplianceCsid, requestProductionCsid } from '@/lib/zatca/api-client';
 import type { ZatcaEnvironment, ZatcaSettings } from '@/lib/zatca/types';
+import { assertLiveOrDemoAllowed } from '@/lib/runtime/mode';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -14,6 +16,14 @@ type Body = {
 };
 
 export async function POST(request: Request) {
+  const gate = requireApiSession(request);
+  if (!gate.ok) return gate.response;
+
+  const live = assertLiveOrDemoAllowed('ZATCA onboard');
+  if (!live.ok) {
+    return NextResponse.json({ ok: false, error: live.error }, { status: 503 });
+  }
+
   try {
     const body = (await request.json()) as Body;
     const mode = body.mode || 'compliance';

@@ -101,7 +101,7 @@ export async function restoreAuthSession(): Promise<AuthResult> {
   const role = await fetchRole(user.role_code, user.company_id);
   const permissions = resolveUserPermissions(user, role);
   const session = toSession(user, permissions, existing.method);
-  saveSession(session);
+  saveSession(session, user.company_id);
   return { session, error: null };
 }
 
@@ -131,7 +131,7 @@ export async function signInWithEmailPassword(email: string, password: string): 
     const role = await fetchRole(user.role_code, user.company_id);
     const permissions = resolveUserPermissions(user, role);
     const session = toSession(user, permissions, 'email');
-    saveSession(session);
+    saveSession(session, user.company_id);
     await supabase.from('users').update({ last_login_at: session.loggedInAt }).eq('id', user.id);
     return { session, error: null };
   }
@@ -147,7 +147,7 @@ export async function signInWithEmailPassword(email: string, password: string): 
   const role = await fetchRole(user.role_code, user.company_id);
   const permissions = resolveUserPermissions(user, role);
   const session = toSession(user, permissions, 'email');
-  saveSession(session);
+  saveSession(session, user.company_id);
   await supabase.from('users').update({ last_login_at: session.loggedInAt }).eq('id', user.id);
   return { session, error: null };
 }
@@ -271,7 +271,7 @@ export async function verifyPhoneOtp(phone: string, code: string): Promise<AuthR
       const role = await fetchRole(user.role_code, user.company_id);
       const permissions = resolveUserPermissions(user, role);
       const session = toSession(user, permissions, 'phone');
-      saveSession(session);
+      saveSession(session, user.company_id);
       await supabase.from('users').update({ last_login_at: session.loggedInAt }).eq('id', user.id);
       return { session, error: null };
     }
@@ -286,7 +286,7 @@ export async function verifyPhoneOtp(phone: string, code: string): Promise<AuthR
       const role = await fetchRole(user.role_code, user.company_id);
       const permissions = resolveUserPermissions(user, role);
       const session = toSession(user, permissions, 'phone');
-      saveSession(session);
+      saveSession(session, user.company_id);
       await supabase.from('users').update({ last_login_at: session.loggedInAt }).eq('id', user.id);
       return { session, error: null };
     }
@@ -306,7 +306,7 @@ export async function verifyPhoneOtp(phone: string, code: string): Promise<AuthR
   const role = await fetchRole(user.role_code, user.company_id);
   const permissions = resolveUserPermissions(user, role);
   const session = toSession(user, permissions, 'phone');
-  saveSession(session);
+  saveSession(session, user.company_id);
   await supabase.from('users').update({ last_login_at: session.loggedInAt }).eq('id', user.id);
   return { session, error: null };
 }

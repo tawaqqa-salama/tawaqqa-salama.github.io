@@ -2,7 +2,8 @@
  * Bank reconciliation — import statement lines and smart-match to vouchers/journals.
  */
 
-import { isDemoMode, supabase } from '@/lib/supabase';
+import { isDemoMode, requireConfiguredSupabase, supabase } from '@/lib/supabase';
+import { isDemoAllowed } from '@/lib/runtime/mode';
 
 export type BankTxnDraft = {
   txnDate: string;
@@ -46,21 +47,27 @@ export type MatchCandidate = {
 };
 
 export async function fetchBankAccounts(): Promise<BankAccountRow[]> {
-  if (isDemoMode) return demoBanks();
+  if (isDemoMode) {
+    if (!isDemoAllowed()) return [];
+    return demoBanks();
+  }
   const { data, error } = await supabase.from('acc_bank_accounts').select('*').eq('is_active', true);
-  if (error || !data?.length) return demoBanks();
-  return data as BankAccountRow[];
+  if (error) return [];
+  return (data || []) as BankAccountRow[];
 }
 
 export async function fetchBankTransactions(bankAccountId: string): Promise<BankTxnRow[]> {
-  if (isDemoMode) return demoTxns(bankAccountId);
+  if (isDemoMode) {
+    if (!isDemoAllowed()) return [];
+    return demoTxns(bankAccountId);
+  }
   const { data, error } = await supabase
     .from('acc_bank_transactions')
     .select('*')
     .eq('bank_account_id', bankAccountId)
     .order('txn_date', { ascending: false })
     .limit(200);
-  if (error) return demoTxns(bankAccountId);
+  if (error) return [];
   return (data || []) as BankTxnRow[];
 }
 
@@ -126,7 +133,13 @@ export async function importBankTransactions(
   if (!drafts.length) return { ok: false, imported: 0, error: 'لا توجد حركات للاستيراد' };
   const batch = batchId || `IMP-${Date.now()}`;
 
+  const liveErr = requireConfiguredSupabase('استيراد كشف البنك');
+  if (liveErr) return { ok: false, imported: 0, error: liveErr };
+
   if (isDemoMode) {
+    if (!isDemoAllowed()) {
+      return { ok: false, imported: 0, error: 'الوضع التجريبي غير مسموح في الإنتاج' };
+    }
     return { ok: true, imported: drafts.length };
   }
 
@@ -256,7 +269,12 @@ export async function reconcileTransaction(
   txnId: string,
   journalId: string
 ): Promise<{ ok: boolean; error?: string }> {
-  if (isDemoMode) return { ok: true };
+  const liveErr = requireConfiguredSupabase('تسوية بنكية');
+  if (liveErr) return { ok: false, error: liveErr };
+  if (isDemoMode) {
+    if (!isDemoAllowed()) return { ok: false, error: 'الوضع التجريبي غير مسموح في الإنتاج' };
+    return { ok: true };
+  }
   const { error } = await supabase
     .from('acc_bank_transactions')
     .update({
