@@ -38,6 +38,7 @@ const files = [
   '026_engineering_rules.sql',
   '027_enterprise_accounting.sql',
   '028_project_files_storage.sql',
+  '029_rls_tenant_lockdown.sql',
 ];
 
 if (!process.env.DATABASE_URL) {

@@ -10,12 +10,14 @@ import { submitInvoiceToZatca } from '@/lib/zatca/api-client';
 import { resolveInvoiceType } from '@/lib/invoices/payment-schedule';
 import type { ClientRecord } from '@/lib/types/client';
 import type { ZatcaApiResponse, ZatcaSubmissionStatus } from '@/lib/zatca/types';
+import { isZatcaServerOnly } from '@/lib/runtime/mode';
 
 async function callServerSubmit(payload: Record<string, unknown>): Promise<ZatcaApiResponse | null> {
   try {
     const response = await fetch('/api/zatca/submit', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
+      credentials: 'same-origin',
       body: JSON.stringify(payload),
     });
     if (response.status === 404) return null;
@@ -147,24 +149,34 @@ export async function processZatcaOnQuotationApproval(
     invoiceNumber
   );
 
-  // تفضيل مسار السيرفر (يتجاوز CORS) ثم الرجوع للاستدعاء المباشر
+  // Server-only in production Node hosts — never send CSID/secret from the browser
   const serverResult = await callServerSubmit({
     uuid: built.uuid,
     invoiceHash: built.invoiceHash,
     invoiceXml: built.signedXml,
     invoiceKind,
-    settings,
   });
 
-  const apiResult =
-    serverResult ||
-    (await submitInvoiceToZatca({
+  let apiResult: ZatcaApiResponse;
+  if (serverResult) {
+    apiResult = serverResult;
+  } else if (isZatcaServerOnly()) {
+    apiResult = {
+      ok: false,
+      status: 'error',
+      error:
+        'ZATCA يتطلب استضافة Node مع /api/zatca/submit — GitHub Pages لا يدعم الإرسال الحي. انشر على Vercel أو خادم Node.',
+    };
+  } else {
+    // Dev / static showcase fallback only
+    apiResult = await submitInvoiceToZatca({
       settings,
       invoiceKind,
       uuid: built.uuid,
       invoiceHash: built.invoiceHash,
       invoiceXml: built.signedXml,
-    }));
+    });
+  }
 
   await persistInvoiceHash(built.invoiceHash, built.uuid);
   await saveZatcaInvoiceRow({

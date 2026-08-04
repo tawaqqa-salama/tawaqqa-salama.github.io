@@ -3,17 +3,27 @@
 set -euo pipefail
 cd "$(dirname "$0")/.."
 export USER_PAGES=true
+export ALLOW_DEMO_MODE=true
 
-# Route Handlers غير مدعومة مع output:export — نخفيها أثناء البناء الثابت فقط
+# Route Handlers + middleware غير مدعومة مع output:export
 API_TMP=""
+MW_TMP=""
+restore() {
+  if [ -n "$API_TMP" ] && [ -d "$API_TMP" ]; then mv "$API_TMP" app/api; fi
+  if [ -n "$MW_TMP" ] && [ -f "$MW_TMP" ]; then mv "$MW_TMP" middleware.ts; fi
+}
+trap restore EXIT
+
 if [ -d app/api ]; then
   API_TMP=".api-build-tmp-$$"
   mv app/api "$API_TMP"
-  restore_api() { mv "$API_TMP" app/api; }
-  trap restore_api EXIT
+fi
+if [ -f middleware.ts ]; then
+  MW_TMP=".middleware-build-tmp-$$.ts"
+  mv middleware.ts "$MW_TMP"
 fi
 
 npm run build
 touch out/.nojekyll
 echo "Built to ./out — deploy contents to tawaqqa-salama/tawaqqa-salama.github.io (main)"
-echo "ملاحظة: واجهات /api/* (ZATCA، الامتثال، WhatsApp، التصدير) تحتاج نشراً على Node/Vercel (ليست جزءاً من GitHub Pages)."
+echo "ملاحظة: واجهات /api/* و middleware تحتاج نشراً على Node/Vercel (ليست جزءاً من GitHub Pages)."

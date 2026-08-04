@@ -24,6 +24,7 @@ import {
   signOutAuth,
   verifyPhoneOtp,
 } from '@/lib/auth/service';
+import { syncSessionCookie } from '@/lib/auth/session';
 import { logActivity } from '@/lib/activity/logger';
 import { roleLabel } from '@/lib/activity/labels';
 
@@ -56,6 +57,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     if (next) {
       const user = await getUserProfile(next.userId);
       setProfile(user);
+      await syncSessionCookie(next, user?.company_id);
     } else {
       setProfile(null);
     }
@@ -70,7 +72,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     const result = await signInWithEmailPassword(email, password);
     if (result.error || !result.session) return result.error || 'فشل تسجيل الدخول';
     setSession(result.session);
-    setProfile(await getUserProfile(result.session.userId));
+    const profile = await getUserProfile(result.session.userId);
+    setProfile(profile);
+    await syncSessionCookie(result.session, profile?.company_id);
     void logActivity({
       actionType: 'LOGIN',
       details: `تسجيل دخول ناجح (${result.session.fullName}) عبر البريد`,
@@ -92,7 +96,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     const result = await verifyPhoneOtp(phone, code);
     if (result.error || !result.session) return result.error || 'فشل تسجيل الدخول';
     setSession(result.session);
-    setProfile(await getUserProfile(result.session.userId));
+    const profile = await getUserProfile(result.session.userId);
+    setProfile(profile);
+    await syncSessionCookie(result.session, profile?.company_id);
     void logActivity({
       actionType: 'LOGIN',
       details: `تسجيل دخول ناجح (${result.session.fullName}) عبر الجوال`,

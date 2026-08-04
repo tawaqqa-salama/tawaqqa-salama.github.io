@@ -41,23 +41,32 @@ jobs:
       - name: Build static site
         env:
           USER_PAGES: "true"
+          ALLOW_DEMO_MODE: "true"
           NEXT_PUBLIC_SUPABASE_URL: ${{ secrets.NEXT_PUBLIC_SUPABASE_URL }}
           NEXT_PUBLIC_SUPABASE_ANON_KEY: ${{ secrets.NEXT_PUBLIC_SUPABASE_ANON_KEY }}
         run: |
+          echo "::warning::GitHub Pages = واجهة ثابتة فقط. ZATCA/API يحتاج استضافة Node (انظر docs/DEPLOY.md و deploy-node.yml)"
           if [ -n "$NEXT_PUBLIC_SUPABASE_URL" ] && [ -n "$NEXT_PUBLIC_SUPABASE_ANON_KEY" ]; then
-            echo "Supabase: مفاتيح موجودة — البناء بوضع حقيقي"
+            echo "Supabase: مفاتيح موجودة — البناء بوضع حقيقي (بدون Route Handlers)"
           else
             echo "::warning::Supabase غير مربوط — البناء بوضع تجريبي. أضف الأسرار حسب docs/SUPABASE.md"
           fi
-          # إخفاء Route Handlers أثناء البناء الثابت (output: export)
+          # إخفاء Route Handlers + middleware أثناء البناء الثابت (output: export)
           if [ -d app/api ]; then
             mv app/api .api-build-tmp
+          fi
+          if [ -f middleware.ts ]; then
+            mv middleware.ts .middleware-build-tmp.ts
           fi
           npm run build
           if [ -d .api-build-tmp ]; then
             mv .api-build-tmp app/api
           fi
+          if [ -f .middleware-build-tmp.ts ]; then
+            mv .middleware-build-tmp.ts middleware.ts
+          fi
           touch out/.nojekyll
+
 
       - name: Upload Pages artifact
         uses: actions/upload-pages-artifact@v3
