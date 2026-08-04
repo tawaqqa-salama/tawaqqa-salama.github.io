@@ -82,10 +82,49 @@ function looksHijri(value: string): boolean {
   return y >= 1300 && y <= 1600;
 }
 
+const HIJRI_MONTH =
+  '(?:محرم|صفر|ربيع\\s*الأول|ربيع\\s*الثاني|ربيع\\s*آخر|جمادى\\s*الأولى|جمادى\\s*الأول|جمادي\\s*الأول|جمادى\\s*الثانية|جمادى\\s*آخر|رجب|شعبان|رمضان|شوال|ذو\\s*القعدة|ذي\\s*القعدة|ذو\\s*الحجة|ذي\\s*الحجة|إ?جمادي|جمادي)';
+
+/** Parse Hijri forms like 9/جمادي الأول/1442 or OCR-split lines */
+export function parseHijriDate(text: string): string | null {
+  const normalized = normalizeArabicDigits(text).replace(/\s+/g, ' ');
+  const named = normalized.match(
+    new RegExp(`(\\d{1,2})\\s*[\\/\\-.]?\\s*(${HIJRI_MONTH})\\s*[\\/\\-.]?\\s*(\\d{4})`, 'u')
+  );
+  if (named) {
+    return `${named[1]}/${named[2].replace(/\s+/g, ' ').trim()}/${named[3]}`;
+  }
+  // Numeric hijri d/m/yyyy with year 13xx-15xx
+  const numeric = normalized.match(/\b(\d{1,2})[\/\-.](\d{1,2})[\/\-.](1[3-5]\d{2})\b/);
+  if (numeric) return `${numeric[1]}/${numeric[2]}/${numeric[3]}`;
+  return null;
+}
+
 function extractDates(text: string): { gregorian: string | null; hijri: string | null } {
-  const normalized = normalizeArabicDigits(text);
+  const normalized = collapseOcrDigitGaps(text);
   let gregorian: string | null = null;
   let hijri: string | null = null;
+
+  // Balady header often OCR-splits: "9إجمادي" ... رقم الرخصة ... "الأول/1442"
+  const baladyWindow = normalized.match(
+    /([\s\S]{0,40}?)رقم\s*الرخص[ةه][\s\S]{0,40}?(\d{8,14})[\s\S]{0,160}?التاريخ([\s\S]{0,160}?)(?:اسم\s*صاحب|الاستخدام|رقم\s*الصك)/u
+  );
+  if (baladyWindow) {
+    const chunk = `${baladyWindow[1] || ''}\n${baladyWindow[3] || ''}`;
+    const named = parseHijriDate(chunk);
+    if (named) hijri = named;
+    else {
+      const day = chunk.match(/(\d{1,2})\s*إ?جماد/u)?.[1];
+      const yearMonth = chunk.match(
+        /(الأول|الأولى|الثاني|الثانية)\s*[\/\-]?\s*(1[3-5]\d{2})/u
+      );
+      if (day && yearMonth) {
+        hijri = `${day}/جمادى ${yearMonth[1]}/${yearMonth[2]}`;
+      } else if (yearMonth) {
+        hijri = `1/جمادى ${yearMonth[1]}/${yearMonth[2]}`;
+      }
+    }
+  }
 
   const labeledGregorian = pickLabeledValue(normalized, [
     /تاريخ\s*(?:الرخصة|الإصدار|اصدار)?\s*(?:الميلادي|ميلادي)/,
@@ -103,14 +142,22 @@ function extractDates(text: string): { gregorian: string | null; hijri: string |
     /تاريخ\s*إصدار\s*الرخصة/,
     /تاريخ\s*الاصدار/,
     /تاريخ\s*الإصدار/,
+    /التاريخ/,
   ]);
 
   if (labeledGregorian) gregorian = toIsoDate(labeledGregorian) || labeledGregorian;
-  if (labeledHijri) hijri = cleanLabelValue(labeledHijri);
+  if (labeledHijri) hijri = parseHijriDate(labeledHijri) || cleanLabelValue(labeledHijri);
 
   if (labeledGeneric) {
-    if (looksHijri(labeledGeneric) && !hijri) hijri = cleanLabelValue(labeledGeneric);
+    const asHijri = parseHijriDate(labeledGeneric);
+    if (asHijri && !hijri) hijri = asHijri;
+    else if (looksHijri(labeledGeneric) && !hijri) hijri = cleanLabelValue(labeledGeneric);
     else if (!gregorian) gregorian = toIsoDate(labeledGeneric) || labeledGeneric;
+  }
+
+  if (!hijri) {
+    const anyHijri = parseHijriDate(normalized);
+    if (anyHijri) hijri = anyHijri;
   }
 
   const ymdDates = normalized.match(/\b(\d{4})[\/\-.](\d{1,2})[\/\-.](\d{1,2})\b/g) || [];
@@ -135,9 +182,20 @@ function collapseOcrDigitGaps(text: string): string {
 
 function extractPermitNumber(text: string): string | null {
   const normalized = collapseOcrDigitGaps(text);
+
+  // Balady sparse OCR: label on its own line, 10-digit number on next
+  const baladyBlock = normalized.match(
+    /رقم\s*الرخص[ةه]\s*\n+\s*(\d{8,14})/imu
+  );
+  if (baladyBlock?.[1]) return baladyBlock[1];
+
+  // Same line with OCR spacing: رقم الرخصة 4100097644
+  const sameLine = normalized.match(/رقم\s*الرخص[ةه]\s*[:：]?\s*(\d{8,14})/u);
+  if (sameLine?.[1]) return sameLine[1];
+
   const labeled = pickLabeledValue(normalized, [
     /رقم\s*رخصة\s*البناء/,
-    /رقم\s*الرخصة/,
+    /رقم\s*الرخص[ةه]/,
     /رخصة\s*رقم/,
     /رخصة\s*البناء\s*رقم/,
     /Building\s*Permit\s*(?:No|Number|#)?/i,
@@ -146,23 +204,24 @@ function extractPermitNumber(text: string): string | null {
   if (labeled) {
     const cleaned = collapseOcrDigitGaps(labeled);
     const num =
+      cleaned.match(/\d{8,14}/)?.[0] ||
       cleaned.match(/\d{6,}/)?.[0] ||
       cleaned.match(/[A-Za-z0-9][A-Za-z0-9\-\/]{3,}/)?.[0];
     return num || cleanLabelValue(labeled);
   }
 
-  // Value on the line after the label (common OCR layout)
   const afterLabel = normalized.match(
-    /(?:رقم\s*رخصة\s*البناء|رقم\s*الرخصة|رخصة\s*رقم)\s*[:：]?\s*\n+\s*([A-Za-z0-9][A-Za-z0-9\-\/ ]{3,})/imu
+    /(?:رقم\s*رخصة\s*البناء|رقم\s*الرخص[ةه]|رخصة\s*رقم)\s*[:：]?\s*\n+\s*([A-Za-z0-9][A-Za-z0-9\-\/ ]{3,})/imu
   );
   if (afterLabel?.[1]) {
-    const num = collapseOcrDigitGaps(afterLabel[1]).match(/\d{6,}|[A-Za-z0-9][A-Za-z0-9\-\/]{3,}/);
+    const num = collapseOcrDigitGaps(afterLabel[1]).match(/\d{8,14}|\d{6,}|[A-Za-z0-9][A-Za-z0-9\-\/]{3,}/);
     if (num) return num[0];
   }
 
   const patterns = [
-    /(?:رقم\s*رخصة\s*البناء|رقم\s*الرخصة)\s*[:：]?\s*([A-Za-z0-9][A-Za-z0-9\-\/]{3,})/u,
+    /(?:رقم\s*رخصة\s*البناء|رقم\s*الرخص[ةه])\s*[:：]?\s*([A-Za-z0-9][A-Za-z0-9\-\/]{3,})/u,
     /\b(\d{4,5}\/\d{2,4})\b/,
+    /\b(41\d{8,12})\b/, // Balady Jeddah-style
     /\b(14\d{8,12})\b/,
     /\b([A-Z]{1,4}\-\d{4,})\b/,
   ];
@@ -174,7 +233,19 @@ function extractPermitNumber(text: string): string | null {
 }
 
 function extractOwnerName(text: string): string | null {
+  const normalized = text.replace(/\s+/g, ' ');
+  // Balady: اسم صاحب الرخصة
+  const balady = normalizeArabicDigits(text).match(
+    /اسم\s*صاحب\s*الرخص[ةه]\s*\n+\s*([^\n\r]{5,80})/imu
+  );
+  if (balady?.[1]) {
+    return cleanLabelValue(
+      balady[1].split(/(?:رقم|جوال|السجل|الاستخدام|رخصة\s*بناء)/)[0] || balady[1]
+    );
+  }
+
   const value = pickLabeledValue(text, [
+    /اسم\s*صاحب\s*الرخص[ةه]/,
     /اسم\s*المالك/,
     /المالك\s*\/?\s*المستثمر/,
     /المالك/,
@@ -182,8 +253,7 @@ function extractOwnerName(text: string): string | null {
     /Owner/i,
   ]);
   if (!value) return null;
-  // Avoid swallowing the next label
-  return cleanLabelValue(value.split(/(?:رقم|تاريخ|الحي|الموقع|المدينة)/)[0] || value);
+  return cleanLabelValue(value.split(/(?:رقم|تاريخ|الحي|الموقع|المدينة|جوال)/)[0] || value);
 }
 
 function extractLocation(text: string): {
@@ -191,8 +261,19 @@ function extractLocation(text: string): {
   city: string | null;
   locationSummary: string | null;
 } {
-  const district = pickLabeledValue(text, [/الحي/, /الحى/, /District/i]);
-  const city = pickLabeledValue(text, [/المدينة/, /City/i]);
+  const normalized = normalizeArabicDigits(text);
+  // Balady sparse: الحي\nالنهضة  (OCR may read النهضة as التهضة)
+  let district =
+    normalized.match(/\nالحي\s*\n+\s*([^\n\r]{2,40})/u)?.[1] ||
+    pickLabeledValue(text, [/الحي/, /الحى/, /District/i]);
+  const municipality = normalized.match(/\nالبلدية\s*\n+\s*([^\n\r]{2,40})/u)?.[1];
+  let city = pickLabeledValue(text, [/المدينة/, /City/i]);
+  if (!city && municipality) {
+    // ابحر الفرعية / أمانة جدة → جدة
+    if (/جدة|جده/i.test(municipality) || /ابحر|أبحر/i.test(municipality)) city = 'جدة';
+  }
+  if (!city && /جدة|جده|امانة\s*محافظة\s*جدة/i.test(normalized)) city = 'جدة';
+
   const location = pickLabeledValue(text, [
     /موقع\s*المنشأة/,
     /موقع\s*المبنى/,
@@ -201,10 +282,10 @@ function extractLocation(text: string): {
   ]);
 
   const cleanDistrict = district
-    ? cleanLabelValue(district.split(/(?:المدينة|الشارع|رقم)/)[0] || district)
+    ? cleanLabelValue(String(district).split(/(?:المدينة|الشارع|رقم|مساحة)/)[0] || district)
     : null;
   const cleanCity = city
-    ? cleanLabelValue(city.split(/(?:الحي|المنطقة|رقم)/)[0] || city)
+    ? cleanLabelValue(String(city).split(/(?:الحي|المنطقة|رقم)/)[0] || city)
     : null;
 
   const locationSummary =
