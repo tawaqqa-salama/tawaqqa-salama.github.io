@@ -88,6 +88,7 @@ export const DEPARTMENT_SUB_MODULES: Record<DepartmentId, DepartmentSubModule[]>
   ],
   finance: [
     { id: 'dashboard', label: 'لوحة التحكم', href: '/finance' },
+    { id: 'enterprise', label: 'المحاسبة المؤسسية', href: '/finance/enterprise' },
     { id: 'approvals', label: 'الاعتماد المالي', href: '/finance/vouchers?tab=approvals' },
     { id: 'invoices', label: 'الفواتير الضريبية', href: '/finance/invoices' },
     { id: 'journal', label: 'القيود اليومية', href: '/finance/journal' },

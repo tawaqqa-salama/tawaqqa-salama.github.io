@@ -15,6 +15,12 @@ import type {
   Voucher,
   DashboardJournalRow,
 } from '@/lib/types/accounting';
+import {
+  assertCanPost,
+  buildDefaultChartOfAccounts,
+  type ChartAccount,
+  type JournalEntryDraft,
+} from '@/lib/enterprise-accounting';
 
 function round2(value: number): number {
   return Math.round(value * 100) / 100;
@@ -86,6 +92,103 @@ export async function fetchVouchers(
   return (data || []) as Voucher[];
 }
 
+function mapDbAccountsToEnterprise(rows: ChartOfAccount[]): ChartAccount[] {
+  const template = buildDefaultChartOfAccounts();
+  const byCode = new Map(template.map((a) => [a.code, a]));
+  return rows.map((row) => {
+    const seeded = byCode.get(row.code);
+    return {
+      id: row.id,
+      code: row.code,
+      nameAr: row.name,
+      nameEn: row.name,
+      accountType: (row.account_type as ChartAccount['accountType']) || 'asset',
+      nature: seeded?.nature || 'debit',
+      parentId: row.parent_id,
+      parentCode: seeded?.parentCode ?? null,
+      level: seeded?.level ?? 1,
+      isPostable: seeded?.isPostable ?? true,
+      isActive: row.is_active !== false,
+      isLocked: false,
+      currencyCode: 'SAR',
+      vatCategory: seeded?.vatCategory ?? 'not_applicable',
+      // Soften dimensional requirements for legacy posting paths; enterprise hub uses full template.
+      costCenterRequired: false,
+      projectRequired: false,
+      openingBalance: 0,
+      openingBalanceSide: seeded?.nature || 'debit',
+      mappingKey: seeded?.mappingKey ?? null,
+    };
+  });
+}
+
+/** Validate journal lines via Accounting Rules Engine before insert/post. */
+export async function validateJournalAgainstRules(input: {
+  description: string;
+  costCenterId?: string | null;
+  lines: Omit<JournalEntryLine, 'id' | 'journal_entry_id'>[];
+  status?: string;
+  approved?: boolean;
+}): Promise<{ ok: boolean; error: string | null; requiresApproval?: boolean }> {
+  const accounts = await fetchAccounts();
+  const enterpriseAccounts =
+    accounts.length > 0 ? mapDbAccountsToEnterprise(accounts) : buildDefaultChartOfAccounts();
+  const codeById = new Map(accounts.map((a) => [a.id, a.code]));
+
+  const draft: JournalEntryDraft = {
+    entryDate: new Date().toISOString().slice(0, 10),
+    entryType: 'manual',
+    description: input.description,
+    costCenterId: input.costCenterId ?? null,
+    currencyCode: 'SAR',
+    exchangeRate: 1,
+    lines: input.lines.map((line) => ({
+      accountCode:
+        line.account_code ||
+        codeById.get(line.account_id) ||
+        enterpriseAccounts.find((a) => a.id === line.account_id)?.code ||
+        '',
+      debit: Number(line.debit || 0),
+      credit: Number(line.credit || 0),
+      description: line.description || undefined,
+      costCenterId: line.cost_center_id || input.costCenterId || null,
+    })),
+  };
+
+  const willPost = !input.status || input.status === 'مرحّل' || input.status === 'posted';
+  if (!willPost) {
+    if (!isJournalBalanced(input.lines) && input.lines.length >= 2) {
+      return { ok: false, error: 'يجب أن يتساوى مجموع المدين مع مجموع الدائن.' };
+    }
+    return { ok: true, error: null };
+  }
+
+  const result = assertCanPost(draft, {
+    accounts: enterpriseAccounts,
+    approved: input.approved === true,
+    fromAi: false,
+  });
+
+  // Maker-checker alone → queue for approval (not a hard reject)
+  const onlyApprovalBlock =
+    !result.canPost &&
+    result.violations.length > 0 &&
+    result.violations.every((v) => v.ruleCode === 'APR-MKR-001');
+
+  if (!result.canPost && !onlyApprovalBlock) {
+    const msg = result.violations.map((v) => `[${v.ruleCode}] ${v.messageAr}`).join(' — ');
+    return {
+      ok: false,
+      error: msg || 'رفض محرك القواعد المحاسبية ترحيل هذا القيد.',
+    };
+  }
+  return {
+    ok: true,
+    error: null,
+    requiresApproval: onlyApprovalBlock || undefined,
+  };
+}
+
 export async function createJournalEntry(input: {
   description: string;
   clientId?: string | null;
@@ -94,10 +197,22 @@ export async function createJournalEntry(input: {
   costCenterId?: string | null;
   lines: Omit<JournalEntryLine, 'id' | 'journal_entry_id'>[];
   status?: string;
+  /** Maker-checker: set true only after checker approval */
+  approved?: boolean;
 }): Promise<{ entry: JournalEntry | null; error: string | null }> {
   if (!isJournalBalanced(input.lines)) {
     return { entry: null, error: 'يجب أن يتساوى مجموع المدين مع مجموع الدائن.' };
   }
+
+  const rulesCheck = await validateJournalAgainstRules(input);
+  if (!rulesCheck.ok) {
+    return { entry: null, error: rulesCheck.error };
+  }
+
+  const status =
+    rulesCheck.requiresApproval && !input.approved
+      ? 'بانتظار الاعتماد'
+      : input.status || 'مرحّل';
 
   const entryNumber = await generateEntryNumber();
   const { data: entry, error: entryError } = await supabase
@@ -110,7 +225,7 @@ export async function createJournalEntry(input: {
       reference_type: input.referenceType || 'manual',
       reference_id: input.referenceId || null,
       cost_center_id: input.costCenterId || null,
-      status: input.status || 'مرحّل',
+      status,
     })
     .select('*')
     .single();
