@@ -240,7 +240,13 @@ export default function ProjectReportModal({ client, onClose, onUpdated }: Proje
       report = nextData.technical_report;
     }
     const profile = await loadCompanyProfile();
-    printTechnicalReport({ client, report, company: profile });
+    printTechnicalReport({
+      client,
+      report,
+      company: profile,
+      engineeringData: data,
+      locale: 'ar',
+    });
   };
 
   const blockers = stageApprovalBlockers(activeStage, client, data);
