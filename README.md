@@ -11,6 +11,7 @@
 
 | دليل | الغرض |
 |---|---|
+| [`IMPLEMENTATION_STATUS.md`](./IMPLEMENTATION_STATUS.md) | حالة التنفيذ (منجز / جزئي / معلّق) |
 | [`docs/DEPLOY.md`](./docs/DEPLOY.md) | النشر |
 | [`docs/SUPABASE.md`](./docs/SUPABASE.md) | ربط قاعدة البيانات |
 | [`docs/AUTH.md`](./docs/AUTH.md) | الدخول والصلاحيات |
