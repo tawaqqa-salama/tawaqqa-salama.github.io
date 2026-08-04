@@ -1,6 +1,6 @@
 'use client';
 
-import { useCallback, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import Link from 'next/link';
 import { usePathname, useSearchParams } from 'next/navigation';
 import { FINANCE_NAV } from '@/lib/constants/accounting';
@@ -112,7 +112,37 @@ export default function AppHeader() {
   const { session, logout } = useAuth();
   const { hasSubNav, open: subNavOpen, toggleSubNav, isMobile } = useModuleSubNav();
   const [switcherOpen, setSwitcherOpen] = useState(false);
+  const [logoutConfirmOpen, setLogoutConfirmOpen] = useState(false);
+  const [loggingOut, setLoggingOut] = useState(false);
   const closeSwitcher = useCallback(() => setSwitcherOpen(false), []);
+  const closeLogoutConfirm = useCallback(() => {
+    if (loggingOut) return;
+    setLogoutConfirmOpen(false);
+  }, [loggingOut]);
+  const confirmLogout = useCallback(async () => {
+    setLoggingOut(true);
+    try {
+      await logout();
+    } finally {
+      setLoggingOut(false);
+      setLogoutConfirmOpen(false);
+    }
+  }, [logout]);
+
+  useEffect(() => {
+    if (!logoutConfirmOpen) return;
+    const onKey = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') closeLogoutConfirm();
+    };
+    window.addEventListener('keydown', onKey);
+    const prev = document.body.style.overflow;
+    document.body.style.overflow = 'hidden';
+    return () => {
+      window.removeEventListener('keydown', onKey);
+      document.body.style.overflow = prev;
+    };
+  }, [logoutConfirmOpen, closeLogoutConfirm]);
+
   const initial = (session?.fullName || (lang === 'ar' ? 'م' : 'S')).trim().charAt(0);
   const isLauncher = pathname === '/me' || pathname === '/' || pathname.startsWith('/me/');
 
@@ -216,7 +246,7 @@ export default function AppHeader() {
           </span>
           <button
             type="button"
-            onClick={() => void logout()}
+            onClick={() => setLogoutConfirmOpen(true)}
             className="touch-target text-xs font-semibold text-rose-700 bg-rose-50 border border-rose-100 rounded-xl px-3 hover:bg-rose-100"
           >
             {t('common.logout')}
@@ -225,6 +255,47 @@ export default function AppHeader() {
       </header>
 
       <AppSwitcher open={switcherOpen} onClose={closeSwitcher} />
+
+      {logoutConfirmOpen ? (
+        <div className="fixed inset-0 z-[90] flex items-center justify-center px-4">
+          <button
+            type="button"
+            aria-label={t('common.cancel')}
+            className="absolute inset-0 bg-[#1a2420]/45 backdrop-blur-[2px]"
+            onClick={closeLogoutConfirm}
+            disabled={loggingOut}
+          />
+          <div
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="logout-confirm-title"
+            className="relative w-full max-w-sm rounded-2xl border border-[var(--erp-border)] bg-white p-5 shadow-[0_24px_64px_rgba(31,77,58,0.18)]"
+          >
+            <h2 id="logout-confirm-title" className="text-base font-bold text-[var(--erp-text)]">
+              {t('common.logoutConfirmTitle')}
+            </h2>
+            <p className="mt-2 text-sm text-[var(--erp-muted)]">{t('common.logoutConfirmBody')}</p>
+            <div className="mt-5 flex flex-row-reverse gap-2">
+              <button
+                type="button"
+                onClick={() => void confirmLogout()}
+                disabled={loggingOut}
+                className="touch-target flex-1 rounded-xl bg-rose-600 px-3 text-sm font-semibold text-white hover:bg-rose-700 disabled:opacity-60"
+              >
+                {loggingOut ? t('common.loading') : t('common.logoutConfirm')}
+              </button>
+              <button
+                type="button"
+                onClick={closeLogoutConfirm}
+                disabled={loggingOut}
+                className="touch-target flex-1 rounded-xl border border-[var(--erp-border)] bg-white px-3 text-sm font-semibold text-[var(--erp-text)] hover:bg-[var(--erp-page)] disabled:opacity-60"
+              >
+                {t('common.cancel')}
+              </button>
+            </div>
+          </div>
+        </div>
+      ) : null}
     </>
   );
 }
