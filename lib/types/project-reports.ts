@@ -467,10 +467,50 @@ export type SafetyBlueprintsState = {
   life_safety_file: SafetyBlueprintFile | null;
 };
 
+/** مرفق مخطط / حساب هيدروليكي لمرحلة المخططات */
+export type PlanAttachmentFile = {
+  id: string;
+  fileName: string;
+  format: string;
+  sizeBytes: number;
+  mimeType?: string | null;
+  dataUrl?: string | null;
+  uploadedAt: string;
+  kind: 'engineering_drawing' | 'hydraulic_calculation';
+};
+
+export type PlanAttachmentsState = {
+  engineering_drawings: PlanAttachmentFile[];
+  hydraulic_calculations: PlanAttachmentFile[];
+};
+
+/** المرحلة 1 — العقد والتعاقد */
+export interface ContractOnboardingReport extends ReportMeta {
+  contract_status?: 'draft' | 'signed' | 'approved' | string;
+  scope_of_work?: string;
+  contract_value?: number | null;
+  client_name_snapshot?: string;
+  project_name_snapshot?: string;
+  signed_at?: string | null;
+  notes?: string;
+}
+
+/** حالة مسار المراحل التسعة المتسلسل */
+export type ProjectWorkflowState = {
+  active_stage?: string;
+  last_approved_stage?: string;
+  approved_at?: Record<string, string>;
+  inherited_at?: string;
+};
+
 export interface ProjectEngineeringData {
   technical_report: TechnicalReport;
   building_plan: BuildingPlanReport;
   safety_blueprints: SafetyBlueprintsState;
+  /** مرفقات المخططات والحسابات الهيدروليكية (مرحلة 2) */
+  plan_attachments: PlanAttachmentsState;
+  /** مرحلة العقد والتعاقد (مرحلة 1) */
+  contract_onboarding: ContractOnboardingReport;
   boq: BoqReport;
   timeline: TimelineReport;
   field_visits: FieldVisitReport[];
@@ -481,6 +521,7 @@ export interface ProjectEngineeringData {
   final_inspection: FinalInspectionReport;
   completion_certificate: CompletionCertificateReport;
   supervision_report: SupervisionReport;
+  workflow?: ProjectWorkflowState;
 }
 
 export const EMPTY_BUILDING_PLAN: BuildingPlanReport = {
@@ -521,6 +562,18 @@ export const EMPTY_SAFETY_BLUEPRINTS: SafetyBlueprintsState = {
   life_safety_file: null,
 };
 
+export const EMPTY_PLAN_ATTACHMENTS: PlanAttachmentsState = {
+  engineering_drawings: [],
+  hydraulic_calculations: [],
+};
+
+export const EMPTY_CONTRACT_ONBOARDING: ContractOnboardingReport = {
+  status: 'مسودة',
+  contract_status: 'draft',
+  scope_of_work: '',
+  contract_value: null,
+};
+
 export const EMPTY_SUPERVISION_REPORT: SupervisionReport = {
   status: 'مسودة',
   months: [],
@@ -533,6 +586,8 @@ export const EMPTY_PROJECT_ENGINEERING_DATA: ProjectEngineeringData = {
   technical_report: { ...EMPTY_TECHNICAL_REPORT },
   building_plan: { ...EMPTY_BUILDING_PLAN },
   safety_blueprints: { ...EMPTY_SAFETY_BLUEPRINTS },
+  plan_attachments: { ...EMPTY_PLAN_ATTACHMENTS },
+  contract_onboarding: { ...EMPTY_CONTRACT_ONBOARDING },
   boq: { status: 'مسودة', items: [] },
   timeline: { status: 'مسودة', milestones: [] },
   field_visits: [],
@@ -551,4 +606,5 @@ export const EMPTY_PROJECT_ENGINEERING_DATA: ProjectEngineeringData = {
   final_inspection: { status: 'مسودة' },
   completion_certificate: { status: 'مسودة' },
   supervision_report: { ...EMPTY_SUPERVISION_REPORT },
+  workflow: {},
 };

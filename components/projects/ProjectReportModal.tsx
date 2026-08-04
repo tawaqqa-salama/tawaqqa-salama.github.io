@@ -9,7 +9,6 @@ import {
   getProjectReportProgress,
   seedProjectEngineeringFromClient,
 } from '@/lib/business/project-reports';
-import { PROJECT_REPORT_SECTIONS, type ProjectReportSectionId } from '@/lib/constants/modules';
 import BuildingPlanReportSection from '@/components/projects/BuildingPlanReportSection';
 import SafetyBlueprintsUpload from '@/components/projects/SafetyBlueprintsUpload';
 import TechnicalReportSection from '@/components/projects/TechnicalReportSection';
@@ -19,6 +18,9 @@ import CdCoverLetterSection from '@/components/projects/CdCoverLetterSection';
 import FinalInspectionSection from '@/components/projects/FinalInspectionSection';
 import CompletionCertificateSection from '@/components/projects/CompletionCertificateSection';
 import SupervisionReportSection from '@/components/projects/SupervisionReportSection';
+import ContractOnboardingSection from '@/components/projects/ContractOnboardingSection';
+import PlanAttachmentsUpload from '@/components/projects/PlanAttachmentsUpload';
+import WorkflowStageRail from '@/components/projects/WorkflowStageRail';
 import InvoicePromptModal from '@/components/invoices/InvoicePromptModal';
 import {
   downloadTaxInvoice,
@@ -29,12 +31,19 @@ import {
   generateInvoiceForEngineeringEvent,
   generateTaxInvoiceFromMilestone,
 } from '@/lib/invoices/tax-invoice-service';
-import { EMPTY_SAFETY_BLUEPRINTS } from '@/lib/types/project-reports';
+import { EMPTY_PLAN_ATTACHMENTS, EMPTY_SAFETY_BLUEPRINTS } from '@/lib/types/project-reports';
 import { loadCompanyProfile, loadLocalCompanyProfile, type CompanyProfile } from '@/lib/company-profile';
 import { seedSupervisionReport } from '@/lib/projects/supervision-report';
 import { ensureCertificateNumber, ensureOutgoingNumber } from '@/lib/business/document-numbers';
 import { backupEngineeringDataLocally } from '@/lib/supabase/safe-client-write';
-import NumericInput from '@/components/ui/NumericInput';
+import {
+  WORKFLOW_STAGES,
+  approveWorkflowStage,
+  canUnlockStage,
+  resolveActiveStage,
+  stageApprovalBlockers,
+  type WorkflowStageId,
+} from '@/lib/projects/gated-pipeline';
 import type { ClientRecord } from '@/lib/types/client';
 import type { ProjectEngineeringData } from '@/lib/types/project-reports';
 import type { TaxInvoice } from '@/lib/types/tax-invoice';
@@ -48,7 +57,7 @@ interface ProjectReportModalProps {
 const REPORT_STATUSES = ['مسودة', 'قيد الإعداد', 'مكتمل', 'معتمد'] as const;
 
 export default function ProjectReportModal({ client, onClose, onUpdated }: ProjectReportModalProps) {
-  const [activeSection, setActiveSection] = useState<ProjectReportSectionId>('technical_report');
+  const [activeStage, setActiveStage] = useState<WorkflowStageId>('contract');
   const [data, setData] = useState<ProjectEngineeringData | null>(null);
   const [saving, setSaving] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
@@ -59,6 +68,7 @@ export default function ProjectReportModal({ client, onClose, onUpdated }: Proje
   const [pendingInvoiceEvent, setPendingInvoiceEvent] = useState<
     'engineering_delivery' | 'final_inspection' | 'completion' | 'manual' | null
   >(null);
+  const [boqItem, setBoqItem] = useState('');
 
   useEffect(() => {
     void loadCompanyProfile().then(setCompany);
@@ -83,29 +93,34 @@ export default function ProjectReportModal({ client, onClose, onUpdated }: Proje
         seeded.supervision_report
       ),
     };
-    setData(syncProjectVisitsFromQuotation(withSupervision, visitsCount));
-    setActiveSection('technical_report');
+    const synced = syncProjectVisitsFromQuotation(withSupervision, visitsCount);
+    setData(synced);
+    setActiveStage(resolveActiveStage(client, synced));
     setMessage(null);
   }, [client]);
 
-  // أكمل بيانات المكتب المشرف عند وصول ملف الشركة دون طمس التعديلات اليدوية
   useEffect(() => {
     if (!client || !data || !company) return;
     const current = data.supervision_report;
     if (current?.supervising_office?.trim() && current?.tasks?.length) return;
     const next = seedSupervisionReport(client, data, company, current);
     setData({ ...data, supervision_report: next });
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- only when company profile arrives
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [company?.legal_name, company?.name, client?.id]);
 
-  const progress = useMemo(() => (data ? getProjectReportProgress(data) : 0), [data]);
+  const progress = useMemo(
+    () => (data && client ? getProjectReportProgress(data, client) : 0),
+    [data, client]
+  );
+
+  const stageMeta = WORKFLOW_STAGES.find((s) => s.id === activeStage);
 
   if (!client || !data) return null;
 
   const save = async (
     nextData: ProjectEngineeringData,
     successText: string,
-    options?: { issueOutgoing?: boolean; issueCertificate?: boolean }
+    options?: { issueOutgoing?: boolean; issueCertificate?: boolean; stayOpen?: boolean }
   ) => {
     setSaving(true);
     setMessage(null);
@@ -135,20 +150,20 @@ export default function ProjectReportModal({ client, onClose, onUpdated }: Proje
       .from('clients')
       .update({
         project_engineering_data: stamped,
-        // اضمن بقاء السجل ظاهراً في إدارة المشاريع بعد أي حفظ تقرير
         pipeline_stage: client.pipeline_stage === 'completed' ? 'completed' : 'projects',
       })
       .eq('id', client.id);
 
-    // نسخة محلية فورية (متزامنة) — لا نؤخر الإغلاق بـ dynamic import
     backupEngineeringDataLocally(client.id, stamped);
     setSaving(false);
+    setData(stamped);
 
     if (error) {
       setMessage(`تعذّر الحفظ على السيرفر — تم حفظ نسخة محلية: ${error.message}`);
-      setData(stamped);
       return;
     }
+
+    setMessage(successText);
 
     const deliveryDone = ['مكتمل', 'معتمد'].includes(stamped.engineering_delivery.status || '');
     const finalDone = ['مكتمل', 'معتمد'].includes(stamped.final_inspection.status || '');
@@ -158,7 +173,7 @@ export default function ProjectReportModal({ client, onClose, onUpdated }: Proje
       (finalDone && successText.includes('النهائي')) ||
       (completionDone && successText.includes('شهادة'));
 
-    if (willInvoice) {
+    if (willInvoice && !options?.stayOpen) {
       if (deliveryDone && successText.includes('تسليم')) {
         setPendingInvoiceEvent('engineering_delivery');
       } else if (finalDone && successText.includes('النهائي')) {
@@ -168,10 +183,7 @@ export default function ProjectReportModal({ client, onClose, onUpdated }: Proje
       }
       setPromptInvoice(null);
       setInvoicePromptOpen(true);
-      setData(stamped);
-      setMessage(successText);
-    } else {
-      // أقفل فوراً بعد نجاح الكتابة — قبل تحديث القائمة الثقيل
+    } else if (!options?.stayOpen && !successText.includes('اعتماد')) {
       onClose();
     }
 
@@ -181,16 +193,40 @@ export default function ProjectReportModal({ client, onClose, onUpdated }: Proje
         module: 'projects',
         pageUrl: '/projects',
         details: `تم تحديث تقرير هندسي للعميل ${client.business_name || client.name} — ${successText}`,
-        metadata: { clientId: client.id },
+        metadata: { clientId: client.id, stage: activeStage },
       })
     );
-    // حدّث القائمة بعد إطار رسم حتى يظهر الإغلاق بلا تأخير
-    requestAnimationFrame(() => {
-      onUpdated();
-    });
+    requestAnimationFrame(() => onUpdated());
   };
 
   const patch = (partial: Partial<ProjectEngineeringData>) => setData({ ...data, ...partial });
+
+  const selectStage = (stageId: WorkflowStageId) => {
+    if (!canUnlockStage(stageId, client, data)) {
+      setMessage('يجب إنهاء واكتمال المرحلة السابقة أولاً');
+      return;
+    }
+    setActiveStage(stageId);
+    setMessage(null);
+  };
+
+  const handleApproveAndProceed = async () => {
+    const result = approveWorkflowStage({
+      stageId: activeStage,
+      client,
+      data,
+      company,
+    });
+    if (!result.ok) {
+      setMessage(result.blockers.join(' — ') || 'تعذّر اعتماد المرحلة');
+      return;
+    }
+    setData(result.data);
+    setActiveStage(result.nextStage);
+    await save(result.data, `تم اعتماد المرحلة والانتقال إلى: ${
+      WORKFLOW_STAGES.find((s) => s.id === result.nextStage)?.label_ar || result.nextStage
+    }`, { stayOpen: true });
+  };
 
   const handlePrintTechnical = async () => {
     let report = data.technical_report;
@@ -200,335 +236,583 @@ export default function ProjectReportModal({ client, onClose, onUpdated }: Proje
         ...data,
         technical_report: { ...report, outgoing_number: outgoingNumber },
       };
-      await save(nextData, 'تم إصدار رقم الصادر تلقائياً.', { issueOutgoing: false });
+      await save(nextData, 'تم إصدار رقم الصادر تلقائياً.', { issueOutgoing: false, stayOpen: true });
       report = nextData.technical_report;
     }
-    const company = await loadCompanyProfile();
-    printTechnicalReport({ client, report, company });
+    const profile = await loadCompanyProfile();
+    printTechnicalReport({ client, report, company: profile });
   };
+
+  const blockers = stageApprovalBlockers(activeStage, client, data);
 
   return (
     <>
-    <div className="fixed inset-0 bg-black/50 flex items-end sm:items-center justify-center z-50 p-0 sm:p-4">
-      <div className="bg-white rounded-t-2xl sm:rounded-2xl shadow-xl w-full max-w-5xl max-h-[94vh] flex flex-col overflow-hidden">
-        <div className="p-5 border-b">
-          <div className="flex justify-between items-start gap-4">
-            <div>
-              <h2 className="text-xl font-bold text-gray-900">ملف المشروع الهندسي</h2>
-              <p className="text-sm text-gray-500 mt-1">{client.business_name || client.name} — {client.client_code}</p>
-              <p className="text-xs text-indigo-600 mt-1">الزيارات الميدانية المتفق عليها: {client.quotation_visits_count || 1}</p>
-            </div>
-            <button onClick={onClose} className="text-2xl text-gray-400 leading-none">×</button>
-          </div>
-          <div className="mt-3 h-2 bg-gray-100 rounded-full overflow-hidden">
-            <div className="h-full bg-indigo-600 transition-all" style={{ width: `${progress}%` }} />
-          </div>
-          <p className="text-xs text-gray-500 mt-1">اكتمال التقارير: {progress}%</p>
-        </div>
-
-        <div className="flex flex-1 min-h-0">
-          <nav className="w-52 shrink-0 border-l bg-gray-50 overflow-y-auto p-2 space-y-0.5 hidden md:block">
-            {PROJECT_REPORT_SECTIONS.map((section) => (
-              <button
-                key={section.id}
-                onClick={() => setActiveSection(section.id)}
-                className={`w-full text-right px-3 py-2 rounded-lg text-xs font-medium ${
-                  activeSection === section.id ? 'bg-indigo-600 text-white' : 'text-gray-600 hover:bg-gray-100'
-                }`}
-              >
-                {section.label}
+      <div className="fixed inset-0 bg-black/50 flex items-end sm:items-center justify-center z-50 p-0 sm:p-4">
+        <div className="bg-white rounded-t-2xl sm:rounded-2xl shadow-xl w-full max-w-6xl max-h-[94vh] flex flex-col overflow-hidden">
+          <div className="p-5 border-b">
+            <div className="flex justify-between items-start gap-4">
+              <div>
+                <h2 className="text-xl font-bold text-gray-900">ملف المشروع الهندسي — مسار المراحل</h2>
+                <p className="text-sm text-gray-500 mt-1">
+                  {client.business_name || client.name} — {client.client_code}
+                </p>
+                <p className="text-xs text-sky-700 mt-1 font-semibold">
+                  المرحلة الحالية: {stageMeta?.order}. {stageMeta?.label_ar}
+                </p>
+              </div>
+              <button type="button" onClick={onClose} className="text-2xl text-gray-400 leading-none">
+                ×
               </button>
-            ))}
-          </nav>
+            </div>
+          </div>
 
-          <div className="flex-1 p-5 overflow-y-auto">
-            {message && (
-              <div className={`mb-3 p-3 rounded-xl text-sm ${message.includes('تم') ? 'bg-green-50 text-green-700' : 'bg-red-50 text-red-700'}`}>
-                {message}
-              </div>
-            )}
-
-            <select
-              value={activeSection}
-              onChange={(e) => setActiveSection(e.target.value as ProjectReportSectionId)}
-              className="md:hidden w-full mb-4 p-2 border rounded-lg text-sm"
-            >
-              {PROJECT_REPORT_SECTIONS.map((s) => (
-                <option key={s.id} value={s.id}>{s.label}</option>
-              ))}
-            </select>
-
-            {activeSection === 'technical_report' && (
-              <TechnicalReportSection
-                client={client}
-                report={data.technical_report}
-                saving={saving}
-                onChange={(technical_report) => patch({ technical_report })}
-                onSave={() => save({ ...data }, 'تم حفظ التقرير الفني.', { issueOutgoing: true })}
-                onPrint={() => void handlePrintTechnical()}
-              />
-            )}
-
-            {activeSection === 'building_plan' && (
-              <div className="space-y-6">
-                <BuildingPlanReportSection
-                  client={client}
-                  report={data.building_plan}
-                  saving={saving}
-                  onChange={(building_plan) => patch({ building_plan })}
-                  onSave={(building_plan, successText) => save({ ...data, building_plan }, successText)}
-                />
-                <section className="border-t pt-5">
-                  <h3 className="text-sm font-bold text-gray-900 mb-3">قسم السلامة — رفع المخططات</h3>
-                  <SafetyBlueprintsUpload
-                    client={client}
-                    buildingPlan={data.building_plan}
-                    value={data.safety_blueprints || EMPTY_SAFETY_BLUEPRINTS}
-                    onChange={(safety_blueprints) => patch({ safety_blueprints })}
-                    onPersist={async (safety_blueprints) => {
-                      await save({ ...data, safety_blueprints }, 'تم حفظ مخططات السلامة وتشغيل الفحص الآلي.');
-                    }}
-                  />
-                </section>
-              </div>
-            )}
-
-            {activeSection === 'boq' && (
-              <div className="space-y-3">
-                <StatusSelect value={data.boq.status} onChange={(status) => patch({ boq: { ...data.boq, status } })} />
-                <textarea rows={4} placeholder="ملاحظات BOQ" value={data.boq.notes || ''} onChange={(e) => patch({ boq: { ...data.boq, notes: e.target.value } })} className="w-full p-2.5 border rounded-xl text-sm" />
-                <button onClick={() => save(data, 'تم حفظ جدول الكميات.')} disabled={saving} className="px-4 py-2 bg-indigo-600 text-white rounded-xl text-sm">حفظ BOQ</button>
-              </div>
-            )}
-
-            {activeSection === 'timeline' && (
-              <div className="space-y-3">
-                <StatusSelect value={data.timeline.status} onChange={(status) => patch({ timeline: { ...data.timeline, status } })} />
-                <div className="grid grid-cols-2 gap-3">
-                  <Field label="بداية المشروع" type="date" value={data.timeline.project_start || ''} onChange={(v) => patch({ timeline: { ...data.timeline, project_start: v } })} />
-                  <Field label="نهاية المشروع" type="date" value={data.timeline.project_end || ''} onChange={(v) => patch({ timeline: { ...data.timeline, project_end: v } })} />
-                </div>
-                <button onClick={() => save(data, 'تم حفظ الجدول الزمني.')} disabled={saving} className="px-4 py-2 bg-indigo-600 text-white rounded-xl text-sm">حفظ الجدول</button>
-              </div>
-            )}
-
-            {activeSection === 'field_visits' && (
-              <div className="space-y-4">
-                {data.field_visits.map((visit) => (
-                  <div key={visit.visit_number} className="border rounded-xl p-4 bg-gray-50">
-                    <h4 className="font-bold text-sm mb-3">تقرير الزيارة الميدانية #{visit.visit_number}</h4>
-                    <StatusSelect value={visit.status} onChange={(status) => {
-                      const visits = data.field_visits.map((v) => v.visit_number === visit.visit_number ? { ...v, status } : v);
-                      patch({ field_visits: visits });
-                    }} />
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-3 mt-3">
-                      <Field label="تاريخ الزيارة" type="date" value={visit.visit_date || ''} onChange={(v) => {
-                        patch({ field_visits: data.field_visits.map((x) => x.visit_number === visit.visit_number ? { ...x, visit_date: v } : x) });
-                      }} />
-                      <Field label="المهندس" value={visit.engineer_name || ''} onChange={(v) => {
-                        patch({ field_visits: data.field_visits.map((x) => x.visit_number === visit.visit_number ? { ...x, engineer_name: v } : x) });
-                      }} />
-                    </div>
-                    <textarea rows={3} placeholder="النتائج والملاحظات" value={visit.findings || ''} onChange={(e) => {
-                      patch({ field_visits: data.field_visits.map((x) => x.visit_number === visit.visit_number ? { ...x, findings: e.target.value } : x) });
-                    }} className="w-full p-2.5 border rounded-xl text-sm mt-3" />
-                  </div>
-                ))}
-                <button onClick={() => save(data, 'تم حفظ تقارير الزيارات.')} disabled={saving} className="px-4 py-2 bg-indigo-600 text-white rounded-xl text-sm">حفظ الزيارات</button>
-              </div>
-            )}
-
-            {activeSection === 'supervision_report' && (
-              <SupervisionReportSection
+          <div className="flex flex-1 min-h-0">
+            <aside className="w-56 shrink-0 border-l bg-gray-50 overflow-y-auto p-3 hidden md:block">
+              <WorkflowStageRail
                 client={client}
                 data={data}
-                company={company}
-                saving={saving}
-                onChange={(supervision_report) => patch({ supervision_report })}
-                onSave={() => save(data, 'تم حفظ تقرير الإشراف.')}
+                activeStage={activeStage}
+                progressPercent={progress}
+                onSelect={selectStage}
               />
-            )}
+            </aside>
 
-            {activeSection === 'technical_notes' && (
-              <ReportForm
-                status={data.technical_notes.status}
-                onStatus={(status) => patch({ technical_notes: { ...data.technical_notes, status } })}
-                fields={[
-                  ['compliance_status', 'حالة المطابقة', data.technical_notes.compliance_status || ''],
-                ]}
-                onChange={(key, value) => patch({ technical_notes: { ...data.technical_notes, [key]: value } })}
-                notes={data.technical_notes.recommendations || ''}
-                onNotes={(recommendations) => patch({ technical_notes: { ...data.technical_notes, recommendations } })}
-                onSave={() => save(data, 'تم حفظ الملاحظات الفنية.')}
-                saving={saving}
-              />
-            )}
+            <div className="flex-1 p-5 overflow-y-auto space-y-4">
+              <div className="md:hidden">
+                <WorkflowStageRail
+                  client={client}
+                  data={data}
+                  activeStage={activeStage}
+                  progressPercent={progress}
+                  onSelect={selectStage}
+                />
+              </div>
 
-            {activeSection === 'engineering_delivery' && (
-              <div className="space-y-3">
-                <EngineeringDeliverySection
+              {message ? (
+                <div
+                  className={`p-3 rounded-xl text-sm ${
+                    message.includes('تم') || message.includes('اعتماد')
+                      ? 'bg-green-50 text-green-700'
+                      : 'bg-amber-50 text-amber-900'
+                  }`}
+                >
+                  {message}
+                </div>
+              ) : null}
+
+              {activeStage === 'contract' && (
+                <ContractOnboardingSection
+                  client={client}
+                  report={data.contract_onboarding}
+                  onChange={(contract_onboarding) => patch({ contract_onboarding })}
+                />
+              )}
+
+              {activeStage === 'plans' && (
+                <div className="space-y-6">
+                  <div className="rounded-xl border border-emerald-100 bg-emerald-50 px-3 py-2 text-xs text-emerald-950">
+                    يرث اسم العميل/المشروع من مرحلة العقد. يلزم تصنيف الإشغال ورفع المخططات أو الحسابات الهيدروليكية
+                    للاعتماد.
+                  </div>
+                  <BuildingPlanReportSection
+                    client={client}
+                    report={data.building_plan}
+                    saving={saving}
+                    onChange={(building_plan) => patch({ building_plan })}
+                    onSave={(building_plan, successText) =>
+                      save({ ...data, building_plan }, successText, { stayOpen: true })
+                    }
+                  />
+                  <section className="border-t pt-5 space-y-4">
+                    <h3 className="text-sm font-bold text-gray-900">مرفقات المخططات والحسابات</h3>
+                    <PlanAttachmentsUpload
+                      value={data.plan_attachments || EMPTY_PLAN_ATTACHMENTS}
+                      onChange={(plan_attachments) => patch({ plan_attachments })}
+                    />
+                    <h3 className="text-sm font-bold text-gray-900">مخططات السلامة</h3>
+                    <SafetyBlueprintsUpload
+                      client={client}
+                      buildingPlan={data.building_plan}
+                      value={data.safety_blueprints || EMPTY_SAFETY_BLUEPRINTS}
+                      onChange={(safety_blueprints) => patch({ safety_blueprints })}
+                      onPersist={async (safety_blueprints) => {
+                        await save(
+                          { ...data, safety_blueprints },
+                          'تم حفظ مخططات السلامة وتشغيل الفحص الآلي.',
+                          { stayOpen: true }
+                        );
+                      }}
+                    />
+                  </section>
+                </div>
+              )}
+
+              {activeStage === 'boq_schedule' && (
+                <div className="space-y-4">
+                  <div className="rounded-xl border border-indigo-100 bg-indigo-50 px-3 py-2 text-xs text-indigo-950">
+                    يرث نطاق الإشغال من المخطط. بنود BOQ تُمرَّر تلقائياً إلى جدول الإشراف في المرحلة 5.
+                  </div>
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                    <StatusSelect
+                      value={data.boq.status}
+                      onChange={(status) => patch({ boq: { ...data.boq, status } })}
+                    />
+                    <StatusSelect
+                      value={data.timeline.status}
+                      onChange={(status) => patch({ timeline: { ...data.timeline, status } })}
+                    />
+                  </div>
+                  <div className="flex gap-2">
+                    <input
+                      className="flex-1 border rounded-xl px-3 py-2 text-sm"
+                      placeholder="بند نظام (إطفاء / إنذار / دخان…)"
+                      value={boqItem}
+                      onChange={(e) => setBoqItem(e.target.value)}
+                    />
+                    <button
+                      type="button"
+                      className="px-3 py-2 rounded-xl bg-slate-800 text-white text-sm"
+                      onClick={() => {
+                        if (!boqItem.trim()) return;
+                        patch({
+                          boq: {
+                            ...data.boq,
+                            items: [
+                              ...(data.boq.items || []),
+                              {
+                                id: `boq-${Date.now()}`,
+                                item: boqItem.trim(),
+                                unit: 'وحدة',
+                                quantity: 1,
+                                unit_price: 0,
+                              },
+                            ],
+                          },
+                        });
+                        setBoqItem('');
+                      }}
+                    >
+                      إضافة
+                    </button>
+                  </div>
+                  <ul className="text-sm space-y-1">
+                    {(data.boq.items || []).map((item) => (
+                      <li key={item.id} className="border rounded-lg px-3 py-2 bg-slate-50">
+                        {item.item}
+                      </li>
+                    ))}
+                  </ul>
+                  <div className="grid grid-cols-2 gap-3">
+                    <Field
+                      label="بداية المشروع"
+                      type="date"
+                      value={data.timeline.project_start || ''}
+                      onChange={(v) => patch({ timeline: { ...data.timeline, project_start: v } })}
+                    />
+                    <Field
+                      label="نهاية المشروع"
+                      type="date"
+                      value={data.timeline.project_end || ''}
+                      onChange={(v) => patch({ timeline: { ...data.timeline, project_end: v } })}
+                    />
+                  </div>
+                  <textarea
+                    rows={2}
+                    placeholder="ملاحظات BOQ / الجدول"
+                    value={data.boq.notes || ''}
+                    onChange={(e) => patch({ boq: { ...data.boq, notes: e.target.value } })}
+                    className="w-full p-2.5 border rounded-xl text-sm"
+                  />
+                </div>
+              )}
+
+              {activeStage === 'technical_report' && (
+                <TechnicalReportSection
+                  client={client}
+                  report={data.technical_report}
+                  saving={saving}
+                  onChange={(technical_report) => patch({ technical_report })}
+                  onSave={() =>
+                    save({ ...data }, 'تم حفظ التقرير الفني.', { issueOutgoing: true, stayOpen: true })
+                  }
+                  onPrint={() => void handlePrintTechnical()}
+                />
+              )}
+
+              {activeStage === 'inspections' && (
+                <div className="space-y-6">
+                  <div className="space-y-4">
+                    <h3 className="text-sm font-bold">الزيارات الميدانية</h3>
+                    {data.field_visits.map((visit) => (
+                      <div key={visit.visit_number} className="border rounded-xl p-4 bg-gray-50">
+                        <h4 className="font-bold text-sm mb-3">
+                          تقرير الزيارة الميدانية #{visit.visit_number}
+                        </h4>
+                        <StatusSelect
+                          value={visit.status}
+                          onChange={(status) => {
+                            patch({
+                              field_visits: data.field_visits.map((v) =>
+                                v.visit_number === visit.visit_number ? { ...v, status } : v
+                              ),
+                            });
+                          }}
+                        />
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-3 mt-3">
+                          <Field
+                            label="تاريخ الزيارة"
+                            type="date"
+                            value={visit.visit_date || ''}
+                            onChange={(v) => {
+                              patch({
+                                field_visits: data.field_visits.map((x) =>
+                                  x.visit_number === visit.visit_number ? { ...x, visit_date: v } : x
+                                ),
+                              });
+                            }}
+                          />
+                          <Field
+                            label="المهندس"
+                            value={visit.engineer_name || ''}
+                            onChange={(v) => {
+                              patch({
+                                field_visits: data.field_visits.map((x) =>
+                                  x.visit_number === visit.visit_number
+                                    ? { ...x, engineer_name: v }
+                                    : x
+                                ),
+                              });
+                            }}
+                          />
+                        </div>
+                        <textarea
+                          rows={3}
+                          placeholder="النتائج والملاحظات"
+                          value={visit.findings || ''}
+                          onChange={(e) => {
+                            patch({
+                              field_visits: data.field_visits.map((x) =>
+                                x.visit_number === visit.visit_number
+                                  ? { ...x, findings: e.target.value }
+                                  : x
+                              ),
+                            });
+                          }}
+                          className="w-full p-2.5 border rounded-xl text-sm mt-3"
+                        />
+                      </div>
+                    ))}
+                  </div>
+                  <SupervisionReportSection
+                    client={client}
+                    data={data}
+                    company={company}
+                    saving={saving}
+                    onChange={(supervision_report) => patch({ supervision_report })}
+                    onSave={() => save(data, 'تم حفظ تقرير الإشراف.', { stayOpen: true })}
+                  />
+                </div>
+              )}
+
+              {activeStage === 'deficiencies' && (
+                <div className="space-y-4">
+                  <div className="rounded-xl border border-amber-100 bg-amber-50 px-3 py-2 text-xs text-amber-950">
+                    لا تُفتح خطابات التسليم إلا بعد حل جميع الملاحظات الحرجة.
+                  </div>
+                  <StatusSelect
+                    value={data.technical_notes.status}
+                    onChange={(status) =>
+                      patch({ technical_notes: { ...data.technical_notes, status } })
+                    }
+                  />
+                  <Field
+                    label="حالة المطابقة"
+                    value={data.technical_notes.compliance_status || ''}
+                    onChange={(v) =>
+                      patch({ technical_notes: { ...data.technical_notes, compliance_status: v } })
+                    }
+                  />
+                  <button
+                    type="button"
+                    className="px-3 py-2 rounded-xl border text-sm"
+                    onClick={() => {
+                      patch({
+                        technical_notes: {
+                          ...data.technical_notes,
+                          deficiencies: [
+                            ...(data.technical_notes.deficiencies || []),
+                            {
+                              id: `def-${Date.now()}`,
+                              description: 'ملاحظة موقع جديدة',
+                              severity: 'medium',
+                              resolved: false,
+                            },
+                          ],
+                        },
+                      });
+                    }}
+                  >
+                    + إضافة ملاحظة
+                  </button>
+                  <ul className="space-y-2">
+                    {(data.technical_notes.deficiencies || []).map((d) => (
+                      <li key={d.id} className="border rounded-xl p-3 text-sm space-y-2">
+                        <input
+                          className="w-full border rounded-lg px-2 py-1.5"
+                          value={d.description}
+                          onChange={(e) =>
+                            patch({
+                              technical_notes: {
+                                ...data.technical_notes,
+                                deficiencies: (data.technical_notes.deficiencies || []).map((x) =>
+                                  x.id === d.id ? { ...x, description: e.target.value } : x
+                                ),
+                              },
+                            })
+                          }
+                        />
+                        <div className="flex flex-wrap gap-2 items-center">
+                          <select
+                            className="border rounded-lg px-2 py-1 text-xs"
+                            value={d.severity}
+                            onChange={(e) =>
+                              patch({
+                                technical_notes: {
+                                  ...data.technical_notes,
+                                  deficiencies: (data.technical_notes.deficiencies || []).map((x) =>
+                                    x.id === d.id ? { ...x, severity: e.target.value } : x
+                                  ),
+                                },
+                              })
+                            }
+                          >
+                            <option value="low">منخفض</option>
+                            <option value="medium">متوسط</option>
+                            <option value="high">عالي</option>
+                            <option value="critical">حرج / Critical</option>
+                          </select>
+                          <label className="inline-flex items-center gap-1 text-xs">
+                            <input
+                              type="checkbox"
+                              checked={!!d.resolved}
+                              onChange={(e) =>
+                                patch({
+                                  technical_notes: {
+                                    ...data.technical_notes,
+                                    deficiencies: (data.technical_notes.deficiencies || []).map(
+                                      (x) =>
+                                        x.id === d.id ? { ...x, resolved: e.target.checked } : x
+                                    ),
+                                  },
+                                })
+                              }
+                            />
+                            تم الحل (Resolved)
+                          </label>
+                        </div>
+                      </li>
+                    ))}
+                  </ul>
+                  <textarea
+                    rows={3}
+                    placeholder="توصيات"
+                    value={data.technical_notes.recommendations || ''}
+                    onChange={(e) =>
+                      patch({
+                        technical_notes: {
+                          ...data.technical_notes,
+                          recommendations: e.target.value,
+                        },
+                      })
+                    }
+                    className="w-full p-2.5 border rounded-xl text-sm"
+                  />
+                </div>
+              )}
+
+              {activeStage === 'transmittals' && (
+                <div className="space-y-6">
+                  <div className="rounded-xl border border-emerald-100 bg-emerald-50 px-3 py-2 text-xs text-emerald-950">
+                    يرث رقم الدراسة، المالك، المساحة، تصنيف الإشغال، ومرفقات المخططات/الحسابات من المراحل 1 و2 و4.
+                  </div>
+                  <EngineeringDeliverySection
+                    client={client}
+                    data={data}
+                    company={company}
+                    saving={saving}
+                    onChange={(engineering_delivery) => patch({ engineering_delivery })}
+                    onSave={() => save(data, 'تم حفظ خطاب تسليم الدراسة.', { stayOpen: true })}
+                  />
+                  <CdCoverLetterSection
+                    client={client}
+                    data={data}
+                    company={company}
+                    saving={saving}
+                    onChange={(cd_cover_letter) => patch({ cd_cover_letter })}
+                    onSave={async (letter) => {
+                      const next = letter ? { ...data, cd_cover_letter: letter } : data;
+                      if (letter?.outgoing_number && !next.technical_report.outgoing_number) {
+                        next.technical_report = {
+                          ...next.technical_report,
+                          outgoing_number: letter.outgoing_number,
+                        };
+                      }
+                      await save(next, 'تم حفظ / إصدار خطاب تسليم الدفاع المدني.', {
+                        stayOpen: true,
+                      });
+                    }}
+                  />
+                </div>
+              )}
+
+              {activeStage === 'final_report' && (
+                <FinalInspectionSection
                   client={client}
                   data={data}
                   company={company}
                   saving={saving}
-                  onChange={(engineering_delivery) => patch({ engineering_delivery })}
-                  onSave={() => save(data, 'تم حفظ خطاب تسليم الدراسة.')}
+                  onChange={(final_inspection) => patch({ final_inspection })}
+                  onSave={() => save(data, 'تم حفظ التقرير النهائي.', { stayOpen: true })}
                 />
-                <button
-                  type="button"
-                  disabled={invoiceBusy}
-                  onClick={() => {
-                    setPendingInvoiceEvent('manual');
-                    setPromptInvoice(null);
-                    setInvoicePromptOpen(true);
+              )}
+
+              {activeStage === 'completion' && (
+                <CompletionCertificateSection
+                  client={client}
+                  data={data}
+                  company={company}
+                  saving={saving}
+                  onChange={(completion_certificate) => patch({ completion_certificate })}
+                  onSave={(opts) => save(data, 'تم حفظ الشهادة.', { ...opts, stayOpen: true })}
+                  onSaveAndPrint={async (cert) => {
+                    const nextData = { ...data, completion_certificate: cert };
+                    await save(nextData, 'تم إصدار رقم الشهادة تلقائياً.', {
+                      issueCertificate: false,
+                      stayOpen: true,
+                    });
+                    const { printCompletionCertificate } = await import(
+                      '@/components/projects/CompletionCertificatePrint'
+                    );
+                    printCompletionCertificate(client, cert, company);
                   }}
-                  className="px-4 py-2.5 rounded-xl bg-[#1f4d3a] text-white text-sm font-semibold disabled:opacity-50"
-                >
-                  اصدار فاتورة جديدة
-                </button>
+                />
+              )}
+
+              <div className="sticky bottom-0 bg-white/95 border-t pt-3 mt-6 space-y-2">
+                {blockers.length ? (
+                  <p className="text-xs text-amber-800">لاعتماد المرحلة: {blockers.join(' · ')}</p>
+                ) : (
+                  <p className="text-xs text-emerald-800">المرحلة جاهزة للاعتماد والانتقال.</p>
+                )}
+                <div className="flex flex-wrap gap-2">
+                  <button
+                    type="button"
+                    disabled={saving}
+                    onClick={() => void save(data, 'تم حفظ بيانات المرحلة.', { stayOpen: true })}
+                    className="px-4 py-2.5 rounded-xl border text-sm font-semibold disabled:opacity-50"
+                  >
+                    {saving ? 'جاري الحفظ...' : 'حفظ المرحلة'}
+                  </button>
+                  <button
+                    type="button"
+                    disabled={saving || blockers.length > 0}
+                    onClick={() => void handleApproveAndProceed()}
+                    className="px-4 py-2.5 rounded-xl bg-[#1f4d3a] text-white text-sm font-bold disabled:opacity-50"
+                  >
+                    اعتماد وانتقال للمرحلة التالية
+                  </button>
+                </div>
               </div>
-            )}
-
-            {activeSection === 'cd_cover_letter' && (
-              <CdCoverLetterSection
-                client={client}
-                data={data}
-                company={company}
-                saving={saving}
-                onChange={(cd_cover_letter) => patch({ cd_cover_letter })}
-                onSave={async (letter) => {
-                  const next = letter
-                    ? { ...data, cd_cover_letter: letter }
-                    : data;
-                  // Mirror outgoing number onto technical report when issued
-                  if (letter?.outgoing_number && !next.technical_report.outgoing_number) {
-                    next.technical_report = {
-                      ...next.technical_report,
-                      outgoing_number: letter.outgoing_number,
-                    };
-                  }
-                  await save(next, 'تم حفظ / إصدار خطاب تسليم الدفاع المدني.');
-                }}
-              />
-            )}
-
-            {activeSection === 'final_inspection' && (
-              <FinalInspectionSection
-                client={client}
-                data={data}
-                company={company}
-                saving={saving}
-                onChange={(final_inspection) => patch({ final_inspection })}
-                onSave={() => save(data, 'تم حفظ التقرير النهائي.')}
-              />
-            )}
-
-            {activeSection === 'completion_certificate' && (
-              <CompletionCertificateSection
-                client={client}
-                data={data}
-                company={company}
-                saving={saving}
-                onChange={(completion_certificate) => patch({ completion_certificate })}
-                onSave={(opts) => save(data, 'تم حفظ الشهادة.', opts)}
-                onSaveAndPrint={async (cert) => {
-                  const nextData = { ...data, completion_certificate: cert };
-                  await save(nextData, 'تم إصدار رقم الشهادة تلقائياً.', { issueCertificate: false });
-                  const { printCompletionCertificate } = await import(
-                    '@/components/projects/CompletionCertificatePrint'
-                  );
-                  printCompletionCertificate(client, cert, company);
-                }}
-              />
-            )}
+            </div>
           </div>
         </div>
       </div>
-    </div>
 
-    <InvoicePromptModal
-      open={invoicePromptOpen}
-      message="تم اعتماد المرحلة. هل تريد استعراض وإصدار الفاتورة الضريبية المعتمدة؟"
-      invoice={promptInvoice}
-      loading={invoiceBusy}
-      onClose={() => {
-        setInvoicePromptOpen(false);
-        setPromptInvoice(null);
-        setPendingInvoiceEvent(null);
-        onClose();
-      }}
-      onIssue={() => {
-        void (async () => {
-          setInvoiceBusy(true);
-          const result =
-            pendingInvoiceEvent && pendingInvoiceEvent !== 'manual'
-              ? await generateInvoiceForEngineeringEvent(client, pendingInvoiceEvent)
-              : await generateTaxInvoiceFromMilestone({
-                  clientId: client.id,
-                  triggerSource: 'manual',
-                });
-          setInvoiceBusy(false);
-          if (!result.ok || !result.invoice) {
-            setMessage(result.error || result.messages.join(' — ') || 'تعذر إصدار الفاتورة');
-            return;
-          }
-          setPromptInvoice(result.invoice);
-          setMessage(result.messages.join(' — '));
-        })();
-      }}
-      onPreview={() => {
-        if (promptInvoice) void printTaxInvoice(promptInvoice);
-      }}
-      onDownload={() => {
-        if (promptInvoice) void downloadTaxInvoice(promptInvoice);
-      }}
-      onWhatsApp={() => {
-        if (promptInvoice) void shareTaxInvoiceWhatsApp(promptInvoice, client.phone);
-      }}
-    />
+      <InvoicePromptModal
+        open={invoicePromptOpen}
+        message="تم اعتماد المرحلة. هل تريد استعراض وإصدار الفاتورة الضريبية المعتمدة؟"
+        invoice={promptInvoice}
+        loading={invoiceBusy}
+        onClose={() => {
+          setInvoicePromptOpen(false);
+          setPromptInvoice(null);
+          setPendingInvoiceEvent(null);
+        }}
+        onIssue={() => {
+          void (async () => {
+            setInvoiceBusy(true);
+            const result =
+              pendingInvoiceEvent && pendingInvoiceEvent !== 'manual'
+                ? await generateInvoiceForEngineeringEvent(client, pendingInvoiceEvent)
+                : await generateTaxInvoiceFromMilestone({
+                    clientId: client.id,
+                    triggerSource: 'manual',
+                  });
+            setInvoiceBusy(false);
+            if (!result.ok || !result.invoice) {
+              setMessage(result.error || result.messages.join(' — ') || 'تعذر إصدار الفاتورة');
+              return;
+            }
+            setPromptInvoice(result.invoice);
+            setMessage(result.messages.join(' — '));
+          })();
+        }}
+        onPreview={() => {
+          if (promptInvoice) void printTaxInvoice(promptInvoice);
+        }}
+        onDownload={() => {
+          if (promptInvoice) void downloadTaxInvoice(promptInvoice);
+        }}
+        onWhatsApp={() => {
+          if (promptInvoice) void shareTaxInvoiceWhatsApp(promptInvoice, client.phone);
+        }}
+      />
     </>
   );
 }
 
-function StatusSelect({ value, onChange }: { value: string; onChange: (v: (typeof REPORT_STATUSES)[number]) => void }) {
+function StatusSelect({
+  value,
+  onChange,
+}: {
+  value: string;
+  onChange: (v: (typeof REPORT_STATUSES)[number]) => void;
+}) {
   return (
-    <select value={value} onChange={(e) => onChange(e.target.value as (typeof REPORT_STATUSES)[number])} className="p-2 border rounded-lg text-sm bg-white">
-      {REPORT_STATUSES.map((s) => <option key={s} value={s}>{s}</option>)}
+    <select
+      value={value}
+      onChange={(e) => onChange(e.target.value as (typeof REPORT_STATUSES)[number])}
+      className="p-2 border rounded-lg text-sm bg-white w-full"
+    >
+      {REPORT_STATUSES.map((s) => (
+        <option key={s} value={s}>
+          {s}
+        </option>
+      ))}
     </select>
   );
 }
 
-function Field({ label, value, onChange, type = 'text' }: { label: string; value: string; onChange: (v: string) => void; type?: string }) {
+function Field({
+  label,
+  value,
+  onChange,
+  type = 'text',
+}: {
+  label: string;
+  value: string;
+  onChange: (v: string) => void;
+  type?: string;
+}) {
   return (
     <div>
       <label className="block text-xs font-semibold mb-1">{label}</label>
-      <input type={type} value={value} onChange={(e) => onChange(e.target.value)} className="w-full p-2.5 border rounded-xl text-sm" />
-    </div>
-  );
-}
-
-function ReportForm({
-  status, onStatus, fields, onChange, notes, onNotes, onSave, saving,
-}: {
-  status: string;
-  onStatus: (s: (typeof REPORT_STATUSES)[number]) => void;
-  fields: [string, string, string, string?][];
-  onChange: (key: string, value: string) => void;
-  notes: string;
-  onNotes: (v: string) => void;
-  onSave: () => void;
-  saving: boolean;
-}) {
-  return (
-    <div className="space-y-3">
-      <StatusSelect value={status} onChange={onStatus} />
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-        {fields.map(([key, label, value, type]) => (
-          <Field key={key} label={label} value={value} type={type} onChange={(v) => onChange(key, v)} />
-        ))}
-      </div>
-      <textarea rows={3} placeholder="ملاحظات" value={notes} onChange={(e) => onNotes(e.target.value)} className="w-full p-2.5 border rounded-xl text-sm" />
-      <button onClick={onSave} disabled={saving} className="px-4 py-2 bg-indigo-600 text-white rounded-xl text-sm">{saving ? 'جاري الحفظ...' : 'حفظ التقرير'}</button>
+      <input
+        type={type}
+        value={value}
+        onChange={(e) => onChange(e.target.value)}
+        className="w-full p-2.5 border rounded-xl text-sm"
+      />
     </div>
   );
 }

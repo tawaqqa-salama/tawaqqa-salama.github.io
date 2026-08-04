@@ -4,10 +4,16 @@ import {
   EMPTY_BUILDING_PLAN,
   EMPTY_TECHNICAL_REPORT,
   EMPTY_SAFETY_BLUEPRINTS,
+  EMPTY_PLAN_ATTACHMENTS,
+  EMPTY_CONTRACT_ONBOARDING,
   EMPTY_SUPERVISION_REPORT,
   type FieldVisitReport,
   type ProjectEngineeringData,
 } from '@/lib/types/project-reports';
+import {
+  applyPipelineInheritance,
+  workflowProgressPercent,
+} from '@/lib/projects/gated-pipeline';
 import { mergeBuildingPlanDefaults } from '@/lib/projects/building-plan';
 import { seedTechnicalReportFromClient } from '@/lib/projects/technical-report';
 import { mergeSafetyScope, seedEngineeringDelivery } from '@/lib/projects/safety-delivery-letter';
@@ -53,6 +59,15 @@ export function parseProjectEngineeringData(raw: ClientRecord['project_engineeri
       ...EMPTY_SAFETY_BLUEPRINTS,
       ...data.safety_blueprints,
     },
+    plan_attachments: {
+      ...EMPTY_PLAN_ATTACHMENTS,
+      engineering_drawings: data.plan_attachments?.engineering_drawings || [],
+      hydraulic_calculations: data.plan_attachments?.hydraulic_calculations || [],
+    },
+    contract_onboarding: {
+      ...EMPTY_CONTRACT_ONBOARDING,
+      ...data.contract_onboarding,
+    },
     boq: { ...EMPTY_PROJECT_ENGINEERING_DATA.boq, items: data.boq?.items || [], ...data.boq },
     timeline: { ...EMPTY_PROJECT_ENGINEERING_DATA.timeline, milestones: data.timeline?.milestones || [], ...data.timeline },
     field_visits: Array.isArray(data.field_visits) ? data.field_visits : [],
@@ -86,6 +101,7 @@ export function parseProjectEngineeringData(raw: ClientRecord['project_engineeri
       months,
       tasks,
     },
+    workflow: { ...(data.workflow || {}) },
   };
 }
 
@@ -118,17 +134,39 @@ export function seedProjectEngineeringFromClient(
   client: ClientRecord,
   data: ProjectEngineeringData
 ): ProjectEngineeringData {
-  return {
+  const seeded: ProjectEngineeringData = {
     ...data,
+    contract_onboarding: {
+      ...EMPTY_CONTRACT_ONBOARDING,
+      ...data.contract_onboarding,
+      client_name_snapshot:
+        data.contract_onboarding?.client_name_snapshot || client.name || '',
+      project_name_snapshot:
+        data.contract_onboarding?.project_name_snapshot ||
+        client.business_name ||
+        client.name ||
+        '',
+      contract_value:
+        data.contract_onboarding?.contract_value ?? client.quotation_amount ?? null,
+      scope_of_work:
+        data.contract_onboarding?.scope_of_work ||
+        (client.quotation_services || []).join(' · '),
+    },
     technical_report: seedTechnicalReportFromClient(client, data.technical_report),
     engineering_delivery: seedEngineeringDelivery(client, data, data.engineering_delivery),
     cd_cover_letter: seedCdCoverLetter(client, data, data.cd_cover_letter),
     final_inspection: seedFinalInspectionReport(client, data, data.final_inspection),
   };
+  return applyPipelineInheritance(client, seeded, null);
 }
 
-export function getProjectReportProgress(data: ProjectEngineeringData): number {
+export function getProjectReportProgress(
+  data: ProjectEngineeringData,
+  client?: ClientRecord | null
+): number {
+  if (client) return workflowProgressPercent(client, data);
   const sections = [
+    data.contract_onboarding?.status,
     data.technical_report.status,
     data.building_plan.status,
     data.boq.status,

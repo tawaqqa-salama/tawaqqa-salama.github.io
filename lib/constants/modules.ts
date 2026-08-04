@@ -4,6 +4,7 @@ export {
   nextSalesDocNumber as generateSalesDocNumber,
 } from '@/lib/business/document-numbers';
 
+/** @deprecated Prefer WORKFLOW_STAGES from gated-pipeline — kept for legacy labels */
 export const PROJECT_REPORT_SECTIONS = [
   { id: 'technical_report', label: 'التقرير الفني' },
   { id: 'building_plan', label: 'معلومات المخطط' },
@@ -19,6 +20,13 @@ export const PROJECT_REPORT_SECTIONS = [
 ] as const;
 
 export type ProjectReportSectionId = (typeof PROJECT_REPORT_SECTIONS)[number]['id'];
+
+export {
+  WORKFLOW_STAGES,
+  WORKFLOW_STAGE_IDS,
+  LOCK_TOOLTIP_AR,
+} from '@/lib/projects/gated-pipeline';
+export type { WorkflowStageId } from '@/lib/projects/gated-pipeline';
 
 export const PIPELINE_STAGE_LABELS: Record<string, string> = {
   marketing: 'التسويق',
