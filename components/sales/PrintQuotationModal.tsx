@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useState } from 'react';
 import { printFinancialDocument } from '@/components/invoices/FinancialDocumentPrint';
+import QuotationDocumentsUpload from '@/components/sales/QuotationDocumentsUpload';
 import { clientToFinancialDocument } from '@/lib/invoices/document-mapper';
 import {
   QUOTATION_SERVICE_OPTIONS,
@@ -12,7 +13,12 @@ import { loadCompanyProfile } from '@/lib/company-profile';
 import { formatCurrency } from '@/lib/format/currency';
 import { parseLocalizedNumber } from '@/lib/validation/client';
 import { mergeLocalClientOverrides, updateClientSafe } from '@/lib/supabase/safe-client-write';
+import {
+  normalizeQuotationDocuments,
+  validateQuotationDocumentsForIssue,
+} from '@/lib/business/quotation-documents';
 import type { ClientRecord } from '@/lib/types/client';
+import type { QuotationDocumentsState } from '@/lib/types/quotation-documents';
 
 interface PrintQuotationModalProps {
   client: ClientRecord | null;
@@ -24,6 +30,9 @@ export default function PrintQuotationModal({ client, onClose, onSaved }: PrintQ
   const [selected, setSelected] = useState<QuotationServiceId[]>([]);
   const [visitsCount, setVisitsCount] = useState('1');
   const [pricePerM2, setPricePerM2] = useState(0);
+  const [documents, setDocuments] = useState<QuotationDocumentsState>(() =>
+    normalizeQuotationDocuments(null)
+  );
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -32,6 +41,7 @@ export default function PrintQuotationModal({ client, onClose, onSaved }: PrintQ
     const hydrated = mergeLocalClientOverrides(client);
     setSelected(normalizeQuotationServices(hydrated.quotation_services));
     setVisitsCount(String(hydrated.quotation_visits_count || 1));
+    setDocuments(normalizeQuotationDocuments(hydrated.quotation_documents));
     setError(null);
     void loadCompanyProfile().then((profile) => setPricePerM2(Number(profile.price_per_m2) || 0));
   }, [client]);
@@ -58,6 +68,11 @@ export default function PrintQuotationModal({ client, onClose, onSaved }: PrintQ
       setError('حدد خدمة واحدة على الأقل ضمن نطاق عرض السعر قبل الطباعة.');
       return;
     }
+    const docsError = validateQuotationDocumentsForIssue(documents);
+    if (docsError) {
+      setError(docsError);
+      return;
+    }
 
     setSaving(true);
     setError(null);
@@ -66,6 +81,7 @@ export default function PrintQuotationModal({ client, onClose, onSaved }: PrintQ
     const writeResult = await updateClientSafe(client.id, {
       quotation_services: selected,
       quotation_visits_count: visits,
+      quotation_documents: documents,
     });
 
     setSaving(false);
@@ -75,7 +91,12 @@ export default function PrintQuotationModal({ client, onClose, onSaved }: PrintQ
     }
 
     const document = clientToFinancialDocument(
-      { ...client, quotation_services: selected, quotation_visits_count: visits },
+      {
+        ...client,
+        quotation_services: selected,
+        quotation_visits_count: visits,
+        quotation_documents: documents,
+      },
       { documentType: 'quotation', pricePerM2: pricePerM2 || null }
     );
     printFinancialDocument(document);
@@ -84,7 +105,7 @@ export default function PrintQuotationModal({ client, onClose, onSaved }: PrintQ
 
   return (
     <div className="fixed inset-0 z-[70] flex items-center justify-center bg-black/40 p-4" role="dialog" aria-modal="true">
-      <div className="w-full max-w-xl max-h-[90vh] overflow-y-auto rounded-2xl bg-white shadow-xl">
+      <div className="w-full max-w-2xl max-h-[90vh] overflow-y-auto rounded-2xl bg-white shadow-xl">
         <div className="flex items-start justify-between border-b p-4">
           <div>
             <h2 className="text-lg font-bold">طباعة عرض السعر</h2>
@@ -145,6 +166,13 @@ export default function PrintQuotationModal({ client, onClose, onSaved }: PrintQ
               />
             </label>
           ) : null}
+
+          <QuotationDocumentsUpload
+            value={documents}
+            clientId={client.id}
+            disabled={saving}
+            onChange={setDocuments}
+          />
 
           {selectedLabels.length > 0 ? (
             <p className="text-xs text-gray-500">سيتم طباعة: {selectedLabels.map((item) => item.label).join(' · ')}</p>

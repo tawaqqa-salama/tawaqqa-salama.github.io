@@ -51,6 +51,7 @@ import {
 } from '@/lib/constants/quotation-services';
 import { loadCompanyProfile } from '@/lib/company-profile';
 import PrintQuotationModal from '@/components/sales/PrintQuotationModal';
+import QuotationDocumentsUpload from '@/components/sales/QuotationDocumentsUpload';
 import { processZatcaOnQuotationApproval } from '@/lib/zatca/submit';
 import { processAutoContractOnApproval } from '@/lib/business/contract-service';
 import {
@@ -65,7 +66,12 @@ import {
 } from '@/components/invoices/TaxInvoiceTemplate';
 import { mergeLocalClientOverrides, updateClientSafe } from '@/lib/supabase/safe-client-write';
 import { logActivity } from '@/lib/activity/logger';
+import {
+  normalizeQuotationDocuments,
+  validateQuotationDocumentsForIssue,
+} from '@/lib/business/quotation-documents';
 import type { ClientRecord, DepartmentMode, FloorLevel, InspectionChecklistItem } from '@/lib/types/client';
+import type { QuotationDocumentsState } from '@/lib/types/quotation-documents';
 import type { TaxInvoice } from '@/lib/types/tax-invoice';
 
 type TabId = 'basic' | 'finance' | 'engineering' | 'reports';
@@ -122,6 +128,9 @@ export default function ClientDetailModal({
   const [paidAmount, setPaidAmount] = useState('');
   const [quotationVisitsCount, setQuotationVisitsCount] = useState('1');
   const [quotationServices, setQuotationServices] = useState<QuotationServiceId[]>([]);
+  const [quotationDocuments, setQuotationDocuments] = useState<QuotationDocumentsState>(() =>
+    normalizeQuotationDocuments(null)
+  );
   const [pricePerM2, setPricePerM2] = useState(0);
   const [printOpen, setPrintOpen] = useState(false);
   const [salesPaymentType, setSalesPaymentType] = useState<'نقدي' | 'آجل'>('نقدي');
@@ -173,6 +182,7 @@ export default function ClientDetailModal({
     setErrorMessage(null);
     setSuccessMessage(null);
     setQuotationServices(normalizeQuotationServices(hydrated.quotation_services));
+    setQuotationDocuments(normalizeQuotationDocuments(hydrated.quotation_documents));
     const existingAmount = Number(hydrated.quotation_amount || 0);
     if (existingAmount > 0) {
       setQuotationAmount(String(hydrated.quotation_amount));
@@ -401,6 +411,11 @@ export default function ClientDetailModal({
       setErrorMessage('حدد نطاقاً واحداً على الأقل من خدمات عرض السعر.');
       return;
     }
+    const docsError = validateQuotationDocumentsForIssue(quotationDocuments);
+    if (docsError) {
+      setErrorMessage(docsError);
+      return;
+    }
     const visitsCount = Math.max(1, Math.min(10, parseLocalizedNumber(quotationVisitsCount) || 1));
     const engineeringData = syncProjectVisitsFromQuotation(
       parseProjectEngineeringData(client.project_engineering_data),
@@ -416,6 +431,7 @@ export default function ClientDetailModal({
         quotation_status: quotationStatus,
         quotation_visits_count: visitsCount,
         quotation_services: quotationServices,
+        quotation_documents: quotationDocuments,
         sales_payment_type: salesPaymentType,
         project_engineering_data: engineeringData,
       },
@@ -886,6 +902,25 @@ export default function ClientDetailModal({
                     </label>
                   ))}
                 </div>
+              </div>
+
+              <div className="rounded-xl border border-slate-200 bg-slate-50/60 p-3">
+                <QuotationDocumentsUpload
+                  value={quotationDocuments}
+                  clientId={client.id}
+                  disabled={saving}
+                  onChange={(next) => {
+                    setQuotationDocuments(next);
+                    void updateClientSafe(client.id, { quotation_documents: next }).then((result) => {
+                      if (result.error) {
+                        setErrorMessage(result.error);
+                        return;
+                      }
+                      setErrorMessage(null);
+                      onUpdated();
+                    });
+                  }}
+                />
               </div>
 
               <div className="rounded-xl border border-emerald-100 bg-emerald-50/60 p-3 text-sm space-y-2">
