@@ -8,6 +8,7 @@ import { useLanguage } from '@/lib/i18n/LanguageProvider';
 import { supabase } from '@/lib/supabase';
 import {
   analyticsSnapshot,
+  assertEngineeringDecision,
   createWorkspaceFromClient,
   ensureSeedKnowledgeBase,
   knowledgeCategories,
@@ -35,6 +36,7 @@ import {
   type DiDesignTask,
   type DiDesignWorkspace,
   type DiKnowledgeDocument,
+  type EngineeringFormState,
   type RagAnswer,
 } from '@/lib/design-intelligence';
 import EngineeringRulesPanel from '@/components/design/EngineeringRulesPanel';
@@ -47,9 +49,9 @@ const TABS: { id: DesignIntelligenceTabId; labelKey: string; fallback: string }[
   { id: 'knowledge', labelKey: 'design.tab.knowledge', fallback: 'Knowledge Base' },
   { id: 'rag', labelKey: 'design.tab.rag', fallback: 'AI Knowledge Engine' },
   { id: 'workspace', labelKey: 'design.tab.workspace', fallback: 'Design Workspace' },
-  { id: 'rules', labelKey: 'design.tab.rules', fallback: 'Rules Engine' },
+  { id: 'rules', labelKey: 'design.tab.rules', fallback: 'Decision Engine' },
   { id: 'planner', labelKey: 'design.tab.planner', fallback: 'AI Design Planner' },
-  { id: 'assistant', labelKey: 'design.tab.assistant', fallback: 'Smart Assistant' },
+  { id: 'assistant', labelKey: 'design.tab.assistant', fallback: 'Decision Feed' },
   { id: 'drawings', labelKey: 'design.tab.drawings', fallback: 'Drawing Review AI' },
   { id: 'timeline', labelKey: 'design.tab.timeline', fallback: 'Timeline' },
   { id: 'notifications', labelKey: 'design.tab.notifications', fallback: 'Notifications' },
@@ -98,6 +100,7 @@ export default function DesignIntelligenceModule() {
   const [wsNote, setWsNote] = useState('');
   const [wsReq, setWsReq] = useState('');
   const [rulesSelection, setRulesSelection] = useState<EngineeringSelection>({});
+  const [decisionGateOk, setDecisionGateOk] = useState(false);
 
   const label = useCallback(
     (key: string, fallback: string) => {
@@ -538,17 +541,35 @@ export default function DesignIntelligenceModule() {
 
       {tab === 'rules' && (
         <EngineeringRulesPanel
+          gateWorkflows
           initial={
             activeWs
               ? {
                   building_type: String(activeWs.building_info?.building_type || '') || null,
                   occupancy: activeWs.occupancy || null,
                   risk_classification: activeWs.risk_classification || null,
+                  applicable_codes: activeWs.applicable_codes || null,
+                  ...(typeof activeWs.building_info?.rules_selection === 'object' &&
+                  activeWs.building_info.rules_selection
+                    ? (activeWs.building_info.rules_selection as EngineeringSelection)
+                    : {}),
                 }
               : rulesSelection
           }
-          onSelectionChange={(selection) => {
+          onSelectionChange={(selection, form: EngineeringFormState) => {
             setRulesSelection(selection);
+            const gate = assertEngineeringDecision(form);
+            setDecisionGateOk(gate.ok);
+            // Persist only when no rule violations (partial compliant cascade OK).
+            // Full gate.ok is required to advance workflows (shown on Decision Feed).
+            if (gate.blockingViolations.length > 0) {
+              setMessage(
+                lang === 'en'
+                  ? `Decision Engine blocked save: ${gate.blockingViolations[0]?.message || gate.summary_en}`
+                  : `محرك القرار أوقف الحفظ: ${gate.blockingViolations[0]?.message || gate.summary_ar}`
+              );
+              return;
+            }
             if (activeWs) {
               updateWorkspace({
                 ...activeWs,
@@ -571,9 +592,19 @@ export default function DesignIntelligenceModule() {
                   required_reports: selection.required_reports,
                   required_drawings: selection.required_drawings,
                   rules_selection: selection,
+                  decision_gate_ok: gate.ok,
                 },
               });
               setWorkspaces(listWorkspaces());
+              setMessage(
+                gate.ok
+                  ? lang === 'en'
+                    ? 'Decision Engine: compliant cascade saved to workspace.'
+                    : 'محرك القرار: تم حفظ التسلسل المتوافق في مساحة العمل.'
+                  : lang === 'en'
+                    ? 'Partial cascade saved (no violations). Complete required fields to open the decision gate.'
+                    : 'تم حفظ تسلسل جزئي (بدون مخالفات). أكمل الحقول الإلزامية لفتح بوابة القرار.'
+              );
             }
           }}
         />
@@ -587,14 +618,27 @@ export default function DesignIntelligenceModule() {
               <span className="text-xs text-gray-500">{tasks.length} tasks</span>
               <button
                 type="button"
-                disabled={!activeWsId}
+                disabled={!activeWsId || !decisionGateOk}
                 onClick={() => {
                   if (!activeWsId) return;
+                  if (!decisionGateOk) {
+                    setMessage(
+                      lang === 'en'
+                        ? 'Decision Engine gate closed — complete compliant cascade before planner actions.'
+                        : 'بوابة محرك القرار مغلقة — أكمل التسلسل المتوافق قبل إجراءات المخطط.'
+                    );
+                    return;
+                  }
                   const next = rescheduleWorkspaceTasks(activeWsId);
                   setTasks(next);
                   setMessage(lang === 'en' ? 'Timeline auto-rescheduled.' : 'تمت إعادة جدولة المهام تلقائياً.');
                 }}
                 className="px-3 py-1.5 rounded-lg border text-xs font-semibold disabled:opacity-40"
+                title={
+                  decisionGateOk
+                    ? undefined
+                    : 'Blocked until Engineering Decision Engine cascade is compliant'
+                }
               >
                 Auto-reschedule
               </button>
@@ -678,15 +722,32 @@ export default function DesignIntelligenceModule() {
 
       {tab === 'assistant' && (
         <div className="space-y-3">
+          <div
+            className={`rounded-xl border px-3 py-2 text-xs font-semibold ${
+              decisionGateOk
+                ? 'border-emerald-200 bg-emerald-50 text-emerald-900'
+                : 'border-rose-200 bg-rose-50 text-rose-900'
+            }`}
+          >
+            {decisionGateOk
+              ? label(
+                  'design.decision.gateOpen',
+                  'Decision gate open — cascade compliant; locked/auto values are engine-controlled.'
+                )
+              : label(
+                  'design.decision.gateClosed',
+                  'Decision gate closed — complete compliant selections in Decision Engine before advancing workflows.'
+                )}
+          </div>
           <p className="text-xs text-gray-500">
             {label(
               'design.assistant.rulesNote',
-              'Recommendations come only from the Engineering Rules Engine — open the Rules Engine tab to set Building Type → … → Required Reports. AI never invents density, pump, or tank numbers.'
+              'This feed is the Engineering Decision Engine — not a suggestion assistant. Only rule-allowed options exist. Locked and auto-selected fields always include why.'
             )}
           </p>
           {!activeWs && !rulesSelection.building_type ? (
             <p className="text-sm text-gray-500">
-              Select values in Rules Engine (or create a design workspace) first.
+              Select values in Decision Engine (or create a design workspace) first.
             </p>
           ) : (
             assistant.map((s) => (

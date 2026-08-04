@@ -1,47 +1,59 @@
 import { NextResponse } from 'next/server';
 import {
-  applyEngineeringChange,
-  evaluateEngineeringForm,
-  recommendFromRules,
-} from '@/lib/design-intelligence/rules-engine';
+  assertEngineeringDecision,
+  commitEngineeringDecision,
+  decideEngineeringForm,
+  explainEngineeringDecisions,
+} from '@/lib/design-intelligence/decision-engine';
 import type { EngineeringFieldKey, EngineeringSelection } from '@/lib/design-intelligence/rules-types';
 
 /**
- * Engineering Rules Engine API — evaluates cascade / applies a field change.
- * No free-form AI values; response is always rules-derived.
+ * Engineering Decision Engine API.
+ * Controls cascade / commits field changes / asserts compliance / explains decisions.
+ * No free-form AI values — Rules Engine is the only source of truth.
  */
 export async function POST(req: Request) {
   try {
     const body = (await req.json()) as {
-      action?: 'evaluate' | 'change' | 'recommend';
+      action?: 'evaluate' | 'decide' | 'change' | 'commit' | 'recommend' | 'explain' | 'assert';
       selection?: EngineeringSelection;
       fieldKey?: string;
       value?: string | string[] | null;
     };
     const selection = body.selection || {};
-    const action = body.action || 'evaluate';
+    const action = body.action || 'decide';
 
-    if (action === 'change') {
+    if (action === 'change' || action === 'commit') {
       if (!body.fieldKey) {
         return NextResponse.json({ ok: false, error: 'fieldKey required' }, { status: 400 });
       }
-      const form = applyEngineeringChange(
+      const form = commitEngineeringDecision(
         selection,
         body.fieldKey as EngineeringFieldKey,
         body.value ?? null
       );
-      return NextResponse.json({ ok: true, ...form });
+      const assertion = assertEngineeringDecision(form);
+      return NextResponse.json({ ok: true, assertion, ...form });
     }
 
-    if (action === 'recommend') {
-      return NextResponse.json({ ok: true, ...recommendFromRules(selection) });
+    if (action === 'recommend' || action === 'explain') {
+      return NextResponse.json({ ok: true, ...explainEngineeringDecisions(selection) });
     }
 
-    const form = evaluateEngineeringForm(selection);
-    return NextResponse.json({ ok: true, ...form });
+    if (action === 'assert') {
+      const form = decideEngineeringForm(selection);
+      return NextResponse.json({ ok: true, form, assertion: assertEngineeringDecision(form) });
+    }
+
+    const form = decideEngineeringForm(selection);
+    return NextResponse.json({
+      ok: true,
+      assertion: assertEngineeringDecision(form),
+      ...form,
+    });
   } catch (e) {
     return NextResponse.json(
-      { ok: false, error: e instanceof Error ? e.message : 'Rules evaluation failed' },
+      { ok: false, error: e instanceof Error ? e.message : 'Decision evaluation failed' },
       { status: 500 }
     );
   }

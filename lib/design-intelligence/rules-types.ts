@@ -68,10 +68,42 @@ export type EngineeringFieldState = {
   explanation_ar: string;
   code_refs: string[];
   matched_rule_codes: string[];
+  /** How the Decision Engine controls this field */
+  control_mode: 'editable' | 'locked' | 'auto_selected' | 'computed';
+  /** Why locked / auto-selected (engineer-facing) */
+  decision_reason_en: string;
+  decision_reason_ar: string;
+  /** True when engine set the value without user pick */
+  auto_selected: boolean;
 };
 
 export type EngineeringFormState = {
   selection: EngineeringSelection;
   fields: EngineeringFieldState[];
   violations: { field_key: string; message: string; code_refs: string[] }[];
+};
+
+/** Hard gate for workflows — engineer may only proceed when compliant */
+export type EngineeringDecisionAssertion = {
+  ok: boolean;
+  blockingViolations: { field_key: string; message: string; code_refs: string[] }[];
+  missingRequired: { field_key: string; label_en: string; label_ar: string }[];
+  lockedFields: string[];
+  autoSelectedFields: string[];
+  summary_en: string;
+  summary_ar: string;
+};
+
+export type FieldDecisionExplanation = {
+  field_key: string;
+  label_en: string;
+  label_ar: string;
+  control_mode: EngineeringFieldState['control_mode'];
+  value: string | string[] | null;
+  valid_options: EngineeringOption[];
+  reason_en: string;
+  reason_ar: string;
+  code_refs: string[];
+  matched_rule_codes: string[];
+  blocked: boolean;
 };

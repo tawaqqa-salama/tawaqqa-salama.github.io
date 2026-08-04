@@ -139,9 +139,9 @@ const ar: Dict = {
   'design.tab.knowledge': 'قاعدة المعرفة',
   'design.tab.rag': 'محرك المعرفة',
   'design.tab.workspace': 'مساحة التصميم',
-  'design.tab.rules': 'محرك القواعد',
+  'design.tab.rules': 'محرك القرار',
   'design.tab.planner': 'مخطط التصميم',
-  'design.tab.assistant': 'المساعد الذكي',
+  'design.tab.assistant': 'تغذية القرار',
   'design.tab.drawings': 'مراجعة المخططات',
   'design.tab.timeline': 'الجدول الزمني',
   'design.tab.notifications': 'التنبيهات',
@@ -155,12 +155,20 @@ const ar: Dict = {
   'design.rag.title': 'محرك المعرفة (RAG)',
   'design.rag.ask': 'اسأل قاعدة المعرفة',
   'design.copilot.title': 'Copilot الهندسي',
-  'design.rules.title': 'محرك القواعد الهندسية',
+  'design.rules.title': 'محرك القرار الهندسي',
   'design.rules.subtitle':
-    'كل حقل يُتحكم به من قاعدة القواعد. التركيبات غير الصالحة تُخفى. القيم المقفلة تعرض مرجع الكود. الذكاء الاصطناعي يشرح الخيارات الصالحة فقط.',
-  'design.rules.ai': 'توصيات الذكاء الاصطناعي (ملزمة بالقواعد)',
+    'متحكم نشط — ليس مساعد اقتراحات. محرك القواعد مصدر الحقيقة. التركيبات المخالفة لـ SBC/NFPA/الدفاع المدني/الشركة تُمنع. الحقول التابعة تُملأ وتُقفل مع بيان السبب.',
+  'design.rules.ai': 'تغذية محرك القرار (ملزمة بالقواعد)',
   'design.assistant.rulesNote':
-    'التوصيات من محرك القواعد فقط — افتح تبويب محرك القواعد. لا يولّد الذكاء الاصطناعي كثافة أو سعة مضخة أو خزان خارج القواعد.',
+    'هذه التغذية هي محرك القرار الهندسي — وليست مساعد اقتراحات. فقط الخيارات المسموحة بالقواعد. الحقول المقفلة/التلقائية دائماً مع السبب.',
+  'design.decision.badge': 'محرك القرار الهندسي',
+  'design.decision.title': 'محرك القرار الهندسي',
+  'design.decision.subtitle':
+    'متحكم نشط — ليس مساعد اقتراحات. محرك القواعد مصدر الحقيقة. التركيبات غير الصالحة تُمنع. الحقول التابعة تُملأ وتُقفل مع بيان السبب.',
+  'design.decision.rationale': 'مسوّغات القرار (يتحكم بها المحرك)',
+  'design.decision.gateOpen': 'بوابة القرار مفتوحة — التسلسل متوافق؛ القيم المقفلة/التلقائية يتحكم بها المحرك.',
+  'design.decision.gateClosed':
+    'بوابة القرار مغلقة — أكمل اختيارات متوافقة في محرك القرار قبل متابعة سير العمل.',
 
   'marketing.title': 'إدارة التسويق',
   'marketing.subtitle': 'لوحة الحملات ورحلة العميل — Leads ومتابعات التواصل',
@@ -499,9 +507,9 @@ const en: Dict = {
   'design.tab.knowledge': 'Knowledge Base',
   'design.tab.rag': 'AI Knowledge Engine',
   'design.tab.workspace': 'Design Workspace',
-  'design.tab.rules': 'Rules Engine',
+  'design.tab.rules': 'Decision Engine',
   'design.tab.planner': 'AI Design Planner',
-  'design.tab.assistant': 'Smart Assistant',
+  'design.tab.assistant': 'Decision Feed',
   'design.tab.drawings': 'Drawing Review AI',
   'design.tab.timeline': 'Timeline',
   'design.tab.notifications': 'Notifications',
@@ -515,12 +523,21 @@ const en: Dict = {
   'design.rag.title': 'AI Knowledge Engine (RAG)',
   'design.rag.ask': 'Ask knowledge base',
   'design.copilot.title': 'Engineering Copilot',
-  'design.rules.title': 'Engineering Rules Engine',
+  'design.rules.title': 'Engineering Decision Engine',
   'design.rules.subtitle':
-    'Every field is controlled by the rules database. Invalid combinations are hidden. Locked values show code references. AI may only explain valid options.',
-  'design.rules.ai': 'AI recommendations (rules-bound)',
+    'Active controller — not a suggestion assistant. Rules Engine is the source of truth. Invalid SBC/NFPA/Civil Defense/company combinations are blocked. Dependent fields auto-fill and lock with explanations.',
+  'design.rules.ai': 'Decision Engine feed (rules-bound)',
   'design.assistant.rulesNote':
-    'Recommendations come only from the Engineering Rules Engine — open the Rules Engine tab. AI never invents density, pump, or tank numbers outside rules.',
+    'This feed is the Engineering Decision Engine — not a suggestion assistant. Only rule-allowed options exist. Locked and auto-selected fields always include why.',
+  'design.decision.badge': 'Engineering Decision Engine',
+  'design.decision.title': 'Engineering Decision Engine',
+  'design.decision.subtitle':
+    'Active controller — not a suggestion assistant. Rules Engine is the source of truth. Invalid SBC/NFPA/Civil Defense/company combinations are blocked. Dependent fields auto-fill and lock with explanations.',
+  'design.decision.rationale': 'Decision rationale (engine-controlled)',
+  'design.decision.gateOpen':
+    'Decision gate open — cascade compliant; locked/auto values are engine-controlled.',
+  'design.decision.gateClosed':
+    'Decision gate closed — complete compliant selections in Decision Engine before advancing workflows.',
 
   'marketing.title': 'Marketing Management',
   'marketing.subtitle': 'Campaigns, client journey & lead tracking',

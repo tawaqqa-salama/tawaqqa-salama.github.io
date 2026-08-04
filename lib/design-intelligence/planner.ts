@@ -1,3 +1,4 @@
+import { explainEngineeringDecisions } from '@/lib/design-intelligence/decision-engine';
 import { recommendFromRules } from '@/lib/design-intelligence/rules-engine';
 import type { EngineeringSelection } from '@/lib/design-intelligence/rules-types';
 import type { DiDesignTask, DiChecklistItem, EngineeringSuggestion } from '@/lib/design-intelligence/types';
@@ -116,8 +117,9 @@ export function buildOccupancyChecklist(input: {
 }
 
 /**
- * Smart assistant — recommendations ONLY from Engineering Rules Engine.
- * Does not invent densities, pump L/min, or tank m³ outside locked rule values.
+ * Decision Engine feed for the Smart Assistant tab.
+ * Surfaces locked / auto-selected / blocked fields with reasons — not free suggestions.
+ * Densities, pump L/min, and tank m³ come only from the Rules Engine.
  */
 export function suggestEngineeringSystems(input: {
   buildingType?: string;
@@ -129,61 +131,89 @@ export function suggestEngineeringSystems(input: {
   codes?: string[];
   selection?: EngineeringSelection;
 }): EngineeringSuggestion[] {
-  const selection: EngineeringSelection = input.selection || {
-    building_type: input.buildingType || null,
-    occupancy: input.occupancy || null,
-    risk_classification: input.risk || null,
-    applicable_codes: input.codes || null,
+  const selection: EngineeringSelection = {
+    ...(input.selection || {}),
+    building_type: input.selection?.building_type ?? input.buildingType ?? null,
+    occupancy: input.selection?.occupancy ?? input.occupancy ?? null,
+    risk_classification: input.selection?.risk_classification ?? input.risk ?? null,
+    applicable_codes: input.selection?.applicable_codes ?? input.codes ?? null,
   };
 
-  const { recommendations, note } = recommendFromRules(selection);
+  const { decisions, assertion, note_en } = explainEngineeringDecisions(selection);
   const out: EngineeringSuggestion[] = [
     {
-      id: 'rules-bound',
-      title: 'Rules-bound AI (no free engineering values)',
-      detail: note,
-      severity: 'info',
-      code_refs: ['SBC 801', 'NFPA 13', 'Civil Defense'],
+      id: 'decision-engine',
+      title: 'Engineering Decision Engine (active controller)',
+      detail: note_en,
+      severity: assertion.ok ? 'info' : 'critical',
+      code_refs: ['SBC 801', 'NFPA 13', 'Civil Defense', 'Company Standards'],
     },
   ];
 
-  for (const r of recommendations) {
-    if (r.locked_value != null) {
+  if (!assertion.ok) {
+    out.push({
+      id: 'decision-gate',
+      title: 'Decision gate closed — workflow blocked',
+      detail: assertion.summary_en,
+      severity: 'critical',
+      code_refs: assertion.blockingViolations.flatMap((v) => v.code_refs),
+    });
+    for (const v of assertion.blockingViolations) {
       out.push({
-        id: `lock-${r.field_key}`,
-        title: r.label_en,
-        detail: `Locked by rules: ${Array.isArray(r.locked_value) ? r.locked_value.join(', ') : r.locked_value}. ${r.explanation}`,
-        severity: /pump|tank|density|demand/i.test(r.field_key) ? 'warn' : 'info',
-        code_refs: r.code_refs,
-      });
-    } else if (r.valid_options.length) {
-      out.push({
-        id: `opt-${r.field_key}`,
-        title: `${r.label_en} — valid options only`,
-        detail: `${r.valid_options.map((o) => o.label_en).join(' · ')}. ${r.explanation}`,
-        severity: 'info',
-        code_refs: r.code_refs,
+        id: `violation-${v.field_key}`,
+        title: `Blocked: ${v.field_key}`,
+        detail: v.message,
+        severity: 'critical',
+        code_refs: v.code_refs,
       });
     }
   }
 
-  const missing: string[] = [];
-  if (!selection.building_type) missing.push('Building Type');
-  if (!selection.occupancy) missing.push('Occupancy');
-  if (!selection.risk_classification) missing.push('Risk / Hazard');
-  if (!input.areaM2) missing.push('Area (m²)');
-  if (!input.floors) missing.push('Number of floors');
-  if (missing.length) {
+  for (const d of decisions) {
+    if (d.control_mode === 'locked' || d.control_mode === 'computed') {
+      out.push({
+        id: `lock-${d.field_key}`,
+        title: d.label_en,
+        detail: `Locked / computed: ${
+          Array.isArray(d.value) ? d.value.join(', ') : d.value ?? '—'
+        }. ${d.reason_en}`,
+        severity: /pump|tank|density|demand/i.test(d.field_key) ? 'warn' : 'info',
+        code_refs: d.code_refs,
+      });
+    } else if (d.control_mode === 'auto_selected') {
+      out.push({
+        id: `auto-${d.field_key}`,
+        title: d.label_en,
+        detail: `Auto-selected by Decision Engine: ${
+          Array.isArray(d.value) ? d.value.join(', ') : d.value ?? '—'
+        }. ${d.reason_en}`,
+        severity: 'info',
+        code_refs: d.code_refs,
+      });
+    } else if (d.valid_options.length) {
+      out.push({
+        id: `opt-${d.field_key}`,
+        title: `${d.label_en} — compliant options only`,
+        detail: `${d.valid_options.map((o) => o.label_en).join(' · ')}. ${d.reason_en}`,
+        severity: 'info',
+        code_refs: d.code_refs,
+      });
+    }
+  }
+
+  const missingMeta: string[] = [];
+  if (!input.areaM2) missingMeta.push('Area (m²)');
+  if (!input.floors) missingMeta.push('Number of floors');
+  if (missingMeta.length) {
     out.push({
-      id: 'missing',
-      title: 'Missing information',
-      detail: `Complete rules cascade first: ${missing.join(', ')}.`,
-      severity: 'critical',
+      id: 'workspace-meta',
+      title: 'Workspace metadata incomplete',
+      detail: `Provide in Design Workspace (does not invent engineering values): ${missingMeta.join(', ')}.`,
+      severity: 'warn',
       code_refs: [],
     });
   }
 
-  // Contextual note only (not a free engineering value)
   const area = Number(input.areaM2) || 0;
   const height = Number(input.heightM) || 0;
   if (area >= 1000 || height >= 18) {
@@ -191,7 +221,7 @@ export function suggestEngineeringSystems(input: {
       id: 'scale-note',
       title: 'Project scale note',
       detail:
-        'Large area / height — confirm the rules-engine pump & tank locked bands against the project hydraulic calculation sheet (do not invent L/min or m³ here).',
+        'Large area / height — confirm Decision Engine pump & tank locked bands against the hydraulic calculation sheet (do not invent L/min or m³).',
       severity: 'warn',
       code_refs: ['NFPA 20', 'NFPA 22'],
     });
