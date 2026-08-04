@@ -1,7 +1,15 @@
 'use client';
 
+import { useMemo } from 'react';
 import { getBuildingPlanGeneralInfo } from '@/lib/projects/building-plan';
 import { printBuildingPlanReport, exportBuildingPlanReport } from '@/components/projects/BuildingPlanPrint';
+import {
+  normalizeConstructionValue,
+  normalizeOccupancyValue,
+  recommendSbcClassification,
+  SBC_CONSTRUCTION_TYPE_OPTIONS,
+  SBC_OCCUPANCY_OPTIONS,
+} from '@/lib/projects/sbc-recommendation';
 import type { ClientRecord } from '@/lib/types/client';
 import type { BuildingPlanReport, YesNoValue } from '@/lib/types/project-reports';
 
@@ -31,6 +39,31 @@ export default function BuildingPlanReportSection({
   const general = getBuildingPlanGeneralInfo(client);
 
   const patch = (partial: Partial<BuildingPlanReport>) => onChange({ ...report, ...partial });
+
+  const recommendation = useMemo(
+    () =>
+      recommendSbcClassification({
+        activityType: client.activity_type,
+        activityName:
+          general.activity_type_label !== '—'
+            ? general.activity_type_label
+            : client.business_name || client.name,
+        buildingAreaM2: client.building_area,
+      }),
+    [client.activity_type, client.building_area, client.business_name, client.name, general.activity_type_label]
+  );
+
+  const occupancyValue = normalizeOccupancyValue(report.occupancy_classification);
+  const constructionValue = normalizeConstructionValue(report.building_type_code);
+  const recommendationApplied =
+    occupancyValue === recommendation.occupancyValue &&
+    constructionValue === recommendation.constructionValue;
+
+  const applyRecommendation = () =>
+    patch({
+      occupancy_classification: recommendation.occupancyValue,
+      building_type_code: recommendation.constructionValue,
+    });
 
   const saveDraft = () => onSave({ ...report, status: 'مسودة' }, 'تم حفظ التقرير كمسودة.');
   const saveApproved = () => onSave({ ...report, status: 'معتمد' }, 'تم اعتماد تقرير معلومات المخطط نهائياً.');
@@ -76,6 +109,43 @@ export default function BuildingPlanReportSection({
       {/* Engineering checklist */}
       <section>
         <h3 className="text-sm font-bold text-gray-800 mb-3">المواصفات الهندسية (SBC)</h3>
+
+        <div className="mb-3 rounded-xl border border-amber-200 bg-gradient-to-l from-amber-50 to-emerald-50 p-3 space-y-2">
+          <p className="text-sm text-emerald-950">
+            <span className="me-1" aria-hidden>
+              💡
+            </span>
+            <strong>التوصية المقترحة حسب كود البناء السعودي (SBC):</strong>
+            <span className="mx-1">الإشغال:</span>
+            <strong>{recommendation.occupancyValue}</strong>
+            <span className="text-gray-600 text-xs mx-1">
+              ({recommendation.occupancyLabelAr.replace(/^Group [^—]+ — /, '')})
+            </span>
+            <span className="mx-1">|</span>
+            <span className="mx-1">نوع البناء:</span>
+            <strong>{recommendation.constructionValue}</strong>
+          </p>
+          <p className="text-[11px] text-gray-600 leading-relaxed">{recommendation.rationaleAr}</p>
+          <div className="flex flex-wrap items-center gap-2">
+            <button
+              type="button"
+              onClick={applyRecommendation}
+              className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-[#1f4d3a] text-white text-xs font-semibold hover:bg-[#163828] transition"
+            >
+              تطبيق التوصية الموصى بها
+            </button>
+            {recommendationApplied ? (
+              <span className="text-[11px] font-semibold text-emerald-700">✓ مطبّقة على الحقول</span>
+            ) : null}
+            <span className="text-[10px] text-gray-400">
+              ثقة: {recommendation.confidence === 'high' ? 'عالية' : recommendation.confidence === 'medium' ? 'متوسطة' : 'منخفضة'}
+              {recommendation.buildingAreaM2 > 0
+                ? ` · المساحة ${recommendation.buildingAreaM2.toLocaleString('ar-SA')} م²`
+                : ''}
+            </span>
+          </div>
+        </div>
+
         <div className="border rounded-xl overflow-hidden">
           <table className="w-full text-right text-sm">
             <thead className="bg-[#6b8f4e] text-white text-xs">
@@ -86,8 +156,20 @@ export default function BuildingPlanReportSection({
               </tr>
             </thead>
             <tbody>
-              <EngineerRow label="تصنيف الإشغال" value={report.occupancy_classification || ''} onValue={(v) => patch({ occupancy_classification: v })} placeholder="Group (E)" />
-              <EngineerRow label="نوع البناء" value={report.building_type_code || ''} onValue={(v) => patch({ building_type_code: v })} placeholder="Type (IA)" />
+              <EngineerSelectRow
+                label="تصنيف الإشغال"
+                value={occupancyValue}
+                onValue={(v) => patch({ occupancy_classification: v })}
+                options={SBC_OCCUPANCY_OPTIONS.map((o) => ({ value: o.value, label: o.label_ar }))}
+                recommendedValue={recommendation.occupancyValue}
+              />
+              <EngineerSelectRow
+                label="نوع البناء"
+                value={constructionValue}
+                onValue={(v) => patch({ building_type_code: v })}
+                options={SBC_CONSTRUCTION_TYPE_OPTIONS.map((o) => ({ value: o.value, label: o.label_ar }))}
+                recommendedValue={recommendation.constructionValue}
+              />
               <EngineerRow label="المبنى عالي" yesNo={report.high_rise_building} onYesNo={(v) => patch({ high_rise_building: v })} />
               <EngineerRow label="مساحة الموقع (م²)" value={report.total_site_area_m2 || ''} onValue={(v) => patch({ total_site_area_m2: v })} />
               <EngineerRow label="يوجد بهو" yesNo={report.atrium_exists} onYesNo={(v) => patch({ atrium_exists: v })} />
@@ -228,6 +310,48 @@ function EngineerRow({
           </select>
         ) : null}
       </td>
+    </tr>
+  );
+}
+
+function EngineerSelectRow({
+  label,
+  value,
+  onValue,
+  options,
+  recommendedValue,
+}: {
+  label: string;
+  value: string;
+  onValue: (v: string) => void;
+  options: { value: string; label: string }[];
+  recommendedValue?: string;
+}) {
+  const known = options.some((o) => o.value === value);
+  return (
+    <tr className="border-b">
+      <td className="p-2 bg-[#eef5e6] text-xs font-semibold">{label}</td>
+      <td className="p-2">
+        <select
+          value={known ? value : value ? '__legacy__' : ''}
+          onChange={(e) => {
+            const next = e.target.value;
+            if (next === '__legacy__') return;
+            onValue(next);
+          }}
+          className="w-full p-1.5 border rounded text-sm bg-white"
+        >
+          <option value="">— اختر —</option>
+          {options.map((o) => (
+            <option key={o.value} value={o.value}>
+              {o.label}
+              {recommendedValue === o.value ? ' ★ موصى به' : ''}
+            </option>
+          ))}
+          {!known && value ? <option value="__legacy__">{value} (قيمة سابقة)</option> : null}
+        </select>
+      </td>
+      <td className="p-2" />
     </tr>
   );
 }
