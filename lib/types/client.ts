@@ -1,4 +1,5 @@
 import type { ProjectEngineeringData } from '@/lib/types/project-reports';
+import type { QuotationDocumentsState } from '@/lib/types/quotation-documents';
 import type { SalesPaymentType } from '@/lib/types/sales';
 
 export interface InspectionChecklistItem {
@@ -60,6 +61,11 @@ export interface ClientRecord {
   quotation_visits_count?: number | null;
   /** معرفات الخدمات ضمن نطاق عرض السعر */
   quotation_services?: string[] | null;
+  /**
+   * مستندات قبل إصدار العرض:
+   * رخصة البناء إلزامية؛ هوية المالك والسجل التجاري اختياريان
+   */
+  quotation_documents?: QuotationDocumentsState | null;
   financial_status?: string | null;
   payment_reference?: string | null;
   paid_amount?: number | null;

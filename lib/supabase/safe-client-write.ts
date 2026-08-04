@@ -6,6 +6,7 @@ const LOCAL_ENGINEERING_BACKUP_KEY = 'tawaqqa_engineering_backup_v1';
 /** حقول يُفضّل حفظها محلياً إن لم تكن في قاعدة البيانات بعد */
 const LOCAL_FALLBACK_FIELDS = new Set([
   'quotation_services',
+  'quotation_documents',
   'floor_levels',
   'commercial_register',
   'tax_number',
@@ -119,9 +120,12 @@ export async function updateClientSafe(
       for (const col of skippedColumns) {
         if (col in payload) localPatch[col] = payload[col];
       }
-      // وأيضاً احفظ quotation_services دائماً محلياً كنسخة احتياطية
+      // وأيضاً احفظ quotation_services / quotation_documents محلياً كنسخة احتياطية
       if ('quotation_services' in payload) {
         localPatch.quotation_services = payload.quotation_services;
+      }
+      if ('quotation_documents' in payload) {
+        localPatch.quotation_documents = payload.quotation_documents;
       }
       if (Object.keys(localPatch).length) saveLocalClientOverrides(clientId, localPatch);
 
@@ -130,8 +134,8 @@ export async function updateClientSafe(
           error: null,
           skippedColumns,
           warning:
-            skippedColumns.includes('quotation_services')
-              ? 'تم الحفظ محلياً لخدمات العرض. نفّذ في Supabase: ALTER TABLE public.clients ADD COLUMN IF NOT EXISTS quotation_services jsonb NOT NULL DEFAULT \'[]\'::jsonb;'
+            skippedColumns.includes('quotation_services') || skippedColumns.includes('quotation_documents')
+              ? 'تم الحفظ محلياً لمستندات/خدمات العرض. نفّذ سكربتات 016 و030 في Supabase إن لزم.'
               : `تم الحفظ. حقول غير موجودة في قاعدة البيانات: ${skippedColumns.join(', ')}. نفّذ سكربت 016_quotation_services_pricing.sql`,
         };
       }
@@ -158,10 +162,11 @@ export async function insertClientSafe(
   for (let attempt = 0; attempt < 20; attempt += 1) {
     const { data, error } = await supabase.from('clients').insert([current]).select('*').single();
     if (!error) {
-      if (data?.id && 'quotation_services' in payload) {
-        saveLocalClientOverrides(String(data.id), {
-          quotation_services: payload.quotation_services,
-        });
+      if (data?.id && ('quotation_services' in payload || 'quotation_documents' in payload)) {
+        const patch: Record<string, unknown> = {};
+        if ('quotation_services' in payload) patch.quotation_services = payload.quotation_services;
+        if ('quotation_documents' in payload) patch.quotation_documents = payload.quotation_documents;
+        saveLocalClientOverrides(String(data.id), patch);
       }
       return { data: (data as Record<string, unknown>) || null, error: null, skippedColumns };
     }
