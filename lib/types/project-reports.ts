@@ -474,7 +474,11 @@ export type PlanAttachmentFile = {
   format: string;
   sizeBytes: number;
   mimeType?: string | null;
+  /** Inline preview or public URL — prefer storagePath for large files */
   dataUrl?: string | null;
+  /** Supabase Storage object path when uploaded to project-files bucket */
+  storagePath?: string | null;
+  storageBucket?: string | null;
   uploadedAt: string;
   kind: 'engineering_drawing' | 'hydraulic_calculation';
 };

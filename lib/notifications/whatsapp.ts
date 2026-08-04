@@ -10,6 +10,8 @@ export type WhatsAppNotifyResult = {
   provider: 'stub' | 'webhook';
   messageId?: string;
   error?: string;
+  /** true when stub accepted the payload without external send */
+  stubbed?: boolean;
 };
 
 /**
@@ -30,6 +32,7 @@ export async function sendWhatsAppNotification(
       ok: true,
       provider: 'stub',
       messageId: `stub-${Date.now()}`,
+      stubbed: true,
       error: undefined,
     };
   }

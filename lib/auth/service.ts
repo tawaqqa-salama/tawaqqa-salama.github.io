@@ -168,9 +168,33 @@ export async function requestPhoneOtp(phone: string): Promise<{ error: string | 
   }
 
   if (!isDemoMode) {
-    const { error } = await supabase.auth.signInWithOtp({ phone: `+966${normalized.slice(1)}` });
-    if (error) return { error: error.message };
-    return { error: null };
+    const e164 = `+966${normalized.slice(1)}`;
+    const { error } = await supabase.auth.signInWithOtp({ phone: e164 });
+    if (!error) {
+      // Optional parallel WhatsApp/SMS webhook (Twilio/Unifonic/etc.) when configured
+      await dispatchOtpWebhook(normalized, null, 'supabase_otp');
+      return { error: null };
+    }
+
+    // Fallback: custom OTP + SMS/WhatsApp webhook when Supabase SMS provider is not configured
+    const smsWebhook = process.env.SMS_OTP_WEBHOOK_URL || process.env.WHATSAPP_WEBHOOK_URL;
+    if (smsWebhook) {
+      const code = randomOtp();
+      await supabase.from('demo_otps').upsert({
+        id: `otp-${normalized}`,
+        phone: normalized,
+        code,
+        expires_at: new Date(Date.now() + 5 * 60 * 1000).toISOString(),
+        created_at: new Date().toISOString(),
+      });
+      const dispatched = await dispatchOtpWebhook(normalized, code, 'custom_otp');
+      if (!dispatched.ok) {
+        return { error: dispatched.error || error.message };
+      }
+      return { error: null };
+    }
+
+    return { error: error.message };
   }
 
   const code = randomOtp();
@@ -182,6 +206,49 @@ export async function requestPhoneOtp(phone: string): Promise<{ error: string | 
     created_at: new Date().toISOString(),
   });
   return { error: null, demoOtp: code };
+}
+
+async function dispatchOtpWebhook(
+  phone05: string,
+  code: string | null,
+  mode: 'supabase_otp' | 'custom_otp'
+): Promise<{ ok: boolean; error?: string }> {
+  const webhook =
+    process.env.SMS_OTP_WEBHOOK_URL ||
+    process.env.WHATSAPP_WEBHOOK_URL ||
+    process.env.NEXT_PUBLIC_WHATSAPP_WEBHOOK_URL;
+  if (!webhook) return { ok: true };
+
+  try {
+    const res = await fetch(webhook, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        ...(process.env.SMS_OTP_WEBHOOK_TOKEN || process.env.WHATSAPP_WEBHOOK_TOKEN
+          ? {
+              Authorization: `Bearer ${
+                process.env.SMS_OTP_WEBHOOK_TOKEN || process.env.WHATSAPP_WEBHOOK_TOKEN
+              }`,
+            }
+          : {}),
+      },
+      body: JSON.stringify({
+        channel: process.env.SMS_OTP_WEBHOOK_URL ? 'sms' : 'whatsapp',
+        to: phone05,
+        e164: `+966${phone05.slice(1)}`,
+        template: 'tawaqqa_otp',
+        code,
+        mode,
+        message: code
+          ? `رمز التحقق لمنصة تَوَقَّعَ: ${code}`
+          : 'تم إرسال رمز التحقق عبر مزوّد OTP',
+      }),
+    });
+    if (!res.ok) return { ok: false, error: `OTP webhook HTTP ${res.status}` };
+    return { ok: true };
+  } catch (e) {
+    return { ok: false, error: e instanceof Error ? e.message : 'فشل إرسال OTP' };
+  }
 }
 
 export async function verifyPhoneOtp(phone: string, code: string): Promise<AuthResult> {
@@ -196,33 +263,40 @@ export async function verifyPhoneOtp(phone: string, code: string): Promise<AuthR
       token: code.trim(),
       type: 'sms',
     });
-    if (error || !data.user) {
-      return { session: null, error: error?.message || 'كود التحقق غير صحيح' };
+    if (!error && data.user) {
+      const user = await fetchUserByPhone(normalized);
+      if (!user || !user.is_active) {
+        return { session: null, error: 'لا يوجد ملف موظف مرتبط بهذا الرقم' };
+      }
+      const role = await fetchRole(user.role_code, user.company_id);
+      const permissions = resolveUserPermissions(user, role);
+      const session = toSession(user, permissions, 'phone');
+      saveSession(session);
+      await supabase.from('users').update({ last_login_at: session.loggedInAt }).eq('id', user.id);
+      return { session, error: null };
     }
-    const user = await fetchUserByPhone(normalized);
-    if (!user || !user.is_active) {
-      return { session: null, error: 'لا يوجد ملف موظف مرتبط بهذا الرقم' };
+
+    // Custom OTP webhook path (stored in demo_otps when Supabase SMS is unavailable)
+    const customOk = await verifyStoredOtp(normalized, code.trim());
+    if (customOk) {
+      const user = await fetchUserByPhone(normalized);
+      if (!user || !user.is_active) {
+        return { session: null, error: 'لا يوجد ملف موظف مرتبط بهذا الرقم' };
+      }
+      const role = await fetchRole(user.role_code, user.company_id);
+      const permissions = resolveUserPermissions(user, role);
+      const session = toSession(user, permissions, 'phone');
+      saveSession(session);
+      await supabase.from('users').update({ last_login_at: session.loggedInAt }).eq('id', user.id);
+      return { session, error: null };
     }
-    const role = await fetchRole(user.role_code, user.company_id);
-    const permissions = resolveUserPermissions(user, role);
-    const session = toSession(user, permissions, 'phone');
-    saveSession(session);
-    await supabase.from('users').update({ last_login_at: session.loggedInAt }).eq('id', user.id);
-    return { session, error: null };
+
+    return { session: null, error: error?.message || 'كود التحقق غير صحيح' };
   }
 
-  const { data: otps } = await supabase
-    .from('demo_otps')
-    .select('*')
-    .eq('phone', normalized)
-    .order('created_at', { ascending: false })
-    .limit(1);
-  const latest = Array.isArray(otps) ? otps[0] : null;
-  if (!latest || latest.code !== code.trim()) {
-    return { session: null, error: 'كود التحقق غير صحيح' };
-  }
-  if (new Date(String(latest.expires_at)).getTime() < Date.now()) {
-    return { session: null, error: 'انتهت صلاحية كود التحقق' };
+  const customOk = await verifyStoredOtp(normalized, code.trim());
+  if (!customOk) {
+    return { session: null, error: 'كود التحقق غير صحيح أو منتهٍ' };
   }
 
   const user = await fetchUserByPhone(normalized);
@@ -235,6 +309,19 @@ export async function verifyPhoneOtp(phone: string, code: string): Promise<AuthR
   saveSession(session);
   await supabase.from('users').update({ last_login_at: session.loggedInAt }).eq('id', user.id);
   return { session, error: null };
+}
+
+async function verifyStoredOtp(phone: string, code: string): Promise<boolean> {
+  const { data: otps } = await supabase
+    .from('demo_otps')
+    .select('*')
+    .eq('phone', phone)
+    .order('created_at', { ascending: false })
+    .limit(1);
+  const latest = Array.isArray(otps) ? otps[0] : null;
+  if (!latest || latest.code !== code) return false;
+  if (new Date(String(latest.expires_at)).getTime() < Date.now()) return false;
+  return true;
 }
 
 export async function signOutAuth(): Promise<void> {

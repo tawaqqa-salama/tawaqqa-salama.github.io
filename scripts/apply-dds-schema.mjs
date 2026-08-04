@@ -30,6 +30,14 @@ const files = [
   '018_zatca_einvoicing.sql',
   '019_auto_contracts.sql',
   '020_activity_logs.sql',
+  '021_tax_invoices_milestones.sql',
+  '022_safety_blueprints.sql',
+  '023_procurement.sql',
+  '024_restore_procurement_nav.sql',
+  '025_design_intelligence.sql',
+  '026_engineering_rules.sql',
+  '027_enterprise_accounting.sql',
+  '028_project_files_storage.sql',
 ];
 
 if (!process.env.DATABASE_URL) {
