@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import {
   buildIncomeStatement,
   buildTrialBalance,
@@ -14,12 +14,24 @@ import { VAT_RATE } from '@/lib/constants/clients';
 import type { JournalEntryLine, TrialBalanceRow, VatSummary } from '@/lib/types/accounting';
 import type { IncomeStatementSummary } from '@/lib/types/accounting';
 import { supabase } from '@/lib/supabase';
+import { exportVatReturnCsv, vatSummaryToReturn } from '@/lib/finance/vat-export';
 
 export default function FinancialReportsPage() {
   const [trialBalance, setTrialBalance] = useState<TrialBalanceRow[]>([]);
   const [income, setIncome] = useState<IncomeStatementSummary | null>(null);
   const [vat, setVat] = useState<VatSummary | null>(null);
+  const [inputVat, setInputVat] = useState(0);
   const [loading, setLoading] = useState(true);
+
+  const periodLabel = useMemo(() => {
+    const d = new Date();
+    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
+  }, []);
+
+  const vatReturn = useMemo(
+    () => (vat ? vatSummaryToReturn(vat, periodLabel, inputVat, inputVat / VAT_RATE) : null),
+    [vat, periodLabel, inputVat]
+  );
 
   useEffect(() => {
     Promise.all([
@@ -36,6 +48,10 @@ export default function FinancialReportsPage() {
         setTrialBalance(buildTrialBalance(accounts, lines));
         setIncome(buildIncomeStatement(accounts, lines));
         setVat(buildVatSummary(vouchers));
+        const paymentVat = vouchers
+          .filter((v) => v.voucher_type === 'payment')
+          .reduce((s, v) => s + Number(v.vat_amount || 0), 0);
+        setInputVat(Math.round(paymentVat * 100) / 100);
       })
       .finally(() => setLoading(false));
   }, []);
@@ -102,13 +118,30 @@ export default function FinancialReportsPage() {
               </div>
 
               <div className="bg-white rounded-2xl border shadow-sm p-5">
-                <h3 className="font-bold text-gray-800 mb-4">ملخص الإقرار الضريبي (VAT {VAT_RATE * 100}%)</h3>
+                <div className="flex flex-wrap items-center justify-between gap-2 mb-4">
+                  <h3 className="font-bold text-gray-800">ملخص الإقرار الضريبي (VAT {VAT_RATE * 100}%)</h3>
+                  <button
+                    type="button"
+                    disabled={!vatReturn}
+                    onClick={() => vatReturn && exportVatReturnCsv(vatReturn)}
+                    className="px-3 py-1.5 rounded-lg bg-[#1f4d3a] text-white text-xs font-semibold disabled:opacity-50"
+                  >
+                    تصدير CSV للإقرار
+                  </button>
+                </div>
                 <div className="space-y-3 text-sm">
+                  <div className="flex justify-between text-sm">
+                    <span className="text-gray-600">الفترة</span>
+                    <span className="font-mono font-semibold">{periodLabel}</span>
+                  </div>
                   <Row label="عدد سندات القبض" value={vat?.voucherCount || 0} plain />
                   <Row label="الإيرادات الخاضعة للضريبة" value={vat?.taxableRevenue || 0} />
                   <Row label="ضريبة القيمة المضافة OUTPUT" value={vat?.outputVat || 0} />
+                  <Row label="ضريبة المدخلات (سندات الصرف)" value={inputVat} />
+                  <Row label="صافي الضريبة المستحقة" value={vatReturn?.netVatDue || 0} />
                   <div className="rounded-xl bg-amber-50 border border-amber-100 p-3 text-amber-900 text-xs leading-relaxed">
                     يشمل هذا الملخص ضريبة مخرجات خدمات تراخيص السلامة والاستشارات الهندسية وفق نسبة {VAT_RATE * 100}%.
+                    ملف CSV جاهز للمراجعة الداخلية قبل رفع الإقرار على بوابة الهيئة.
                   </div>
                 </div>
               </div>

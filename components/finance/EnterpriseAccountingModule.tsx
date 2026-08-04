@@ -8,7 +8,6 @@ import {
   deriveAudit,
   deriveDashboard,
   journalsToPostedLines,
-  loadEnterpriseState,
   suggestJournalFromTransaction,
   buildTrialBalance,
   buildIncomeStatement,
@@ -21,9 +20,16 @@ import {
   type EnterpriseFinanceTab,
   type CopilotSuggestion,
 } from '@/lib/enterprise-accounting';
+import {
+  loadEnterpriseStateLive,
+  syncBuiltinRulesToSupabase,
+  type EnterpriseDataSource,
+} from '@/lib/enterprise-accounting/supabase-sync';
 import { getEnabledRules } from '@/lib/enterprise-accounting/rules-catalog';
 import { VAT_CATEGORY_LABELS, buildVatReturn } from '@/lib/enterprise-accounting/vat';
 import { auditReportSummary } from '@/lib/enterprise-accounting/audit';
+import { exportVatReturnCsv } from '@/lib/finance/vat-export';
+import BankReconciliationPanel from '@/components/finance/BankReconciliationPanel';
 
 const TABS: { id: EnterpriseFinanceTab; ar: string; en: string }[] = [
   { id: 'dashboard', ar: 'لوحة المؤشرات', en: 'Dashboard' },
@@ -64,12 +70,21 @@ export default function EnterpriseAccountingModule() {
   const isAr = lang !== 'en';
   const [tab, setTab] = useState<EnterpriseFinanceTab>('dashboard');
   const [state, setState] = useState<EnterpriseAccountingState | null>(null);
+  const [dataSource, setDataSource] = useState<EnterpriseDataSource>('demo');
+  const [loadWarnings, setLoadWarnings] = useState<string[]>([]);
   const [copilot, setCopilot] = useState<CopilotSuggestion | null>(null);
   const [txAmount, setTxAmount] = useState('100000');
   const [txDirection, setTxDirection] = useState<'sale' | 'purchase' | 'expense' | 'receipt' | 'payment'>('sale');
 
   useEffect(() => {
-    setState(loadEnterpriseState());
+    void loadEnterpriseStateLive().then((res) => {
+      setState(res.state);
+      setDataSource(res.source);
+      setLoadWarnings(res.warnings);
+      if (res.source === 'supabase') {
+        void syncBuiltinRulesToSupabase();
+      }
+    });
   }, []);
 
   const kpis = useMemo(() => (state ? deriveDashboard(state) : null), [state]);
@@ -142,6 +157,24 @@ export default function EnterpriseAccountingModule() {
               'IFRS · SOCPA · Saudi VAT · ZATCA FATOORA — rules engine blocks invalid postings'
             )}
           </p>
+          <p className="mt-2 text-xs font-semibold">
+            {dataSource === 'supabase' ? (
+              <span className="text-emerald-800">
+                {L('مصدر البيانات: Supabase (حي)', 'Data source: Supabase (live)')}
+              </span>
+            ) : (
+              <span className="text-amber-800">
+                {L('مصدر البيانات: تجريبي / محلي', 'Data source: demo / local')}
+              </span>
+            )}
+          </p>
+          {loadWarnings.length ? (
+            <ul className="mt-1 text-[11px] text-amber-800/90 list-disc ps-4">
+              {loadWarnings.map((w) => (
+                <li key={w}>{w}</li>
+              ))}
+            </ul>
+          ) : null}
         </div>
       </div>
 
@@ -324,18 +357,21 @@ export default function EnterpriseAccountingModule() {
       )}
 
       {tab === 'banking' && (
-        <div className="grid md:grid-cols-2 gap-3">
-          {state.bankAccounts.map((b) => (
-            <div key={b.id} className="rounded-xl border bg-white p-4">
-              <div className="text-sm text-gray-500">{isAr ? b.nameAr : b.nameEn}</div>
-              <div className="text-2xl font-bold text-emerald-950 mt-1">
-                {formatCurrency(b.balance)}
+        <div className="space-y-4">
+          <div className="grid md:grid-cols-2 gap-3">
+            {state.bankAccounts.map((b) => (
+              <div key={b.id} className="rounded-xl border bg-white p-4">
+                <div className="text-sm text-gray-500">{isAr ? b.nameAr : b.nameEn}</div>
+                <div className="text-2xl font-bold text-emerald-950 mt-1">
+                  {formatCurrency(b.balance)}
+                </div>
+                <div className="text-xs text-gray-400 mt-2">
+                  {L('مطابقة ذكية · استيراد كشوف · شيكات · تحويلات', 'Smart match · statement import · cheques · transfers')}
+                </div>
               </div>
-              <div className="text-xs text-gray-400 mt-2">
-                {L('مطابقة ذكية · استيراد كشوف · شيكات · تحويلات', 'Smart match · statement import · cheques · transfers')}
-              </div>
-            </div>
-          ))}
+            ))}
+          </div>
+          <BankReconciliationPanel />
         </div>
       )}
 
@@ -443,11 +479,20 @@ export default function EnterpriseAccountingModule() {
               L('الفترة الحالية', 'Current period')
             );
             return (
-              <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-                <Kpi label={L('مبيعات خاضعة', 'Taxable sales')} value={formatCurrency(vat.standardRatedSales)} />
-                <Kpi label={L('ضريبة مخرجات', 'Output VAT')} value={formatCurrency(vat.outputVat)} />
-                <Kpi label={L('ضريبة مدخلات', 'Input VAT')} value={formatCurrency(vat.inputVat)} />
-                <Kpi label={L('صافي المستحق', 'Net VAT due')} value={formatCurrency(vat.netVatDue)} />
+              <div className="space-y-3">
+                <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+                  <Kpi label={L('مبيعات خاضعة', 'Taxable sales')} value={formatCurrency(vat.standardRatedSales)} />
+                  <Kpi label={L('ضريبة مخرجات', 'Output VAT')} value={formatCurrency(vat.outputVat)} />
+                  <Kpi label={L('ضريبة مدخلات', 'Input VAT')} value={formatCurrency(vat.inputVat)} />
+                  <Kpi label={L('صافي المستحق', 'Net VAT due')} value={formatCurrency(vat.netVatDue)} />
+                </div>
+                <button
+                  type="button"
+                  onClick={() => exportVatReturnCsv(vat)}
+                  className="px-3 py-1.5 rounded-lg border border-emerald-800 text-emerald-900 text-xs font-semibold hover:bg-emerald-50"
+                >
+                  {L('تصدير إقرار VAT (CSV)', 'Export VAT return (CSV)')}
+                </button>
               </div>
             );
           })()}

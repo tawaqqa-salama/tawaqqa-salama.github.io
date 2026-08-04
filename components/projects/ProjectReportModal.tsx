@@ -328,6 +328,7 @@ export default function ProjectReportModal({ client, onClose, onUpdated }: Proje
                     <PlanAttachmentsUpload
                       value={data.plan_attachments || EMPTY_PLAN_ATTACHMENTS}
                       onChange={(plan_attachments) => patch({ plan_attachments })}
+                      clientId={client.id}
                     />
                     <h3 className="text-sm font-bold text-gray-900">مخططات السلامة</h3>
                     <SafetyBlueprintsUpload

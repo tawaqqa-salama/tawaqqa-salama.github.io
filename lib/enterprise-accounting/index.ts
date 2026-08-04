@@ -28,3 +28,8 @@ export {
   journalsToPostedLines,
   type EnterpriseAccountingState,
 } from "./store";
+export {
+  loadEnterpriseStateLive,
+  syncBuiltinRulesToSupabase,
+  type EnterpriseDataSource,
+} from "./supabase-sync";
