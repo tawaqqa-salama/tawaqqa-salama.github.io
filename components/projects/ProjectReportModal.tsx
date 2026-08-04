@@ -35,7 +35,7 @@ import { EMPTY_PLAN_ATTACHMENTS, EMPTY_SAFETY_BLUEPRINTS } from '@/lib/types/pro
 import { loadCompanyProfile, loadLocalCompanyProfile, type CompanyProfile } from '@/lib/company-profile';
 import { seedSupervisionReport } from '@/lib/projects/supervision-report';
 import { ensureCertificateNumber, ensureOutgoingNumber } from '@/lib/business/document-numbers';
-import { backupEngineeringDataLocally } from '@/lib/supabase/safe-client-write';
+import { backupEngineeringDataLocally, updateClientSafe } from '@/lib/supabase/safe-client-write';
 import {
   WORKFLOW_STAGES,
   approveWorkflowStage,
@@ -44,8 +44,9 @@ import {
   stageApprovalBlockers,
   type WorkflowStageId,
 } from '@/lib/projects/gated-pipeline';
+import type { PermitClientHydration } from '@/components/projects/BuildingPermitOcrUpload';
 import type { ClientRecord } from '@/lib/types/client';
-import type { ProjectEngineeringData } from '@/lib/types/project-reports';
+import type { BuildingPlanReport, ProjectEngineeringData } from '@/lib/types/project-reports';
 import type { TaxInvoice } from '@/lib/types/tax-invoice';
 
 interface ProjectReportModalProps {
@@ -201,6 +202,36 @@ export default function ProjectReportModal({ client, onClose, onUpdated }: Proje
 
   const patch = (partial: Partial<ProjectEngineeringData>) => setData({ ...data, ...partial });
 
+  const patchBuildingPlanFromOcr = (building_plan: BuildingPlanReport) => {
+    const permitNo = building_plan.building_permit_number;
+    const permitDate = building_plan.building_permit_date;
+    patch({
+      building_plan,
+      technical_report: {
+        ...data.technical_report,
+        building_permit_number:
+          permitNo || data.technical_report.building_permit_number,
+        building_permit_date:
+          permitDate || data.technical_report.building_permit_date,
+      },
+    });
+  };
+
+  const hydrateClientFromPermit = (fields: PermitClientHydration) => {
+    const payload: Record<string, unknown> = {};
+    if (fields.owner_name) payload.owner_name = fields.owner_name;
+    if (fields.district) payload.district = fields.district;
+    if (fields.city) payload.city = fields.city;
+    if (!Object.keys(payload).length) return;
+    void updateClientSafe(client.id, payload).then((result) => {
+      if (result.error) {
+        setMessage(`تم استخراج الرخصة لكن تعذر تحديث بيانات المالك/الموقع: ${result.error}`);
+        return;
+      }
+      onUpdated();
+    });
+  };
+
   const selectStage = (stageId: WorkflowStageId) => {
     if (!canUnlockStage(stageId, client, data)) {
       setMessage('يجب إنهاء واكتمال المرحلة السابقة أولاً');
@@ -324,9 +355,26 @@ export default function ProjectReportModal({ client, onClose, onUpdated }: Proje
                     client={client}
                     report={data.building_plan}
                     saving={saving}
-                    onChange={(building_plan) => patch({ building_plan })}
+                    onChange={patchBuildingPlanFromOcr}
+                    onClientHydrate={hydrateClientFromPermit}
                     onSave={(building_plan, successText) =>
-                      save({ ...data, building_plan }, successText, { stayOpen: true })
+                      save(
+                        {
+                          ...data,
+                          building_plan,
+                          technical_report: {
+                            ...data.technical_report,
+                            building_permit_number:
+                              building_plan.building_permit_number ||
+                              data.technical_report.building_permit_number,
+                            building_permit_date:
+                              building_plan.building_permit_date ||
+                              data.technical_report.building_permit_date,
+                          },
+                        },
+                        successText,
+                        { stayOpen: true }
+                      )
                     }
                   />
                   <section className="border-t pt-5 space-y-4">

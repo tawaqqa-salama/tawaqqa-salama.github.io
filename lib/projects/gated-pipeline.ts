@@ -450,6 +450,14 @@ export function applyPipelineInheritance(
       next.technical_report.building_classification ||
       next.building_plan.occupancy_classification ||
       '',
+    building_permit_number:
+      next.technical_report.building_permit_number ||
+      next.building_plan.building_permit_number ||
+      '',
+    building_permit_date:
+      next.technical_report.building_permit_date ||
+      next.building_plan.building_permit_date ||
+      '',
   });
 
   // Stage 2 hydraulic/plans → Stage 7 CD letter + delivery
