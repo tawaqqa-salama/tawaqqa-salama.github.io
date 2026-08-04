@@ -72,6 +72,7 @@ const ar: Dict = {
 
   'finance.approvals': 'الاعتماد المالي',
   'finance.dashboard': 'لوحة التحكم',
+  'finance.enterprise': 'المحاسبة المؤسسية',
   'finance.invoices': 'الفواتير الضريبية',
   'finance.journal': 'القيود اليومية',
   'finance.vouchers': 'السندات',
@@ -430,6 +431,7 @@ const en: Dict = {
 
   'finance.approvals': 'Financial approval',
   'finance.dashboard': 'Dashboard',
+  'finance.enterprise': 'Enterprise accounting',
   'finance.invoices': 'Tax invoices',
   'finance.journal': 'Journal entries',
   'finance.vouchers': 'Vouchers',
@@ -796,6 +798,7 @@ export function translateNavDescription(locale: AppLocale, href: string, fallbac
 
 const FINANCE_SUB_KEYS: Record<string, TranslationKey> = {
   '/finance': 'finance.dashboard',
+  '/finance/enterprise': 'finance.enterprise',
   '/finance/vouchers?tab=approvals': 'finance.approvals',
   '/finance/invoices': 'finance.invoices',
   '/finance/journal': 'finance.journal',

@@ -30,6 +30,7 @@ export const DEFAULT_ACCOUNT_CODES = {
 /** Finance sub-navigation — scoped inside /finance only. */
 export const FINANCE_NAV = [
   { href: '/finance', label: 'لوحة التحكم', icon: '▦' },
+  { href: '/finance/enterprise', label: 'المحاسبة المؤسسية', icon: '🏛' },
   { href: '/finance/vouchers?tab=approvals', label: 'الاعتماد المالي', icon: '✅' },
   { href: '/finance/invoices', label: 'الفواتير الضريبية', icon: '🧾' },
   { href: '/finance/journal', label: 'القيود اليومية', icon: '📝' },
