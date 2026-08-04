@@ -1,8 +1,10 @@
 'use client';
 
 import { useEffect } from 'react';
+import CompletionSafetyAttachmentsUpload from '@/components/projects/CompletionSafetyAttachmentsUpload';
 import type { ClientRecord } from '@/lib/types/client';
 import type {
+  CompletionAttachmentsState,
   CompletionCertificateReport,
   ProjectEngineeringData,
 } from '@/lib/types/project-reports';
@@ -10,6 +12,7 @@ import type { CompanyProfile } from '@/lib/company-profile';
 import { seedCompletionCertificate } from '@/lib/projects/completion-certificate';
 import { printCompletionCertificate } from '@/components/projects/CompletionCertificatePrint';
 import { ensureCertificateNumber } from '@/lib/business/document-numbers';
+import { hasAllRequiredCompletionAttachments } from '@/lib/projects/completion-attachments';
 
 const REPORT_STATUSES = ['مسودة', 'قيد الإعداد', 'مكتمل', 'معتمد'] as const;
 
@@ -19,6 +22,7 @@ type CompletionCertificateSectionProps = {
   company: CompanyProfile | null;
   saving: boolean;
   onChange: (cert: CompletionCertificateReport) => void;
+  onAttachmentsChange: (attachments: CompletionAttachmentsState) => void;
   onSave: (opts?: { issueCertificate?: boolean }) => void;
   onSaveAndPrint: (cert: CompletionCertificateReport) => Promise<void>;
 };
@@ -29,10 +33,12 @@ export default function CompletionCertificateSection({
   company,
   saving,
   onChange,
+  onAttachmentsChange,
   onSave,
   onSaveAndPrint,
 }: CompletionCertificateSectionProps) {
   const cert = data.completion_certificate;
+  const attachmentsReady = hasAllRequiredCompletionAttachments(client, data);
 
   useEffect(() => {
     // املأ الحقول الناقصة من العميل/الشركة دون طمس القيم المحفوظة
@@ -252,6 +258,14 @@ export default function CompletionCertificateSection({
         />
       </label>
 
+      <CompletionSafetyAttachmentsUpload
+        client={client}
+        data={data}
+        value={data.completion_attachments}
+        disabled={saving}
+        onChange={onAttachmentsChange}
+      />
+
       <div className="flex flex-wrap gap-2">
         <button
           type="button"
@@ -264,7 +278,12 @@ export default function CompletionCertificateSection({
         <button
           type="button"
           onClick={() => void handlePrint()}
-          disabled={saving || !company}
+          disabled={saving || !company || !attachmentsReady}
+          title={
+            attachmentsReady
+              ? undefined
+              : 'أرفق جميع عقود الصيانة والشهادات الفنية المطلوبة أولاً'
+          }
           className="px-4 py-2.5 rounded-xl bg-[#1f4d3a] text-white text-sm font-semibold disabled:opacity-50"
         >
           معاينة وطباعة الشهادة (A4)

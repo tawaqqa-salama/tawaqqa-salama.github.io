@@ -489,12 +489,37 @@ export type PlanAttachmentFile = {
   storagePath?: string | null;
   storageBucket?: string | null;
   uploadedAt: string;
-  kind: 'engineering_drawing' | 'hydraulic_calculation' | 'building_permit';
+  kind:
+    | 'engineering_drawing'
+    | 'hydraulic_calculation'
+    | 'building_permit'
+    | 'fire_alarm_install_contract'
+    | 'fire_alarm_maintenance_contract'
+    | 'electrical_safety_certificate'
+    | 'elevator_maintenance_contract'
+    | 'gas_chimney_certificate';
 };
 
 export type PlanAttachmentsState = {
   engineering_drawings: PlanAttachmentFile[];
   hydraulic_calculations: PlanAttachmentFile[];
+};
+
+/** عقود الصيانة والشهادات الفنية قبل شهادة إنهاء الأعمال */
+export type CompletionAttachmentsState = {
+  fire_alarm_install_contract: PlanAttachmentFile | null;
+  fire_alarm_maintenance_contract: PlanAttachmentFile | null;
+  electrical_safety_certificate: PlanAttachmentFile | null;
+  elevator_maintenance_contract: PlanAttachmentFile | null;
+  gas_chimney_certificate: PlanAttachmentFile | null;
+};
+
+export const EMPTY_COMPLETION_ATTACHMENTS: CompletionAttachmentsState = {
+  fire_alarm_install_contract: null,
+  fire_alarm_maintenance_contract: null,
+  electrical_safety_certificate: null,
+  elevator_maintenance_contract: null,
+  gas_chimney_certificate: null,
 };
 
 /** المرحلة 1 — العقد والتعاقد */
@@ -533,6 +558,11 @@ export interface ProjectEngineeringData {
   cd_cover_letter: CdCoverLetterReport;
   final_inspection: FinalInspectionReport;
   completion_certificate: CompletionCertificateReport;
+  /**
+   * عقود الصيانة والشهادات الفنية المطلوبة قبل شهادة إنهاء الأعمال (مرحلة 9)
+   * — بعضها مشروط (مصاعد / أغذية ومشروبات)
+   */
+  completion_attachments?: CompletionAttachmentsState;
   supervision_report: SupervisionReport;
   workflow?: ProjectWorkflowState;
 }
@@ -618,6 +648,7 @@ export const EMPTY_PROJECT_ENGINEERING_DATA: ProjectEngineeringData = {
   cd_cover_letter: { status: 'مسودة' },
   final_inspection: { status: 'مسودة' },
   completion_certificate: { status: 'مسودة' },
+  completion_attachments: { ...EMPTY_COMPLETION_ATTACHMENTS },
   supervision_report: { ...EMPTY_SUPERVISION_REPORT },
   workflow: {},
 };
