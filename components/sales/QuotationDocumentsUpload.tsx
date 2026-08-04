@@ -35,7 +35,7 @@ const SLOTS: {
     kind: 'building_permit',
     key: 'building_permit',
     required: true,
-    hint: 'إلزامي — يُستخرج رقم وتاريخ الرخصة تلقائياً من الصورة/PDF',
+    hint: 'إلزامي — يستخرج المالك والحي والشارع والعنوان ورقم الرخصة',
   },
   {
     kind: 'owner_id',
@@ -85,11 +85,20 @@ export default function QuotationDocumentsUpload({
           const hydration = extractionToHydration(extraction);
           if (hasUsefulPermitExtraction(extraction)) {
             onPermitExtracted?.(hydration);
-            setHint(
-              hydration.building_permit_number && hydration.building_permit_date
-                ? '✓ تم استخراج رقم وتاريخ الرخصة بنجاح'
-                : '✓ تم استخراج جزء من بيانات الرخصة — راجع الحقول'
-            );
+            {
+              const extracted = [
+                hydration.building_permit_number ? 'رقم الرخصة' : null,
+                hydration.owner_name ? 'المالك' : null,
+                hydration.district ? 'الحي' : null,
+                hydration.street ? 'الشارع' : null,
+                hydration.plot_number ? 'القطعة' : null,
+              ].filter(Boolean);
+              setHint(
+                extracted.length > 0
+                  ? `✓ تم استخراج: ${extracted.join(' · ')}`
+                  : '✓ تم استخراج جزء من بيانات الرخصة — راجع الحقول'
+              );
+            }
           } else {
             setHint('تعذر استخراج رقم/تاريخ الرخصة من الملف — يمكنك التعبئة يدوياً');
           }
@@ -122,7 +131,7 @@ export default function QuotationDocumentsUpload({
       <div>
         <p className="text-xs font-semibold text-gray-700">مستندات إصدار عرض السعر</p>
         <p className="mt-0.5 text-[11px] text-gray-500">
-          رخصة البناء إلزامية · هوية المالك والسجل التجاري اختياريان
+          ارفع رخصة البناء لاستخراج المالك والحي والشارع والعنوان تلقائياً · الهوية والسجل اختياريان
         </p>
       </div>
 

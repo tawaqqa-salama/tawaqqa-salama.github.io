@@ -71,6 +71,7 @@ import {
   validateQuotationDocumentsForIssue,
 } from '@/lib/business/quotation-documents';
 import type { BuildingPermitHydration } from '@/lib/projects/building-permit-ocr';
+import { matchPermitLocation } from '@/lib/projects/permit-location-match';
 import type { ClientRecord, DepartmentMode, FloorLevel, InspectionChecklistItem } from '@/lib/types/client';
 import type { QuotationDocumentsState } from '@/lib/types/quotation-documents';
 import type { TaxInvoice } from '@/lib/types/tax-invoice';
@@ -514,8 +515,101 @@ export default function ClientDetailModal({
   const computedFloorsCount = calcFloorsCount(floorLevels);
   const computedBuildingArea = calcBuildingArea(floorLevels);
   const availableCities = region && REGION_DATA[region] ? Object.keys(REGION_DATA[region]) : [];
-  const availableDistricts =
+  const catalogDistricts =
     region && city && REGION_DATA[region]?.[city] ? REGION_DATA[region][city] : [];
+  const availableDistricts =
+    district && !catalogDistricts.includes(district)
+      ? [...catalogDistricts, district]
+      : catalogDistricts;
+
+  const applyPermitHydration = (fields: BuildingPermitHydration) => {
+    const matched = matchPermitLocation({
+      city: fields.city,
+      district: fields.district,
+      municipality: fields.municipality,
+      locationSummary: fields.location_summary,
+    });
+
+    if (matched.region) setRegion(matched.region);
+    if (matched.city || fields.city) setCity(matched.city || fields.city || '');
+    if (matched.district || fields.district) {
+      setDistrict(matched.district || fields.district || '');
+    }
+    if (fields.owner_name) setOwnerName(fields.owner_name);
+    if (fields.street) setStreet(fields.street);
+    if (fields.plot_number) setPlotNumber(fields.plot_number);
+    if (fields.commercial_register) {
+      setCommercialRegister(fields.commercial_register);
+      setClientKind('business');
+    }
+    if (fields.phone && /^05\d{8}$/.test(fields.phone)) setPhone(fields.phone);
+    if (fields.land_area) setLandArea(fields.land_area);
+    if (fields.national_address) setNationalAddress(fields.national_address);
+    else if (fields.location_summary) setNationalAddress(fields.location_summary);
+
+    const eng = parseProjectEngineeringData(client.project_engineering_data);
+    const building_plan = {
+      ...eng.building_plan,
+      building_permit_number:
+        fields.building_permit_number || eng.building_plan.building_permit_number,
+      building_permit_date: fields.building_permit_date || eng.building_plan.building_permit_date,
+      building_permit_date_hijri:
+        fields.building_permit_date_hijri || eng.building_plan.building_permit_date_hijri,
+      report_date: fields.report_date || eng.building_plan.report_date,
+      building_permit_ocr_status: 'success' as const,
+      building_permit_ocr_message: '✓ تم استخراج بيانات الرخصة وتعبئة البيانات الأساسية',
+    };
+    const technical_report = {
+      ...eng.technical_report,
+      building_permit_number:
+        fields.building_permit_number || eng.technical_report.building_permit_number,
+      building_permit_date:
+        fields.building_permit_date || eng.technical_report.building_permit_date,
+    };
+
+    // لا تُعد كتابة quotation_documents هنا — onChange يحفظها قبل الاستخراج
+    // (تجنّب استبدال المرفق بحالة قديمة من الـ closure)
+    const payload: Record<string, unknown> = {
+      project_engineering_data: { ...eng, building_plan, technical_report },
+    };
+    if (fields.owner_name) payload.owner_name = fields.owner_name;
+    if (matched.region) payload.region = matched.region;
+    if (matched.city || fields.city) payload.city = matched.city || fields.city;
+    if (matched.district || fields.district) {
+      payload.district = matched.district || fields.district;
+    }
+    if (fields.street) payload.street = fields.street;
+    if (fields.plot_number) payload.plot_number = fields.plot_number;
+    if (fields.commercial_register) {
+      payload.commercial_register = fields.commercial_register;
+      payload.client_kind = 'business';
+    }
+    if (fields.phone && /^05\d{8}$/.test(fields.phone)) payload.phone = fields.phone;
+    if (fields.land_area) payload.land_area = parseLocalizedNumber(fields.land_area) || null;
+    if (fields.national_address || fields.location_summary) {
+      payload.national_address = fields.national_address || fields.location_summary;
+    }
+
+    void updateClientSafe(client.id, payload).then((result) => {
+      if (result.error) {
+        setErrorMessage(result.error);
+        return;
+      }
+      setSuccessMessage(
+        [
+          fields.building_permit_number ? `رقم الرخصة: ${fields.building_permit_number}` : null,
+          fields.owner_name ? `المالك: ${fields.owner_name}` : null,
+          matched.district || fields.district
+            ? `الحي: ${matched.district || fields.district}`
+            : null,
+          fields.street ? `الشارع: ${fields.street}` : null,
+        ]
+          .filter(Boolean)
+          .join(' · ') || 'تم استخراج بيانات الرخصة وتعبئة البيانات الأساسية'
+      );
+      onUpdated();
+    });
+  };
 
   const handleSaveBasic = async () => {
     if (!/^05\d{8}$/.test(phone.replace(/\s+/g, ''))) {
@@ -569,6 +663,7 @@ export default function ClientDetailModal({
         floors_count: computedFloorsCount,
         floor_levels: floorLevels,
         project_status: projectStatus || null,
+        quotation_documents: quotationDocuments,
       },
       'تم حفظ البيانات الأساسية وتفصيل الأدوار.'
     );
@@ -632,6 +727,26 @@ export default function ClientDetailModal({
 
           {activeTab === 'basic' && (
             <div className="space-y-5 text-sm">
+              <div className="rounded-xl border border-slate-200 bg-slate-50/60 p-3">
+                <QuotationDocumentsUpload
+                  value={quotationDocuments}
+                  clientId={client.id}
+                  disabled={saving}
+                  onChange={(next) => {
+                    setQuotationDocuments(next);
+                    void updateClientSafe(client.id, { quotation_documents: next }).then((result) => {
+                      if (result.error) {
+                        setErrorMessage(result.error);
+                        return;
+                      }
+                      setErrorMessage(null);
+                      onUpdated();
+                    });
+                  }}
+                  onPermitExtracted={applyPermitHydration}
+                />
+              </div>
+
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div>
                   <label className="block text-xs font-semibold text-gray-700 mb-1">اسم المالك</label>
@@ -903,79 +1018,6 @@ export default function ClientDetailModal({
                     </label>
                   ))}
                 </div>
-              </div>
-
-              <div className="rounded-xl border border-slate-200 bg-slate-50/60 p-3">
-                <QuotationDocumentsUpload
-                  value={quotationDocuments}
-                  clientId={client.id}
-                  disabled={saving}
-                  onChange={(next) => {
-                    setQuotationDocuments(next);
-                    void updateClientSafe(client.id, { quotation_documents: next }).then((result) => {
-                      if (result.error) {
-                        setErrorMessage(result.error);
-                        return;
-                      }
-                      setErrorMessage(null);
-                      onUpdated();
-                    });
-                  }}
-                  onPermitExtracted={(fields: BuildingPermitHydration) => {
-                    if (fields.owner_name) setOwnerName(fields.owner_name);
-                    if (fields.district) setDistrict(fields.district);
-                    if (fields.city) setCity(fields.city);
-
-                    const eng = parseProjectEngineeringData(client.project_engineering_data);
-                    const building_plan = {
-                      ...eng.building_plan,
-                      building_permit_number:
-                        fields.building_permit_number || eng.building_plan.building_permit_number,
-                      building_permit_date:
-                        fields.building_permit_date || eng.building_plan.building_permit_date,
-                      building_permit_date_hijri:
-                        fields.building_permit_date_hijri ||
-                        eng.building_plan.building_permit_date_hijri,
-                      report_date: fields.report_date || eng.building_plan.report_date,
-                      building_permit_ocr_status: 'success' as const,
-                      building_permit_ocr_message: '✓ تم استخراج رقم وتاريخ الرخصة بنجاح',
-                    };
-                    const technical_report = {
-                      ...eng.technical_report,
-                      building_permit_number:
-                        fields.building_permit_number || eng.technical_report.building_permit_number,
-                      building_permit_date:
-                        fields.building_permit_date || eng.technical_report.building_permit_date,
-                    };
-
-                    const payload: Record<string, unknown> = {
-                      project_engineering_data: { ...eng, building_plan, technical_report },
-                    };
-                    if (fields.owner_name) payload.owner_name = fields.owner_name;
-                    if (fields.district) payload.district = fields.district;
-                    if (fields.city) payload.city = fields.city;
-
-                    void updateClientSafe(client.id, payload).then((result) => {
-                      if (result.error) {
-                        setErrorMessage(result.error);
-                        return;
-                      }
-                      setSuccessMessage(
-                        [
-                          fields.building_permit_number
-                            ? `رقم الرخصة: ${fields.building_permit_number}`
-                            : null,
-                          fields.building_permit_date
-                            ? `التاريخ: ${fields.building_permit_date}`
-                            : null,
-                        ]
-                          .filter(Boolean)
-                          .join(' · ') || 'تم استخراج بيانات الرخصة'
-                      );
-                      onUpdated();
-                    });
-                  }}
-                />
               </div>
 
               <div className="rounded-xl border border-emerald-100 bg-emerald-50/60 p-3 text-sm space-y-2">

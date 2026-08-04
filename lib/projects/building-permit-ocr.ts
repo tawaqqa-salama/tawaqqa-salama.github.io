@@ -10,6 +10,13 @@ export type BuildingPermitExtraction = {
   ownerName: string | null;
   district: string | null;
   city: string | null;
+  street: string | null;
+  plotNumber: string | null;
+  municipality: string | null;
+  commercialRegister: string | null;
+  phone: string | null;
+  landAreaM2: string | null;
+  nationalAddress: string | null;
   locationSummary: string | null;
   rawTextPreview?: string;
   source: 'vision' | 'pdf_text' | 'regex' | 'filename' | 'tesseract' | 'none';
@@ -261,9 +268,58 @@ function extractOwnerName(text: string): string | null {
   return cleanLabelValue(value.split(/(?:رقم|تاريخ|الحي|الموقع|المدينة|جوال)/)[0] || value);
 }
 
+function extractStreet(text: string): string | null {
+  const normalized = normalizeArabicDigits(text);
+  const balady =
+    normalized.match(/\nاسم\s*الشارع\.?\s*\n+\s*([^\n\r]{2,60})/u)?.[1] ||
+    normalized.match(/اسم\s*الشارع\.?\s*[:：]?\s*([^\n\r]{2,60})/u)?.[1];
+  const labeled = balady || pickLabeledValue(text, [/اسم\s*الشارع/, /الشارع/, /Street/i]);
+  if (!labeled) return null;
+  const cleaned = cleanLabelValue(String(labeled).split(/(?:مساحة|رقم|الحي|القطعة)/)[0] || labeled);
+  if (!cleaned || /^غير\s*مسمى$/i.test(cleaned)) return cleaned || 'غير مسمى';
+  return cleaned;
+}
+
+function extractPlotNumber(text: string): string | null {
+  const normalized = collapseOcrDigitGaps(text);
+  const balady =
+    normalized.match(/\n(?:رقم\s*)?القطعة\s*\n+\s*([A-Za-z0-9\/\-]+)/u)?.[1] ||
+    normalized.match(/(?:رقم\s*)?القطعة\s*[:：]?\s*([A-Za-z0-9\/\-]+)/u)?.[1];
+  return balady ? cleanLabelValue(balady) : null;
+}
+
+function extractCommercialRegister(text: string): string | null {
+  const normalized = collapseOcrDigitGaps(text);
+  const m =
+    normalized.match(/رقم\s*السجل\s*\n+\s*(\d{8,15})/u)?.[1] ||
+    normalized.match(/رقم\s*السجل\s*[:：]?\s*(\d{8,15})/u)?.[1] ||
+    normalized.match(/السجل\s*التجاري\s*[:：]?\s*(\d{8,15})/u)?.[1];
+  return m || null;
+}
+
+function extractPhone(text: string): string | null {
+  const normalized = collapseOcrDigitGaps(text);
+  const m =
+    normalized.match(/جوال\s*(?:رقم)?\s*[:：]?\s*(05\d{8})/u)?.[1] ||
+    normalized.match(/\b(05\d{8})\b/)?.[1];
+  return m || null;
+}
+
+function extractLandArea(text: string): string | null {
+  const normalized = collapseOcrDigitGaps(text);
+  const m =
+    normalized.match(/مساحة\s*الارض\.?\s*\n+\s*([\d.,]+)/u)?.[1] ||
+    normalized.match(/مساحة\s*الأرض\.?\s*[:：]?\s*([\d.,]+)/u)?.[1] ||
+    normalized.match(/مساحة\s*الارض\.?\s*[:：]?\s*([\d.,]+)/u)?.[1];
+  return m ? m.replace(/,/g, '') : null;
+}
+
 function extractLocation(text: string): {
   district: string | null;
   city: string | null;
+  street: string | null;
+  plotNumber: string | null;
+  municipality: string | null;
   locationSummary: string | null;
 } {
   const normalized = normalizeArabicDigits(text);
@@ -271,13 +327,23 @@ function extractLocation(text: string): {
   let district =
     normalized.match(/\nالحي\s*\n+\s*([^\n\r]{2,40})/u)?.[1] ||
     pickLabeledValue(text, [/الحي/, /الحى/, /District/i]);
-  const municipality = normalized.match(/\nالبلدية\s*\n+\s*([^\n\r]{2,40})/u)?.[1];
+  // Fix common OCR: التهضة → النهضة
+  if (district && /تهضه|تهضة/.test(normalizePlaceLite(district))) {
+    district = 'النهضة';
+  }
+
+  const municipality =
+    normalized.match(/\nالبلدية\s*\n+\s*([^\n\r]{2,40})/u)?.[1] ||
+    pickLabeledValue(text, [/البلدية/, /Municipality/i]);
   let city = pickLabeledValue(text, [/المدينة/, /City/i]);
   if (!city && municipality) {
-    // ابحر الفرعية / أمانة جدة → جدة
     if (/جدة|جده/i.test(municipality) || /ابحر|أبحر/i.test(municipality)) city = 'جدة';
   }
   if (!city && /جدة|جده|امانة\s*محافظة\s*جدة/i.test(normalized)) city = 'جدة';
+  if (!city && /رياض/i.test(normalized)) city = 'الرياض';
+
+  const street = extractStreet(text);
+  const plotNumber = extractPlotNumber(text);
 
   const location = pickLabeledValue(text, [
     /موقع\s*المنشأة/,
@@ -292,14 +358,30 @@ function extractLocation(text: string): {
   const cleanCity = city
     ? cleanLabelValue(String(city).split(/(?:الحي|المنطقة|رقم)/)[0] || city)
     : null;
+  const cleanMunicipality = municipality
+    ? cleanLabelValue(String(municipality).split(/(?:رقم|الحي)/)[0] || municipality)
+    : null;
 
   const locationSummary =
     location ||
-    (cleanCity || cleanDistrict
-      ? [cleanCity, cleanDistrict].filter(Boolean).join(' — ')
-      : null);
+    [cleanCity, cleanDistrict, street].filter(Boolean).join(' — ') ||
+    null;
 
-  return { district: cleanDistrict, city: cleanCity, locationSummary };
+  return {
+    district: cleanDistrict,
+    city: cleanCity,
+    street,
+    plotNumber,
+    municipality: cleanMunicipality,
+    locationSummary,
+  };
+}
+
+function normalizePlaceLite(value: string): string {
+  return String(value || '')
+    .replace(/[أإآ]/g, 'ا')
+    .replace(/ة/g, 'ه')
+    .replace(/\s+/g, '');
 }
 
 export function parseBuildingPermitText(
@@ -315,10 +397,22 @@ export function parseBuildingPermitText(
   const dates = extractDates(cleaned);
   const ownerName = extractOwnerName(cleaned);
   const location = extractLocation(cleaned);
+  const commercialRegister = extractCommercialRegister(cleaned);
+  const phone = extractPhone(cleaned);
+  const landAreaM2 = extractLandArea(cleaned);
 
-  const hits = [permitNumber, dates.gregorian || dates.hijri, ownerName, location.district || location.city].filter(
-    Boolean
-  ).length;
+  const hits = [
+    permitNumber,
+    dates.gregorian || dates.hijri,
+    ownerName,
+    location.district || location.city,
+    location.street,
+    commercialRegister,
+  ].filter(Boolean).length;
+
+  const nationalAddress = [location.city, location.district, location.street, location.plotNumber]
+    .filter(Boolean)
+    .join(' — ') || null;
 
   return {
     permitNumber,
@@ -327,10 +421,17 @@ export function parseBuildingPermitText(
     ownerName,
     district: location.district,
     city: location.city,
+    street: location.street,
+    plotNumber: location.plotNumber,
+    municipality: location.municipality,
+    commercialRegister,
+    phone,
+    landAreaM2,
+    nationalAddress,
     locationSummary: location.locationSummary,
     rawTextPreview: cleaned.slice(0, 1200),
     source,
-    confidence: hits >= 3 ? 'high' : hits >= 2 ? 'medium' : hits >= 1 ? 'low' : 'low',
+    confidence: hits >= 4 ? 'high' : hits >= 2 ? 'medium' : hits >= 1 ? 'low' : 'low',
   };
 }
 
@@ -342,6 +443,13 @@ export function emptyExtraction(source: BuildingPermitExtraction['source'] = 'no
     ownerName: null,
     district: null,
     city: null,
+    street: null,
+    plotNumber: null,
+    municipality: null,
+    commercialRegister: null,
+    phone: null,
+    landAreaM2: null,
+    nationalAddress: null,
     locationSummary: null,
     source,
     confidence: 'low',
@@ -422,6 +530,14 @@ export type BuildingPermitHydration = {
   owner_name?: string;
   district?: string;
   city?: string;
+  region?: string;
+  street?: string;
+  plot_number?: string;
+  municipality?: string;
+  commercial_register?: string;
+  phone?: string;
+  land_area?: string;
+  national_address?: string;
   location_summary?: string;
 };
 
@@ -431,13 +547,19 @@ export function extractionToHydration(result: BuildingPermitExtraction): Buildin
   if (result.permitDateGregorian) {
     const iso = toIsoDate(result.permitDateGregorian) || result.permitDateGregorian;
     patch.building_permit_date = iso;
-    // Fill report date when it looks like Gregorian ISO
     if (/^\d{4}-\d{2}-\d{2}$/.test(iso)) patch.report_date = iso;
   }
   if (result.permitDateHijri) patch.building_permit_date_hijri = result.permitDateHijri;
   if (result.ownerName) patch.owner_name = result.ownerName;
   if (result.district) patch.district = result.district;
   if (result.city) patch.city = result.city;
+  if (result.street) patch.street = result.street;
+  if (result.plotNumber) patch.plot_number = result.plotNumber;
+  if (result.municipality) patch.municipality = result.municipality;
+  if (result.commercialRegister) patch.commercial_register = result.commercialRegister;
+  if (result.phone) patch.phone = result.phone;
+  if (result.landAreaM2) patch.land_area = result.landAreaM2;
+  if (result.nationalAddress) patch.national_address = result.nationalAddress;
   if (result.locationSummary) patch.location_summary = result.locationSummary;
   return patch;
 }
