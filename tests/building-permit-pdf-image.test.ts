@@ -16,9 +16,8 @@ describe('scanned Balady PDF → image extract', () => {
       expect(true).toBe(true);
       return;
     }
-    const file = new File([bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength)], 'رخصة-بناء.pdf', {
-      type: 'application/pdf',
-    });
+    const copy = bytes.slice();
+    const file = new File([copy], 'رخصة-بناء.pdf', { type: 'application/pdf' });
     const blob = await extractEmbeddedPdfImage(file);
     expect(blob).not.toBeNull();
     expect(blob!.type).toBe('image/jpeg');
