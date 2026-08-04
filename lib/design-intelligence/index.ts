@@ -50,5 +50,11 @@ export {
   getEngineeringFields,
   getEngineeringRules,
 } from '@/lib/design-intelligence/rules-engine';
+export {
+  decideEngineeringForm,
+  commitEngineeringDecision,
+  assertEngineeringDecision,
+  explainEngineeringDecisions,
+} from '@/lib/design-intelligence/decision-engine';
 export type * from '@/lib/design-intelligence/types';
 export type * from '@/lib/design-intelligence/rules-types';

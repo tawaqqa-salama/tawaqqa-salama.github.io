@@ -1,7 +1,6 @@
 /**
- * Engineering Rules Engine
- * ----------------------
- * AI must NOT invent engineering values. Every field is resolved from
+ * Engineering Rules Engine — source of truth for the Decision Engine.
+ * AI / UI must not invent engineering values. Every field is resolved from
  * configurable rules (seed catalog + optional Supabase `di_engineering_rules`).
  *
  * Cascade: changing an upstream field clears invalid downstream values and
@@ -210,25 +209,41 @@ export function evaluateEngineeringForm(selection: EngineeringSelection): Engine
     let explanation_ar = '';
     let code_refs: string[] = [];
     const matched_rule_codes = matched.map((r) => r.rule_code);
+    let auto_selected = false;
+    let control_mode: EngineeringFieldState['control_mode'] = 'editable';
+    let decision_reason_en = '';
+    let decision_reason_ar = '';
 
     if (setRule) {
       const forced = normalizeSetValue(setRule.set_value);
       // Locked / computed / multi always take rule value; never leave AI/user free text
       if (forced != null && (locked || field.value_kind === 'computed' || field.value_kind === 'multi')) {
+        if (JSON.stringify(value) !== JSON.stringify(forced)) auto_selected = true;
         value = forced;
       } else if (forced != null && value == null) {
         value = forced;
+        auto_selected = true;
       }
       explanation = setRule.explanation_en;
       explanation_ar = setRule.explanation_ar || setRule.explanation_en;
       code_refs = setRule.code_refs;
+      decision_reason_en = locked
+        ? `Locked by rule ${setRule.rule_code}: ${setRule.explanation_en}`
+        : `Auto-selected by rule ${setRule.rule_code}: ${setRule.explanation_en}`;
+      decision_reason_ar = locked
+        ? `مقفَل بقاعدة ${setRule.rule_code}: ${setRule.explanation_ar || setRule.explanation_en}`
+        : `اختيار تلقائي بقاعدة ${setRule.rule_code}: ${setRule.explanation_ar || setRule.explanation_en}`;
     } else if (matched[0]) {
       explanation = matched[0].explanation_en;
       explanation_ar = matched[0].explanation_ar || matched[0].explanation_en;
       code_refs = matched[0].code_refs;
+      decision_reason_en = matched[0].explanation_en;
+      decision_reason_ar = matched[0].explanation_ar || matched[0].explanation_en;
     } else if (field.value_kind === 'computed' || field.value_kind === 'multi') {
       // No matching rule yet — keep empty (do not invent values)
       value = null;
+      decision_reason_en = 'Waiting for upstream rules — no free values allowed.';
+      decision_reason_ar = 'بانتظار قواعد أعلى — لا يُسمح بقيم حرة.';
     }
 
     // Validate selectable value against allowed options (invalid never sticks)
@@ -237,7 +252,7 @@ export function evaluateEngineeringForm(selection: EngineeringSelection): Engine
       if (options.length && !options.some((o) => o.value === v)) {
         violations.push({
           field_key: field.field_key,
-          message: `Value «${v}» is not allowed for current upstream selections.`,
+          message: `Value «${v}» violates rules for current upstream selections (SBC/NFPA/Civil Defense/company).`,
           code_refs,
         });
         value = locked && setRule ? normalizeSetValue(setRule.set_value) : null;
@@ -249,6 +264,33 @@ export function evaluateEngineeringForm(selection: EngineeringSelection): Engine
     // Auto-pick sole option when unlocked select has exactly one valid choice
     if (field.value_kind === 'select' && !locked && value == null && options.length === 1) {
       value = options[0].value;
+      auto_selected = true;
+      decision_reason_en = `Auto-selected sole compliant option «${options[0].label_en}» — no other values are allowed.`;
+      decision_reason_ar = `اختيار تلقائي للخيار الوحيد المتوافق «${options[0].label_ar}» — لا قيم أخرى مسموحة.`;
+      if (!explanation) {
+        explanation = decision_reason_en;
+        explanation_ar = decision_reason_ar;
+      }
+    }
+
+    if (field.value_kind === 'computed') {
+      control_mode = 'computed';
+      locked = true;
+    } else if (locked) {
+      control_mode = 'locked';
+    } else if (auto_selected) {
+      control_mode = 'auto_selected';
+    } else {
+      control_mode = 'editable';
+    }
+
+    if (!decision_reason_en && locked) {
+      decision_reason_en = 'Locked by Engineering Rules Engine — engineer cannot override.';
+      decision_reason_ar = 'مقفل بواسطة محرك القواعد الهندسية — لا يمكن للمهندس تجاوزه.';
+    }
+    if (!decision_reason_en && control_mode === 'editable') {
+      decision_reason_en = 'Editable — only options allowed by matched rules are shown.';
+      decision_reason_ar = 'قابل للتعديل — تُعرض فقط الخيارات المسموحة بالقواعد المطابقة.';
     }
 
     // If locked with set_value that isn't in options, expose it as synthetic option for display
@@ -260,7 +302,6 @@ export function evaluateEngineeringForm(selection: EngineeringSelection): Engine
     }
 
     // Visibility: root always; else show when rules produced options or a locked/computed value.
-    // Matching rules already encode parent conditions — no need to block on sibling depends_on.
     const visible =
       field.cascade_order === 10 || options.length > 0 || (value != null && matched.length > 0);
 
@@ -285,6 +326,10 @@ export function evaluateEngineeringForm(selection: EngineeringSelection): Engine
       explanation_ar,
       code_refs,
       matched_rule_codes,
+      control_mode,
+      decision_reason_en,
+      decision_reason_ar,
+      auto_selected,
     });
   }
 
@@ -293,7 +338,7 @@ export function evaluateEngineeringForm(selection: EngineeringSelection): Engine
 
 /**
  * Apply a user change to one field, clear all downstream fields, re-evaluate.
- * Rejects values not in allowed options for that field.
+ * Rejects values not in allowed options. Rejects edits to locked fields.
  */
 export function applyEngineeringChange(
   selection: EngineeringSelection,
@@ -301,6 +346,22 @@ export function applyEngineeringChange(
   newValue: string | string[] | null
 ): EngineeringFormState {
   const fields = getEngineeringFields();
+  const current = evaluateEngineeringForm(selection);
+  const currentField = current.fields.find((f) => f.field_key === fieldKey);
+  if (currentField?.locked) {
+    return {
+      ...current,
+      violations: [
+        ...current.violations.filter((v) => v.field_key !== fieldKey),
+        {
+          field_key: String(fieldKey),
+          message: `Cannot change locked field «${fieldKey}» — controlled by Engineering Decision Engine.`,
+          code_refs: currentField.code_refs,
+        },
+      ],
+    };
+  }
+
   const order = fields.find((f) => f.field_key === fieldKey)?.cascade_order ?? 0;
   const cleared: EngineeringSelection = { ...selection, [fieldKey]: newValue };
 
@@ -326,13 +387,28 @@ export function applyEngineeringChange(
     if (!state.options.some((o) => o.value === v)) {
       // illegal — keep previous selection for that field
       cleared[fieldKey as EngineeringFieldKey] = selection[fieldKey as EngineeringFieldKey] ?? null;
+      const rejected = evaluateEngineeringForm({
+        ...selection,
+        [fieldKey]: selection[fieldKey as EngineeringFieldKey] ?? null,
+      });
+      return {
+        ...rejected,
+        violations: [
+          ...rejected.violations,
+          {
+            field_key: String(fieldKey),
+            message: `Blocked: «${v}» is not a compliant option under SBC/NFPA/Civil Defense/company rules.`,
+            code_refs: state.code_refs,
+          },
+        ],
+      };
     }
   }
 
   return evaluateEngineeringForm(cleared);
 }
 
-/** AI-facing helper: only return valid recommendations from the rule engine. */
+/** Decision Engine view of allowed options / locked values (rules-bound only). */
 export function recommendFromRules(selection: EngineeringSelection): {
   recommendations: {
     field_key: string;
@@ -346,7 +422,7 @@ export function recommendFromRules(selection: EngineeringSelection): {
 } {
   const form = evaluateEngineeringForm(selection);
   return {
-    note: 'AI may only explain and recommend options already allowed by the Engineering Rules Engine. It must not invent densities, pump capacities, or tank sizes.',
+    note: 'Engineering Decision Engine: only rule-allowed options. Densities, pumps, and tanks are never invented.',
     recommendations: form.fields
       .filter((f) => f.visible)
       .map((f) => ({
@@ -354,7 +430,7 @@ export function recommendFromRules(selection: EngineeringSelection): {
         label_en: f.label_en,
         valid_options: f.locked ? [] : f.options,
         locked_value: f.locked ? f.value : null,
-        explanation: f.explanation,
+        explanation: f.decision_reason_en || f.explanation,
         code_refs: f.code_refs,
       })),
   };
