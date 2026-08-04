@@ -1,6 +1,12 @@
 'use client';
 
 import { useState } from 'react';
+import { extractBuildingPermitFromFile } from '@/lib/projects/building-permit-extract';
+import {
+  extractionToHydration,
+  hasUsefulPermitExtraction,
+  type BuildingPermitHydration,
+} from '@/lib/projects/building-permit-ocr';
 import { isDemoMode } from '@/lib/supabase';
 import { uploadQuotationDocument } from '@/lib/storage/quotation-documents';
 import {
@@ -15,6 +21,8 @@ type Props = {
   onChange: (next: QuotationDocumentsState) => void;
   clientId?: string | null;
   disabled?: boolean;
+  /** يُستدعى بعد استخراج بيانات رخصة البناء تلقائياً */
+  onPermitExtracted?: (fields: BuildingPermitHydration) => void;
 };
 
 const SLOTS: {
@@ -27,7 +35,7 @@ const SLOTS: {
     kind: 'building_permit',
     key: 'building_permit',
     required: true,
-    hint: 'إلزامي قبل إصدار أو طباعة عرض السعر',
+    hint: 'إلزامي — يُستخرج رقم وتاريخ الرخصة تلقائياً من الصورة/PDF',
   },
   {
     kind: 'owner_id',
@@ -43,11 +51,22 @@ const SLOTS: {
   },
 ];
 
-export default function QuotationDocumentsUpload({ value, onChange, clientId, disabled }: Props) {
+export default function QuotationDocumentsUpload({
+  value,
+  onChange,
+  clientId,
+  disabled,
+  onPermitExtracted,
+}: Props) {
   const [uploading, setUploading] = useState<QuotationDocumentKind | null>(null);
+  const [scanning, setScanning] = useState(false);
   const [hint, setHint] = useState<string | null>(null);
 
-  const setFile = async (files: FileList | null, kind: QuotationDocumentKind, key: keyof QuotationDocumentsState) => {
+  const setFile = async (
+    files: FileList | null,
+    kind: QuotationDocumentKind,
+    key: keyof QuotationDocumentsState
+  ) => {
     const file = files?.[0];
     if (!file) return;
     setUploading(kind);
@@ -55,6 +74,33 @@ export default function QuotationDocumentsUpload({ value, onChange, clientId, di
     try {
       const att = await uploadQuotationDocument(file, kind, { clientId });
       onChange({ ...value, [key]: att });
+
+      if (kind === 'building_permit') {
+        setScanning(true);
+        setHint('جاري استخراج بيانات الرخصة تلقائياً...');
+        try {
+          const extraction = await extractBuildingPermitFromFile(file, {
+            onProgress: (msg) => setHint(msg),
+          });
+          const hydration = extractionToHydration(extraction);
+          if (hasUsefulPermitExtraction(extraction)) {
+            onPermitExtracted?.(hydration);
+            setHint(
+              hydration.building_permit_number && hydration.building_permit_date
+                ? '✓ تم استخراج رقم وتاريخ الرخصة بنجاح'
+                : '✓ تم استخراج جزء من بيانات الرخصة — راجع الحقول'
+            );
+          } else {
+            setHint('تعذر استخراج رقم/تاريخ الرخصة من الملف — يمكنك التعبئة يدوياً');
+          }
+        } catch {
+          setHint('تم رفع الرخصة لكن فشل الاستخراج التلقائي — عبّئ الرقم والتاريخ يدوياً');
+        } finally {
+          setScanning(false);
+        }
+        return;
+      }
+
       if (isDemoMode) {
         setHint('وضع تجريبي — الملفات تُحفظ محلياً مع بيانات العميل');
       } else if (att.storagePath) {
@@ -81,15 +127,32 @@ export default function QuotationDocumentsUpload({ value, onChange, clientId, di
       </div>
 
       {hint ? (
-        <div className="rounded-lg border border-emerald-100 bg-emerald-50 px-3 py-2 text-xs text-emerald-900">
-          {hint}
+        <div
+          className={`rounded-lg border px-3 py-2 text-xs ${
+            scanning
+              ? 'border-sky-200 bg-sky-50 text-sky-900'
+              : hint.startsWith('✓')
+                ? 'border-emerald-100 bg-emerald-50 text-emerald-900'
+                : hint.includes('تعذر') || hint.includes('فشل')
+                  ? 'border-amber-200 bg-amber-50 text-amber-900'
+                  : 'border-emerald-100 bg-emerald-50 text-emerald-900'
+          }`}
+        >
+          {scanning ? (
+            <span className="inline-flex items-center gap-2">
+              <span className="inline-block h-3 w-3 animate-spin rounded-full border-2 border-sky-600 border-t-transparent" />
+              {hint}
+            </span>
+          ) : (
+            hint
+          )}
         </div>
       ) : null}
 
       <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
         {SLOTS.map((slot) => {
           const file = value[slot.key];
-          const busy = uploading === slot.kind;
+          const busy = uploading === slot.kind || (slot.kind === 'building_permit' && scanning);
           return (
             <div
               key={slot.kind}
@@ -116,12 +179,16 @@ export default function QuotationDocumentsUpload({ value, onChange, clientId, di
               </div>
 
               {file ? (
-                <FileRow file={file} onRemove={() => remove(slot.key)} disabled={disabled || Boolean(uploading)} />
+                <FileRow
+                  file={file}
+                  onRemove={() => remove(slot.key)}
+                  disabled={disabled || Boolean(uploading) || scanning}
+                />
               ) : (
                 <input
                   type="file"
                   accept=".pdf,.png,.jpg,.jpeg,.webp"
-                  disabled={disabled || Boolean(uploading)}
+                  disabled={disabled || Boolean(uploading) || scanning}
                   onChange={(e) => {
                     void setFile(e.target.files, slot.kind, slot.key);
                     e.target.value = '';
@@ -130,7 +197,7 @@ export default function QuotationDocumentsUpload({ value, onChange, clientId, di
                 />
               )}
 
-              {busy ? <p className="text-[11px] text-gray-500">جاري الرفع...</p> : null}
+              {busy ? <p className="text-[11px] text-gray-500">جاري الرفع/الاستخراج...</p> : null}
             </div>
           );
         })}

@@ -12,7 +12,7 @@ export type BuildingPermitExtraction = {
   city: string | null;
   locationSummary: string | null;
   rawTextPreview?: string;
-  source: 'vision' | 'pdf_text' | 'regex' | 'filename' | 'none';
+  source: 'vision' | 'pdf_text' | 'regex' | 'filename' | 'tesseract' | 'none';
   confidence: 'high' | 'medium' | 'low';
 };
 
@@ -52,7 +52,10 @@ function pickLabeledValue(text: string, labels: RegExp[]): string | null {
 /** Convert common Gregorian date strings to YYYY-MM-DD when possible */
 export function toIsoDate(value: string | null | undefined): string | null {
   if (!value) return null;
-  const v = normalizeArabicDigits(value).trim();
+  const v = normalizeArabicDigits(value)
+    .replace(/[^\d\/\-.]/g, ' ')
+    .trim()
+    .split(/\s+/)[0];
   const iso = v.match(/^(\d{4})[\/\-.](\d{1,2})[\/\-.](\d{1,2})$/);
   if (iso) {
     const y = Number(iso[1]);
@@ -63,7 +66,9 @@ export function toIsoDate(value: string | null | undefined): string | null {
   const dmy = v.match(/^(\d{1,2})[\/\-.](\d{1,2})[\/\-.](\d{4})$/);
   if (dmy) {
     const y = Number(dmy[3]);
-    if (y >= 1900 && y <= 2100) {
+    const day = Number(dmy[1]);
+    const month = Number(dmy[2]);
+    if (y >= 1900 && y <= 2100 && month >= 1 && month <= 12 && day >= 1 && day <= 31) {
       return `${dmy[3]}-${dmy[2].padStart(2, '0')}-${dmy[1].padStart(2, '0')}`;
     }
   }
@@ -108,8 +113,14 @@ function extractDates(text: string): { gregorian: string | null; hijri: string |
     else if (!gregorian) gregorian = toIsoDate(labeledGeneric) || labeledGeneric;
   }
 
-  const allDates = normalized.match(/\b(\d{4})[\/\-.](\d{1,2})[\/\-.](\d{1,2})\b/g) || [];
-  for (const d of allDates) {
+  const ymdDates = normalized.match(/\b(\d{4})[\/\-.](\d{1,2})[\/\-.](\d{1,2})\b/g) || [];
+  for (const d of ymdDates) {
+    if (looksHijri(d) && !hijri) hijri = d;
+    else if (!looksHijri(d) && !gregorian) gregorian = toIsoDate(d);
+  }
+
+  const dmyDates = normalized.match(/\b(\d{1,2})[\/\-.](\d{1,2})[\/\-.](\d{4})\b/g) || [];
+  for (const d of dmyDates) {
     if (looksHijri(d) && !hijri) hijri = d;
     else if (!looksHijri(d) && !gregorian) gregorian = toIsoDate(d);
   }
@@ -117,28 +128,47 @@ function extractDates(text: string): { gregorian: string | null; hijri: string |
   return { gregorian, hijri };
 }
 
+function collapseOcrDigitGaps(text: string): string {
+  // OCR often splits digits: "1 4 7 0 0 1 2 3" → "14700123"
+  return normalizeArabicDigits(text).replace(/(\d)\s+(?=\d)/g, '$1');
+}
+
 function extractPermitNumber(text: string): string | null {
-  const labeled = pickLabeledValue(text, [
+  const normalized = collapseOcrDigitGaps(text);
+  const labeled = pickLabeledValue(normalized, [
     /رقم\s*رخصة\s*البناء/,
     /رقم\s*الرخصة/,
+    /رخصة\s*رقم/,
     /رخصة\s*البناء\s*رقم/,
     /Building\s*Permit\s*(?:No|Number|#)?/i,
     /Permit\s*(?:No|Number|#)/i,
   ]);
   if (labeled) {
-    const num = normalizeArabicDigits(labeled).match(/[A-Za-z0-9][A-Za-z0-9\-\/]{3,}/);
-    return num ? num[0] : cleanLabelValue(labeled);
+    const cleaned = collapseOcrDigitGaps(labeled);
+    const num =
+      cleaned.match(/\d{6,}/)?.[0] ||
+      cleaned.match(/[A-Za-z0-9][A-Za-z0-9\-\/]{3,}/)?.[0];
+    return num || cleanLabelValue(labeled);
+  }
+
+  // Value on the line after the label (common OCR layout)
+  const afterLabel = normalized.match(
+    /(?:رقم\s*رخصة\s*البناء|رقم\s*الرخصة|رخصة\s*رقم)\s*[:：]?\s*\n+\s*([A-Za-z0-9][A-Za-z0-9\-\/ ]{3,})/imu
+  );
+  if (afterLabel?.[1]) {
+    const num = collapseOcrDigitGaps(afterLabel[1]).match(/\d{6,}|[A-Za-z0-9][A-Za-z0-9\-\/]{3,}/);
+    if (num) return num[0];
   }
 
   const patterns = [
     /(?:رقم\s*رخصة\s*البناء|رقم\s*الرخصة)\s*[:：]?\s*([A-Za-z0-9][A-Za-z0-9\-\/]{3,})/u,
     /\b(\d{4,5}\/\d{2,4})\b/,
+    /\b(14\d{8,12})\b/,
     /\b([A-Z]{1,4}\-\d{4,})\b/,
   ];
-  const normalized = normalizeArabicDigits(text);
   for (const re of patterns) {
     const m = normalized.match(re);
-    if (m?.[1]) return m[1];
+    if (m?.[1]) return collapseOcrDigitGaps(m[1]);
   }
   return null;
 }

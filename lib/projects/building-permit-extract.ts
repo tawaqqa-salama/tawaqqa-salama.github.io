@@ -1,7 +1,7 @@
 /**
  * Client/server helper: extract building permit fields from an uploaded file.
- * Prefers /api/ocr/building-permit (Vision when OPENAI_API_KEY is set),
- * falls back to local PDF text + regex parsing.
+ * Order: PDF text → client Tesseract (images) → Vision API (when available) → filename.
+ * Tesseract path works on static GitHub Pages without API routes.
  */
 
 import {
@@ -12,6 +12,10 @@ import {
   parsePermitFromFilename,
   type BuildingPermitExtraction,
 } from '@/lib/projects/building-permit-ocr';
+import {
+  canRunClientOcr,
+  extractBuildingPermitWithTesseract,
+} from '@/lib/projects/building-permit-tesseract';
 
 async function fileToBase64(file: File): Promise<string> {
   const buf = new Uint8Array(await file.arrayBuffer());
@@ -30,15 +34,32 @@ async function extractLocally(file: File): Promise<BuildingPermitExtraction> {
   return parsePermitFromFilename(file.name);
 }
 
-export async function extractBuildingPermitFromFile(file: File): Promise<BuildingPermitExtraction> {
-  // Always try local PDF/text first (fast, offline)
+export type ExtractPermitOptions = {
+  onProgress?: (message: string) => void;
+};
+
+export async function extractBuildingPermitFromFile(
+  file: File,
+  options?: ExtractPermitOptions
+): Promise<BuildingPermitExtraction> {
+  const onProgress = options?.onProgress;
+
+  // 1) PDF/text layer (fast)
+  onProgress?.('جاري قراءة ملف الرخصة...');
   const local = await extractLocally(file);
   if (hasUsefulPermitExtraction(local) && local.source !== 'filename') {
     return local;
   }
 
-  // Images / scanned PDFs → Vision API route when available
+  // 2) Client-side OCR for images (works on GitHub Pages)
+  if (canRunClientOcr(file)) {
+    const ocr = await extractBuildingPermitWithTesseract(file, onProgress);
+    if (hasUsefulPermitExtraction(ocr)) return ocr;
+  }
+
+  // 3) Optional Vision API when Node API is available (not on static Pages)
   try {
+    onProgress?.('جاري محاولة الاستخراج عبر الخادم...');
     const base64 = await fileToBase64(file);
     const res = await fetch('/api/ocr/building-permit', {
       method: 'POST',
@@ -61,7 +82,7 @@ export async function extractBuildingPermitFromFile(file: File): Promise<Buildin
       if (json.ok && json.result) return json.result;
     }
   } catch {
-    // fall through to local result
+    // static export / offline — ignore
   }
 
   return hasUsefulPermitExtraction(local) ? local : emptyExtraction(local.source);

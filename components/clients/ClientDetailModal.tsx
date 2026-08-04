@@ -70,6 +70,7 @@ import {
   normalizeQuotationDocuments,
   validateQuotationDocumentsForIssue,
 } from '@/lib/business/quotation-documents';
+import type { BuildingPermitHydration } from '@/lib/projects/building-permit-ocr';
 import type { ClientRecord, DepartmentMode, FloorLevel, InspectionChecklistItem } from '@/lib/types/client';
 import type { QuotationDocumentsState } from '@/lib/types/quotation-documents';
 import type { TaxInvoice } from '@/lib/types/tax-invoice';
@@ -917,6 +918,60 @@ export default function ClientDetailModal({
                         return;
                       }
                       setErrorMessage(null);
+                      onUpdated();
+                    });
+                  }}
+                  onPermitExtracted={(fields: BuildingPermitHydration) => {
+                    if (fields.owner_name) setOwnerName(fields.owner_name);
+                    if (fields.district) setDistrict(fields.district);
+                    if (fields.city) setCity(fields.city);
+
+                    const eng = parseProjectEngineeringData(client.project_engineering_data);
+                    const building_plan = {
+                      ...eng.building_plan,
+                      building_permit_number:
+                        fields.building_permit_number || eng.building_plan.building_permit_number,
+                      building_permit_date:
+                        fields.building_permit_date || eng.building_plan.building_permit_date,
+                      building_permit_date_hijri:
+                        fields.building_permit_date_hijri ||
+                        eng.building_plan.building_permit_date_hijri,
+                      report_date: fields.report_date || eng.building_plan.report_date,
+                      building_permit_ocr_status: 'success' as const,
+                      building_permit_ocr_message: '✓ تم استخراج رقم وتاريخ الرخصة بنجاح',
+                    };
+                    const technical_report = {
+                      ...eng.technical_report,
+                      building_permit_number:
+                        fields.building_permit_number || eng.technical_report.building_permit_number,
+                      building_permit_date:
+                        fields.building_permit_date || eng.technical_report.building_permit_date,
+                    };
+
+                    const payload: Record<string, unknown> = {
+                      project_engineering_data: { ...eng, building_plan, technical_report },
+                    };
+                    if (fields.owner_name) payload.owner_name = fields.owner_name;
+                    if (fields.district) payload.district = fields.district;
+                    if (fields.city) payload.city = fields.city;
+
+                    void updateClientSafe(client.id, payload).then((result) => {
+                      if (result.error) {
+                        setErrorMessage(result.error);
+                        return;
+                      }
+                      setSuccessMessage(
+                        [
+                          fields.building_permit_number
+                            ? `رقم الرخصة: ${fields.building_permit_number}`
+                            : null,
+                          fields.building_permit_date
+                            ? `التاريخ: ${fields.building_permit_date}`
+                            : null,
+                        ]
+                          .filter(Boolean)
+                          .join(' · ') || 'تم استخراج بيانات الرخصة'
+                      );
                       onUpdated();
                     });
                   }}
