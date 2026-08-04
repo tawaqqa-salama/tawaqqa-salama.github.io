@@ -47,4 +47,17 @@ describe('building permit OCR parser', () => {
     const result = parseBuildingPermitText('رقم الرخصة: ٤٣٠١٢٣٤٥');
     expect(result.permitNumber).toBe('43012345');
   });
+
+  it('parses DD-MM-YYYY gregorian dates and OCR-spaced digits', () => {
+    const result = parseBuildingPermitText(`
+رقم رخصة البناء
+1 4 7 0 0 1 2 3 4 5
+تاريخ الرخصة الميلادي: 13-01-2024
+اسم المالك: خالد العتيبي
+الحي: الياسمين
+`);
+    expect(result.permitNumber).toBe('1470012345');
+    expect(toIsoDate(result.permitDateGregorian)).toBe('2024-01-13');
+    expect(result.ownerName).toContain('خالد');
+  });
 });

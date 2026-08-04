@@ -32,7 +32,9 @@ export default function BuildingPermitOcrUpload({
   onClientHydrate,
 }: Props) {
   const [scanning, setScanning] = useState(false);
+  const [progress, setProgress] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [lastFile, setLastFile] = useState<File | null>(null);
 
   const applyExtraction = (
     fileMeta: PlanAttachmentFile,
@@ -41,8 +43,13 @@ export default function BuildingPermitOcrUpload({
     const hydration = extractionToHydration(extraction);
     const useful = hasUsefulPermitExtraction(extraction);
     const successMsg = useful
-      ? '✓ تم استخراج رقم وتاريخ الرخصة بنجاح'
-      : 'تعذر استخراج رقم/تاريخ الرخصة — يمكنك التعبئة يدوياً';
+      ? hydration.building_permit_number &&
+        (hydration.building_permit_date || hydration.building_permit_date_hijri)
+        ? '✓ تم استخراج رقم وتاريخ الرخصة بنجاح'
+        : hydration.building_permit_number
+          ? '✓ تم استخراج رقم الرخصة — راجع التاريخ يدوياً إن لزم'
+          : '✓ تم استخراج تاريخ الرخصة — راجع الرقم يدوياً إن لزم'
+      : 'تعذر استخراج رقم/تاريخ الرخصة من الصورة — جرّب صورة أوضح أو عبّئ يدوياً';
 
     onReportPatch({
       building_permit_file: fileMeta,
@@ -66,21 +73,30 @@ export default function BuildingPermitOcrUpload({
     if (Object.keys(clientPatch).length) onClientHydrate?.(clientPatch);
   };
 
-  const onUpload = async (files: FileList | null) => {
-    const file = files?.[0];
-    if (!file) return;
-
+  const runExtract = async (file: File, uploaded?: PlanAttachmentFile) => {
     setError(null);
     setScanning(true);
+    setProgress('جاري استخراج بيانات الرخصة تلقائياً...');
     onReportPatch({
       building_permit_ocr_status: 'scanning',
       building_permit_ocr_message: 'جاري استخراج بيانات الرخصة تلقائياً...',
     });
 
     try {
-      const uploaded = await uploadPlanAttachment(file, 'building_permit', { clientId });
-      const extraction = await extractBuildingPermitFromFile(file);
-      applyExtraction(uploaded, extraction);
+      const fileMeta =
+        uploaded ||
+        report.building_permit_file ||
+        (await uploadPlanAttachment(file, 'building_permit', { clientId }));
+      const extraction = await extractBuildingPermitFromFile(file, {
+        onProgress: (msg) => {
+          setProgress(msg);
+          onReportPatch({
+            building_permit_ocr_status: 'scanning',
+            building_permit_ocr_message: msg,
+          });
+        },
+      });
+      applyExtraction(fileMeta, extraction);
     } catch (e) {
       const msg = e instanceof Error ? e.message : 'فشل رفع أو استخراج الرخصة';
       setError(msg);
@@ -90,10 +106,31 @@ export default function BuildingPermitOcrUpload({
       });
     } finally {
       setScanning(false);
+      setProgress(null);
+    }
+  };
+
+  const onUpload = async (files: FileList | null) => {
+    const file = files?.[0];
+    if (!file) return;
+    setLastFile(file);
+    setScanning(true);
+    try {
+      const uploaded = await uploadPlanAttachment(file, 'building_permit', { clientId });
+      await runExtract(file, uploaded);
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : 'فشل رفع الرخصة';
+      setError(msg);
+      onReportPatch({
+        building_permit_ocr_status: 'failed',
+        building_permit_ocr_message: msg,
+      });
+      setScanning(false);
     }
   };
 
   const clearFile = () => {
+    setLastFile(null);
     onReportPatch({
       building_permit_file: null,
       building_permit_ocr_status: 'idle',
@@ -109,7 +146,7 @@ export default function BuildingPermitOcrUpload({
       <div>
         <p className="text-sm font-bold text-gray-900">إرفاق رخصة البناء (استخراج تلقائي)</p>
         <p className="text-[11px] text-gray-500 mt-0.5">
-          ارفع PDF أو صورة (PNG/JPG) — يُستخرج رقم الرخصة، التاريخ، المالك، والموقع تلقائياً
+          ارفع PDF أو صورة واضحة (PNG/JPG) — يُستخرج رقم الرخصة والتاريخ والمالك والموقع داخل المتصفح
         </p>
       </div>
 
@@ -121,14 +158,26 @@ export default function BuildingPermitOcrUpload({
               · {(report.building_permit_file.sizeBytes / 1024).toFixed(0)} KB
             </span>
           </span>
-          <button
-            type="button"
-            disabled={disabled || scanning}
-            onClick={clearFile}
-            className="text-rose-600 disabled:opacity-50"
-          >
-            حذف
-          </button>
+          <div className="flex items-center gap-2 shrink-0">
+            {lastFile ? (
+              <button
+                type="button"
+                disabled={disabled || scanning}
+                onClick={() => void runExtract(lastFile)}
+                className="text-sky-700 disabled:opacity-50"
+              >
+                إعادة الاستخراج
+              </button>
+            ) : null}
+            <button
+              type="button"
+              disabled={disabled || scanning}
+              onClick={clearFile}
+              className="text-rose-600 disabled:opacity-50"
+            >
+              حذف
+            </button>
+          </div>
         </div>
       ) : (
         <input
@@ -146,7 +195,7 @@ export default function BuildingPermitOcrUpload({
       {scanning || status === 'scanning' ? (
         <div className="flex items-center gap-2 rounded-lg border border-sky-200 bg-sky-50 px-3 py-2 text-xs text-sky-900">
           <span className="inline-block h-3.5 w-3.5 animate-spin rounded-full border-2 border-sky-600 border-t-transparent" />
-          جاري استخراج بيانات الرخصة تلقائياً...
+          {progress || 'جاري استخراج بيانات الرخصة تلقائياً...'}
         </div>
       ) : null}
 
@@ -168,8 +217,11 @@ export default function BuildingPermitOcrUpload({
         </div>
       ) : null}
 
-      {(report.building_permit_date_hijri || report.building_permit_date) && status === 'success' ? (
+      {(report.building_permit_date_hijri || report.building_permit_date) &&
+      (status === 'success' || status === 'partial') ? (
         <p className="text-[11px] text-gray-500">
+          {report.building_permit_number ? `الرقم: ${report.building_permit_number}` : null}
+          {report.building_permit_number && report.building_permit_date ? ' · ' : null}
           {report.building_permit_date ? `ميلادي: ${report.building_permit_date}` : null}
           {report.building_permit_date && report.building_permit_date_hijri ? ' · ' : null}
           {report.building_permit_date_hijri ? `هجري: ${report.building_permit_date_hijri}` : null}
