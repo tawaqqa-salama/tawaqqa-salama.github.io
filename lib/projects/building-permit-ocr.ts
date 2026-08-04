@@ -177,7 +177,12 @@ function extractDates(text: string): { gregorian: string | null; hijri: string |
 
 function collapseOcrDigitGaps(text: string): string {
   // OCR often splits digits: "1 4 7 0 0 1 2 3" → "14700123"
-  return normalizeArabicDigits(text).replace(/(\d)\s+(?=\d)/g, '$1');
+  // Only collapse runs of *single* digits separated by spaces — never join
+  // multi-digit values across newlines (e.g. 4100097644\n9).
+  return normalizeArabicDigits(text).replace(
+    /(?:(?<=\D)|^)(?:\d(?:\s+\d)+)(?=\D|$)/g,
+    (m) => m.replace(/\s+/g, '')
+  );
 }
 
 function extractPermitNumber(text: string): string | null {

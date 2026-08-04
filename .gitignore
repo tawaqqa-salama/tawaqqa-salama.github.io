@@ -42,3 +42,4 @@ yarn-error.log*
 next-env.d.ts
 
 safety-system/node_modules/
+*.traineddata

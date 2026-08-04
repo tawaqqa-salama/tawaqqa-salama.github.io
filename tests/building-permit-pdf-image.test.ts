@@ -8,9 +8,9 @@ const SAMPLE =
 
 describe('scanned Balady PDF → image extract', () => {
   it('extracts embedded JPEG from Flate+DCTDecode permit PDF', async () => {
-    let bytes: Buffer;
+    let bytes: Uint8Array;
     try {
-      bytes = readFileSync(SAMPLE);
+      bytes = new Uint8Array(readFileSync(SAMPLE));
     } catch {
       // Sample only present in cloud agent upload workspace
       expect(true).toBe(true);
@@ -26,9 +26,9 @@ describe('scanned Balady PDF → image extract', () => {
   it('parser accepts OCR text from this permit', () => {
     const result = parseBuildingPermitText(
       `
+9إجمادي
 رقم الرخصة
 4100097644
-9إجمادي
 التاريخ
 الأول/1442
 اسم صاحب الرخصة
@@ -40,6 +40,7 @@ describe('scanned Balady PDF → image extract', () => {
       'tesseract'
     );
     expect(result.permitNumber).toBe('4100097644');
+    expect(result.permitDateHijri).toMatch(/1442/);
     expect(hasUsefulPermitExtraction(result)).toBe(true);
   });
 });
