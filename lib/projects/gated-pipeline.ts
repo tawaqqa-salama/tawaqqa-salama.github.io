@@ -22,6 +22,10 @@ import {
   seedSupervisionReport,
 } from '@/lib/projects/supervision-report';
 import type { CompanyProfile } from '@/lib/company-profile';
+import {
+  completionAttachmentBlockers,
+  hasAllRequiredCompletionAttachments,
+} from '@/lib/projects/completion-attachments';
 
 export const WORKFLOW_STAGE_IDS = [
   'contract',
@@ -188,7 +192,10 @@ export function isStageApproved(
     case 'final_report':
       return isApprovedStatus(data.final_inspection.status);
     case 'completion':
-      return isApprovedStatus(data.completion_certificate.status);
+      return (
+        isApprovedStatus(data.completion_certificate.status) &&
+        hasAllRequiredCompletionAttachments(client, data)
+      );
     default:
       return false;
   }
@@ -277,6 +284,10 @@ export function stageApprovalBlockers(
       if (openCritical.length) {
         blockers.push(`يوجد ${openCritical.length} ملاحظة حرجة غير محلولة`);
       }
+      break;
+    }
+    case 'completion': {
+      blockers.push(...completionAttachmentBlockers(client, data));
       break;
     }
     default:

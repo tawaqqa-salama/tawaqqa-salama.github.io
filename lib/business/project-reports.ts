@@ -5,11 +5,13 @@ import {
   EMPTY_TECHNICAL_REPORT,
   EMPTY_SAFETY_BLUEPRINTS,
   EMPTY_PLAN_ATTACHMENTS,
+  EMPTY_COMPLETION_ATTACHMENTS,
   EMPTY_CONTRACT_ONBOARDING,
   EMPTY_SUPERVISION_REPORT,
   type FieldVisitReport,
   type ProjectEngineeringData,
 } from '@/lib/types/project-reports';
+import { normalizeCompletionAttachments } from '@/lib/projects/completion-attachments';
 import {
   applyPipelineInheritance,
   workflowProgressPercent,
@@ -95,6 +97,9 @@ export function parseProjectEngineeringData(raw: ClientRecord['project_engineeri
       observations: data.final_inspection?.observations || [],
     },
     completion_certificate: { ...EMPTY_PROJECT_ENGINEERING_DATA.completion_certificate, ...data.completion_certificate },
+    completion_attachments: normalizeCompletionAttachments(
+      data.completion_attachments ?? EMPTY_COMPLETION_ATTACHMENTS
+    ),
     supervision_report: {
       ...EMPTY_SUPERVISION_REPORT,
       ...data.supervision_report,

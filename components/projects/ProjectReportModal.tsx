@@ -738,6 +738,9 @@ export default function ProjectReportModal({ client, onClose, onUpdated }: Proje
                   company={company}
                   saving={saving}
                   onChange={(completion_certificate) => patch({ completion_certificate })}
+                  onAttachmentsChange={(completion_attachments) =>
+                    patch({ completion_attachments })
+                  }
                   onSave={(opts) => save(data, 'تم حفظ الشهادة.', { ...opts, stayOpen: true })}
                   onSaveAndPrint={async (cert) => {
                     const nextData = { ...data, completion_certificate: cert };
@@ -755,7 +758,17 @@ export default function ProjectReportModal({ client, onClose, onUpdated }: Proje
 
               <div className="sticky bottom-0 bg-white/95 border-t pt-3 mt-6 space-y-2">
                 {blockers.length ? (
-                  <p className="text-xs text-amber-800">لاعتماد المرحلة: {blockers.join(' · ')}</p>
+                  activeStage === 'completion' ? (
+                    <div className="space-y-1">
+                      {blockers.map((b) => (
+                        <p key={b} className="text-xs text-amber-800">
+                          ⚠️ {b}
+                        </p>
+                      ))}
+                    </div>
+                  ) : (
+                    <p className="text-xs text-amber-800">لاعتماد المرحلة: {blockers.join(' · ')}</p>
+                  )
                 ) : (
                   <p className="text-xs text-emerald-800">المرحلة جاهزة للاعتماد والانتقال.</p>
                 )}
