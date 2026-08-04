@@ -26,6 +26,15 @@ export type YesNoValue = 'نعم' | 'لا' | '';
 export interface BuildingPlanReport extends ReportMeta {
   report_date?: string;
   building_permit_number?: string;
+  /** تاريخ رخصة البناء (ميلادي YYYY-MM-DD عند الإمكان) */
+  building_permit_date?: string;
+  /** تاريخ رخصة البناء الهجري كما استُخرج من الوثيقة */
+  building_permit_date_hijri?: string;
+  /** ملف رخصة البناء المرفق في مرحلة المخطط */
+  building_permit_file?: PlanAttachmentFile | null;
+  /** ملخص آخر استخراج OCR للرخصة */
+  building_permit_ocr_status?: 'idle' | 'scanning' | 'success' | 'partial' | 'failed' | null;
+  building_permit_ocr_message?: string | null;
 
   occupancy_classification?: string;
   building_type_code?: string;
@@ -480,7 +489,7 @@ export type PlanAttachmentFile = {
   storagePath?: string | null;
   storageBucket?: string | null;
   uploadedAt: string;
-  kind: 'engineering_drawing' | 'hydraulic_calculation';
+  kind: 'engineering_drawing' | 'hydraulic_calculation' | 'building_permit';
 };
 
 export type PlanAttachmentsState = {

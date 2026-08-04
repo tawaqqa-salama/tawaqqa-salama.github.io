@@ -1,6 +1,9 @@
 'use client';
 
 import { useMemo } from 'react';
+import BuildingPermitOcrUpload, {
+  type PermitClientHydration,
+} from '@/components/projects/BuildingPermitOcrUpload';
 import { getBuildingPlanGeneralInfo } from '@/lib/projects/building-plan';
 import { printBuildingPlanReport, exportBuildingPlanReport } from '@/components/projects/BuildingPlanPrint';
 import {
@@ -19,6 +22,7 @@ interface BuildingPlanReportSectionProps {
   saving: boolean;
   onChange: (report: BuildingPlanReport) => void;
   onSave: (report: BuildingPlanReport, message: string) => void;
+  onClientHydrate?: (fields: PermitClientHydration) => void;
 }
 
 const YES_NO_OPTIONS: { value: YesNoValue; label: string }[] = [
@@ -35,6 +39,7 @@ export default function BuildingPlanReportSection({
   saving,
   onChange,
   onSave,
+  onClientHydrate,
 }: BuildingPlanReportSectionProps) {
   const general = getBuildingPlanGeneralInfo(client);
 
@@ -94,16 +99,38 @@ export default function BuildingPlanReportSection({
         </div>
       </section>
 
+      {/* Building permit upload + OCR auto-fill */}
+      <BuildingPermitOcrUpload
+        clientId={client.id}
+        report={report}
+        disabled={saving}
+        onReportPatch={patch}
+        onClientHydrate={onClientHydrate}
+      />
+
       {/* Engineer report header */}
-      <section className="grid grid-cols-1 md:grid-cols-3 gap-3">
+      <section className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-3">
         <EditableField label="تاريخ التقرير" type="date" value={report.report_date || ''} onChange={(v) => patch({ report_date: v })} />
         <EditableField label="رخصة البناء" value={report.building_permit_number || ''} onChange={(v) => patch({ building_permit_number: v })} />
+        <EditableField
+          label="تاريخ الرخصة"
+          type="date"
+          value={report.building_permit_date || ''}
+          onChange={(v) => patch({ building_permit_date: v })}
+        />
         <div>
           <label className="block text-xs font-semibold mb-1">حالة التقرير</label>
           <select value={report.status} onChange={(e) => patch({ status: e.target.value as BuildingPlanReport['status'] })} className="w-full p-2.5 border rounded-xl text-sm bg-white">
             {REPORT_STATUSES.map((s) => <option key={s} value={s}>{s}</option>)}
           </select>
         </div>
+        {report.building_permit_date_hijri ? (
+          <EditableField
+            label="تاريخ الرخصة (هجري)"
+            value={report.building_permit_date_hijri || ''}
+            onChange={(v) => patch({ building_permit_date_hijri: v })}
+          />
+        ) : null}
       </section>
 
       {/* Engineering checklist */}
