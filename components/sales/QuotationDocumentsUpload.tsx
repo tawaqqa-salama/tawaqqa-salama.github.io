@@ -89,6 +89,9 @@ export default function QuotationDocumentsUpload({
               const extracted = [
                 hydration.building_permit_number ? 'رقم الرخصة' : null,
                 hydration.owner_name ? 'المالك' : null,
+                hydration.activity_type ? 'النشاط' : null,
+                hydration.floors_count != null ? `الأدوار (${hydration.floors_count})` : null,
+                hydration.building_area ? `مساحة البناء ${hydration.building_area} م²` : null,
                 hydration.district ? 'الحي' : null,
                 hydration.street ? 'الشارع' : null,
                 hydration.plot_number ? 'القطعة' : null,
