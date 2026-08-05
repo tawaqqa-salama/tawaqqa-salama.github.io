@@ -199,8 +199,8 @@ export default function TechnicalReportSection({
               <SelectField label="حالة المبنى" value={report.building_status || ''} onChange={(v) => patch({ building_status: v })} options={BUILDING_STATUS_OPTIONS} />
               <Field label="رقم الصك" value={report.deed_number || ''} onChange={(v) => patch({ deed_number: v })} />
               <Field label="تاريخ الصك" value={report.deed_date || ''} onChange={(v) => patch({ deed_date: v })} />
-              <Field label="رقم رخصة البناء" value={report.building_permit_number || ''} onChange={(v) => patch({ building_permit_number: v })} />
-              <Field label="تاريخ رخصة البناء" value={report.building_permit_date || ''} onChange={(v) => patch({ building_permit_date: v })} />
+              <ReadOnly label="رقم رخصة البناء (من المبيعات)" value={report.building_permit_number || '—'} />
+              <ReadOnly label="تاريخ رخصة البناء (من المبيعات)" value={report.building_permit_date || '—'} />
               <Field label="مهندس السلامة" value={report.safety_engineer_name || ''} onChange={(v) => patch({ safety_engineer_name: v })} />
               <Field label="المدير التنفيذي" value={report.executive_director_name || ''} onChange={(v) => patch({ executive_director_name: v })} />
             </div>
