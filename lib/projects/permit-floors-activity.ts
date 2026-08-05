@@ -117,10 +117,13 @@ export function resolveFloorLevelsFromPermit(input: {
   floorsCount?: number | null;
   buildingAreaM2?: number | null;
 }): FloorLevel[] {
-  const explicit = permitFloorsToFloorLevels(input.floors || []);
+  const count = Math.max(0, Math.floor(Number(input.floorsCount) || 0));
+  let explicit = permitFloorsToFloorLevels(input.floors || []);
+  if (count > 0 && explicit.length > count) {
+    explicit = explicit.slice(0, count);
+  }
   if (explicit.length > 0) return explicit;
 
-  const count = Math.max(0, Math.floor(Number(input.floorsCount) || 0));
   const area = Math.max(0, Number(input.buildingAreaM2) || 0);
   if (count > 0) return buildDefaultFloorLevels(count, area || null);
   if (area > 0) return buildDefaultFloorLevels(1, area);
