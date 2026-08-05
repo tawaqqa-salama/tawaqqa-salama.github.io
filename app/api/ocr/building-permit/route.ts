@@ -5,6 +5,11 @@ import {
   parseBuildingPermitText,
   type BuildingPermitExtraction,
 } from '@/lib/projects/building-permit-ocr';
+import {
+  classifyFloorName,
+  mapPermitUsageToActivityType,
+  type PermitFloorRow,
+} from '@/lib/projects/permit-floors-activity';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -16,7 +21,7 @@ type Body = {
   localText?: string;
 };
 
-const VISION_PROMPT = `You are extracting fields from a Saudi Arabian building permit (رخصة بناء).
+const VISION_PROMPT = `You are extracting fields from a Saudi Arabian building permit (رخصة بناء / بلدي).
 Return ONLY valid JSON with these keys:
 {
   "permitNumber": string|null,
@@ -31,16 +36,52 @@ Return ONLY valid JSON with these keys:
   "commercialRegister": string|null,
   "phone": string|null,
   "landAreaM2": string|null,
+  "buildingAreaM2": string|null,
+  "floorsCount": number|null,
+  "usageLabel": string|null,
+  "floors": [{"label": string, "area_m2": number}]|null,
   "nationalAddress": string|null,
   "locationSummary": string|null,
   "rawTextPreview": string|null
 }
+usageLabel = الاستعمال / الاستخدام (e.g. رخصة بناء مبنى تجاري, صناعي, سكني).
+floors = rows from محتويات المبنى / تفصيل الأدوار with Arabic floor names (أرضي، أول، ثاني، بدروم، سطح) and area in m².
+floorsCount = عدد الأدوار. buildingAreaM2 = إجمالي مساحة البناء when present.
 Use Gregorian dates as YYYY-MM-DD when possible. Keep Arabic names as written.`;
 
 function strOrNull(value: unknown): string | null {
   if (typeof value !== 'string') return null;
   const trimmed = value.trim();
   return trimmed || null;
+}
+
+function numOrNull(value: unknown): number | null {
+  if (typeof value === 'number' && Number.isFinite(value)) return value;
+  if (typeof value === 'string' && value.trim()) {
+    const n = Number(value.replace(/,/g, ''));
+    return Number.isFinite(n) ? n : null;
+  }
+  return null;
+}
+
+function floorsFromVision(value: unknown): PermitFloorRow[] | null {
+  if (!Array.isArray(value)) return null;
+  const rows: PermitFloorRow[] = [];
+  for (const item of value) {
+    if (!item || typeof item !== 'object') continue;
+    const raw = item as Record<string, unknown>;
+    const label = strOrNull(raw.label) || strOrNull(raw.name) || strOrNull(raw.floor);
+    const area = numOrNull(raw.area_m2 ?? raw.area ?? raw.buildingAreaM2);
+    if (!label || area == null || area <= 0) continue;
+    const classified = classifyFloorName(label) || { kind: 'custom' as const, label };
+    rows.push({
+      label: classified.label,
+      kind: classified.kind,
+      area_m2: area,
+      repeat_count: Math.max(1, Math.floor(numOrNull(raw.repeat_count) || 1)),
+    });
+  }
+  return rows.length > 0 ? rows : null;
 }
 
 function mergeVisionJson(raw: string): BuildingPermitExtraction {
@@ -55,6 +96,15 @@ function mergeVisionJson(raw: string): BuildingPermitExtraction {
       String(data.rawTextPreview || raw),
       'vision'
     );
+    const usageLabel =
+      strOrNull(data.usageLabel) || strOrNull(data.usage) || fromText.usageLabel;
+    const visionFloors = floorsFromVision(data.floors);
+    const floorsCount =
+      numOrNull(data.floorsCount) ??
+      (visionFloors
+        ? visionFloors.reduce((s, f) => s + f.repeat_count, 0)
+        : null) ??
+      fromText.floorsCount;
     const overlay: Partial<BuildingPermitExtraction> = {
       permitNumber: strOrNull(data.permitNumber),
       permitDateGregorian: strOrNull(data.permitDateGregorian),
@@ -68,6 +118,13 @@ function mergeVisionJson(raw: string): BuildingPermitExtraction {
       commercialRegister: strOrNull(data.commercialRegister),
       phone: strOrNull(data.phone),
       landAreaM2: strOrNull(data.landAreaM2),
+      buildingAreaM2: strOrNull(data.buildingAreaM2),
+      floorsCount,
+      usageLabel,
+      activityType:
+        mapPermitUsageToActivityType(usageLabel, String(data.rawTextPreview || '')) ||
+        fromText.activityType,
+      floors: visionFloors || fromText.floors,
       nationalAddress: strOrNull(data.nationalAddress),
       locationSummary: strOrNull(data.locationSummary),
       rawTextPreview: strOrNull(data.rawTextPreview) || raw.slice(0, 1200),
@@ -85,6 +142,8 @@ function mergeVisionJson(raw: string): BuildingPermitExtraction {
       merged.ownerName,
       merged.district || merged.city,
       merged.street,
+      merged.floorsCount,
+      merged.activityType,
     ].filter(Boolean).length;
     merged.confidence = hits >= 3 ? 'high' : hits >= 2 ? 'medium' : 'low';
     return merged;

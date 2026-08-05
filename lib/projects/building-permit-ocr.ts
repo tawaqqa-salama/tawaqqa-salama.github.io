@@ -3,6 +3,14 @@
  * Uses local PDF text sniffing / regex first; Vision API when configured server-side.
  */
 
+import type { FloorLevel } from '@/lib/types/client';
+import {
+  classifyFloorName,
+  mapPermitUsageToActivityType,
+  resolveFloorLevelsFromPermit,
+  type PermitFloorRow,
+} from '@/lib/projects/permit-floors-activity';
+
 export type BuildingPermitExtraction = {
   permitNumber: string | null;
   permitDateGregorian: string | null;
@@ -16,6 +24,16 @@ export type BuildingPermitExtraction = {
   commercialRegister: string | null;
   phone: string | null;
   landAreaM2: string | null;
+  /** إجمالي مساحة البناء (م²) إن وُجدت في الرخصة */
+  buildingAreaM2: string | null;
+  /** عدد الأدوار من الرخصة */
+  floorsCount: number | null;
+  /** نص الاستخدام كما في الرخصة (مثل: رخصة بناء مبنى تجاري) */
+  usageLabel: string | null;
+  /** مفتاح النشاط في النظام بعد المطابقة */
+  activityType: string | null;
+  /** تفصيل الأدوار إن أمكن استخراجه من جدول محتويات المبنى */
+  floors: PermitFloorRow[] | null;
   nationalAddress: string | null;
   locationSummary: string | null;
   rawTextPreview?: string;
@@ -28,6 +46,7 @@ const PERSIAN_DIGITS = '۰۱۲۳۴۵۶۷۸۹';
 
 export function normalizeArabicDigits(input: string): string {
   return String(input || '')
+    .replace(/[\u200e\u200f\u202a-\u202e]/g, '')
     .replace(/[٠-٩]/g, (d) => String(EASTERN_DIGITS.indexOf(d)))
     .replace(/[۰-۹]/g, (d) => String(PERSIAN_DIGITS.indexOf(d)));
 }
@@ -448,6 +467,149 @@ function extractLandArea(text: string): string | null {
   return m ? m.replace(/,/g, '') : null;
 }
 
+function extractFloorsCount(text: string): number | null {
+  const normalized = collapseOcrDigitGaps(text).replace(/[\u200e\u200f\u202a-\u202e]/g, '');
+  // Prefer the last "عدد الأدوار" (footer field on Balady forms)
+  const matches = [
+    ...normalized.matchAll(/عدد\s*الأ?[دذ]وار\s*[:：]?\s*(?:\n+\s*)?(\d{1,2})\b/gu),
+    ...normalized.matchAll(/عدد\s*الطوابق\s*[:：]?\s*(?:\n+\s*)?(\d{1,2})\b/gu),
+  ];
+  for (let i = matches.length - 1; i >= 0; i--) {
+    const n = Number(matches[i][1]);
+    if (n >= 1 && n <= 60) return n;
+  }
+  return null;
+}
+
+function extractUsageLabel(text: string): string | null {
+  const normalized = collapseOcrDigitGaps(text).replace(/[\u200e\u200f\u202a-\u202e]/g, '');
+  const titled =
+    normalized.match(
+      /رخصة\s*بناء\s*مبنى\s*(تجاري|تجارى|سكني|سكنى|صناعي|صناعى|تعليمي|إداري|اداري)/u
+    )?.[0] ||
+    normalized.match(
+      /إصدار\s*رخصة\s*بناء\s*(تجارية|سكنية|صناعية|تعليمية|إدارية|ادارية)/u
+    )?.[0];
+  if (titled) return cleanLabelValue(titled);
+
+  const afterUsage = normalized.match(
+    /الاستخدام\s*[:：]?\s*\n+([\s\S]{3,160}?)(?:\n\s*اسم\s*صاحب|\n\s*رقم\s*السجل|\n\s*رقم\s*الرخص|\n\s*البلدية)/u
+  );
+  if (afterUsage?.[1]) {
+    const lines = splitNonEmptyLines(afterUsage[1]).filter((l) => !isLikelyFieldLabel(l));
+    const hit = lines.find((l) =>
+      /رخصة|تجار|سكن|صناع|تعليم|مكتب|مصنع|مطعم|فندق|مستودع/.test(l)
+    );
+    if (hit) return cleanLabelValue(hit);
+  }
+
+  const labeled = pickLabeledValue(normalized, [/الاستخدام/u, /نوع\s*الاستخدام/u, /الغرض/u]);
+  return labeled ? cleanLabelValue(labeled) : null;
+}
+
+function extractBuildingArea(text: string): string | null {
+  const normalized = collapseOcrDigitGaps(text);
+  const match =
+    normalized.match(/مساحة\s*البناء\s*[:：]?\s*([\d.,]+)/u)?.[1] ||
+    normalized.match(/مساحة\s*المبنى\s*[:：]?\s*([\d.,]+)/u)?.[1] ||
+    normalized.match(/إجمالي\s*مساحة\s*(?:البناء|المبنى)\s*[:：]?\s*([\d.,]+)/u)?.[1] ||
+    normalized.match(/اجمالي\s*مساحة\s*(?:البناء|المبنى)\s*[:：]?\s*([\d.,]+)/u)?.[1] ||
+    normalized.match(/المساحة\s*الإجمالية\s*(?:للبناء|للمبنى)?\s*[:：]?\s*([\d.,]+)/u)?.[1];
+  return match ? match.replace(/,/g, '') : null;
+}
+
+function parseAreaToken(raw: string): number | null {
+  const cleaned = collapseOcrDigitGaps(raw).replace(/[^\d.,]/g, '').replace(/,/g, '');
+  if (!cleaned) return null;
+  const n = Number(cleaned);
+  if (!Number.isFinite(n) || n <= 0 || n > 500_000) return null;
+  return Math.round(n * 100) / 100;
+}
+
+const FLOOR_TOKEN =
+  'بدروم|قبو|سرداب|أرض[يى]|ارضي|متكرر|سطح|الأول|الاول|أول|اول|الثاني|الثانى|ثاني|الثالث|ثالث|الرابع|رابع|الخامس|خامس';
+
+/**
+ * Parse floor rows from contents table / labeled lines, e.g.:
+ *   أرضي  429.33
+ *   الدور الأول: 353.69 م²
+ */
+function extractFloorRows(text: string): PermitFloorRow[] {
+  const normalized = collapseOcrDigitGaps(text).replace(/[\u200e\u200f\u202a-\u202e]/g, '');
+  const rows: PermitFloorRow[] = [];
+  const seen = new Set<string>();
+  const nameRe = new RegExp(`^(?:الدور\\s*)?(?:${FLOOR_TOKEN})$`, 'u');
+
+  const pushRow = (name: string, areaRaw: string) => {
+    const classified = classifyFloorName(name);
+    const area = parseAreaToken(areaRaw);
+    if (!classified || area == null || area < 5) return;
+    if (seen.has(classified.label)) return;
+    seen.add(classified.label);
+    rows.push({
+      label: classified.label,
+      kind: classified.kind,
+      area_m2: area,
+      repeat_count: 1,
+    });
+  };
+
+  const lines = splitNonEmptyLines(normalized);
+  for (let i = 0; i < lines.length; i++) {
+    const line = lines[i];
+    // Same-line: "أرضي 429.33" or "أرضي: 429.33 م²"
+    const same = line.match(
+      new RegExp(`^(?:الدور\\s*)?(${FLOOR_TOKEN})\\s*[:：\\-]?\\s*([\\d.,]+)\\s*(?:م²|م2|متر)?$`, 'u')
+    );
+    if (same) {
+      pushRow(same[1], same[2]);
+      continue;
+    }
+
+    // Name-only line + area on next line
+    const nameOnly = line.replace(/م²|م2|متر/gi, '').trim();
+    if (!nameRe.test(nameOnly)) continue;
+    if (i + 1 >= lines.length) continue;
+    const area = parseAreaToken(lines[i + 1]);
+    if (area == null) continue;
+    const window = lines.slice(Math.max(0, i - 6), i + 3).join(' ');
+    if (!/محتويات|المساحات|عدد\s*الوحدات|أدوار|ادوار|مساحة\s*البناء/.test(window)) continue;
+    pushRow(nameOnly, lines[i + 1]);
+  }
+
+  return rows;
+}
+
+function extractBuildingFloorsBundle(text: string): {
+  floorsCount: number | null;
+  buildingAreaM2: string | null;
+  usageLabel: string | null;
+  activityType: string | null;
+  floors: PermitFloorRow[] | null;
+} {
+  const floorsCount = extractFloorsCount(text);
+  const usageLabel = extractUsageLabel(text);
+  const activityType = mapPermitUsageToActivityType(usageLabel, text);
+  const floors = extractFloorRows(text);
+  let buildingAreaM2 = extractBuildingArea(text);
+
+  if (!buildingAreaM2 && floors.length > 0) {
+    const sum = floors.reduce((s, f) => s + f.area_m2 * Math.max(1, f.repeat_count), 0);
+    if (sum > 0) buildingAreaM2 = String(Math.round(sum * 100) / 100);
+  }
+
+  const floorsFromRows =
+    floors.length > 0 ? floors.reduce((s, f) => s + Math.max(1, f.repeat_count), 0) : null;
+
+  return {
+    floorsCount: floorsCount ?? floorsFromRows,
+    buildingAreaM2,
+    usageLabel,
+    activityType,
+    floors: floors.length > 0 ? floors : null,
+  };
+}
+
 function extractLocation(text: string): {
   district: string | null;
   city: string | null;
@@ -556,6 +718,7 @@ export function parseBuildingPermitText(
   const commercialRegister = extractCommercialRegister(cleaned);
   const phone = extractPhone(cleaned);
   const landAreaM2 = extractLandArea(cleaned);
+  const floorsBundle = extractBuildingFloorsBundle(cleaned);
 
   const hits = [
     permitNumber,
@@ -564,6 +727,8 @@ export function parseBuildingPermitText(
     location.district || location.city,
     location.street,
     commercialRegister,
+    floorsBundle.floorsCount,
+    floorsBundle.activityType,
   ].filter(Boolean).length;
 
   const nationalAddress = [location.city, location.district, location.street, location.plotNumber]
@@ -583,6 +748,11 @@ export function parseBuildingPermitText(
     commercialRegister,
     phone,
     landAreaM2,
+    buildingAreaM2: floorsBundle.buildingAreaM2,
+    floorsCount: floorsBundle.floorsCount,
+    usageLabel: floorsBundle.usageLabel,
+    activityType: floorsBundle.activityType,
+    floors: floorsBundle.floors,
     nationalAddress,
     locationSummary: location.locationSummary,
     rawTextPreview: cleaned.slice(0, 1200),
@@ -605,6 +775,11 @@ export function emptyExtraction(source: BuildingPermitExtraction['source'] = 'no
     commercialRegister: null,
     phone: null,
     landAreaM2: null,
+    buildingAreaM2: null,
+    floorsCount: null,
+    usageLabel: null,
+    activityType: null,
+    floors: null,
     nationalAddress: null,
     locationSummary: null,
     source,
@@ -693,6 +868,11 @@ export type BuildingPermitHydration = {
   commercial_register?: string;
   phone?: string;
   land_area?: string;
+  building_area?: string;
+  floors_count?: number;
+  activity_type?: string;
+  usage_label?: string;
+  floor_levels?: FloorLevel[];
   national_address?: string;
   location_summary?: string;
 };
@@ -715,7 +895,32 @@ export function extractionToHydration(result: BuildingPermitExtraction): Buildin
   if (result.commercialRegister) patch.commercial_register = result.commercialRegister;
   if (result.phone) patch.phone = result.phone;
   if (result.landAreaM2) patch.land_area = result.landAreaM2;
+  if (result.buildingAreaM2) patch.building_area = result.buildingAreaM2;
+  if (result.floorsCount != null && result.floorsCount > 0) {
+    patch.floors_count = result.floorsCount;
+  }
+  if (result.activityType) patch.activity_type = result.activityType;
+  if (result.usageLabel) patch.usage_label = result.usageLabel;
   if (result.nationalAddress) patch.national_address = result.nationalAddress;
   if (result.locationSummary) patch.location_summary = result.locationSummary;
+
+  const levels = resolveFloorLevelsFromPermit({
+    floors: result.floors,
+    floorsCount: result.floorsCount,
+    buildingAreaM2: result.buildingAreaM2 ? Number(result.buildingAreaM2) : null,
+  });
+  if (levels.length > 0) {
+    patch.floor_levels = levels;
+    if (patch.floors_count == null) {
+      patch.floors_count = levels.reduce((s, l) => s + Math.max(1, l.repeat_count), 0);
+    }
+    if (!patch.building_area) {
+      const sum = levels.reduce(
+        (s, l) => s + Math.max(0, l.area_m2) * Math.max(1, l.repeat_count),
+        0
+      );
+      if (sum > 0) patch.building_area = String(Math.round(sum * 100) / 100);
+    }
+  }
   return patch;
 }
