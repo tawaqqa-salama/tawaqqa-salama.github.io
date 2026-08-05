@@ -591,11 +591,11 @@ function extractBuildingFloorsBundle(text: string): {
   const usageLabel = extractUsageLabel(text);
   const activityType = mapPermitUsageToActivityType(usageLabel, text);
   const namedFloors = extractFloorRows(text);
-  const heuristicAreas = extractBaladyContentsFloorAreas(text);
+  const heuristicAreas = extractBaladyContentsFloorAreas(text, floorsCount);
   const heuristicFloors = ensureFloorRowLabels(
     buildFloorsFromAreaList(heuristicAreas, floorsCount)
   );
-  const floors = mergeFloorRows(namedFloors, heuristicFloors);
+  const floors = mergeFloorRows(namedFloors, heuristicFloors, floorsCount);
   let buildingAreaM2 = extractBuildingArea(text);
 
   if (!buildingAreaM2 && floors.length > 0) {
@@ -607,6 +607,7 @@ function extractBuildingFloorsBundle(text: string): {
     floors.length > 0 ? floors.reduce((s, f) => s + Math.max(1, f.repeat_count), 0) : null;
 
   return {
+    // عدد الأدوار من الرخصة له الأولوية دائماً على عدد الصفوف المستنتجة
     floorsCount: floorsCount ?? floorsFromRows,
     buildingAreaM2,
     usageLabel,

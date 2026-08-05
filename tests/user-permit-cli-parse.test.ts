@@ -13,13 +13,15 @@ describe('cli ocr parse of user Balady PDF', () => {
     expect(result.floorsCount).toBe(2);
     expect(result.activityType).toBe('commercial_complex');
     expect(result.landAreaM2).toBe('595.50');
-    expect(result.floors?.length).toBeGreaterThanOrEqual(1);
+    expect(result.floors?.length).toBe(2);
     expect(result.floors?.[0]?.label).toBe('أرضي');
     expect(result.floors?.[0]?.area_m2).toBeCloseTo(429.33, 1);
-    expect(hydration.floor_levels?.length).toBeGreaterThanOrEqual(1);
+    expect(result.floors?.[1]?.label).toBe('أول');
+    expect(hydration.floor_levels?.length).toBe(2);
     expect(hydration.floors_count).toBe(2);
     expect(Number(hydration.building_area || 0)).toBeGreaterThan(100);
+    expect(Number(hydration.building_area || 0)).toBeLessThan(2000);
     expect(calcFloorsCount(hydration.floor_levels || [])).toBe(2);
-    expect(calcBuildingArea(hydration.floor_levels || [])).toBeGreaterThan(100);
+    expect(calcBuildingArea(hydration.floor_levels || [])).toBeLessThan(2000);
   });
 });
