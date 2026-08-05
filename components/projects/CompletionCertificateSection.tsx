@@ -1,15 +1,21 @@
 'use client';
 
-import { useEffect } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import type { ClientRecord } from '@/lib/types/client';
 import type {
   CompletionCertificateReport,
   ProjectEngineeringData,
+  YesNoValue,
 } from '@/lib/types/project-reports';
 import type { CompanyProfile } from '@/lib/company-profile';
 import { seedCompletionCertificate } from '@/lib/projects/completion-certificate';
 import { printCompletionCertificate } from '@/components/projects/CompletionCertificatePrint';
 import { ensureCertificateNumber } from '@/lib/business/document-numbers';
+import CompletionAttachmentsUpload from '@/components/projects/CompletionAttachmentsUpload';
+import {
+  normalizeCompletionAttachments,
+  validateCompletionAttachmentsForIssue,
+} from '@/lib/projects/completion-certificate-attachments';
 
 const REPORT_STATUSES = ['مسودة', 'قيد الإعداد', 'مكتمل', 'معتمد'] as const;
 
@@ -33,24 +39,60 @@ export default function CompletionCertificateSection({
   onSaveAndPrint,
 }: CompletionCertificateSectionProps) {
   const cert = data.completion_certificate;
+  const [gateError, setGateError] = useState<string | null>(null);
 
   useEffect(() => {
-    // املأ الحقول الناقصة من العميل/الشركة دون طمس القيم المحفوظة
     const seeded = seedCompletionCertificate(client, data, company, cert);
     const needsSeed =
       !cert.facility_name ||
       !cert.study_office_name ||
       !cert.office_license_number ||
-      !cert.activity_label;
+      !cert.activity_label ||
+      !cert.attachments;
     if (needsSeed) onChange(seeded);
     // eslint-disable-next-line react-hooks/exhaustive-deps -- seed once when section opens / company loads
   }, [client.id, company?.membership_id, company?.legal_name]);
 
+  const attachmentContext = useMemo(
+    () => ({
+      activityType: client.activity_type,
+      activityLabel: cert.activity_label || client.activity_type,
+      elevatorsCount: data.building_plan?.elevators_count,
+      hasElevator: cert.has_elevator,
+    }),
+    [
+      client.activity_type,
+      cert.activity_label,
+      cert.has_elevator,
+      data.building_plan?.elevators_count,
+    ]
+  );
+
   const patch = (partial: Partial<CompletionCertificateReport>) => {
+    setGateError(null);
     onChange({ ...cert, ...partial });
   };
 
+  const assertAttachments = (): boolean => {
+    const err = validateCompletionAttachmentsForIssue(
+      normalizeCompletionAttachments(cert.attachments),
+      attachmentContext
+    );
+    if (err) {
+      setGateError(err);
+      return false;
+    }
+    setGateError(null);
+    return true;
+  };
+
+  const handleSave = () => {
+    if (!assertAttachments()) return;
+    onSave({ issueCertificate: true });
+  };
+
   const handlePrint = async () => {
+    if (!assertAttachments()) return;
     let next = { ...cert };
     if (!next.certificate_number?.trim()) {
       const certificateNumber = await ensureCertificateNumber(next.certificate_number);
@@ -66,7 +108,14 @@ export default function CompletionCertificateSection({
     <div className="space-y-4">
       <div className="rounded-xl border border-emerald-100 bg-emerald-50 px-3 py-2 text-sm text-emerald-900">
         شهادة الإنهاء ومطابقة الأعمال — قالب رسمي للدفاع المدني / الغرفة التجارية (A4 أفقي / Landscape).
+        لا تُصدر إلا بعد إرفاق المستندات الإلزامية حسب النشاط.
       </div>
+
+      {gateError ? (
+        <div className="rounded-xl border border-rose-200 bg-rose-50 px-3 py-2 text-sm text-rose-800">
+          ⛔ {gateError}
+        </div>
+      ) : null}
 
       <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
         <label className="text-sm">
@@ -111,6 +160,35 @@ export default function CompletionCertificateSection({
             className="w-full border rounded-xl px-3 py-2.5 text-sm"
           />
         </label>
+        <label className="text-sm">
+          <span className="text-xs font-semibold text-gray-600 mb-1 block">هل يوجد مصعد؟</span>
+          <select
+            value={cert.has_elevator || ''}
+            onChange={(e) => patch({ has_elevator: e.target.value as YesNoValue })}
+            className="w-full border rounded-xl px-3 py-2.5 text-sm bg-white"
+          >
+            <option value="">—</option>
+            <option value="نعم">نعم</option>
+            <option value="لا">لا</option>
+          </select>
+          <span className="mt-1 block text-[11px] text-gray-500">
+            عند اختيار «نعم» يظهر خانة عقد صيانة المصاعد وتكون إلزامية
+          </span>
+        </label>
+      </div>
+
+      <div>
+        <p className="text-sm font-bold text-gray-800 mb-2">مستندات إصدار الشهادة</p>
+        <CompletionAttachmentsUpload
+          value={cert.attachments}
+          clientId={client.id}
+          activityType={attachmentContext.activityType}
+          activityLabel={attachmentContext.activityLabel}
+          elevatorsCount={attachmentContext.elevatorsCount}
+          hasElevator={attachmentContext.hasElevator}
+          disabled={saving}
+          onChange={(attachments) => patch({ attachments })}
+        />
       </div>
 
       <div>
@@ -255,7 +333,7 @@ export default function CompletionCertificateSection({
       <div className="flex flex-wrap gap-2">
         <button
           type="button"
-          onClick={() => onSave({ issueCertificate: true })}
+          onClick={handleSave}
           disabled={saving}
           className="px-4 py-2.5 rounded-xl bg-indigo-600 text-white text-sm font-semibold disabled:opacity-50"
         >

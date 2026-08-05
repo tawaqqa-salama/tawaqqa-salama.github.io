@@ -11,6 +11,11 @@ import {
   formatHijriDate,
   resolveOfficeCivilDefenseLicense,
 } from '@/lib/projects/safety-delivery-letter';
+import {
+  EMPTY_COMPLETION_ATTACHMENTS,
+  hasElevatorPresent,
+  normalizeCompletionAttachments,
+} from '@/lib/projects/completion-certificate-attachments';
 
 function pick(existing: string | undefined | null, fallback: string): string {
   const text = String(existing ?? '').trim();
@@ -26,6 +31,7 @@ export function seedCompletionCertificate(
   const activity = ACTIVITY_RULES[client.activity_type || ''];
   const occupancy = activity ? SBC_OCCUPANCIES[activity.occupancy] : null;
   const tech = data.technical_report;
+  const plan = data.building_plan;
   const today = new Date().toISOString().slice(0, 10);
   const floors =
     tech.floors_description ||
@@ -33,6 +39,14 @@ export function seedCompletionCertificate(
     (client.floor_levels || [])
       .map((f) => `${f.label}${f.repeat_count > 1 ? ` ×${f.repeat_count}` : ''}`)
       .join('، ');
+
+  const elevatorFromPlan = hasElevatorPresent({ elevatorsCount: plan?.elevators_count });
+  const hasElevator =
+    existing?.has_elevator === 'نعم' || existing?.has_elevator === 'لا'
+      ? existing.has_elevator
+      : elevatorFromPlan
+        ? 'نعم'
+        : '';
 
   return {
     status: existing?.status || 'مسودة',
@@ -103,6 +117,10 @@ export function seedCompletionCertificate(
     chamber_footer_note: pick(
       existing?.chamber_footer_note,
       'تم إصدار هذا الختم بناء على طلب المشترك والتحقق من بيانات العضوية عبر الغرفة التجارية / الخدمات الإلكترونية المعتمدة.'
+    ),
+    has_elevator: hasElevator,
+    attachments: normalizeCompletionAttachments(
+      existing?.attachments || EMPTY_COMPLETION_ATTACHMENTS
     ),
     updated_at: existing?.updated_at || null,
   };
