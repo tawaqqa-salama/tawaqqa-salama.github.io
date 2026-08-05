@@ -11,6 +11,7 @@ import { isDemoMode } from '@/lib/supabase';
 import { uploadQuotationDocument } from '@/lib/storage/quotation-documents';
 import {
   QUOTATION_DOCUMENT_LABELS,
+  QUOTATION_DOCUMENT_SLOTS,
   type QuotationDocumentFile,
   type QuotationDocumentKind,
   type QuotationDocumentsState,
@@ -24,32 +25,6 @@ type Props = {
   /** يُستدعى بعد استخراج بيانات رخصة البناء تلقائياً */
   onPermitExtracted?: (fields: BuildingPermitHydration) => void;
 };
-
-const SLOTS: {
-  kind: QuotationDocumentKind;
-  key: keyof QuotationDocumentsState;
-  required: boolean;
-  hint: string;
-}[] = [
-  {
-    kind: 'building_permit',
-    key: 'building_permit',
-    required: true,
-    hint: 'إلزامي — يستخرج المالك والحي والشارع والعنوان ورقم الرخصة',
-  },
-  {
-    kind: 'owner_id',
-    key: 'owner_id',
-    required: false,
-    hint: 'اختياري — هوية المالك',
-  },
-  {
-    kind: 'commercial_register',
-    key: 'commercial_register',
-    required: false,
-    hint: 'اختياري — السجل التجاري للمنشأة',
-  },
-];
 
 export default function QuotationDocumentsUpload({
   value,
@@ -126,12 +101,16 @@ export default function QuotationDocumentsUpload({
     onChange({ ...value, [key]: null });
   };
 
+  const coreSlots = QUOTATION_DOCUMENT_SLOTS.filter((s) => s.group === 'core');
+  const supportingSlots = QUOTATION_DOCUMENT_SLOTS.filter((s) => s.group === 'supporting');
+
   return (
-    <div className="space-y-3">
+    <div className="space-y-4">
       <div>
-        <p className="text-xs font-semibold text-gray-700">مستندات إصدار عرض السعر — رخصة البناء</p>
+        <p className="text-xs font-semibold text-gray-700">مستندات العميل والمبيعات</p>
         <p className="mt-0.5 text-[11px] text-gray-500">
-          أرفق رخصة البناء من المبيعات لاستخراج المالك والحي والشارع والعنوان ورقم الرخصة تلقائياً · الهوية والسجل اختياريان
+          رخصة البناء إلزامية قبل إصدار العرض. بقية المرفقات (إيجار، تمديدات كهرباء، صيانة، EIA، وغيرها)
+          اختيارية وتُحفظ مع ملف العميل.
         </p>
       </div>
 
@@ -158,59 +137,102 @@ export default function QuotationDocumentsUpload({
         </div>
       ) : null}
 
-      <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
-        {SLOTS.map((slot) => {
-          const file = value[slot.key];
-          const busy = uploading === slot.kind || (slot.kind === 'building_permit' && scanning);
-          return (
-            <div
+      <div>
+        <p className="mb-2 text-[11px] font-bold uppercase tracking-wide text-gray-500">
+          أساسية
+        </p>
+        <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
+          {coreSlots.map((slot) => (
+            <SlotCard
               key={slot.kind}
-              className={`rounded-xl border p-3 space-y-2 ${
-                slot.required && !file
-                  ? 'border-amber-200 bg-amber-50/50'
-                  : 'border-gray-200 bg-white'
-              }`}
-            >
-              <div className="flex items-start justify-between gap-2">
-                <div>
-                  <p className="text-sm font-semibold text-gray-900">
-                    {QUOTATION_DOCUMENT_LABELS[slot.kind]}
-                    {slot.required ? (
-                      <span className="ms-1 text-rose-600" aria-label="إلزامي">
-                        *
-                      </span>
-                    ) : (
-                      <span className="ms-1 text-[10px] font-normal text-gray-400">(اختياري)</span>
-                    )}
-                  </p>
-                  <p className="text-[11px] text-gray-500">{slot.hint}</p>
-                </div>
-              </div>
-
-              {file ? (
-                <FileRow
-                  file={file}
-                  onRemove={() => remove(slot.key)}
-                  disabled={disabled || Boolean(uploading) || scanning}
-                />
-              ) : (
-                <input
-                  type="file"
-                  accept=".pdf,.png,.jpg,.jpeg,.webp"
-                  disabled={disabled || Boolean(uploading) || scanning}
-                  onChange={(e) => {
-                    void setFile(e.target.files, slot.kind, slot.key);
-                    e.target.value = '';
-                  }}
-                  className="w-full text-xs"
-                />
-              )}
-
-              {busy ? <p className="text-[11px] text-gray-500">جاري الرفع/الاستخراج...</p> : null}
-            </div>
-          );
-        })}
+              slot={slot}
+              file={value[slot.key]}
+              busy={uploading === slot.kind || (slot.kind === 'building_permit' && scanning)}
+              disabled={disabled || Boolean(uploading) || scanning}
+              onPick={(files) => void setFile(files, slot.kind, slot.key)}
+              onRemove={() => remove(slot.key)}
+            />
+          ))}
+        </div>
       </div>
+
+      <div>
+        <p className="mb-2 text-[11px] font-bold uppercase tracking-wide text-gray-500">
+          مستندات داعمة (تمديدات · صيانة · إيجار · EIA · أخرى)
+        </p>
+        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
+          {supportingSlots.map((slot) => (
+            <SlotCard
+              key={slot.kind}
+              slot={slot}
+              file={value[slot.key]}
+              busy={uploading === slot.kind}
+              disabled={disabled || Boolean(uploading) || scanning}
+              onPick={(files) => void setFile(files, slot.kind, slot.key)}
+              onRemove={() => remove(slot.key)}
+            />
+          ))}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function SlotCard({
+  slot,
+  file,
+  busy,
+  disabled,
+  onPick,
+  onRemove,
+}: {
+  slot: (typeof QUOTATION_DOCUMENT_SLOTS)[number];
+  file: QuotationDocumentFile | null;
+  busy: boolean;
+  disabled?: boolean;
+  onPick: (files: FileList | null) => void;
+  onRemove: () => void;
+}) {
+  return (
+    <div
+      className={`rounded-xl border p-3 space-y-2 ${
+        slot.required && !file ? 'border-amber-200 bg-amber-50/50' : 'border-gray-200 bg-white'
+      }`}
+    >
+      <div>
+        <p className="text-sm font-semibold text-gray-900">
+          {QUOTATION_DOCUMENT_LABELS[slot.kind]}
+          {slot.required ? (
+            <span className="ms-1 text-rose-600" aria-label="إلزامي">
+              *
+            </span>
+          ) : (
+            <span className="ms-1 text-[10px] font-normal text-gray-400">(اختياري)</span>
+          )}
+        </p>
+        <p className="text-[11px] text-gray-500">{slot.hint}</p>
+      </div>
+
+      {file ? (
+        <FileRow file={file} onRemove={onRemove} disabled={disabled} />
+      ) : (
+        <label className="flex min-h-[4.5rem] cursor-pointer flex-col items-center justify-center rounded-lg border border-dashed border-slate-300 bg-slate-50/80 px-2 py-3 text-center transition hover:border-emerald-400 hover:bg-emerald-50/40">
+          <span className="text-[11px] font-semibold text-slate-600">اختر ملفاً أو اسحبه هنا</span>
+          <span className="mt-0.5 text-[10px] text-slate-400">PDF / صورة</span>
+          <input
+            type="file"
+            accept=".pdf,.png,.jpg,.jpeg,.webp"
+            disabled={disabled}
+            className="sr-only"
+            onChange={(e) => {
+              onPick(e.target.files);
+              e.target.value = '';
+            }}
+          />
+        </label>
+      )}
+
+      {busy ? <p className="text-[11px] text-gray-500">جاري الرفع/الاستخراج...</p> : null}
     </div>
   );
 }

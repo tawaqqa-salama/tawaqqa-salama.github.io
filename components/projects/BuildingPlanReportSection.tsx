@@ -126,6 +126,20 @@ export default function BuildingPlanReportSection({
                 : 'لا يوجد مرفق في المبيعات'
             }
           />
+          <ReadOnlyField
+            label="شهادة تمديدات الكهرباء"
+            value={salesDocs.electrical_certificate?.fileName || '—'}
+          />
+          <ReadOnlyField
+            label="عقد صيانة أنظمة السلامة"
+            value={salesDocs.maintenance_contract?.fileName || '—'}
+          />
+          <ReadOnlyField
+            label="عقد الإيجار / الصك"
+            value={salesDocs.lease_or_deed?.fileName || '—'}
+          />
+          <ReadOnlyField label="تقرير EIA" value={salesDocs.eia_report?.fileName || '—'} />
+          <ReadOnlyField label="مستند آخر" value={salesDocs.other?.fileName || '—'} />
         </div>
       </section>
 

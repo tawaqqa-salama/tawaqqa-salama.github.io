@@ -761,9 +761,9 @@ export default function ClientDetailModal({
             <div className="space-y-5 text-sm">
               <div className="rounded-xl border border-emerald-200 bg-emerald-50/70 p-3 space-y-3">
                 <div>
-                  <p className="text-sm font-bold text-emerald-950">رخصة البناء والمستندات</p>
+                  <p className="text-sm font-bold text-emerald-950">رخصة البناء والمستندات الداعمة</p>
                   <p className="text-[11px] text-emerald-800/80 mt-0.5">
-                    أرفق رخصة البناء وأدخل رقمها وتاريخها هنا من المبيعات — لا تُرفع من صفحة المشاريع.
+                    أرفق من المبيعات: رخصة البناء، شهادة تمديدات الكهرباء، عقود الصيانة، عقد الإيجار/الصك، تقرير EIA، ومستندات أخرى. لا تُرفع من صفحة المشاريع.
                   </p>
                 </div>
                 <QuotationDocumentsUpload
