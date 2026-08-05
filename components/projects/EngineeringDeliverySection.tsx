@@ -170,20 +170,26 @@ export default function EngineeringDeliverySection({
           />
         </label>
         <label className="text-sm">
-          <span className="text-xs font-semibold text-gray-600 mb-1 block">محافظة الدفاع المدني</span>
+          <span className="text-xs font-semibold text-gray-600 mb-1 block">محافظة الدفاع المدني (من المبيعات)</span>
           <input
+            readOnly
             value={delivery.civil_defense_city || client.city || ''}
-            onChange={(e) => patch({ civil_defense_city: e.target.value })}
-            className="w-full border rounded-xl px-3 py-2.5 text-sm"
+            className="w-full border rounded-xl px-3 py-2.5 text-sm bg-slate-50"
           />
         </label>
         <label className="text-sm">
-          <span className="text-xs font-semibold text-gray-600 mb-1 block">رقم رخصة البناء</span>
+          <span className="text-xs font-semibold text-gray-600 mb-1 block">رقم رخصة البناء (من المبيعات)</span>
           <input
-            value={delivery.building_permit_number || data.technical_report.building_permit_number || ''}
-            onChange={(e) => patch({ building_permit_number: e.target.value })}
+            readOnly
+            value={
+              delivery.building_permit_number ||
+              data.building_plan.building_permit_number ||
+              data.technical_report.building_permit_number ||
+              client.license_number ||
+              ''
+            }
             placeholder="تحت الإجراء"
-            className="w-full border rounded-xl px-3 py-2.5 text-sm"
+            className="w-full border rounded-xl px-3 py-2.5 text-sm bg-slate-50"
             dir="ltr"
           />
         </label>

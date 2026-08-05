@@ -23,6 +23,8 @@ import {
 } from '@/lib/projects/supervision-report';
 import type { CompanyProfile } from '@/lib/company-profile';
 import { validateCompletionAttachmentsForIssue } from '@/lib/projects/completion-certificate-attachments';
+import { seedCompletionCertificate } from '@/lib/projects/completion-certificate';
+import { getClientIdentitySnapshot } from '@/lib/projects/client-identity';
 
 export const WORKFLOW_STAGE_IDS = [
   'contract',
@@ -443,17 +445,25 @@ export function applyPipelineInheritance(
 ): ProjectEngineeringData {
   let next: ProjectEngineeringData = { ...data };
 
-  // Stage 1 → 2 / 4 / 7 / 9: client & project meta
-  const projectName =
-    next.contract_onboarding?.project_name_snapshot ||
-    client.business_name ||
-    client.name ||
-    '';
-  const owner = client.owner_name || client.name || '';
+  // Stage 1 → 2 / 4 / 7 / 9: client & project meta — always refresh from Sales
+  const identity = getClientIdentitySnapshot(client);
+  const projectName = identity.facility_name;
+  const owner = identity.owner_name;
+
+  next.contract_onboarding = {
+    ...next.contract_onboarding,
+    client_name_snapshot: identity.client_name || identity.owner_name,
+    project_name_snapshot: identity.facility_name,
+  };
 
   next.building_plan = seedBuildingPlanFromClient(client, {
     ...next.building_plan,
     office_name: next.building_plan.office_name || company?.legal_name || company?.name || '',
+    building_permit_number:
+      next.building_plan.building_permit_number ||
+      next.technical_report.building_permit_number ||
+      client.license_number ||
+      '',
   });
 
   next.technical_report = seedTechnicalReportFromClient(client, {
@@ -463,12 +473,13 @@ export function applyPipelineInheritance(
       next.building_plan.occupancy_classification ||
       '',
     building_permit_number:
-      next.technical_report.building_permit_number ||
       next.building_plan.building_permit_number ||
+      next.technical_report.building_permit_number ||
+      client.license_number ||
       '',
     building_permit_date:
-      next.technical_report.building_permit_date ||
       next.building_plan.building_permit_date ||
+      next.technical_report.building_permit_date ||
       '',
   });
 
@@ -509,8 +520,11 @@ export function applyPipelineInheritance(
     const tasks = boqToSupervisionTasks(next);
     next.supervision_report = {
       ...next.supervision_report,
-      project_name: next.supervision_report.project_name || projectName,
-      owner_name: next.supervision_report.owner_name || owner,
+      project_name: projectName || next.supervision_report.project_name,
+      owner_name: owner || next.supervision_report.owner_name,
+      building_type: identity.activity_label || next.supervision_report.building_type,
+      area_m2:
+        identity.building_area || identity.land_area || next.supervision_report.area_m2,
       tasks,
       months: next.supervision_report.months?.length
         ? next.supervision_report.months
@@ -548,6 +562,14 @@ export function applyPipelineInheritance(
         next.engineering_delivery.outgoing_number || next.technical_report.outgoing_number,
     };
   }
+
+  // Stage 9: completion certificate identity from Sales
+  next.completion_certificate = seedCompletionCertificate(
+    client,
+    next,
+    company,
+    next.completion_certificate
+  );
 
   next.workflow = {
     ...(next.workflow || {}),

@@ -1,4 +1,3 @@
-import { ACTIVITY_RULES } from '@/lib/constants/clients';
 import { DEFAULT_COMPANY_PROFILE, type CompanyProfile } from '@/lib/company-profile';
 import type { ClientRecord } from '@/lib/types/client';
 import type {
@@ -10,6 +9,7 @@ import type {
   SupervisionWorkType,
 } from '@/lib/types/project-reports';
 import { EMPTY_SUPERVISION_REPORT } from '@/lib/types/project-reports';
+import { getClientIdentitySnapshot } from '@/lib/projects/client-identity';
 
 function pick(existing: string | undefined | null, fallback: string): string {
   const text = String(existing ?? '').trim();
@@ -263,7 +263,6 @@ export function seedSupervisionReport(
   company: CompanyProfile | null | undefined,
   existing?: SupervisionReport | null
 ): SupervisionReport {
-  const activity = ACTIVITY_RULES[client.activity_type || ''];
   const tech = data.technical_report;
   const delivery = data.engineering_delivery;
   const cert = data.completion_certificate;
@@ -295,10 +294,8 @@ export function seedSupervisionReport(
         ? String(client.land_area)
         : cert.land_area || '';
 
-  const projectLabel = [
-    client.business_name || client.name || '',
-    activity?.label || client.activity_type || '',
-  ]
+  const identity = getClientIdentitySnapshot(client);
+  const projectLabel = [identity.facility_name, identity.activity_label]
     .filter(Boolean)
     .join(' — ');
 
@@ -308,13 +305,11 @@ export function seedSupervisionReport(
     status: existing?.status || 'مسودة',
     months,
     tasks,
-    owner_name: pick(existing?.owner_name, client.owner_name || client.name || ''),
-    project_name: pick(existing?.project_name, projectLabel),
-    building_type: pick(
-      existing?.building_type,
-      activity?.label || client.activity_type || tech.building_classification || ''
-    ),
-    area_m2: pick(existing?.area_m2, area),
+    // Identity always from Sales/client
+    owner_name: identity.owner_name,
+    project_name: projectLabel,
+    building_type: identity.activity_label || tech.building_classification || '',
+    area_m2: identity.building_area || identity.land_area || area,
     contractor_name: pick(existing?.contractor_name, cert.contractor_name || ''),
     inspection_form_number: pick(
       existing?.inspection_form_number,

@@ -22,6 +22,7 @@ import {
   statusCellColor,
 } from '@/lib/projects/supervision-report';
 import { printSupervisionReport } from '@/components/projects/SupervisionReportPrint';
+import { ReadOnlyField } from '@/components/projects/ReadOnlyField';
 
 const REPORT_STATUSES = ['مسودة', 'قيد الإعداد', 'مكتمل', 'معتمد'] as const;
 const WORK_TYPES: SupervisionWorkType[] = ['توريد', 'تركيب', 'توريد وتركيب', ''];
@@ -212,11 +213,14 @@ export default function SupervisionReportSection({
 
       <div>
         <p className="text-sm font-bold text-gray-800 mb-2">من التسويق / المبيعات</p>
+        <p className="mb-2 text-[11px] text-slate-500">
+          تُعرض تلقائياً من بيانات العميل — لا يُعاد إدخالها في هذه المرحلة.
+        </p>
         <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-          <Field label="المستثمر / المالك" value={report.owner_name || ''} onChange={(v) => patch({ owner_name: v })} />
-          <Field label="المشروع" value={report.project_name || ''} onChange={(v) => patch({ project_name: v })} />
-          <Field label="نوع المبنى" value={report.building_type || ''} onChange={(v) => patch({ building_type: v })} />
-          <Field label="المساحة (م²)" value={report.area_m2 || ''} onChange={(v) => patch({ area_m2: v })} />
+          <ReadOnlyField label="المستثمر / المالك" value={report.owner_name} />
+          <ReadOnlyField label="المشروع" value={report.project_name} />
+          <ReadOnlyField label="نوع المبنى / النشاط" value={report.building_type} />
+          <ReadOnlyField label="المساحة (م²)" value={report.area_m2} dir="ltr" />
           <Field
             label="المؤسسة / الشركة القائمة بأعمال التنفيذ"
             value={report.contractor_name || ''}
