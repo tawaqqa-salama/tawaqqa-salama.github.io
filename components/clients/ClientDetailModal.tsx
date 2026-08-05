@@ -562,6 +562,18 @@ export default function ClientDetailModal({
     if (fields.building_permit_date_hijri) {
       setBuildingPermitDateHijri(fields.building_permit_date_hijri);
     }
+    if (fields.activity_type) setActivityType(fields.activity_type);
+    if (fields.floor_levels && fields.floor_levels.length > 0) {
+      setFloorLevels(fields.floor_levels);
+    } else if (fields.floors_count || fields.building_area) {
+      setFloorLevels(
+        ensureFloorLevels(
+          null,
+          fields.floors_count ?? null,
+          fields.building_area ? Number(fields.building_area) : null
+        )
+      );
+    }
 
     const eng = parseProjectEngineeringData(client.project_engineering_data);
     const building_plan = {
@@ -605,6 +617,24 @@ export default function ClientDetailModal({
     if (fields.national_address || fields.location_summary) {
       payload.national_address = fields.national_address || fields.location_summary;
     }
+    if (fields.activity_type) payload.activity_type = fields.activity_type;
+    if (fields.floor_levels && fields.floor_levels.length > 0) {
+      payload.floor_levels = fields.floor_levels;
+      payload.floors_count = fields.floor_levels.reduce(
+        (sum, level) => sum + Math.max(1, level.repeat_count || 1),
+        0
+      );
+      payload.building_area = fields.floor_levels.reduce(
+        (sum, level) =>
+          sum + Math.max(0, level.area_m2 || 0) * Math.max(1, level.repeat_count || 1),
+        0
+      );
+    } else {
+      if (fields.floors_count != null) payload.floors_count = fields.floors_count;
+      if (fields.building_area) {
+        payload.building_area = parseLocalizedNumber(fields.building_area) || null;
+      }
+    }
 
     void updateClientSafe(client.id, payload).then((result) => {
       if (result.error) {
@@ -615,6 +645,9 @@ export default function ClientDetailModal({
         [
           fields.building_permit_number ? `رقم الرخصة: ${fields.building_permit_number}` : null,
           fields.owner_name ? `المالك: ${fields.owner_name}` : null,
+          fields.activity_type ? `النشاط: ${fields.usage_label || fields.activity_type}` : null,
+          fields.floors_count != null ? `الأدوار: ${fields.floors_count}` : null,
+          fields.building_area ? `مساحة البناء: ${fields.building_area} م²` : null,
           matched.district || fields.district
             ? `الحي: ${matched.district || fields.district}`
             : null,
