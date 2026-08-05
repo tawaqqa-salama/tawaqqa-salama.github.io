@@ -55,6 +55,36 @@ function strOrNull(value: unknown): string | null {
   return trimmed || null;
 }
 
+async function extractJpegFromPdfBase64(base64: string): Promise<{ mime: string; base64: string } | null> {
+  try {
+    const buf = Buffer.from(base64, 'base64');
+    const raw = buf.toString('latin1');
+    const re = /\/Subtype\s*\/Image[\s\S]{0,400}?\/Filter\s*(\/[A-Za-z0-9]+|\[[^\]]+\])[\s\S]{0,200}?stream\r?\n([\s\S]*?)\r?\nendstream/g;
+    let best: Buffer | null = null;
+    let m: RegExpExecArray | null;
+    while ((m = re.exec(raw))) {
+      const filter = m[1] || '';
+      let bytes = Buffer.from(m[2], 'latin1');
+      if (/FlateDecode/.test(filter)) {
+        const zlib = await import('zlib');
+        try {
+          bytes = zlib.inflateSync(bytes);
+        } catch {
+          continue;
+        }
+      }
+      if (bytes[0] === 0xff && bytes[1] === 0xd8) {
+        if (!best || bytes.length > best.length) best = bytes;
+      }
+    }
+    if (!best) return null;
+    return { mime: 'image/jpeg', base64: best.toString('base64') };
+  } catch {
+    return null;
+  }
+}
+
+
 function numOrNull(value: unknown): number | null {
   if (typeof value === 'number' && Number.isFinite(value)) return value;
   if (typeof value === 'string' && value.trim()) {
@@ -161,23 +191,25 @@ async function extractWithOpenAI(
   if (!apiKey) return null;
 
   const isPdf = mimeType === 'application/pdf' || fileName.toLowerCase().endsWith('.pdf');
-  // Vision chat completions accept images; for PDF send as file text hint only unless image
   const content: Array<Record<string, unknown>> = [{ type: 'text', text: VISION_PROMPT }];
 
-  if (!isPdf && (mimeType.startsWith('image/') || /\.(png|jpe?g|webp)$/i.test(fileName))) {
-    const safeMime = mimeType.startsWith('image/') ? mimeType : 'image/jpeg';
-    content.push({
-      type: 'image_url',
-      image_url: { url: `data:${safeMime};base64,${base64}` },
-    });
-  } else {
-    // PDF: ask model to parse if it supports file inputs via text fallback only
-    content.push({
-      type: 'text',
-      text: `File name: ${fileName}. If the following base64 cannot be decoded as an image, reply with null fields.\n(base64 length=${base64.length})`,
-    });
+  let imageMime = mimeType.startsWith('image/') ? mimeType : '';
+  let imageBase64 = base64;
+  if (isPdf) {
+    const embedded = await extractJpegFromPdfBase64(base64);
+    if (!embedded) return null;
+    imageMime = embedded.mime;
+    imageBase64 = embedded.base64;
+  } else if (!(mimeType.startsWith('image/') || /\.(png|jpe?g|webp)$/i.test(fileName))) {
     return null;
+  } else if (!imageMime) {
+    imageMime = 'image/jpeg';
   }
+
+  content.push({
+    type: 'image_url',
+    image_url: { url: `data:${imageMime};base64,${imageBase64}` },
+  });
 
   const model = process.env.OPENAI_VISION_MODEL || 'gpt-4o-mini';
   const res = await fetch('https://api.openai.com/v1/chat/completions', {

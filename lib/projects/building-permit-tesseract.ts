@@ -49,6 +49,16 @@ async function prepareImageForOcr(source: Blob | File): Promise<Blob | File> {
   }
 }
 
+async function blobToOcrInput(source: Blob | File): Promise<Blob | File | string> {
+  // Browser: object URL is the most reliable input for tesseract.js workers
+  if (typeof URL !== 'undefined' && typeof URL.createObjectURL === 'function') {
+    return URL.createObjectURL(source);
+  }
+  // Node / workers: pass raw bytes
+  const buf = new Uint8Array(await source.arrayBuffer());
+  return new Blob([buf], { type: source.type || 'image/jpeg' });
+}
+
 async function recognizeArabicForm(
   image: Blob | File,
   onProgress?: (message: string) => void
@@ -56,6 +66,11 @@ async function recognizeArabicForm(
   onProgress?.('جاري تحميل محرك التعرف على النص...');
   const Tesseract = await import('tesseract.js');
   const prepared = await prepareImageForOcr(image);
+  const input = await blobToOcrInput(prepared);
+  const revoke =
+    typeof input === 'string' && typeof URL !== 'undefined' && URL.revokeObjectURL
+      ? () => URL.revokeObjectURL(input)
+      : () => undefined;
 
   onProgress?.('جاري استخراج بيانات الرخصة تلقائياً...');
   // SPARSE_TEXT is best for Balady table forms (رقم الرخصة / التاريخ in cells)
@@ -72,7 +87,7 @@ async function recognizeArabicForm(
       tessedit_pageseg_mode: Tesseract.PSM.SPARSE_TEXT,
       preserve_interword_spaces: '1',
     });
-    const sparse = await worker.recognize(prepared);
+    const sparse = await worker.recognize(input);
     const sparseText = String(sparse.data?.text || '').trim();
     if ((sparseText.match(/\d/g) || []).length >= 8) {
       return sparseText;
@@ -81,9 +96,10 @@ async function recognizeArabicForm(
     await worker.setParameters({
       tessedit_pageseg_mode: Tesseract.PSM.AUTO,
     });
-    const auto = await worker.recognize(prepared);
+    const auto = await worker.recognize(input);
     return String(auto.data?.text || sparseText).trim();
   } finally {
+    revoke();
     await worker.terminate();
   }
 }

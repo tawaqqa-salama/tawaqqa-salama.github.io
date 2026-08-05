@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { supabase } from '@/lib/supabase';
 import {
   ACTIVITY_RULES,
@@ -173,6 +173,8 @@ export default function ClientDetailModal({
   const [buildingPermitNumber, setBuildingPermitNumber] = useState('');
   const [buildingPermitDate, setBuildingPermitDate] = useState('');
   const [buildingPermitDateHijri, setBuildingPermitDateHijri] = useState('');
+  /** Prevents document upload refresh from wiping freshly OCR-hydrated floors/activity */
+  const permitHydrateLockRef = useRef(false);
 
   useEffect(() => {
     void loadCompanyProfile().then((profile) => setPricePerM2(Number(profile.price_per_m2) || 0));
@@ -228,10 +230,24 @@ export default function ClientDetailModal({
     );
     setNationalAddress(hydrated.national_address || '');
     setBusinessName(hydrated.business_name || '');
-    setActivityType(hydrated.activity_type || '');
     setLandArea(hydrated.land_area != null ? String(hydrated.land_area) : '');
     setProjectStatus(hydrated.project_status || '');
-    setFloorLevels(ensureFloorLevels(hydrated.floor_levels, hydrated.floors_count, hydrated.building_area));
+
+    // Keep OCR-hydrated activity/floors if a concurrent document refresh races in
+    if (!permitHydrateLockRef.current) {
+      setActivityType(hydrated.activity_type || '');
+      setFloorLevels(
+        ensureFloorLevels(hydrated.floor_levels, hydrated.floors_count, hydrated.building_area)
+      );
+    } else if (hydrated.floor_levels?.length || hydrated.activity_type) {
+      // Persist caught up — release lock and sync from server
+      permitHydrateLockRef.current = false;
+      setActivityType(hydrated.activity_type || '');
+      setFloorLevels(
+        ensureFloorLevels(hydrated.floor_levels, hydrated.floors_count, hydrated.building_area)
+      );
+    }
+
     const eng = parseProjectEngineeringData(hydrated.project_engineering_data);
     setBuildingPermitNumber(
       eng.building_plan.building_permit_number || eng.technical_report.building_permit_number || ''
@@ -563,16 +579,21 @@ export default function ClientDetailModal({
       setBuildingPermitDateHijri(fields.building_permit_date_hijri);
     }
     if (fields.activity_type) setActivityType(fields.activity_type);
-    if (fields.floor_levels && fields.floor_levels.length > 0) {
-      setFloorLevels(fields.floor_levels);
-    } else if (fields.floors_count || fields.building_area) {
-      setFloorLevels(
-        ensureFloorLevels(
-          null,
-          fields.floors_count ?? null,
-          fields.building_area ? Number(fields.building_area) : null
-        )
-      );
+    const nextFloorLevels =
+      fields.floor_levels && fields.floor_levels.length > 0
+        ? fields.floor_levels
+        : fields.floors_count || fields.building_area
+          ? ensureFloorLevels(
+              null,
+              fields.floors_count ?? null,
+              fields.building_area ? Number(fields.building_area) : null
+            )
+          : null;
+    if (nextFloorLevels && nextFloorLevels.length > 0) {
+      permitHydrateLockRef.current = true;
+      setFloorLevels(nextFloorLevels);
+    } else if (fields.activity_type) {
+      permitHydrateLockRef.current = true;
     }
 
     const eng = parseProjectEngineeringData(client.project_engineering_data);
@@ -618,13 +639,13 @@ export default function ClientDetailModal({
       payload.national_address = fields.national_address || fields.location_summary;
     }
     if (fields.activity_type) payload.activity_type = fields.activity_type;
-    if (fields.floor_levels && fields.floor_levels.length > 0) {
-      payload.floor_levels = fields.floor_levels;
-      payload.floors_count = fields.floor_levels.reduce(
+    if (nextFloorLevels && nextFloorLevels.length > 0) {
+      payload.floor_levels = nextFloorLevels;
+      payload.floors_count = nextFloorLevels.reduce(
         (sum, level) => sum + Math.max(1, level.repeat_count || 1),
         0
       );
-      payload.building_area = fields.floor_levels.reduce(
+      payload.building_area = nextFloorLevels.reduce(
         (sum, level) =>
           sum + Math.max(0, level.area_m2 || 0) * Math.max(1, level.repeat_count || 1),
         0

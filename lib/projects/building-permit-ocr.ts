@@ -10,6 +10,15 @@ import {
   resolveFloorLevelsFromPermit,
   type PermitFloorRow,
 } from '@/lib/projects/permit-floors-activity';
+import {
+  buildFloorsFromAreaList,
+  ensureFloorRowLabels,
+  extractBaladyContentsFloorAreas,
+  floorsCountFromFuzzyLabel,
+  landAreaFromLooseBlock,
+  mergeFloorRows,
+  normalizePermitOcrText,
+} from '@/lib/projects/balady-permit-floors';
 
 export type BuildingPermitExtraction = {
   permitNumber: string | null;
@@ -464,21 +473,12 @@ function extractLandArea(text: string): string | null {
     normalized.match(/مساحة\s*الار[ض]?\.?\s*\n+\s*([\d.,]+)/u)?.[1] ||
     normalized.match(/مساحة\s*الأرض\.?\s*[:：]?\s*([\d.,]+)/u)?.[1] ||
     normalized.match(/مساحة\s*الارض\.?\s*[:：]?\s*([\d.,]+)/u)?.[1];
-  return m ? m.replace(/,/g, '') : null;
+  if (m) return m.replace(/,/g, '');
+  return landAreaFromLooseBlock(text);
 }
 
 function extractFloorsCount(text: string): number | null {
-  const normalized = collapseOcrDigitGaps(text).replace(/[\u200e\u200f\u202a-\u202e]/g, '');
-  // Prefer the last "عدد الأدوار" (footer field on Balady forms)
-  const matches = [
-    ...normalized.matchAll(/عدد\s*الأ?[دذ]وار\s*[:：]?\s*(?:\n+\s*)?(\d{1,2})\b/gu),
-    ...normalized.matchAll(/عدد\s*الطوابق\s*[:：]?\s*(?:\n+\s*)?(\d{1,2})\b/gu),
-  ];
-  for (let i = matches.length - 1; i >= 0; i--) {
-    const n = Number(matches[i][1]);
-    if (n >= 1 && n <= 60) return n;
-  }
-  return null;
+  return floorsCountFromFuzzyLabel(text);
 }
 
 function extractUsageLabel(text: string): string | null {
@@ -590,7 +590,12 @@ function extractBuildingFloorsBundle(text: string): {
   const floorsCount = extractFloorsCount(text);
   const usageLabel = extractUsageLabel(text);
   const activityType = mapPermitUsageToActivityType(usageLabel, text);
-  const floors = extractFloorRows(text);
+  const namedFloors = extractFloorRows(text);
+  const heuristicAreas = extractBaladyContentsFloorAreas(text);
+  const heuristicFloors = ensureFloorRowLabels(
+    buildFloorsFromAreaList(heuristicAreas, floorsCount)
+  );
+  const floors = mergeFloorRows(namedFloors, heuristicFloors);
   let buildingAreaM2 = extractBuildingArea(text);
 
   if (!buildingAreaM2 && floors.length > 0) {
@@ -706,7 +711,7 @@ export function parseBuildingPermitText(
   text: string,
   source: BuildingPermitExtraction['source'] = 'regex'
 ): BuildingPermitExtraction {
-  const cleaned = String(text || '').replace(/\0/g, ' ').trim();
+  const cleaned = normalizePermitOcrText(String(text || '').replace(/\0/g, ' ').trim());
   if (!cleaned) {
     return emptyExtraction('none');
   }
