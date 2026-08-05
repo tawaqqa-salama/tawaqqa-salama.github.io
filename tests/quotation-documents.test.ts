@@ -36,20 +36,19 @@ describe('quotation documents gate', () => {
     expect(hasBuildingPermitAttached(withPermit)).toBe(true);
   });
 
-  it('normalizes supporting documents (electrical, maintenance, lease, EIA)', () => {
-    const docs = normalizeQuotationDocuments({
+  it('treats owner id and commercial register as optional', () => {
+    const onlyPermit = normalizeQuotationDocuments({
       building_permit: sampleFile('building_permit'),
-      electrical_certificate: sampleFile('electrical_certificate'),
-      maintenance_contract: sampleFile('maintenance_contract'),
-      lease_or_deed: sampleFile('lease_or_deed'),
-      eia_report: sampleFile('eia_report'),
-      other: sampleFile('other'),
     });
-    expect(docs.electrical_certificate?.kind).toBe('electrical_certificate');
-    expect(docs.maintenance_contract?.kind).toBe('maintenance_contract');
-    expect(docs.lease_or_deed?.kind).toBe('lease_or_deed');
-    expect(docs.eia_report?.kind).toBe('eia_report');
-    expect(docs.other?.kind).toBe('other');
-    expect(validateQuotationDocumentsForIssue(docs)).toBeNull();
+    expect(validateQuotationDocumentsForIssue(onlyPermit)).toBeNull();
+
+    const withOptional = normalizeQuotationDocuments({
+      building_permit: sampleFile('building_permit'),
+      owner_id: sampleFile('owner_id'),
+      commercial_register: sampleFile('commercial_register'),
+    });
+    expect(validateQuotationDocumentsForIssue(withOptional)).toBeNull();
+    expect(withOptional.owner_id?.kind).toBe('owner_id');
+    expect(withOptional.commercial_register?.kind).toBe('commercial_register');
   });
 });

@@ -259,6 +259,12 @@ export interface CompletionCertificateReport extends ReportMeta {
 
   /** نص تذييل الغرفة / التحقق */
   chamber_footer_note?: string;
+
+  /** هل يوجد مصعد؟ (يظهر عقد صيانة المصاعد عند نعم) */
+  has_elevator?: YesNoValue;
+
+  /** مرفقات إلزامية/اختيارية حسب النشاط قبل إصدار الشهادة */
+  attachments?: import('@/lib/projects/completion-certificate-attachments').CompletionAttachmentsState;
 }
 
 /** حالة خلية إنجاز شهرية في تقرير الإشراف */

@@ -19,18 +19,7 @@ export function normalizeQuotationDocuments(value: unknown): QuotationDocumentsS
   return {
     building_permit: isDocumentFile(raw.building_permit) ? raw.building_permit : null,
     owner_id: isDocumentFile(raw.owner_id) ? raw.owner_id : null,
-    commercial_register: isDocumentFile(raw.commercial_register)
-      ? raw.commercial_register
-      : null,
-    lease_or_deed: isDocumentFile(raw.lease_or_deed) ? raw.lease_or_deed : null,
-    electrical_certificate: isDocumentFile(raw.electrical_certificate)
-      ? raw.electrical_certificate
-      : null,
-    maintenance_contract: isDocumentFile(raw.maintenance_contract)
-      ? raw.maintenance_contract
-      : null,
-    eia_report: isDocumentFile(raw.eia_report) ? raw.eia_report : null,
-    other: isDocumentFile(raw.other) ? raw.other : null,
+    commercial_register: isDocumentFile(raw.commercial_register) ? raw.commercial_register : null,
   };
 }
 
@@ -40,7 +29,7 @@ export function hasBuildingPermitAttached(docs: QuotationDocumentsState | null |
 
 /**
  * التحقق قبل إصدار / طباعة عرض السعر.
- * رخصة البناء إلزامية؛ بقية المستندات اختيارية.
+ * رخصة البناء إلزامية؛ هوية المالك والسجل التجاري اختياريان.
  */
 export function validateQuotationDocumentsForIssue(
   docs: QuotationDocumentsState | null | undefined

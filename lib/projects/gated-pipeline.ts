@@ -22,6 +22,7 @@ import {
   seedSupervisionReport,
 } from '@/lib/projects/supervision-report';
 import type { CompanyProfile } from '@/lib/company-profile';
+import { validateCompletionAttachmentsForIssue } from '@/lib/projects/completion-certificate-attachments';
 
 export const WORKFLOW_STAGE_IDS = [
   'contract',
@@ -277,6 +278,17 @@ export function stageApprovalBlockers(
       if (openCritical.length) {
         blockers.push(`يوجد ${openCritical.length} ملاحظة حرجة غير محلولة`);
       }
+      break;
+    }
+    case 'completion': {
+      const cert = data.completion_certificate;
+      const attachmentError = validateCompletionAttachmentsForIssue(cert?.attachments, {
+        activityType: client.activity_type,
+        activityLabel: cert?.activity_label || client.activity_type,
+        elevatorsCount: data.building_plan?.elevators_count,
+        hasElevator: cert?.has_elevator,
+      });
+      if (attachmentError) blockers.push(attachmentError);
       break;
     }
     default:

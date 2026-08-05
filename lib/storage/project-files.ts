@@ -85,6 +85,57 @@ export async function uploadPlanAttachment(
   return base;
 }
 
+/** Upload completion-certificate supporting document */
+export async function uploadCompletionAttachment(
+  file: File,
+  kind: import('@/lib/projects/completion-certificate-attachments').CompletionAttachmentKind,
+  opts?: { clientId?: string | null }
+): Promise<import('@/lib/projects/completion-certificate-attachments').CompletionAttachmentFile> {
+  const id = uid();
+  const format = extOf(file.name);
+  const base: import('@/lib/projects/completion-certificate-attachments').CompletionAttachmentFile = {
+    id,
+    fileName: file.name,
+    format,
+    sizeBytes: file.size,
+    mimeType: file.type || null,
+    dataUrl: null,
+    uploadedAt: new Date().toISOString(),
+    kind,
+    storageBucket: PROJECT_FILES_BUCKET,
+    storagePath: null,
+  };
+
+  if (isDemoMode) {
+    base.dataUrl = await readDataUrl(file);
+    return base;
+  }
+
+  const folder = opts?.clientId || 'general';
+  const path = `${folder}/completion/${kind}/${id}-${file.name.replace(/[^\w.\u0600-\u06FF-]+/g, '_')}`;
+
+  const { error } = await supabase.storage.from(PROJECT_FILES_BUCKET).upload(path, file, {
+    contentType: file.type || 'application/octet-stream',
+    upsert: false,
+  });
+
+  if (error) {
+    base.dataUrl = await readDataUrl(file);
+    base.storagePath = null;
+    return base;
+  }
+
+  const { data: pub } = supabase.storage.from(PROJECT_FILES_BUCKET).getPublicUrl(path);
+  base.storagePath = path;
+  if (file.size < 400_000) {
+    base.dataUrl = await readDataUrl(file);
+  } else if (pub?.publicUrl) {
+    base.dataUrl = pub.publicUrl;
+  }
+
+  return base;
+}
+
 export async function getPlanFileUrl(file: PlanAttachmentFile): Promise<string | null> {
   if (file.dataUrl) return file.dataUrl;
   if (!file.storagePath || isDemoMode) return null;
