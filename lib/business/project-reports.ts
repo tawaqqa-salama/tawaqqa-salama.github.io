@@ -139,13 +139,8 @@ export function seedProjectEngineeringFromClient(
     contract_onboarding: {
       ...EMPTY_CONTRACT_ONBOARDING,
       ...data.contract_onboarding,
-      client_name_snapshot:
-        data.contract_onboarding?.client_name_snapshot || client.name || '',
-      project_name_snapshot:
-        data.contract_onboarding?.project_name_snapshot ||
-        client.business_name ||
-        client.name ||
-        '',
+      client_name_snapshot: client.name || client.owner_name || '',
+      project_name_snapshot: client.business_name || client.name || '',
       contract_value:
         data.contract_onboarding?.contract_value ?? client.quotation_amount ?? null,
       scope_of_work:

@@ -12,6 +12,7 @@ import { seedCompletionCertificate } from '@/lib/projects/completion-certificate
 import { printCompletionCertificate } from '@/components/projects/CompletionCertificatePrint';
 import { ensureCertificateNumber } from '@/lib/business/document-numbers';
 import CompletionAttachmentsUpload from '@/components/projects/CompletionAttachmentsUpload';
+import { ReadOnlyField } from '@/components/projects/ReadOnlyField';
 import {
   normalizeCompletionAttachments,
   validateCompletionAttachmentsForIssue,
@@ -43,15 +44,35 @@ export default function CompletionCertificateSection({
 
   useEffect(() => {
     const seeded = seedCompletionCertificate(client, data, company, cert);
+    const identityChanged =
+      seeded.facility_name !== cert.facility_name ||
+      seeded.owner_name !== cert.owner_name ||
+      seeded.activity_label !== cert.activity_label ||
+      seeded.district !== cert.district ||
+      seeded.street !== cert.street ||
+      seeded.land_area !== cert.land_area ||
+      seeded.owner_contact !== cert.owner_contact;
     const needsSeed =
+      identityChanged ||
       !cert.facility_name ||
       !cert.study_office_name ||
       !cert.office_license_number ||
       !cert.activity_label ||
       !cert.attachments;
     if (needsSeed) onChange(seeded);
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- seed once when section opens / company loads
-  }, [client.id, company?.membership_id, company?.legal_name]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- refresh identity when sales/client or company changes
+  }, [
+    client.id,
+    client.owner_name,
+    client.business_name,
+    client.activity_type,
+    client.district,
+    client.street,
+    client.land_area,
+    client.phone,
+    company?.membership_id,
+    company?.legal_name,
+  ]);
 
   const attachmentContext = useMemo(
     () => ({
@@ -216,43 +237,21 @@ export default function CompletionCertificateSection({
 
       <div>
         <p className="text-sm font-bold text-gray-800 mb-2">ثانياً: بيانات المنشأة</p>
+        <p className="mb-2 text-[11px] text-slate-500">
+          الاسم والمالك والنشاط والعنوان والمساحة من المبيعات (إدخال مرة واحدة — مقفل هنا).
+        </p>
         <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-          <Field
-            label="مسمى المنشأة"
-            value={cert.facility_name || ''}
-            onChange={(v) => patch({ facility_name: v })}
-          />
-          <Field
-            label="المالك"
-            value={cert.owner_name || ''}
-            onChange={(v) => patch({ owner_name: v })}
-          />
-          <Field
-            label="النشاط"
-            value={cert.activity_label || ''}
-            onChange={(v) => patch({ activity_label: v })}
-          />
+          <ReadOnlyField label="مسمى المنشأة (من المبيعات)" value={cert.facility_name} />
+          <ReadOnlyField label="المالك (من المبيعات)" value={cert.owner_name} />
+          <ReadOnlyField label="النشاط (من المبيعات)" value={cert.activity_label} />
           <Field
             label="تصنيف النشاط"
             value={cert.activity_classification || ''}
             onChange={(v) => patch({ activity_classification: v })}
           />
-          <Field
-            label="الحي"
-            value={cert.district || ''}
-            onChange={(v) => patch({ district: v })}
-          />
-          <Field
-            label="الشارع"
-            value={cert.street || ''}
-            onChange={(v) => patch({ street: v })}
-          />
-          <Field
-            label="مساحة الأرض (م²)"
-            value={cert.land_area || ''}
-            onChange={(v) => patch({ land_area: v })}
-            dir="ltr"
-          />
+          <ReadOnlyField label="الحي (من المبيعات)" value={cert.district} />
+          <ReadOnlyField label="الشارع (من المبيعات)" value={cert.street} />
+          <ReadOnlyField label="مساحة الأرض (م²)" value={cert.land_area} dir="ltr" />
           <Field
             label="مكونات المبنى"
             value={cert.building_components || ''}
@@ -263,10 +262,9 @@ export default function CompletionCertificateSection({
             value={cert.building_structural_class || ''}
             onChange={(v) => patch({ building_structural_class: v })}
           />
-          <Field
-            label="وسيلة التواصل (المالك / المستثمر)"
-            value={cert.owner_contact || ''}
-            onChange={(v) => patch({ owner_contact: v })}
+          <ReadOnlyField
+            label="وسيلة التواصل (من المبيعات)"
+            value={cert.owner_contact}
             dir="ltr"
           />
         </div>

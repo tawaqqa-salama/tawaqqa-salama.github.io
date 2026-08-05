@@ -234,23 +234,18 @@ export function seedEngineeringDelivery(
       'copy_to',
       `صورة لمركز السلامة الميدانية\nصورة للمالك / المستثمر: ${owner}`
     ),
-    civil_defense_city: pickText(
-      existing,
-      'civil_defense_city',
-      extractCityFromAddressee(existing?.delivered_to) || city
-    ),
+    civil_defense_city: client.city || extractCityFromAddressee(existing?.delivered_to) || city,
     outgoing_number: pickText(
       existing,
       'outgoing_number',
       data.technical_report.outgoing_number || ''
     ),
-    building_permit_number: pickText(
-      existing,
-      'building_permit_number',
+    building_permit_number:
+      data.building_plan.building_permit_number ||
       data.technical_report.building_permit_number ||
-        data.building_plan.building_permit_number ||
-        ''
-    ),
+      client.license_number ||
+      existing?.building_permit_number ||
+      '',
     attachments_count: existing?.attachments_count ?? 1,
     safety_engineer_name: pickText(
       existing,
