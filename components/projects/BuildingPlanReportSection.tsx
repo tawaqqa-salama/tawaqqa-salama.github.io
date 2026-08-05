@@ -1,9 +1,6 @@
 'use client';
 
 import { useMemo } from 'react';
-import BuildingPermitOcrUpload, {
-  type PermitClientHydration,
-} from '@/components/projects/BuildingPermitOcrUpload';
 import { getBuildingPlanGeneralInfo } from '@/lib/projects/building-plan';
 import { printBuildingPlanReport, exportBuildingPlanReport } from '@/components/projects/BuildingPlanPrint';
 import {
@@ -15,6 +12,7 @@ import {
 } from '@/lib/projects/sbc-recommendation';
 import type { ClientRecord } from '@/lib/types/client';
 import type { BuildingPlanReport, YesNoValue } from '@/lib/types/project-reports';
+import { normalizeQuotationDocuments } from '@/lib/business/quotation-documents';
 
 interface BuildingPlanReportSectionProps {
   client: ClientRecord;
@@ -22,7 +20,6 @@ interface BuildingPlanReportSectionProps {
   saving: boolean;
   onChange: (report: BuildingPlanReport) => void;
   onSave: (report: BuildingPlanReport, message: string) => void;
-  onClientHydrate?: (fields: PermitClientHydration) => void;
 }
 
 const YES_NO_OPTIONS: { value: YesNoValue; label: string }[] = [
@@ -39,9 +36,10 @@ export default function BuildingPlanReportSection({
   saving,
   onChange,
   onSave,
-  onClientHydrate,
 }: BuildingPlanReportSectionProps) {
   const general = getBuildingPlanGeneralInfo(client);
+  const salesDocs = normalizeQuotationDocuments(client.quotation_documents);
+  const salesPermitFile = salesDocs.building_permit;
 
   const patch = (partial: Partial<BuildingPlanReport>) => onChange({ ...report, ...partial });
 
@@ -76,7 +74,7 @@ export default function BuildingPlanReportSection({
   return (
     <div className="space-y-5">
       <div className="rounded-xl border border-blue-100 bg-blue-50 p-3 text-xs text-blue-900">
-        🔗 الحقول العامة تُجلب تلقائياً من بيانات التسويق/المبيعات (للعرض فقط). الحقول الفنية يعبئها المهندس بعد الزيارة الميدانية.
+        🔗 الحقول العامة وبيانات رخصة البناء تُجلب من المبيعات (للعرض فقط). الحقول الفنية يعبئها المهندس بعد الزيارة الميدانية.
       </div>
 
       {/* Read-only general inputs */}
@@ -99,38 +97,47 @@ export default function BuildingPlanReportSection({
         </div>
       </section>
 
-      {/* Building permit upload + OCR auto-fill */}
-      <BuildingPermitOcrUpload
-        clientId={client.id}
-        report={report}
-        disabled={saving}
-        onReportPatch={patch}
-        onClientHydrate={onClientHydrate}
-      />
+      {/* Building permit — read-only from Sales (no upload here) */}
+      <section className="rounded-xl border border-slate-200 bg-slate-50/80 p-4 space-y-3">
+        <div>
+          <h3 className="text-sm font-bold text-gray-900 flex items-center gap-2">
+            <span className="text-gray-400">🔒</span> بيانات رخصة البناء (من المبيعات)
+          </h3>
+          <p className="text-[11px] text-gray-500 mt-1">
+            إدخال وإرفاق رخصة البناء يتم من صفحة المبيعات فقط. لا يُرفع الملف من المشاريع.
+          </p>
+        </div>
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
+          <ReadOnlyField label="رقم رخصة البناء" value={report.building_permit_number || '—'} />
+          <ReadOnlyField label="تاريخ الرخصة (ميلادي)" value={report.building_permit_date || '—'} />
+          <ReadOnlyField
+            label="تاريخ الرخصة (هجري)"
+            value={report.building_permit_date_hijri || '—'}
+          />
+          <ReadOnlyField
+            label="مرفق الرخصة في المبيعات"
+            value={
+              salesPermitFile?.fileName
+                ? `${salesPermitFile.fileName}${
+                    salesPermitFile.sizeBytes
+                      ? ` · ${(salesPermitFile.sizeBytes / 1024).toFixed(0)} KB`
+                      : ''
+                  }`
+                : 'لا يوجد مرفق في المبيعات'
+            }
+          />
+        </div>
+      </section>
 
       {/* Engineer report header */}
       <section className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-3">
         <EditableField label="تاريخ التقرير" type="date" value={report.report_date || ''} onChange={(v) => patch({ report_date: v })} />
-        <EditableField label="رخصة البناء" value={report.building_permit_number || ''} onChange={(v) => patch({ building_permit_number: v })} />
-        <EditableField
-          label="تاريخ الرخصة"
-          type="date"
-          value={report.building_permit_date || ''}
-          onChange={(v) => patch({ building_permit_date: v })}
-        />
         <div>
           <label className="block text-xs font-semibold mb-1">حالة التقرير</label>
           <select value={report.status} onChange={(e) => patch({ status: e.target.value as BuildingPlanReport['status'] })} className="w-full p-2.5 border rounded-xl text-sm bg-white">
             {REPORT_STATUSES.map((s) => <option key={s} value={s}>{s}</option>)}
           </select>
         </div>
-        {report.building_permit_date_hijri ? (
-          <EditableField
-            label="تاريخ الرخصة (هجري)"
-            value={report.building_permit_date_hijri || ''}
-            onChange={(v) => patch({ building_permit_date_hijri: v })}
-          />
-        ) : null}
       </section>
 
       {/* Engineering checklist */}

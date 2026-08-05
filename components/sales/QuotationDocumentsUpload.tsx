@@ -129,9 +129,9 @@ export default function QuotationDocumentsUpload({
   return (
     <div className="space-y-3">
       <div>
-        <p className="text-xs font-semibold text-gray-700">مستندات إصدار عرض السعر</p>
+        <p className="text-xs font-semibold text-gray-700">مستندات إصدار عرض السعر — رخصة البناء</p>
         <p className="mt-0.5 text-[11px] text-gray-500">
-          ارفع رخصة البناء لاستخراج المالك والحي والشارع والعنوان تلقائياً · الهوية والسجل اختياريان
+          أرفق رخصة البناء من المبيعات لاستخراج المالك والحي والشارع والعنوان ورقم الرخصة تلقائياً · الهوية والسجل اختياريان
         </p>
       </div>
 

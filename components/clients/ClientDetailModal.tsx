@@ -170,6 +170,9 @@ export default function ClientDetailModal({
   const [landArea, setLandArea] = useState('');
   const [projectStatus, setProjectStatus] = useState('');
   const [floorLevels, setFloorLevels] = useState<FloorLevel[]>([]);
+  const [buildingPermitNumber, setBuildingPermitNumber] = useState('');
+  const [buildingPermitDate, setBuildingPermitDate] = useState('');
+  const [buildingPermitDateHijri, setBuildingPermitDateHijri] = useState('');
 
   useEffect(() => {
     void loadCompanyProfile().then((profile) => setPricePerM2(Number(profile.price_per_m2) || 0));
@@ -229,6 +232,14 @@ export default function ClientDetailModal({
     setLandArea(hydrated.land_area != null ? String(hydrated.land_area) : '');
     setProjectStatus(hydrated.project_status || '');
     setFloorLevels(ensureFloorLevels(hydrated.floor_levels, hydrated.floors_count, hydrated.building_area));
+    const eng = parseProjectEngineeringData(hydrated.project_engineering_data);
+    setBuildingPermitNumber(
+      eng.building_plan.building_permit_number || eng.technical_report.building_permit_number || ''
+    );
+    setBuildingPermitDate(
+      eng.building_plan.building_permit_date || eng.technical_report.building_permit_date || ''
+    );
+    setBuildingPermitDateHijri(eng.building_plan.building_permit_date_hijri || '');
   }, [client, department, pricePerM2]);
 
   const subtotal = parseLocalizedNumber(quotationAmount);
@@ -546,6 +557,11 @@ export default function ClientDetailModal({
     if (fields.land_area) setLandArea(fields.land_area);
     if (fields.national_address) setNationalAddress(fields.national_address);
     else if (fields.location_summary) setNationalAddress(fields.location_summary);
+    if (fields.building_permit_number) setBuildingPermitNumber(fields.building_permit_number);
+    if (fields.building_permit_date) setBuildingPermitDate(fields.building_permit_date);
+    if (fields.building_permit_date_hijri) {
+      setBuildingPermitDateHijri(fields.building_permit_date_hijri);
+    }
 
     const eng = parseProjectEngineeringData(client.project_engineering_data);
     const building_plan = {
@@ -642,6 +658,21 @@ export default function ClientDetailModal({
       return;
     }
 
+    const eng = parseProjectEngineeringData(client.project_engineering_data);
+    const building_plan = {
+      ...eng.building_plan,
+      building_permit_number: buildingPermitNumber.trim() || eng.building_plan.building_permit_number,
+      building_permit_date: buildingPermitDate.trim() || eng.building_plan.building_permit_date,
+      building_permit_date_hijri:
+        buildingPermitDateHijri.trim() || eng.building_plan.building_permit_date_hijri,
+    };
+    const technical_report = {
+      ...eng.technical_report,
+      building_permit_number:
+        buildingPermitNumber.trim() || eng.technical_report.building_permit_number,
+      building_permit_date: buildingPermitDate.trim() || eng.technical_report.building_permit_date,
+    };
+
     await saveUpdate(
       {
         owner_name: ownerName.trim(),
@@ -664,8 +695,9 @@ export default function ClientDetailModal({
         floor_levels: floorLevels,
         project_status: projectStatus || null,
         quotation_documents: quotationDocuments,
+        project_engineering_data: { ...eng, building_plan, technical_report },
       },
-      'تم حفظ البيانات الأساسية وتفصيل الأدوار.'
+      'تم حفظ البيانات الأساسية وتفصيل الأدوار وبيانات رخصة البناء.'
     );
   };
 
@@ -727,7 +759,13 @@ export default function ClientDetailModal({
 
           {activeTab === 'basic' && (
             <div className="space-y-5 text-sm">
-              <div className="rounded-xl border border-slate-200 bg-slate-50/60 p-3">
+              <div className="rounded-xl border border-emerald-200 bg-emerald-50/70 p-3 space-y-3">
+                <div>
+                  <p className="text-sm font-bold text-emerald-950">رخصة البناء والمستندات</p>
+                  <p className="text-[11px] text-emerald-800/80 mt-0.5">
+                    أرفق رخصة البناء وأدخل رقمها وتاريخها هنا من المبيعات — لا تُرفع من صفحة المشاريع.
+                  </p>
+                </div>
                 <QuotationDocumentsUpload
                   value={quotationDocuments}
                   clientId={client.id}
@@ -745,6 +783,42 @@ export default function ClientDetailModal({
                   }}
                   onPermitExtracted={applyPermitHydration}
                 />
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-3 pt-1">
+                  <div>
+                    <label className="block text-xs font-semibold text-gray-700 mb-1">
+                      رقم رخصة البناء
+                    </label>
+                    <input
+                      value={buildingPermitNumber}
+                      onChange={(e) => setBuildingPermitNumber(e.target.value)}
+                      className="w-full p-2.5 border rounded-xl text-sm bg-white"
+                      placeholder="يُستخرج تلقائياً أو يُدخل يدوياً"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-xs font-semibold text-gray-700 mb-1">
+                      تاريخ الرخصة (ميلادي)
+                    </label>
+                    <input
+                      type="date"
+                      value={buildingPermitDate}
+                      onChange={(e) => setBuildingPermitDate(e.target.value)}
+                      className="w-full p-2.5 border rounded-xl text-sm bg-white"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-xs font-semibold text-gray-700 mb-1">
+                      تاريخ الرخصة (هجري)
+                    </label>
+                    <input
+                      value={buildingPermitDateHijri}
+                      onChange={(e) => setBuildingPermitDateHijri(e.target.value)}
+                      className="w-full p-2.5 border rounded-xl text-sm bg-white"
+                      placeholder="اختياري"
+                      dir="ltr"
+                    />
+                  </div>
+                </div>
               </div>
 
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
