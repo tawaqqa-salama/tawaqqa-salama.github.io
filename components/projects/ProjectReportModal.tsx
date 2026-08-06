@@ -49,11 +49,18 @@ interface ProjectReportModalProps {
   client: ClientRecord | null;
   onClose: () => void;
   onUpdated: () => void;
+  /** Prefer opening this stage when unlocked (e.g. designs / Design Center) */
+  preferredStage?: WorkflowStageId | null;
 }
 
 const REPORT_STATUSES = ['مسودة', 'قيد الإعداد', 'مكتمل', 'معتمد'] as const;
 
-export default function ProjectReportModal({ client, onClose, onUpdated }: ProjectReportModalProps) {
+export default function ProjectReportModal({
+  client,
+  onClose,
+  onUpdated,
+  preferredStage = null,
+}: ProjectReportModalProps) {
   const [activeStage, setActiveStage] = useState<WorkflowStageId>('contract');
   const [data, setData] = useState<ProjectEngineeringData | null>(null);
   const [saving, setSaving] = useState(false);
@@ -92,9 +99,18 @@ export default function ProjectReportModal({ client, onClose, onUpdated }: Proje
     };
     const synced = syncProjectVisitsFromQuotation(withSupervision, visitsCount);
     setData(synced);
-    setActiveStage(resolveActiveStage(client, synced));
-    setMessage(null);
-  }, [client]);
+    const resolved = resolveActiveStage(client, synced, preferredStage);
+    setActiveStage(resolved);
+    if (
+      preferredStage === 'designs' &&
+      resolved !== 'designs' &&
+      !canUnlockStage('designs', client, synced)
+    ) {
+      setMessage('مرحلة التصاميم مقفلة — اعتمد مرحلة «العقد» أولاً ثم افتح مركز التصاميم.');
+    } else {
+      setMessage(null);
+    }
+  }, [client, preferredStage]);
 
   useEffect(() => {
     if (!client || !data || !company) return;
@@ -262,6 +278,11 @@ export default function ProjectReportModal({ client, onClose, onUpdated }: Proje
                 <p className="text-xs text-sky-700 mt-1 font-semibold">
                   المرحلة الحالية: {stageMeta?.order}. {stageMeta?.label_ar}
                 </p>
+                {activeStage === 'designs' ? (
+                  <p className="text-xs font-bold text-indigo-700 mt-1">
+                    Design Center · مركز الذكاء التصميمي
+                  </p>
+                ) : null}
               </div>
               <button type="button" onClick={onClose} className="text-2xl text-gray-400 leading-none">
                 ×
