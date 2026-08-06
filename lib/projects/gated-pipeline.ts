@@ -12,6 +12,7 @@ import type {
   SupervisionTaskRow,
 } from '@/lib/types/project-reports';
 import { EMPTY_PROJECT_ENGINEERING_DATA } from '@/lib/types/project-reports';
+import { hasDesignCenterDrawings } from '@/lib/projects/design-center/state';
 import { seedBuildingPlanFromClient } from '@/lib/projects/building-plan';
 import { seedCdCoverLetter } from '@/lib/projects/cd-cover-letter';
 import { seedEngineeringDelivery } from '@/lib/projects/safety-delivery-letter';
@@ -28,7 +29,7 @@ import { getClientIdentitySnapshot } from '@/lib/projects/client-identity';
 
 export const WORKFLOW_STAGE_IDS = [
   'contract',
-  'plans',
+  'designs',
   'boq_schedule',
   'technical_report',
   'inspections',
@@ -37,6 +38,19 @@ export const WORKFLOW_STAGE_IDS = [
   'final_report',
   'completion',
 ] as const;
+
+/** Legacy stage id from older project records */
+export const LEGACY_PLANS_STAGE_ID = 'plans';
+
+export function normalizeWorkflowStageId(
+  id: string | null | undefined
+): WorkflowStageId | null {
+  if (!id) return null;
+  if (id === LEGACY_PLANS_STAGE_ID) return 'designs';
+  return (WORKFLOW_STAGE_IDS as readonly string[]).includes(id)
+    ? (id as WorkflowStageId)
+    : null;
+}
 
 export type WorkflowStageId = (typeof WORKFLOW_STAGE_IDS)[number];
 
@@ -54,16 +68,16 @@ export const WORKFLOW_STAGES: WorkflowStageDef[] = [
   {
     id: 'contract',
     order: 1,
-    label_ar: 'العقد والتعاقد',
-    label_en: 'Contract & Onboarding',
+    label_ar: 'العقد',
+    label_en: 'Contract',
     short_ar: '1. العقد',
   },
   {
-    id: 'plans',
+    id: 'designs',
     order: 2,
-    label_ar: 'معلومات المخطط والمرفقات',
-    label_en: 'Plans & Hydraulic Calcs',
-    short_ar: '2. المخطط',
+    label_ar: 'التصاميم',
+    label_en: 'Designs — Design Center',
+    short_ar: '2. التصاميم',
   },
   {
     id: 'boq_schedule',
@@ -96,8 +110,8 @@ export const WORKFLOW_STAGES: WorkflowStageDef[] = [
   {
     id: 'transmittals',
     order: 7,
-    label_ar: 'خطابات تسليم الدراسة والدفاع المدني',
-    label_en: 'Transmittal Cover Letters (CD)',
+    label_ar: 'خطابات تسليم الدراسة والرد الفني',
+    label_en: 'Study Delivery & Technical Response Letters',
     short_ar: '7. الخطابات',
   },
   {
@@ -136,7 +150,8 @@ function hasAnyBlueprint(data: ProjectEngineeringData): boolean {
     bp?.fire_alarm_file ||
     bp?.life_safety_file ||
     hasAttachment(data.plan_attachments?.engineering_drawings) ||
-    hasAttachment(data.plan_attachments?.hydraulic_calculations)
+    hasAttachment(data.plan_attachments?.hydraulic_calculations) ||
+    hasDesignCenterDrawings(data.design_center)
   );
 }
 
@@ -159,12 +174,14 @@ export function isStageApproved(
         ['تم السداد', 'معتمد مالياً'].includes(f)
       );
     }
-    case 'plans':
+    case 'designs': {
+      const legacyPlansApproved = Boolean(data.workflow?.approved_at?.[LEGACY_PLANS_STAGE_ID]);
       return (
-        isApprovedStatus(data.building_plan.status) &&
+        (isApprovedStatus(data.building_plan.status) || legacyPlansApproved) &&
         !!String(data.building_plan.occupancy_classification || '').trim() &&
         hasAnyBlueprint(data)
       );
+    }
     case 'boq_schedule':
       return isApprovedStatus(data.boq.status) && isApprovedStatus(data.timeline.status);
     case 'technical_report':
@@ -206,7 +223,7 @@ export function canUnlockStage(
   if (idx <= 0) return true;
   // Stage 9: all previous must be approved
   if (stageId === 'completion') {
-    return WORKFLOW_STAGE_IDS.slice(0, 8).every((id) => isStageApproved(id, client, data));
+    return WORKFLOW_STAGE_IDS.slice(0, -1).every((id) => isStageApproved(id, client, data));
   }
   const prev = WORKFLOW_STAGE_IDS[idx - 1];
   return isStageApproved(prev, client, data);
@@ -229,7 +246,10 @@ export function resolveActiveStage(
   data: ProjectEngineeringData,
   preferred?: WorkflowStageId | null
 ): WorkflowStageId {
-  if (preferred && canUnlockStage(preferred, client, data)) return preferred;
+  const preferredNorm = preferred
+    ? preferred
+    : normalizeWorkflowStageId(data.workflow?.active_stage);
+  if (preferredNorm && canUnlockStage(preferredNorm, client, data)) return preferredNorm;
   for (const id of WORKFLOW_STAGE_IDS) {
     if (!isStageApproved(id, client, data) && canUnlockStage(id, client, data)) return id;
   }
@@ -259,12 +279,12 @@ export function stageApprovalBlockers(
         blockers.push('اسم المشروع مطلوب');
       }
       break;
-    case 'plans':
+    case 'designs':
       if (!String(data.building_plan.occupancy_classification || '').trim()) {
         blockers.push('تصنيف الإشغال (SBC/NFPA) مطلوب');
       }
       if (!hasAnyBlueprint(data)) {
-        blockers.push('ارفع المخططات الهندسية و/أو الحسابات الهيدروليكية');
+        blockers.push('ارفع المخططات الهندسية في مركز التصاميم و/أو الحسابات الهيدروليكية');
       }
       break;
     case 'boq_schedule':
@@ -345,8 +365,12 @@ export function approveWorkflowStage(params: {
         signed_at: new Date().toISOString().slice(0, 10),
       });
       break;
-    case 'plans':
+    case 'designs':
       data.building_plan = markApproved(data.building_plan);
+      data.design_center = markApproved({
+        ...EMPTY_PROJECT_ENGINEERING_DATA.design_center,
+        ...data.design_center,
+      });
       break;
     case 'boq_schedule':
       data.boq = markApproved(data.boq);
@@ -483,7 +507,7 @@ export function applyPipelineInheritance(
       '',
   });
 
-  // Stage 2 hydraulic/plans → Stage 7 CD letter + delivery
+  // Stage 2 designs / drawings → Stage 7 CD letter + delivery
   next.engineering_delivery = seedEngineeringDelivery(client, next, next.engineering_delivery);
   next.cd_cover_letter = seedCdCoverLetter(client, next, {
     ...next.cd_cover_letter,

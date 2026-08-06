@@ -1,3 +1,7 @@
+import type { DesignCenterState } from '@/lib/projects/design-center/types';
+
+export type { DesignCenterState };
+
 export interface ReportMeta {
   status: 'مسودة' | 'قيد الإعداد' | 'مكتمل' | 'معتمد';
   updated_at?: string | null;
@@ -528,6 +532,8 @@ export interface ProjectEngineeringData {
   safety_blueprints: SafetyBlueprintsState;
   /** مرفقات المخططات والحسابات الهيدروليكية (مرحلة 2) */
   plan_attachments: PlanAttachmentsState;
+  /** مرحلة التصاميم — مركز الذكاء التصميمي (مرحلة 2) */
+  design_center: DesignCenterState;
   /** مرحلة العقد والتعاقد (مرحلة 1) */
   contract_onboarding: ContractOnboardingReport;
   boq: BoqReport;
@@ -606,6 +612,31 @@ export const EMPTY_PROJECT_ENGINEERING_DATA: ProjectEngineeringData = {
   building_plan: { ...EMPTY_BUILDING_PLAN },
   safety_blueprints: { ...EMPTY_SAFETY_BLUEPRINTS },
   plan_attachments: { ...EMPTY_PLAN_ATTACHMENTS },
+  design_center: {
+    status: 'مسودة',
+    sheets: [],
+    analysis: null,
+    systems: [],
+    calculations: [],
+    compliance: {
+      status: 'idle',
+      matchPercent: null,
+      findings: [],
+      recommendations: [],
+      standards: ['NFPA', 'SBC'],
+      checkedAt: null,
+      error: null,
+      error_code: null,
+    },
+    exports: [],
+    ui: {
+      dark_mode: false,
+      active_tab: 'drawings',
+      compare_version_a: null,
+      compare_version_b: null,
+      viewer_sheet_id: null,
+    },
+  },
   contract_onboarding: { ...EMPTY_CONTRACT_ONBOARDING },
   boq: { status: 'مسودة', items: [] },
   timeline: { status: 'مسودة', milestones: [] },
