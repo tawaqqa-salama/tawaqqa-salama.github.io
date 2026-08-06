@@ -9,8 +9,6 @@ import {
   getProjectReportProgress,
   seedProjectEngineeringFromClient,
 } from '@/lib/business/project-reports';
-import BuildingPlanReportSection from '@/components/projects/BuildingPlanReportSection';
-import SafetyBlueprintsUpload from '@/components/projects/SafetyBlueprintsUpload';
 import TechnicalReportSection from '@/components/projects/TechnicalReportSection';
 import { printTechnicalReport } from '@/components/projects/TechnicalReportPrint';
 import EngineeringDeliverySection from '@/components/projects/EngineeringDeliverySection';
@@ -19,7 +17,7 @@ import FinalInspectionSection from '@/components/projects/FinalInspectionSection
 import CompletionCertificateSection from '@/components/projects/CompletionCertificateSection';
 import SupervisionReportSection from '@/components/projects/SupervisionReportSection';
 import ContractOnboardingSection from '@/components/projects/ContractOnboardingSection';
-import PlanAttachmentsUpload from '@/components/projects/PlanAttachmentsUpload';
+import DesignCenterSection from '@/components/projects/DesignCenterSection';
 import WorkflowStageRail from '@/components/projects/WorkflowStageRail';
 import InvoicePromptModal from '@/components/invoices/InvoicePromptModal';
 import {
@@ -31,7 +29,6 @@ import {
   generateInvoiceForEngineeringEvent,
   generateTaxInvoiceFromMilestone,
 } from '@/lib/invoices/tax-invoice-service';
-import { EMPTY_PLAN_ATTACHMENTS, EMPTY_SAFETY_BLUEPRINTS } from '@/lib/types/project-reports';
 import { loadCompanyProfile, loadLocalCompanyProfile, type CompanyProfile } from '@/lib/company-profile';
 import { seedSupervisionReport } from '@/lib/projects/supervision-report';
 import { ensureCertificateNumber, ensureOutgoingNumber } from '@/lib/business/document-numbers';
@@ -314,31 +311,18 @@ export default function ProjectReportModal({ client, onClose, onUpdated }: Proje
                 />
               )}
 
-              {activeStage === 'plans' && (
-                <div className="space-y-6">
-                  <div className="rounded-xl border border-emerald-100 bg-emerald-50 px-3 py-2 text-xs text-emerald-950">
-                    يرث اسم العميل/المشروع من مرحلة العقد. يلزم تصنيف الإشغال ورفع المخططات أو الحسابات الهيدروليكية
-                    للاعتماد.
+              {activeStage === 'designs' && (
+                <div className="space-y-4">
+                  <div className="rounded-xl border border-sky-100 bg-sky-50 px-3 py-2 text-xs text-sky-950">
+                    مرحلة التصاميم — Design Center / مركز الذكاء التصميمي. يرث بيانات العقد، ويحفظ جميع المخططات
+                    والنتائج داخل المشروع. يلزم تصنيف الإشغال ورفع مخطط واحد على الأقل للاعتماد.
                   </div>
-                  <BuildingPlanReportSection
+                  <DesignCenterSection
                     client={client}
-                    report={data.building_plan}
+                    data={data}
                     saving={saving}
-                    onChange={(building_plan) =>
-                      patch({
-                        building_plan,
-                        technical_report: {
-                          ...data.technical_report,
-                          building_permit_number:
-                            building_plan.building_permit_number ||
-                            data.technical_report.building_permit_number,
-                          building_permit_date:
-                            building_plan.building_permit_date ||
-                            data.technical_report.building_permit_date,
-                        },
-                      })
-                    }
-                    onSave={(building_plan, successText) =>
+                    onPatch={patch}
+                    onSaveBuildingPlan={(building_plan, successText) =>
                       save(
                         {
                           ...data,
@@ -357,36 +341,21 @@ export default function ProjectReportModal({ client, onClose, onUpdated }: Proje
                         { stayOpen: true }
                       )
                     }
+                    onPersistBlueprints={async (safety_blueprints) => {
+                      await save(
+                        { ...data, safety_blueprints },
+                        'تم حفظ مخططات السلامة وتشغيل الفحص الآلي.',
+                        { stayOpen: true }
+                      );
+                    }}
                   />
-                  <section className="border-t pt-5 space-y-4">
-                    <h3 className="text-sm font-bold text-gray-900">مرفقات المخططات والحسابات</h3>
-                    <PlanAttachmentsUpload
-                      value={data.plan_attachments || EMPTY_PLAN_ATTACHMENTS}
-                      onChange={(plan_attachments) => patch({ plan_attachments })}
-                      clientId={client.id}
-                    />
-                    <h3 className="text-sm font-bold text-gray-900">مخططات السلامة</h3>
-                    <SafetyBlueprintsUpload
-                      client={client}
-                      buildingPlan={data.building_plan}
-                      value={data.safety_blueprints || EMPTY_SAFETY_BLUEPRINTS}
-                      onChange={(safety_blueprints) => patch({ safety_blueprints })}
-                      onPersist={async (safety_blueprints) => {
-                        await save(
-                          { ...data, safety_blueprints },
-                          'تم حفظ مخططات السلامة وتشغيل الفحص الآلي.',
-                          { stayOpen: true }
-                        );
-                      }}
-                    />
-                  </section>
                 </div>
               )}
 
               {activeStage === 'boq_schedule' && (
                 <div className="space-y-4">
                   <div className="rounded-xl border border-indigo-100 bg-indigo-50 px-3 py-2 text-xs text-indigo-950">
-                    يرث نطاق الإشغال من المخطط. بنود BOQ تُمرَّر تلقائياً إلى جدول الإشراف في المرحلة 5.
+                    يرث نطاق الإشغال من مرحلة التصاميم. بنود BOQ تُمرَّر تلقائياً إلى جدول الإشراف في المرحلة 5.
                   </div>
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
                     <StatusSelect

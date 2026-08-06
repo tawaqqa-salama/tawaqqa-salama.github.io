@@ -10,6 +10,7 @@ import {
   type FieldVisitReport,
   type ProjectEngineeringData,
 } from '@/lib/types/project-reports';
+import { mergeDesignCenterDefaults } from '@/lib/projects/design-center/state';
 import {
   applyPipelineInheritance,
   workflowProgressPercent,
@@ -64,6 +65,7 @@ export function parseProjectEngineeringData(raw: ClientRecord['project_engineeri
       engineering_drawings: data.plan_attachments?.engineering_drawings || [],
       hydraulic_calculations: data.plan_attachments?.hydraulic_calculations || [],
     },
+    design_center: mergeDesignCenterDefaults(data.design_center),
     contract_onboarding: {
       ...EMPTY_CONTRACT_ONBOARDING,
       ...data.contract_onboarding,

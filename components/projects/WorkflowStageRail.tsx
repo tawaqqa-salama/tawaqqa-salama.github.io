@@ -1,5 +1,6 @@
 'use client';
 
+import { useLanguage } from '@/lib/i18n/LanguageProvider';
 import {
   LOCK_TOOLTIP_AR,
   WORKFLOW_STAGES,
@@ -25,6 +26,9 @@ export default function WorkflowStageRail({
   progressPercent,
   onSelect,
 }: Props) {
+  const { lang } = useLanguage();
+  const ar = lang === 'ar';
+
   return (
     <div className="space-y-3">
       <div className="h-2.5 bg-gray-100 rounded-full overflow-hidden">
@@ -34,7 +38,9 @@ export default function WorkflowStageRail({
         />
       </div>
       <p className="text-xs text-gray-500">
-        مسار المراحل المتسلسل: {progressPercent}% · 🟢 مكتمل · 🔵 نشط · 🔒 مقفل
+        {ar
+          ? `مسار المراحل المتسلسل: ${progressPercent}% · 🟢 مكتمل · 🔵 نشط · 🔒 مقفل`
+          : `Sequential stage path: ${progressPercent}% · 🟢 done · 🔵 current · 🔒 locked`}
       </p>
 
       <div className="flex gap-1.5 overflow-x-auto pb-1">
@@ -42,6 +48,9 @@ export default function WorkflowStageRail({
           const ui = getStageUiState(stage.id, activeStage, client, data);
           const unlocked = canUnlockStage(stage.id, client, data);
           const isActive = activeStage === stage.id;
+          const label = ar
+            ? stage.short_ar
+            : `${stage.order}. ${stage.label_en.split('—')[0].trim()}`;
           const base =
             ui === 'completed'
               ? 'bg-emerald-600 text-white border-emerald-700'
@@ -55,7 +64,7 @@ export default function WorkflowStageRail({
             <button
               key={stage.id}
               type="button"
-              title={unlocked ? stage.label_ar : LOCK_TOOLTIP_AR}
+              title={unlocked ? (ar ? stage.label_ar : stage.label_en) : LOCK_TOOLTIP_AR}
               disabled={!unlocked}
               onClick={() => unlocked && onSelect(stage.id)}
               className={`shrink-0 px-2.5 py-1.5 rounded-lg border text-[11px] font-semibold ${base}`}
@@ -63,7 +72,7 @@ export default function WorkflowStageRail({
               <span className="ml-1">
                 {ui === 'completed' ? '🟢' : !unlocked ? '🔒' : isActive ? '🔵' : '○'}
               </span>
-              {stage.short_ar}
+              {label}
             </button>
           );
         })}
@@ -78,7 +87,7 @@ export default function WorkflowStageRail({
             <button
               key={`nav-${stage.id}`}
               type="button"
-              title={unlocked ? stage.label_ar : LOCK_TOOLTIP_AR}
+              title={unlocked ? (ar ? stage.label_ar : stage.label_en) : LOCK_TOOLTIP_AR}
               disabled={!unlocked}
               onClick={() => unlocked && onSelect(stage.id)}
               className={`w-full text-right px-3 py-2 rounded-lg text-xs font-medium ${
@@ -92,7 +101,7 @@ export default function WorkflowStageRail({
               }`}
             >
               {!unlocked ? '🔒 ' : ui === 'completed' ? '🟢 ' : isActive ? '🔵 ' : ''}
-              {stage.order}. {stage.label_ar}
+              {stage.order}. {ar ? stage.label_ar : stage.label_en}
             </button>
           );
         })}
