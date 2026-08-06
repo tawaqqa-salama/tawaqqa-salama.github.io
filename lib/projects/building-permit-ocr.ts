@@ -141,13 +141,55 @@ function isLikelyFieldLabel(value: string): boolean {
   return /^(رقم|اسم|تاريخ|صلاح)/.test(v) && v.length <= 12;
 }
 
+/** OCR-mangled Balady labels (رقم الكروكي → p95 الكزوكي, الحي → woul, …) */
+function isMangledBaladyLabel(value: string): boolean {
+  if (isLikelyFieldLabel(value)) return true;
+  const raw = String(value || '').trim();
+  const v = normalizePlaceLite(raw);
+  if (/^woul$/i.test(raw)) return true;
+  if (/كروكي|كزوكي|ميخط|مخطط|قطعه|فظعه|الشارع|مساحه|الحذود|الارتداد|الجهه/.test(v)) {
+    return true;
+  }
+  // "p95 الكزوكي" / "390 الك…" style label debris
+  if (/^p?\d{1,4}\s*ال/.test(raw)) return true;
+  return false;
+}
+
+function looksLikePersonName(value: string): boolean {
+  const v = String(value || '').trim();
+  if (v.length < 6) return false;
+  if (/مكتب|هندس|للهندسة|للهندسه|رخصة|بلدي|امانة|أمانة/.test(v)) return false;
+  if (!/[\u0600-\u06FF]{3,}/.test(v)) return false;
+  // Prefer multi-part Arabic names (بن / بنت / spaces)
+  const arabicWords = v.match(/[\u0600-\u06FF]{2,}/g) || [];
+  return arabicWords.length >= 2 || /(?:^|\s)بن(?:ت)?(?:\s|$)/.test(v);
+}
+
+function looksLikePermitNumber(value: string | null | undefined): boolean {
+  if (!value) return false;
+  const v = normalizeArabicDigits(String(value)).replace(/\s+/g, '');
+  // Pure digits (Balady) or digit/digit municipal forms — never office names
+  if (/^\d{8,14}$/.test(v)) return true;
+  if (/^\d{3,5}\/\d{2,4}$/.test(v)) return true;
+  return false;
+}
+
 /** Common Tesseract confusions on Balady Arabic names / districts */
 function fixArabicOcrText(value: string): string {
   return value
+    .replace(/[\u200e\u200f\u202a-\u202e\u2066-\u2069]/g, '')
+    .replace(/[\u064B-\u0652\u0670]/g, '') // strip tatweel/diacritics from OCR
+    .replace(/\bdesl\b/gi, 'أحمد')
+    .replace(/\bdesI\b/gi, 'أحمد')
+    .replace(/\bdes1\b/gi, 'أحمد')
+    .replace(/\bahmad\b/gi, 'أحمد')
+    .replace(/يافيل/g, 'بافيل')
     .replace(/قائز/g, 'فايز')
     .replace(/صالج/g, 'صالح')
     .replace(/الجارثي/g, 'الحارثي')
+    .replace(/الحارتي/g, 'الحارثي')
     .replace(/التهضة|التهضه/g, 'النهضة')
+    .replace(/\s+/g, ' ')
     .trim();
 }
 
@@ -156,6 +198,13 @@ function splitNonEmptyLines(block: string): string[] {
     .split(/\n+/)
     .map((line) => cleanLabelValue(line.replace(/[\u200f\u200e\u00a0]/g, '')))
     .filter((line) => line.length >= 1 && line !== '|' && !/^[\u060c,.]+$/.test(line));
+}
+
+function fixDistrictOcr(district: string | null): string | null {
+  if (!district) return null;
+  if (/تهضه|تهضة|نهضه|نهضة/.test(normalizePlaceLite(district))) return 'النهضة';
+  if (/سلامه|سلامة/.test(normalizePlaceLite(district))) return 'السلامة';
+  return fixArabicOcrText(district);
 }
 
 /**
@@ -170,64 +219,121 @@ function extractBaladyLocationColumns(text: string): {
   landAreaM2: string | null;
 } | null {
   const normalized = normalizeArabicDigits(text);
-  const block = normalized.match(
+
+  // Exact label stack (clean OCR)
+  const exact = normalized.match(
     /البلدية\s*\n+\s*رقم\s*الكروكي\s*\n+\s*رقم\s*المخطط\s*\n+\s*(?:رقم\s*)?القطعة\s*\n+\s*الحي\s*\n+\s*اسم\s*الشارع\.?\s*\n+\s*مساحة\s*الار[ض]?\.?\s*\n+([\s\S]{8,500}?)(?:\n\s*الجهة|\n\s*الحدود|\n\s*الارتداد|\n\s*جميع\s*التعهد)/u
   );
-  if (!block?.[1]) return null;
-
-  const lines = splitNonEmptyLines(block[1]).filter((line) => !isLikelyFieldLabel(line));
-  if (lines.length < 5) return null;
-
-  const municipality = lines[0] || null;
-  const plotNumber = (lines[3] || '').match(/[A-Za-z0-9][A-Za-z0-9\/\-]*/)?.[0] || null;
-  let district = lines[4] || null;
-  if (district && /تهضه|تهضة|نهضه|نهضة/.test(normalizePlaceLite(district))) {
-    district = 'النهضة';
-  } else if (district) {
-    district = fixArabicOcrText(district);
+  if (exact?.[1]) {
+    const lines = splitNonEmptyLines(exact[1]).filter((line) => !isMangledBaladyLabel(line));
+    if (lines.length >= 5) {
+      return {
+        municipality: lines[0] || null,
+        plotNumber: (lines[3] || '').match(/[A-Za-z0-9][A-Za-z0-9\/\-]*/)?.[0] || null,
+        district: fixDistrictOcr(lines[4] || null),
+        street: lines[5] ? fixArabicOcrText(lines[5]) : null,
+        landAreaM2: (lines[6] || '').match(/[\d]+(?:[.,]\d+)?/)?.[0]?.replace(/,/g, '') || null,
+      };
+    }
   }
-  const street = lines[5] ? fixArabicOcrText(lines[5]) : null;
-  const landAreaM2 = (lines[6] || '').match(/[\d]+(?:[.,]\d+)?/)?.[0]?.replace(/,/g, '') || null;
 
+  // Loose: labels may be mangled — take value lines after البلدية until الجهة
+  const loose = normalized.match(
+    /البلدية\s*\n+([\s\S]{10,700}?)(?:\n\s*الجه|\n\s*الحدود|\n\s*الارتداد|\n\s*جميع\s*التع)/u
+  );
+  if (!loose?.[1]) return null;
+
+  const values = splitNonEmptyLines(loose[1]).filter((line) => !isMangledBaladyLabel(line));
+  // First value should look like a municipality (فرعية / جدة / أبحر …)
+  const munIdx = values.findIndex(
+    (l) => /فرعي|جدة|جده|ابحر|أبحر|رياض|دمام|امانه|أمانة/.test(l) && !/^\d/.test(l)
+  );
+  if (munIdx < 0) return null;
+  const slice = values.slice(munIdx);
+  if (slice.length < 2) return null;
+
+  const municipality = slice[0] || null;
+  let plotNumber: string | null = null;
+  let district: string | null = null;
+  let street: string | null = null;
+  let landAreaM2: string | null = null;
+
+  for (const line of slice.slice(1)) {
+    const trimmed = line.replace(/,/g, '').trim();
+    // Plan numbers look like 32/ب or OCR "0/32" — not plot
+    if (/^\d{1,4}\s*\/\s*[\u0600-\u06FFA-Za-z0-9]+$/.test(trimmed)) continue;
+    if (/^\d{1,2}\/\d{2,4}$/.test(trimmed)) continue;
+
+    // Plot is typically a short integer alone on its line (91)
+    if (!plotNumber && /^\d{1,4}$/.test(trimmed) && Number(trimmed) >= 1) {
+      plotNumber = trimmed;
+      continue;
+    }
+    if (!district && /[\u0600-\u06FF]{3,}/.test(trimmed) && !/فرعي|جدة\s*الجديدة/.test(trimmed)) {
+      district = fixDistrictOcr(trimmed);
+      continue;
+    }
+    if (district && !street && /[\u0600-\u06FF]{3,}/.test(trimmed) && !/^\d/.test(trimmed)) {
+      street = fixArabicOcrText(trimmed);
+      continue;
+    }
+    if (!landAreaM2) {
+      const area = trimmed.match(/^(\d{2,5}(?:[.,]\d+)?)$/)?.[1];
+      if (area && Number(area.replace(',', '')) >= 50) {
+        landAreaM2 = area.replace(/,/g, '');
+      }
+    }
+  }
+
+  if (!municipality && !district && !plotNumber) return null;
   return { municipality, plotNumber, district, street, landAreaM2 };
 }
 
-/** Owner + CR column block after اسم صاحب الرخصة / رقم السجل */
+/** Owner + CR column block after اسم صاحب الرخصة / رقم السجل [/ رقم الصك / تاريخ الصك] */
 function extractBaladyOwnerColumns(text: string): {
   ownerName: string | null;
   commercialRegister: string | null;
+  usageLabel: string | null;
 } | null {
   const normalized = normalizeArabicDigits(text);
   const block = normalized.match(
-    /اسم\s*صاحب\s*الرخص[ةه]\s*\n+\s*رقم\s*السجل\s*\n+([\s\S]{5,280}?)(?:\n\s*جوال|\n\s*البلدية|\n\s*رقم\s*الكروكي)/u
+    /اسم\s*صاحب\s*الرخص[ةه]\s*\n+\s*رقم\s*السجل\s*\n+([\s\S]{5,400}?)(?:\n\s*جوال|\n\s*البلدية|\n\s*رقم\s*الكروكي)/u
   );
   if (!block?.[1]) return null;
 
   const lines = splitNonEmptyLines(block[1]);
   let ownerName: string | null = null;
   let commercialRegister: string | null = null;
+  let usageLabel: string | null = null;
 
   for (const line of lines) {
-    if (isLikelyFieldLabel(line)) continue;
-    if (/^رخصة\s*بناء/.test(line)) continue;
+    if (isMangledBaladyLabel(line)) continue;
+    if (/^رخصة\s*بناء/.test(line)) {
+      usageLabel = cleanLabelValue(line);
+      continue;
+    }
     if (!commercialRegister) {
       const cr = line.match(/\b(\d{8,15})\b/)?.[1];
-      if (cr && !cr.startsWith('05')) {
+      // Skip deed-like 12-digit and phone; Balady CR is often 10 digits starting with 1
+      if (cr && !cr.startsWith('05') && cr.length <= 11) {
         commercialRegister = cr;
         continue;
       }
     }
-    if (!ownerName && /[\u0600-\u06FF]{3,}/.test(line) && !/\d{6,}/.test(line)) {
-      ownerName = fixArabicOcrText(line);
+    if (!ownerName) {
+      const fixed = fixArabicOcrText(line);
+      if (looksLikePersonName(fixed) && !/\d{6,}/.test(fixed)) {
+        ownerName = fixed;
+      }
     }
   }
 
   if (!ownerName && !commercialRegister) return null;
-  return { ownerName, commercialRegister };
+  return { ownerName, commercialRegister, usageLabel };
 }
 
 const HIJRI_MONTH =
-  '(?:محرم|صفر|ربيع\\s*الأول|ربيع\\s*الثاني|ربيع\\s*آخر|جمادى\\s*الأولى|جمادى\\s*الأول|جمادي\\s*الأول|جمادى\\s*الثانية|جمادى\\s*آخر|رجب|شعبان|رمضان|شوال|ذو\\s*القعدة|ذي\\s*القعدة|ذو\\s*الحجة|ذي\\s*الحجة|إ?جمادي|جمادي)';
+  '(?:محرم|صفر|ربيع\\s*الأول|ربيع\\s*الثاني|ربيع\\s*آخر|جمادى\\s*الأولى|جمادى\\s*الأول|جمادي\\s*الأول|جمادى\\s*الثانية|جمادى\\s*آخر|رجب|شعبان|رمضان|شوال|ذو\\s*القعدة|ذي\\s*القعدة|القعذة|القعدة|ذو\\s*الحجة|ذي\\s*الحجة|إ?جمادي|جمادي)';
 
 /** Parse Hijri forms like 9/جمادي الأول/1442 or OCR-split lines */
 export function parseHijriDate(text: string): string | null {
@@ -251,7 +357,7 @@ function extractDates(text: string): { gregorian: string | null; hijri: string |
 
   // Balady header often OCR-splits: "9إجمادي" ... رقم الرخصة ... "الأول/1442"
   const baladyWindow = normalized.match(
-    /([\s\S]{0,40}?)رقم\s*الرخص[ةه][\s\S]{0,40}?(\d{8,14})[\s\S]{0,160}?التاريخ([\s\S]{0,160}?)(?:اسم\s*صاحب|الاستخدام|رقم\s*الصك)/u
+    /([\s\S]{0,40}?)رقم\s*الرخص[ةه][\s\S]{0,40}?(\d{8,14})[\s\S]{0,160}?التاريخ([\s\S]{0,200}?)(?:اسم\s*صاحب|الاستخدام|رقم\s*الصك)/u
   );
   if (baladyWindow) {
     const chunk = `${baladyWindow[1] || ''}\n${baladyWindow[3] || ''}`;
@@ -266,6 +372,20 @@ function extractDates(text: string): { gregorian: string | null; hijri: string |
         hijri = `${day}/جمادى ${yearMonth[1]}/${yearMonth[2]}`;
       } else if (yearMonth) {
         hijri = `1/جمادى ${yearMonth[1]}/${yearMonth[2]}`;
+      }
+    }
+
+    // ذو القعدة OCR: "93/13" + "القعذة/1445" (day mangled as xx/dd)
+    if (!hijri) {
+      const qada = chunk.match(
+        /(?:^|\n)\s*(\d{1,2})(?:[\/\-.](\d{1,2}))?\s*\n[\s\S]{0,60}?(القعذة|القعدة|ذو\s*القعدة|ذي\s*القعدة)\s*[\/\-]?\s*(1[3-5]\d{2})/u
+      );
+      if (qada) {
+        let day = qada[1];
+        if (qada[2] && Number(qada[2]) >= 1 && Number(qada[2]) <= 31) day = qada[2];
+        else if (Number(qada[1]) > 31 && qada[2]) day = qada[2];
+        const month = /قعذ|قعد/.test(qada[3]) ? 'ذو القعدة' : qada[3];
+        hijri = `${day}/${month}/${qada[4]}`;
       }
     }
   }
@@ -342,11 +462,11 @@ function extractPermitNumber(text: string): string | null {
   const baladyBlock = normalized.match(
     /رقم\s*الرخص[ةه]\s*\n+\s*(\d{8,14})/imu
   );
-  if (baladyBlock?.[1]) return baladyBlock[1];
+  if (baladyBlock?.[1] && looksLikePermitNumber(baladyBlock[1])) return baladyBlock[1];
 
   // Same line with OCR spacing: رقم الرخصة 4100097644
   const sameLine = normalized.match(/رقم\s*الرخص[ةه]\s*[:：]?\s*(\d{8,14})/u);
-  if (sameLine?.[1]) return sameLine[1];
+  if (sameLine?.[1] && looksLikePermitNumber(sameLine[1])) return sameLine[1];
 
   const labeled = pickLabeledValue(normalized, [
     /رقم\s*رخصة\s*البناء/,
@@ -360,61 +480,62 @@ function extractPermitNumber(text: string): string | null {
     const cleaned = collapseOcrDigitGaps(labeled);
     const num =
       cleaned.match(/\d{8,14}/)?.[0] ||
-      cleaned.match(/\d{6,}/)?.[0] ||
-      cleaned.match(/[A-Za-z0-9][A-Za-z0-9\-\/]{3,}/)?.[0];
-    return num || cleanLabelValue(labeled);
+      cleaned.match(/\d{4,5}\/\d{2,4}/)?.[0] ||
+      cleaned.match(/\d{6,}/)?.[0];
+    if (num && looksLikePermitNumber(num)) return num;
+    // Never return office names / Arabic prose as "permit number"
   }
 
   const afterLabel = normalized.match(
     /(?:رقم\s*رخصة\s*البناء|رقم\s*الرخص[ةه]|رخصة\s*رقم)\s*[:：]?\s*\n+\s*([A-Za-z0-9][A-Za-z0-9\-\/ ]{3,})/imu
   );
   if (afterLabel?.[1]) {
-    const num = collapseOcrDigitGaps(afterLabel[1]).match(/\d{8,14}|\d{6,}|[A-Za-z0-9][A-Za-z0-9\-\/]{3,}/);
-    if (num) return num[0];
+    const num = collapseOcrDigitGaps(afterLabel[1]).match(/\d{8,14}|\d{4,5}\/\d{2,4}|\d{6,}/);
+    if (num && looksLikePermitNumber(num[0])) return num[0];
   }
 
   const patterns = [
-    /(?:رقم\s*رخصة\s*البناء|رقم\s*الرخص[ةه])\s*[:：]?\s*([A-Za-z0-9][A-Za-z0-9\-\/]{3,})/u,
-    /\b(\d{4,5}\/\d{2,4})\b/,
-    /\b(41\d{8,12})\b/, // Balady Jeddah-style
+    /(?:رقم\s*رخصة\s*البناء|رقم\s*الرخص[ةه])\s*[:：]?\s*(\d{8,14}|\d{4,5}\/\d{2,4})/u,
+    /\b(45\d{8,12})\b/, // Balady Jeddah newer series
+    /\b(41\d{8,12})\b/,
     /\b(14\d{8,12})\b/,
-    /\b([A-Z]{1,4}\-\d{4,})\b/,
+    /\b(\d{4,5}\/\d{2,4})\b/,
   ];
   for (const re of patterns) {
     const m = normalized.match(re);
-    if (m?.[1]) return collapseOcrDigitGaps(m[1]);
+    if (m?.[1] && looksLikePermitNumber(m[1])) return collapseOcrDigitGaps(m[1]);
   }
   return null;
 }
 
 function extractOwnerName(text: string): string | null {
   const fromColumns = extractBaladyOwnerColumns(text)?.ownerName;
-  if (fromColumns) return fromColumns;
+  if (fromColumns && looksLikePersonName(fromColumns)) return fromColumns;
 
   // Line-oriented Balady: label then name (skip if next line is another label)
   const balady = normalizeArabicDigits(text).match(
     /اسم\s*صاحب\s*الرخص[ةه]\s*\n+\s*([^\n\r]{5,80})/imu
   );
-  if (balady?.[1] && !isLikelyFieldLabel(balady[1])) {
-    return fixArabicOcrText(
+  if (balady?.[1] && !isMangledBaladyLabel(balady[1])) {
+    const fixed = fixArabicOcrText(
       cleanLabelValue(
         balady[1].split(/(?:رقم|جوال|السجل|الاستخدام|رخصة\s*بناء)/)[0] || balady[1]
       )
     );
+    if (looksLikePersonName(fixed)) return fixed;
   }
 
   const value = pickLabeledValue(text, [
     /اسم\s*صاحب\s*الرخص[ةه]/,
     /اسم\s*المالك/,
     /المالك\s*\/?\s*المستثمر/,
-    /المالك/,
     /Owner\s*Name/i,
-    /Owner/i,
   ]);
-  if (!value || isLikelyFieldLabel(value)) return null;
-  return fixArabicOcrText(
+  if (!value || isMangledBaladyLabel(value)) return null;
+  const fixed = fixArabicOcrText(
     cleanLabelValue(value.split(/(?:رقم|تاريخ|الحي|الموقع|المدينة|جوال)/)[0] || value)
   );
+  return looksLikePersonName(fixed) ? fixed : null;
 }
 
 function extractStreet(text: string): string | null {
@@ -483,7 +604,15 @@ function extractFloorsCount(text: string): number | null {
 
 function extractUsageLabel(text: string): string | null {
   const normalized = collapseOcrDigitGaps(text).replace(/[\u200e\u200f\u202a-\u202e]/g, '');
+  const fromOwnerBlock = extractBaladyOwnerColumns(normalized)?.usageLabel;
+  if (fromOwnerBlock && !isMangledBaladyLabel(fromOwnerBlock)) {
+    return fromOwnerBlock;
+  }
+
   const titled =
+    normalized.match(
+      /رخصة\s*بناء\s*شقق\s*\S*/u
+    )?.[0] ||
     normalized.match(
       /رخصة\s*بناء\s*مبنى\s*(تجاري|تجارى|سكني|سكنى|صناعي|صناعى|تعليمي|إداري|اداري)/u
     )?.[0] ||
@@ -493,18 +622,21 @@ function extractUsageLabel(text: string): string | null {
   if (titled) return cleanLabelValue(titled);
 
   const afterUsage = normalized.match(
-    /الاستخدام\s*[:：]?\s*\n+([\s\S]{3,160}?)(?:\n\s*اسم\s*صاحب|\n\s*رقم\s*السجل|\n\s*رقم\s*الرخص|\n\s*البلدية)/u
+    /الاستخدام\s*[:：]?\s*\n+([\s\S]{3,220}?)(?:\n\s*جوال|\n\s*البلدية)/u
   );
   if (afterUsage?.[1]) {
-    const lines = splitNonEmptyLines(afterUsage[1]).filter((l) => !isLikelyFieldLabel(l));
+    const lines = splitNonEmptyLines(afterUsage[1]).filter((l) => !isMangledBaladyLabel(l));
     const hit = lines.find((l) =>
-      /رخصة|تجار|سكن|صناع|تعليم|مكتب|مصنع|مطعم|فندق|مستودع/.test(l)
+      /^رخصة\s*بناء|تجار|سكن|شقق|صناع|تعليم|مصنع|مطعم|فندق|مستودع/.test(l)
     );
-    if (hit) return cleanLabelValue(hit);
+    if (hit && !isMangledBaladyLabel(hit)) return cleanLabelValue(hit);
   }
 
   const labeled = pickLabeledValue(normalized, [/الاستخدام/u, /نوع\s*الاستخدام/u, /الغرض/u]);
-  return labeled ? cleanLabelValue(labeled) : null;
+  if (!labeled || isMangledBaladyLabel(labeled) || /صاحب|السجل|الصك/.test(labeled)) {
+    return null;
+  }
+  return cleanLabelValue(labeled);
 }
 
 function extractBuildingArea(text: string): string | null {
@@ -885,28 +1017,40 @@ export type BuildingPermitHydration = {
 
 export function extractionToHydration(result: BuildingPermitExtraction): BuildingPermitHydration {
   const patch: BuildingPermitHydration = {};
-  if (result.permitNumber) patch.building_permit_number = result.permitNumber;
-  if (result.permitDateGregorian) {
+  if (result.permitNumber && looksLikePermitNumber(result.permitNumber)) {
+    patch.building_permit_number = result.permitNumber;
+  }
+  if (result.permitDateGregorian && looksGregorianDate(result.permitDateGregorian)) {
     const iso = toIsoDate(result.permitDateGregorian) || result.permitDateGregorian;
     patch.building_permit_date = iso;
     if (/^\d{4}-\d{2}-\d{2}$/.test(iso)) patch.report_date = iso;
   }
   if (result.permitDateHijri) patch.building_permit_date_hijri = result.permitDateHijri;
-  if (result.ownerName) patch.owner_name = result.ownerName;
-  if (result.district) patch.district = result.district;
-  if (result.city) patch.city = result.city;
-  if (result.street) patch.street = result.street;
+  if (result.ownerName && looksLikePersonName(result.ownerName)) {
+    patch.owner_name = result.ownerName;
+  }
+  if (result.district && !isMangledBaladyLabel(result.district)) {
+    patch.district = result.district;
+  }
+  if (result.city && !isMangledBaladyLabel(result.city)) patch.city = result.city;
+  if (result.street && !isMangledBaladyLabel(result.street)) patch.street = result.street;
   if (result.plotNumber) patch.plot_number = result.plotNumber;
-  if (result.municipality) patch.municipality = result.municipality;
-  if (result.commercialRegister) patch.commercial_register = result.commercialRegister;
-  if (result.phone) patch.phone = result.phone;
+  if (result.municipality && !isMangledBaladyLabel(result.municipality)) {
+    patch.municipality = result.municipality;
+  }
+  if (result.commercialRegister && /^\d{8,15}$/.test(result.commercialRegister)) {
+    patch.commercial_register = result.commercialRegister;
+  }
+  if (result.phone && /^05\d{8}$/.test(result.phone)) patch.phone = result.phone;
   if (result.landAreaM2) patch.land_area = result.landAreaM2;
   if (result.buildingAreaM2) patch.building_area = result.buildingAreaM2;
   if (result.floorsCount != null && result.floorsCount > 0) {
     patch.floors_count = result.floorsCount;
   }
   if (result.activityType) patch.activity_type = result.activityType;
-  if (result.usageLabel) patch.usage_label = result.usageLabel;
+  if (result.usageLabel && !isMangledBaladyLabel(result.usageLabel)) {
+    patch.usage_label = result.usageLabel;
+  }
   if (result.nationalAddress) patch.national_address = result.nationalAddress;
   if (result.locationSummary) patch.location_summary = result.locationSummary;
 

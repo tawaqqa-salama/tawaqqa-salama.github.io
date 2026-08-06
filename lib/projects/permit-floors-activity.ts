@@ -19,11 +19,12 @@ const USAGE_ACTIVITY_PATTERNS: { re: RegExp; activity: string }[] = [
   { re: /مطعم|مقهى|كافيه|مطبخ/, activity: 'restaurant' },
   { re: /مستودع|مخزن|تخزين/, activity: 'warehouse' },
   { re: /مصنع|صناع[يى]|ورش[ةه]?/, activity: 'factory' },
+  // Serviced apartments / hospitality before generic "شقق" and before "مكتب هندسي" noise
+  { re: /شقق\s*مخدوم|شقق\s*مفروطة|فندق|إيواء|ايواء/, activity: 'hotel' },
+  { re: /سكن[يى]|عمائر|شقق|فيلا/, activity: 'residential_building' },
   { re: /مكتب|إدار[يى]|ادار[يى]/, activity: 'office' },
   { re: /مدرس[ةه]|تعليم|جامع[ةه]|روضة/, activity: 'school' },
   { re: /مواقف|موقف\s*سيارات/, activity: 'parking' },
-  { re: /فندق|إيواء|ايواء|شقق\s*مفروطة/, activity: 'hotel' },
-  { re: /سكن[يى]|عمائر|شقق|فيلا/, activity: 'residential_building' },
   { re: /مجمع\s*تجار|مول|سوق|تجار[يى]ة?|تجارى/, activity: 'commercial_complex' },
 ];
 
@@ -33,8 +34,12 @@ export function mapPermitUsageToActivityType(
 ): string | null {
   const tryMatch = (blob: string): string | null => {
     if (!blob.trim()) return null;
+    // Never treat engineering-office mentions alone as the activity
+    const cleaned = blob
+      .replace(/المكتب\s*(?:الهندسي|المشرف)[^\n]*/gu, ' ')
+      .replace(/مكتب\s+[^\n]*هندس[^\n]*/gu, ' ');
     for (const { re, activity } of USAGE_ACTIVITY_PATTERNS) {
-      if (re.test(blob) && ACTIVITY_RULES[activity]) return activity;
+      if (re.test(cleaned) && ACTIVITY_RULES[activity]) return activity;
     }
     return null;
   };
@@ -45,12 +50,13 @@ export function mapPermitUsageToActivityType(
 
   const titled =
     String(fallbackText || '').match(
-      /رخصة\s*بناء\s*مبنى\s*\S+|إصدار\s*رخصة\s*بناء\s*\S+/u
+      /رخصة\s*بناء\s*شقق\s*\S*|رخصة\s*بناء\s*مبنى\s*\S+|إصدار\s*رخصة\s*بناء\s*\S+/u
     )?.[0] || '';
   const fromTitle = tryMatch(titled);
   if (fromTitle) return fromTitle;
 
-  return tryMatch(String(fallbackText || ''));
+  // Do not scan the entire OCR blob for "مكتب" — too many false positives
+  return null;
 }
 
 export function activityLabelForType(activityType: string | null | undefined): string {
