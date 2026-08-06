@@ -86,12 +86,12 @@ async function downscaleFullPage(source: Blob | File): Promise<Blob | File> {
 }
 
 /**
- * Prefer File/Blob in the browser. In Node, pass Uint8Array —
+ * Prefer File/Blob in the browser. In Node, pass Buffer —
  * URL.createObjectURL produces blob:nodedata URLs that workers cannot open.
  */
-async function blobToOcrInput(source: Blob | File): Promise<Blob | File | Uint8Array> {
+async function blobToOcrInput(source: Blob | File): Promise<Blob | File | Buffer> {
   if (isBrowserDom()) return source;
-  return new Uint8Array(await source.arrayBuffer());
+  return Buffer.from(await source.arrayBuffer());
 }
 
 /** Node/CI fallback: ffmpeg crop + system tesseract (much more accurate on Balady scans). */
@@ -148,7 +148,7 @@ async function recognizeWithWorker(
       tessedit_pageseg_mode: psm as never,
       preserve_interword_spaces: '1',
     });
-    const result = await worker.recognize(input);
+    const result = await worker.recognize(input as Parameters<typeof worker.recognize>[0]);
     return String(result.data?.text || '').trim();
   } finally {
     await worker.terminate();
