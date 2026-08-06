@@ -121,9 +121,26 @@ export async function extractBuildingPermitFromFile(
       needsFloorsOrActivityOcr(result));
 
   if (shouldOcr) {
-    const ocr = await extractBuildingPermitWithTesseract(file, onProgress);
-    if (hasUsefulPermitExtraction(ocr) || ocr.floorsCount || ocr.buildingAreaM2 || ocr.floors?.length) {
-      result = mergePermitExtractions(result, ocr);
+    try {
+      const ocr = await extractBuildingPermitWithTesseract(file, onProgress);
+      if (
+        hasUsefulPermitExtraction(ocr) ||
+        ocr.floorsCount ||
+        ocr.buildingAreaM2 ||
+        ocr.floors?.length
+      ) {
+        result = mergePermitExtractions(result, ocr);
+      }
+    } catch (error) {
+      // Surface failure to caller via empty result + progress; do not swallow without signal
+      const msg = error instanceof Error ? error.message : 'فشل التعرف على نص الرخصة';
+      onProgress?.(`⚠️ ${msg}`);
+      if (!hasUsefulPermitExtraction(result)) {
+        return {
+          ...emptyExtraction('none'),
+          rawTextPreview: msg,
+        };
+      }
     }
   }
 

@@ -11,7 +11,7 @@ import { matchPermitLocation } from '@/lib/projects/permit-location-match';
 describe('Balady permit 4500260099 (أحمد بافيل)', () => {
   it('extracts DCTDecode JPEG from user PDF', async () => {
     const bytes = new Uint8Array(
-      readFileSync('/home/ubuntu/.cursor/projects/workspace/uploads/________________7150.pdf')
+      readFileSync(join(__dirname, 'fixtures/balady-permit-7150.pdf'))
     );
     const file = new File([bytes.slice()], 'رخصة-بناء.pdf', { type: 'application/pdf' });
     const blob = await extractEmbeddedPdfImage(file);

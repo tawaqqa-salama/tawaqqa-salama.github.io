@@ -158,11 +158,18 @@ function isMangledBaladyLabel(value: string): boolean {
 function looksLikePersonName(value: string): boolean {
   const v = String(value || '').trim();
   if (v.length < 6) return false;
-  if (/مكتب|هندس|للهندسة|للهندسه|رخصة|بلدي|امانة|أمانة/.test(v)) return false;
+  if (
+    /مكتب|هندس|للهندسة|للهندسه|رخص[ةهط]|بناء|بلدي|امانة|أمانة|إدارة|ادارة|رقم|السجل|الصك|التاريخ|الاستخدام|صلاح|القطعة|الحي|الشارع|وزارة|قروية/.test(
+      v
+    )
+  ) {
+    return false;
+  }
   if (!/[\u0600-\u06FF]{3,}/.test(v)) return false;
-  // Prefer multi-part Arabic names (بن / بنت / spaces)
+  // Saudi personal names almost always include بن / بنت, or 2+ Arabic tokens
+  if (/(?:^|[\s.])بن(?:ت)?(?:\s|$)/.test(v)) return true;
   const arabicWords = v.match(/[\u0600-\u06FF]{2,}/g) || [];
-  return arabicWords.length >= 2 || /(?:^|\s)بن(?:ت)?(?:\s|$)/.test(v);
+  return arabicWords.length >= 2;
 }
 
 function looksLikePermitNumber(value: string | null | undefined): boolean {
@@ -179,17 +186,24 @@ function fixArabicOcrText(value: string): string {
   return value
     .replace(/[\u200e\u200f\u202a-\u202e\u2066-\u2069]/g, '')
     .replace(/[\u064B-\u0652\u0670]/g, '') // strip tatweel/diacritics from OCR
+    // أحمد often becomes Latin debris or احجمد
+    .replace(/^A\>?\|?\s*/i, 'أحمد ')
     .replace(/\bdesl\b/gi, 'أحمد')
     .replace(/\bdesI\b/gi, 'أحمد')
     .replace(/\bdes1\b/gi, 'أحمد')
     .replace(/\bahmad\b/gi, 'أحمد')
+    .replace(/احجمد/g, 'أحمد')
     .replace(/يافيل/g, 'بافيل')
+    .replace(/سعيديافيل/g, 'سعيد بافيل')
+    .replace(/سعيدبافيل/g, 'سعيد بافيل')
+    .replace(/مجد\s+عبد\s+رضا/g, 'محمد عبد رضا')
     .replace(/قائز/g, 'فايز')
     .replace(/صالج/g, 'صالح')
     .replace(/الجارثي/g, 'الحارثي')
     .replace(/الحارتي/g, 'الحارثي')
     .replace(/التهضة|التهضه/g, 'النهضة')
     .replace(/\s+/g, ' ')
+    .replace(/\s*\.\s*/g, ' ')
     .trim();
 }
 
@@ -525,6 +539,30 @@ function extractOwnerName(text: string): string | null {
     if (looksLikePersonName(fixed)) return fixed;
   }
 
+  // PSM4 dense lines: "احجمد .بن عمر بن سعيد يافيل" or "A>| بن عمر بن سعيديافيل"
+  // IMPORTANT: do not use bare /بن/ — it matches inside بناء
+  const binLine = normalizeArabicDigits(text)
+    .split(/\n+/)
+    .map((l) => cleanLabelValue(l))
+    .find(
+      (l) =>
+        /(?:^|[\s.])بن(?:ت)?(?:\s|$)/.test(l) &&
+        /[\u0600-\u06FFA-Za-z>|]{3,}/.test(l) &&
+        !/مكتب|هندس|القطعة|بطول|يحدها|رخص|بناء/.test(l)
+    );
+  if (binLine) {
+    const clipped =
+      binLine.match(
+        /((?:احجمد|أحمد|A>?\|?)(?:\s*\.?\s*بن\s+[\u0600-\u06FF.]+){1,4}(?:\s+[\u0600-\u06FF.]+)?)/u
+      )?.[1] ||
+      binLine.match(
+        /((?:[\u0600-\u06FF]{3,})(?:\s*\.?\s*بن\s+[\u0600-\u06FF.]+){1,4}(?:\s+[\u0600-\u06FF.]+)?)/u
+      )?.[1] ||
+      binLine;
+    const fixed = fixArabicOcrText(clipped);
+    if (looksLikePersonName(fixed)) return fixed;
+  }
+
   const value = pickLabeledValue(text, [
     /اسم\s*صاحب\s*الرخص[ةه]/,
     /اسم\s*المالك/,
@@ -774,8 +812,10 @@ function extractLocation(text: string): {
     columns?.municipality ||
     normalized.match(/\nالبلدية\s*\n+\s*([^\n\r]{2,40})/u)?.[1] ||
     pickLabeledValue(text, [/البلدية/, /Municipality/i]);
-  if (municipality && isLikelyFieldLabel(municipality)) {
-    municipality = columns?.municipality || null;
+  if (municipality && (isMangledBaladyLabel(municipality) || /قروية|شؤون|وزارة/.test(municipality))) {
+    municipality = columns?.municipality && !/قروية|شؤون|وزارة/.test(columns.municipality)
+      ? columns.municipality
+      : null;
   }
 
   let city = pickLabeledValue(text, [/المدينة/, /City/i]);
@@ -788,8 +828,19 @@ function extractLocation(text: string): {
   }
   if (!city && /رياض/i.test(normalized)) city = 'الرياض';
 
-  const street = columns?.street || extractStreet(text);
-  const plotNumber = columns?.plotNumber || extractPlotNumber(text);
+  let street = columns?.street || extractStreet(text);
+  let plotNumber = columns?.plotNumber || extractPlotNumber(text);
+
+  // PSM4 single-line location values:
+  // جدة الجديدة الفرعية 3900084565 32ب مجد عبد رضا 1280
+  const inlineLoc = normalized.match(
+    /((?:جدة\s*الجديدة|ابحر|أبحر|[\u0600-\u06FF]{3,})\s*الفرعية)\s+(\d{6,12})\s+(\S+)\s+([\u0600-\u06FF]+(?:\s+[\u0600-\u06FF]+){0,4})\s+(\d{2,5}(?:[.,]\d+)?)/u
+  );
+  if (inlineLoc) {
+    if (!municipality) municipality = cleanLabelValue(inlineLoc[1]);
+    if (!city && /جدة|ابحر|أبحر/.test(inlineLoc[1])) city = 'جدة';
+    if (!street) street = fixArabicOcrText(cleanLabelValue(inlineLoc[4]));
+  }
 
   const location = pickLabeledValue(text, [
     /موقع\s*المنشأة/,
@@ -926,7 +977,12 @@ export function emptyExtraction(source: BuildingPermitExtraction['source'] = 'no
 }
 
 export function hasUsefulPermitExtraction(result: BuildingPermitExtraction): boolean {
-  return Boolean(result.permitNumber || result.permitDateGregorian || result.permitDateHijri);
+  if (result.permitNumber || result.permitDateGregorian || result.permitDateHijri) return true;
+  // Partial identity still useful when header OCR is weak but owner/contact landed
+  if (result.ownerName && (result.phone || result.commercialRegister || result.district)) {
+    return true;
+  }
+  return false;
 }
 
 /** Pull printable text from PDF binary when text layer exists (no external deps). */

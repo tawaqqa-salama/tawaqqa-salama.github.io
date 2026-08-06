@@ -85,28 +85,33 @@ export default function QuotationDocumentsUpload({
           const hydration = extractionToHydration(extraction);
           if (hasUsefulPermitExtraction(extraction)) {
             onPermitExtracted?.(hydration);
-            {
-              const extracted = [
-                hydration.building_permit_number ? 'رقم الرخصة' : null,
-                hydration.owner_name ? 'المالك' : null,
-                hydration.activity_type ? 'النشاط' : null,
-                hydration.floors_count != null ? `الأدوار (${hydration.floors_count})` : null,
-                hydration.building_area ? `مساحة البناء ${hydration.building_area} م²` : null,
-                hydration.district ? 'الحي' : null,
-                hydration.street ? 'الشارع' : null,
-                hydration.plot_number ? 'القطعة' : null,
-              ].filter(Boolean);
-              setHint(
-                extracted.length > 0
-                  ? `✓ تم استخراج: ${extracted.join(' · ')}`
-                  : '✓ تم استخراج جزء من بيانات الرخصة — راجع الحقول'
-              );
-            }
+            const parts = [
+              hydration.building_permit_number
+                ? `الرقم ${hydration.building_permit_number}`
+                : null,
+              hydration.owner_name ? `المالك: ${hydration.owner_name}` : null,
+              hydration.district ? `الحي: ${hydration.district}` : null,
+              hydration.street ? `الشارع: ${hydration.street}` : null,
+              hydration.plot_number ? `القطعة: ${hydration.plot_number}` : null,
+              hydration.city ? `المدينة: ${hydration.city}` : null,
+            ].filter(Boolean);
+            setHint(
+              parts.length > 0
+                ? `✓ تم الاستخراج — ${parts.join(' · ')}`
+                : '✓ تم استخراج جزء من بيانات الرخصة — راجع الحقول يدوياً'
+            );
           } else {
-            setHint('تعذر استخراج رقم/تاريخ الرخصة من الملف — يمكنك التعبئة يدوياً');
+            const detail = extraction.rawTextPreview?.startsWith('تعذر')
+              ? extraction.rawTextPreview
+              : null;
+            setHint(
+              detail ||
+                'تعذر استخراج رقم/تاريخ الرخصة — الحقول الحالية لم تُحدَّث. ارفع صورة JPG أوضح أو عبّئ يدوياً'
+            );
           }
-        } catch {
-          setHint('تم رفع الرخصة لكن فشل الاستخراج التلقائي — عبّئ الرقم والتاريخ يدوياً');
+        } catch (e) {
+          const msg = e instanceof Error ? e.message : 'فشل الاستخراج التلقائي';
+          setHint(`تم رفع الرخصة لكن فشل الاستخراج: ${msg} — الحقول لم تُحدَّث`);
         } finally {
           setScanning(false);
         }
