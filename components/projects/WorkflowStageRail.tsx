@@ -55,9 +55,13 @@ export default function WorkflowStageRail({
             ui === 'completed'
               ? 'bg-emerald-600 text-white border-emerald-700'
               : isActive
-                ? 'bg-sky-600 text-white border-sky-700'
+                ? stage.id === 'designs'
+                  ? 'bg-indigo-600 text-white border-indigo-700 ring-2 ring-indigo-300'
+                  : 'bg-sky-600 text-white border-sky-700'
                 : unlocked
-                  ? 'bg-white text-gray-700 border-gray-200 hover:bg-gray-50'
+                  ? stage.id === 'designs'
+                    ? 'bg-indigo-50 text-indigo-900 border-indigo-300 hover:bg-indigo-100'
+                    : 'bg-white text-gray-700 border-gray-200 hover:bg-gray-50'
                   : 'bg-gray-100 text-gray-400 border-gray-200 cursor-not-allowed opacity-80';
 
           return (

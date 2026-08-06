@@ -318,11 +318,20 @@ const ar: Dict = {
   'hr.permissionsLink': 'الصلاحيات وتسجيل الدخول',
 
   'projects.title': 'إدارة المشاريع',
-  'projects.subtitle': 'المعاينة الهندسية، المخططات، والامتثال',
+  'projects.subtitle': 'التصاميم، المعاينة الهندسية، المخططات، والامتثال',
   'projects.tab.list': 'المشاريع',
+  'projects.tab.designs': 'التصاميم',
   'projects.tab.inspection': 'المعاينة الهندسية',
   'projects.tab.blueprints': 'المخططات / BIM',
   'projects.tab.compliance': 'الامتثال SBC/NFPA',
+  'projects.designs.title': 'مركز الذكاء التصميمي',
+  'projects.designs.subtitle':
+    'مرحلة التصاميم داخل ملف المشروع — ارفع المخططات، شغّل التحليل، وأنشئ أنظمة الحريق.',
+  'projects.designs.open': 'فتح مركز التصاميم',
+  'projects.designs.hint':
+    'المرحلة 2 بعد العقد. إن كانت مقفلة، اعتمد مرحلة العقد أولاً ثم افتح التصاميم.',
+  'projects.designs.banner':
+    'جديد: مرحلة التصاميم (Design Center) — افتح أي مشروع واختر «2. التصاميم» من مسار المراحل، أو استخدم تبويب التصاميم.',
   'projects.filter.all': 'الكل',
   'projects.filter.inStudy': 'قيد الدراسة',
   'projects.filter.completed': 'المكتملة',
@@ -690,11 +699,20 @@ const en: Dict = {
   'hr.permissionsLink': 'Permissions & login',
 
   'projects.title': 'Project Management',
-  'projects.subtitle': 'Engineering inspection, BIM & compliance',
+  'projects.subtitle': 'Designs, engineering inspection, BIM & compliance',
   'projects.tab.list': 'Projects',
+  'projects.tab.designs': 'Designs',
   'projects.tab.inspection': 'Engineering inspection',
   'projects.tab.blueprints': 'Drawings / BIM',
   'projects.tab.compliance': 'SBC/NFPA compliance',
+  'projects.designs.title': 'AI Design Center',
+  'projects.designs.subtitle':
+    'The Designs stage inside the project file — upload drawings, run analysis, generate fire systems.',
+  'projects.designs.open': 'Open Design Center',
+  'projects.designs.hint':
+    'Stage 2 after Contract. If locked, approve Contract first, then open Designs.',
+  'projects.designs.banner':
+    'New: Designs stage (Design Center) — open any project and select «2. Designs» on the stage rail, or use the Designs tab.',
   'projects.filter.all': 'All',
   'projects.filter.inStudy': 'In study',
   'projects.filter.completed': 'Completed',
