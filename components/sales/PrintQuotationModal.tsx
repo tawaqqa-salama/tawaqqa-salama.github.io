@@ -18,6 +18,7 @@ import {
   validateQuotationDocumentsForIssue,
 } from '@/lib/business/quotation-documents';
 import { parseProjectEngineeringData } from '@/lib/business/project-reports';
+import { describeSalesKnowledgePreview, syncKnowledgeLinksToDesignCenterSync } from '@/lib/design-intelligence/project-knowledge-bridge';
 import { matchPermitLocation } from '@/lib/projects/permit-location-match';
 import type { BuildingPermitHydration } from '@/lib/projects/building-permit-ocr';
 import type { ClientRecord } from '@/lib/types/client';
@@ -48,6 +49,8 @@ export default function PrintQuotationModal({ client, onClose, onSaved }: PrintQ
     setError(null);
     void loadCompanyProfile().then((profile) => setPricePerM2(Number(profile.price_per_m2) || 0));
   }, [client]);
+
+  const knowledgePreview = useMemo(() => describeSalesKnowledgePreview(selected), [selected]);
 
   const subtotal = Number(client?.quotation_amount || 0);
 
@@ -132,10 +135,19 @@ export default function PrintQuotationModal({ client, onClose, onSaved }: PrintQ
     setError(null);
     const visits = Math.max(1, Math.min(10, parseLocalizedNumber(visitsCount) || 1));
 
+    const eng = parseProjectEngineeringData(client.project_engineering_data);
+    const withServices = {
+      ...client,
+      quotation_services: selected,
+      quotation_visits_count: visits,
+    } as ClientRecord;
+    const bridged = syncKnowledgeLinksToDesignCenterSync(withServices, eng);
+
     const writeResult = await updateClientSafe(client.id, {
       quotation_services: selected,
       quotation_visits_count: visits,
       quotation_documents: documents,
+      project_engineering_data: bridged,
     });
 
     setSaving(false);
@@ -204,6 +216,13 @@ export default function PrintQuotationModal({ client, onClose, onSaved }: PrintQ
                   <span>{option.label}</span>
                 </label>
               ))}
+            </div>
+            <div className="mt-3 rounded-xl border border-sky-100 bg-sky-50 px-3 py-2 text-xs text-sky-950">
+              <p className="font-semibold">ربط تلقائي بمركز التصاميم وقاعدة المعرفة</p>
+              <p className="mt-1">{knowledgePreview.hint_ar}</p>
+              {knowledgePreview.codes.length ? (
+                <p className="mt-1 font-mono">أكواد: {knowledgePreview.codes.join(' · ')}</p>
+              ) : null}
             </div>
           </div>
 

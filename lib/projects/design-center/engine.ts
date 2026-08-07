@@ -1,7 +1,7 @@
 /**
  * Server-side Design Center engine boundary.
- * Returns structured "not configured" responses — never mock engineering output.
- * Swap implementations here when a real AI / calc engine is connected.
+ * Plan analysis / system generation / calcs / export stay engine-gated.
+ * Compliance uses local SBC/NFPA + company Design Intelligence knowledge bridge.
  */
 
 import { createEmptyAnalysisJob, emptyAnalysisSteps } from '@/lib/projects/design-center/state';
@@ -16,6 +16,9 @@ import {
   type EngineeringCalcResult,
   type FireSystemKind,
 } from '@/lib/projects/design-center/types';
+import { runProjectKnowledgeCompliance } from '@/lib/design-intelligence/project-knowledge-bridge';
+import type { ClientRecord } from '@/lib/types/client';
+import type { ProjectEngineeringData } from '@/lib/types/project-reports';
 
 const MSG_AR =
   'محرك الذكاء التصميمي غير مُعدّ بعد. البنية جاهزة للربط عبر API دون بيانات وهمية.';
@@ -39,10 +42,6 @@ export function isDesignEngineConfigured(): boolean {
   );
 }
 
-/**
- * Placeholder for future HTTP call to DESIGN_AI_ENGINE_URL.
- * Until configured, marks the job unavailable without inventing model data.
- */
 export async function runPlanAnalysis(params: {
   projectId: string;
   sheetId?: string | null;
@@ -66,7 +65,6 @@ export async function runPlanAnalysis(params: {
     return job;
   }
 
-  // Future: POST to DESIGN_AI_ENGINE_URL and map real progress/results.
   throw new Error('Design AI engine URL is set but adapter is not implemented yet');
 }
 
@@ -106,23 +104,47 @@ export async function runCalculation(params: {
   throw new Error('Design calculation engine adapter is not implemented yet');
 }
 
+export type ComplianceEngineContext = {
+  client: ClientRecord;
+  data: ProjectEngineeringData;
+};
+
+/**
+ * Compliance is always runnable locally via SBC/NFPA + company knowledge RAG.
+ * External DESIGN_AI_ENGINE_URL can replace this later.
+ */
 export async function runCompliance(params: {
   projectId: string;
+  context?: ComplianceEngineContext | null;
 }): Promise<DesignComplianceState> {
-  void params;
-  if (!isDesignEngineConfigured()) {
+  if (isDesignEngineConfigured()) {
+    throw new Error('Compliance engine adapter is not implemented yet');
+  }
+
+  if (!params.context?.client || !params.context?.data) {
     return {
-      status: 'unavailable',
+      status: 'failed',
       matchPercent: null,
       findings: [],
-      recommendations: [],
+      recommendations: [
+        {
+          id: 'context-required',
+          text_ar: 'مطلوب سياق المشروع (العميل + بيانات هندسية) لتشغيل فحص الامتثال المرتبط بالمعرفة.',
+          text_en: 'Project context (client + engineering data) is required for knowledge-linked compliance.',
+        },
+      ],
       standards: ['NFPA', 'SBC'],
       checkedAt: new Date().toISOString(),
-      error: MSG_AR,
-      error_code: ENGINE_NOT_CONFIGURED,
+      error: 'PROJECT_CONTEXT_REQUIRED',
+      error_code: 'PROJECT_CONTEXT_REQUIRED',
+      knowledge_citations: [],
     };
   }
-  throw new Error('Compliance engine adapter is not implemented yet');
+
+  return runProjectKnowledgeCompliance({
+    client: params.context.client,
+    data: params.context.data,
+  });
 }
 
 export async function runExport(params: {

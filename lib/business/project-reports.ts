@@ -11,6 +11,7 @@ import {
   type ProjectEngineeringData,
 } from '@/lib/types/project-reports';
 import { mergeDesignCenterDefaults } from '@/lib/projects/design-center/state';
+import { syncKnowledgeLinksToDesignCenterSync } from '@/lib/design-intelligence/project-knowledge-bridge';
 import {
   applyPipelineInheritance,
   workflowProgressPercent,
@@ -154,7 +155,8 @@ export function seedProjectEngineeringFromClient(
     cd_cover_letter: seedCdCoverLetter(client, data, data.cd_cover_letter),
     final_inspection: seedFinalInspectionReport(client, data, data.final_inspection),
   };
-  return applyPipelineInheritance(client, seeded, null);
+  const withInheritance = applyPipelineInheritance(client, seeded, null);
+  return syncKnowledgeLinksToDesignCenterSync(client, withInheritance);
 }
 
 export function getProjectReportProgress(

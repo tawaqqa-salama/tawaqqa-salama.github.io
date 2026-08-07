@@ -147,6 +147,26 @@ export type ComplianceRecommendation = {
   text_en: string;
 };
 
+export type DesignKnowledgeCitation = {
+  document_id: string;
+  title: string;
+  excerpt: string;
+  code_reference?: string | null;
+  confidence?: number | null;
+  page_number?: number | null;
+};
+
+/** Links company Design Intelligence KB + sales scope into the project Design Center */
+export type DesignKnowledgeLinks = {
+  applicable_codes: string[];
+  sales_services: string[];
+  linked_document_ids: string[];
+  linked_document_titles: string[];
+  citations: DesignKnowledgeCitation[];
+  last_synced_at?: string | null;
+  source?: 'sales_projects_bridge' | 'manual' | string | null;
+};
+
 export type DesignComplianceState = {
   status: DesignJobStatus;
   matchPercent?: number | null;
@@ -156,6 +176,8 @@ export type DesignComplianceState = {
   checkedAt?: string | null;
   error?: string | null;
   error_code?: string | null;
+  /** Citations from company knowledge base (Civil Defense uploads) */
+  knowledge_citations?: DesignKnowledgeCitation[];
 };
 
 export type DesignExportKind =
@@ -192,6 +214,7 @@ export type DesignCenterState = ReportMeta & {
   calculations: EngineeringCalcResult[];
   compliance: DesignComplianceState;
   exports: DesignExportJob[];
+  knowledge_links?: DesignKnowledgeLinks;
   ui?: DesignCenterUiPrefs;
 };
 
