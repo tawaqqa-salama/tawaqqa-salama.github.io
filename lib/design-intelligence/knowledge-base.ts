@@ -15,11 +15,80 @@ const LOCAL_DOCS_KEY = 'tawaqqa_di_knowledge_docs_v1';
 const LOCAL_CHUNKS_KEY = 'tawaqqa_di_knowledge_chunks_v1';
 const BUCKET = 'design-knowledge';
 
+/** Browser localStorage is ~5MB — never store PDF text / data URLs / embedding vectors there. */
+const LOCAL_DOC_LIMIT = 80;
+const LOCAL_CHUNK_LIMIT = 400;
+const LOCAL_CONTENT_PREVIEW = 280;
+
 function uid(prefix: string) {
   return `${prefix}-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
 }
 
+function isQuotaExceeded(err: unknown): boolean {
+  if (!err || typeof err !== 'object') return false;
+  const e = err as { name?: string; code?: number; message?: string };
+  return (
+    e.name === 'QuotaExceededError' ||
+    e.name === 'NS_ERROR_DOM_QUOTA_REACHED' ||
+    e.code === 22 ||
+    e.code === 1014 ||
+    /exceeded the quota/i.test(String(e.message || ''))
+  );
+}
+
+/** In-memory session cache (full text + embeddings) — survives quota issues */
+let memoryDocs: DiKnowledgeDocument[] | null = null;
+let memoryChunks: DiKnowledgeChunk[] | null = null;
+
+function slimDocForLocal(doc: DiKnowledgeDocument): DiKnowledgeDocument {
+  const preview =
+    doc.extracted_text && doc.extracted_text.length > LOCAL_CONTENT_PREVIEW
+      ? `${doc.extracted_text.slice(0, LOCAL_CONTENT_PREVIEW)}…`
+      : doc.extracted_text || null;
+  return {
+    ...doc,
+    extracted_text: preview,
+    data_url: null,
+  };
+}
+
+function slimChunkForLocal(chunk: DiKnowledgeChunk): DiKnowledgeChunk {
+  return {
+    id: chunk.id,
+    document_id: chunk.document_id,
+    chunk_index: chunk.chunk_index,
+    page_number: chunk.page_number ?? null,
+    paragraph_ref: chunk.paragraph_ref ?? null,
+    code_reference: chunk.code_reference ?? null,
+    content:
+      chunk.content.length > 1200 ? `${chunk.content.slice(0, 1200)}…` : chunk.content,
+    // embeddings recomputed on demand — 384 floats × thousands of chunks blows quota
+    embedding: undefined,
+    document_title: chunk.document_title,
+  };
+}
+
+function safeSetItem(key: string, value: string): boolean {
+  if (typeof window === 'undefined') return false;
+  try {
+    localStorage.setItem(key, value);
+    return true;
+  } catch (err) {
+    if (!isQuotaExceeded(err)) throw err;
+    try {
+      localStorage.removeItem(LOCAL_CHUNKS_KEY);
+      localStorage.removeItem(LOCAL_DOCS_KEY);
+      localStorage.setItem(key, value);
+      return true;
+    } catch {
+      // Browser storage full — Supabase / memory remain authoritative
+      return false;
+    }
+  }
+}
+
 function readLocalDocs(): DiKnowledgeDocument[] {
+  if (memoryDocs) return memoryDocs;
   if (typeof window === 'undefined') return [];
   try {
     return JSON.parse(localStorage.getItem(LOCAL_DOCS_KEY) || '[]') as DiKnowledgeDocument[];
@@ -29,11 +98,14 @@ function readLocalDocs(): DiKnowledgeDocument[] {
 }
 
 function writeLocalDocs(docs: DiKnowledgeDocument[]) {
+  memoryDocs = docs;
   if (typeof window === 'undefined') return;
-  localStorage.setItem(LOCAL_DOCS_KEY, JSON.stringify(docs.slice(0, 200)));
+  const slim = docs.slice(0, LOCAL_DOC_LIMIT).map(slimDocForLocal);
+  safeSetItem(LOCAL_DOCS_KEY, JSON.stringify(slim));
 }
 
 function readLocalChunks(): DiKnowledgeChunk[] {
+  if (memoryChunks) return memoryChunks;
   if (typeof window === 'undefined') return [];
   try {
     return JSON.parse(localStorage.getItem(LOCAL_CHUNKS_KEY) || '[]') as DiKnowledgeChunk[];
@@ -43,12 +115,50 @@ function readLocalChunks(): DiKnowledgeChunk[] {
 }
 
 function writeLocalChunks(chunks: DiKnowledgeChunk[]) {
+  memoryChunks = chunks;
   if (typeof window === 'undefined') return;
-  localStorage.setItem(LOCAL_CHUNKS_KEY, JSON.stringify(chunks.slice(0, 5000)));
+  const slim = chunks.slice(0, LOCAL_CHUNK_LIMIT).map(slimChunkForLocal);
+  safeSetItem(LOCAL_CHUNKS_KEY, JSON.stringify(slim));
+}
+
+/** Clear bloated legacy local caches (full embeddings / PDF data URLs). */
+export function pruneKnowledgeLocalCache(): void {
+  if (typeof window === 'undefined') return;
+  try {
+    const docs = (JSON.parse(localStorage.getItem(LOCAL_DOCS_KEY) || '[]') as DiKnowledgeDocument[]).map(
+      slimDocForLocal
+    );
+    const chunks = (JSON.parse(localStorage.getItem(LOCAL_CHUNKS_KEY) || '[]') as DiKnowledgeChunk[])
+      .slice(0, LOCAL_CHUNK_LIMIT)
+      .map(slimChunkForLocal);
+    localStorage.removeItem(LOCAL_DOCS_KEY);
+    localStorage.removeItem(LOCAL_CHUNKS_KEY);
+    safeSetItem(LOCAL_DOCS_KEY, JSON.stringify(docs.slice(0, LOCAL_DOC_LIMIT)));
+    safeSetItem(LOCAL_CHUNKS_KEY, JSON.stringify(chunks));
+  } catch {
+    try {
+      localStorage.removeItem(LOCAL_DOCS_KEY);
+      localStorage.removeItem(LOCAL_CHUNKS_KEY);
+    } catch {
+      /* ignore */
+    }
+  }
 }
 
 /** Seed built-in EKB topics as indexed knowledge (offline, no internet). */
 export function ensureSeedKnowledgeBase(): { docs: DiKnowledgeDocument[]; chunks: DiKnowledgeChunk[] } {
+  // One-time migration: shrink any quota-busting legacy payload
+  if (typeof window !== 'undefined') {
+    try {
+      const rawChunks = localStorage.getItem(LOCAL_CHUNKS_KEY);
+      if (rawChunks && rawChunks.length > 1_500_000) {
+        pruneKnowledgeLocalCache();
+      }
+    } catch {
+      pruneKnowledgeLocalCache();
+    }
+  }
+
   const existing = readLocalDocs();
   if (existing.some((d) => d.source_kind === 'ekb-seed')) {
     return { docs: existing, chunks: readLocalChunks() };
@@ -60,7 +170,7 @@ export function ensureSeedKnowledgeBase(): { docs: DiKnowledgeDocument[]; chunks
 
   for (const topic of EKB_TOPICS) {
     const id = uid('ekb');
-      const text = [
+    const text = [
       topic.title,
       topic.summary,
       `Standards: ${topic.standard}`,
@@ -99,6 +209,7 @@ export function ensureSeedKnowledgeBase(): { docs: DiKnowledgeDocument[]; chunks
         paragraph_ref: `§${i + 1}`,
         code_reference: topic.standard === 'BOTH' ? 'SBC/NFPA' : topic.standard,
         content: part.content,
+        // Keep embeddings in memory only via writeLocalChunks → memoryChunks
         embedding: embedText(part.content),
         document_title: topic.title,
       });
@@ -106,7 +217,10 @@ export function ensureSeedKnowledgeBase(): { docs: DiKnowledgeDocument[]; chunks
   }
 
   const mergedDocs = [...docs, ...existing];
-  const mergedChunks = [...chunks, ...readLocalChunks().filter((c) => !docs.some((d) => d.id === c.document_id))];
+  const mergedChunks = [
+    ...chunks,
+    ...readLocalChunks().filter((c) => !docs.some((d) => d.id === c.document_id)),
+  ];
   writeLocalDocs(mergedDocs);
   writeLocalChunks(mergedChunks);
   return { docs: mergedDocs, chunks: mergedChunks };
@@ -126,7 +240,13 @@ export async function listKnowledgeDocuments(): Promise<DiKnowledgeDocument[]> {
       .is('deleted_at', null)
       .order('created_at', { ascending: false })
       .limit(200);
-    if (!error && data?.length) return data as DiKnowledgeDocument[];
+    if (!error && data?.length) {
+      const remote = data as DiKnowledgeDocument[];
+      // Merge into memory so UI stays consistent without bloating localStorage
+      const local = readLocalDocs().filter((d) => !remote.some((r) => r.id === d.id));
+      writeLocalDocs([...remote, ...local]);
+      return readLocalDocs();
+    }
   }
   return readLocalDocs();
 }
@@ -150,7 +270,7 @@ export async function indexDocumentText(
   doc: DiKnowledgeDocument,
   text: string,
   ocrUsed = false
-): Promise<{ doc: DiKnowledgeDocument; chunks: DiKnowledgeChunk[] }> {
+): Promise<{ doc: DiKnowledgeDocument; chunks: DiKnowledgeChunk[]; persistedToCloud: boolean }> {
   const parts = chunkText(text);
   const chunks: DiKnowledgeChunk[] = parts.map((part, i) => ({
     id: uid('chk'),
@@ -167,6 +287,7 @@ export async function indexDocumentText(
   const updated: DiKnowledgeDocument = {
     ...doc,
     extracted_text: text,
+    data_url: null, // never persist file bytes in knowledge JSON / localStorage
     ocr_used: ocrUsed,
     index_status: 'indexed',
     indexed_at: new Date().toISOString(),
@@ -175,15 +296,11 @@ export async function indexDocumentText(
     updated_at: new Date().toISOString(),
   };
 
-  // Local store (always — works on GitHub Pages / demo)
-  const docs = readLocalDocs().filter((d) => d.id !== doc.id);
-  docs.unshift(updated);
-  writeLocalDocs(docs);
-  const otherChunks = readLocalChunks().filter((c) => c.document_id !== doc.id);
-  writeLocalChunks([...chunks, ...otherChunks]);
+  let persistedToCloud = false;
 
+  // Cloud first when available — authoritative store (Supabase plan, not browser quota)
   if (!isDemoMode) {
-    await supabase.from('di_knowledge_documents').upsert({
+    const { error: docErr } = await supabase.from('di_knowledge_documents').upsert({
       id: updated.id,
       title: updated.title,
       category: updated.category,
@@ -214,44 +331,53 @@ export async function indexDocumentText(
       ocr_used: updated.ocr_used,
       updated_at: updated.updated_at,
     });
-    await supabase.from('di_knowledge_chunks').delete().eq('document_id', doc.id);
-    if (chunks.length) {
-      await supabase.from('di_knowledge_chunks').insert(
-        chunks.map((c) => ({
-          id: c.id,
-          document_id: c.document_id,
-          chunk_index: c.chunk_index,
-          page_number: c.page_number,
-          paragraph_ref: c.paragraph_ref,
-          code_reference: c.code_reference,
-          content: c.content,
-          token_estimate: Math.ceil(c.content.length / 4),
-          embedding_json: c.embedding,
-        }))
-      );
+    if (!docErr) {
+      persistedToCloud = true;
+      await supabase.from('di_knowledge_chunks').delete().eq('document_id', doc.id);
+      if (chunks.length) {
+        // Insert in batches to avoid payload limits
+        const batchSize = 50;
+        for (let i = 0; i < chunks.length; i += batchSize) {
+          const batch = chunks.slice(i, i + batchSize);
+          await supabase.from('di_knowledge_chunks').insert(
+            batch.map((c) => ({
+              id: c.id,
+              document_id: c.document_id,
+              chunk_index: c.chunk_index,
+              page_number: c.page_number,
+              paragraph_ref: c.paragraph_ref,
+              code_reference: c.code_reference,
+              content: c.content,
+              token_estimate: Math.ceil(c.content.length / 4),
+              embedding_json: c.embedding,
+            }))
+          );
+        }
+      }
     }
   }
 
+  // Local/memory cache — slim, never throws on quota
+  const docs = readLocalDocs().filter((d) => d.id !== doc.id);
+  docs.unshift(updated);
+  writeLocalDocs(docs);
+  const otherChunks = readLocalChunks().filter((c) => c.document_id !== doc.id);
+  writeLocalChunks([...chunks, ...otherChunks]);
+
   await completeIndexingJob(doc.id, true);
-  return { doc: updated, chunks };
+  return { doc: updated, chunks, persistedToCloud };
 }
 
 export async function uploadAndIndexKnowledgeFile(input: {
   file: File;
   meta: Partial<DiKnowledgeDocument> & { title: string };
-}): Promise<DiKnowledgeDocument> {
+}): Promise<DiKnowledgeDocument & { persistedToCloud?: boolean }> {
+  // Free space before large uploads if legacy cache is bloated
+  pruneKnowledgeLocalCache();
+
   const id = uid('doc');
   const { text, ocrUsed } = await extractTextFromFile(input.file);
   const storage = await tryUploadToStorage(input.file, id);
-  let dataUrl: string | null = null;
-  if (!storage.path && input.file.size < 1_200_000) {
-    dataUrl = await new Promise<string>((resolve, reject) => {
-      const reader = new FileReader();
-      reader.onload = () => resolve(String(reader.result || ''));
-      reader.onerror = () => reject(new Error('read failed'));
-      reader.readAsDataURL(input.file);
-    }).catch(() => null);
-  }
 
   const draft: DiKnowledgeDocument = {
     id,
@@ -277,7 +403,7 @@ export async function uploadAndIndexKnowledgeFile(input: {
     file_size_bytes: input.file.size,
     storage_bucket: storage.bucket,
     storage_path: storage.path,
-    data_url: dataUrl,
+    data_url: null,
     source_kind: 'upload',
     index_status: 'processing',
     chunk_count: 0,
@@ -287,7 +413,7 @@ export async function uploadAndIndexKnowledgeFile(input: {
   };
 
   await enqueueIndexingJob({ documentId: id, jobType: 'index' });
-  const { doc } = await indexDocumentText(draft, text, ocrUsed);
+  const { doc, persistedToCloud } = await indexDocumentText(draft, text, ocrUsed);
 
   void import('@/lib/activity/logger').then(({ logActivity }) =>
     logActivity({
@@ -299,11 +425,13 @@ export async function uploadAndIndexKnowledgeFile(input: {
         chunkCount: doc.chunk_count,
         category: doc.category,
         ocrUsed: doc.ocr_used,
+        persistedToCloud,
+        storagePath: doc.storage_path,
       },
     })
   );
 
-  return doc;
+  return { ...doc, persistedToCloud };
 }
 
 const CONFIDENCE_FLOOR = 0.18;
@@ -322,10 +450,10 @@ export async function ragQuery(question: string, topK = 5): Promise<RagAnswer> {
   }
 
   let chunks = readLocalChunks();
-  if (!chunks.length && !isDemoMode) {
+  if (!isDemoMode) {
     const { data } = await supabase.from('di_knowledge_chunks').select('*').limit(2000);
     if (data?.length) {
-      chunks = data.map((row) => ({
+      const remote = data.map((row) => ({
         id: row.id,
         document_id: row.document_id,
         chunk_index: row.chunk_index,
@@ -333,9 +461,12 @@ export async function ragQuery(question: string, topK = 5): Promise<RagAnswer> {
         paragraph_ref: row.paragraph_ref,
         code_reference: row.code_reference,
         content: row.content,
-        embedding: (row.embedding_json as number[]) || embedText(row.content),
-        document_title: undefined,
+        embedding: (row.embedding_json as number[]) || undefined,
+        document_title: undefined as string | undefined,
       }));
+      const localOnly = chunks.filter((c) => !remote.some((r) => r.id === c.id));
+      chunks = [...remote, ...localOnly];
+      memoryChunks = chunks;
     }
   }
 
