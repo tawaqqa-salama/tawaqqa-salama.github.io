@@ -1,16 +1,16 @@
 import { NextResponse } from 'next/server';
-import {
-  engineUnavailablePayload,
-  isDesignEngineConfigured,
-  runCalculation,
-} from '@/lib/projects/design-center/engine';
+import { runCalculation } from '@/lib/projects/design-center/engine';
 import type { EngineeringCalcKind } from '@/lib/projects/design-center/types';
+import type { ClientRecord } from '@/lib/types/client';
+import type { ProjectEngineeringData } from '@/lib/types/project-reports';
 
 export async function POST(req: Request) {
   try {
     const body = (await req.json()) as {
       projectId?: string;
       kind?: EngineeringCalcKind;
+      client?: ClientRecord;
+      data?: ProjectEngineeringData;
     };
     if (!body.projectId || !body.kind) {
       return NextResponse.json(
@@ -22,16 +22,22 @@ export async function POST(req: Request) {
     const calculation = await runCalculation({
       projectId: body.projectId,
       kind: body.kind,
+      context: body.client && body.data ? { client: body.client, data: body.data } : null,
     });
 
-    if (!isDesignEngineConfigured()) {
-      return NextResponse.json(
-        { ok: false, ...engineUnavailablePayload(), data: { calculation } },
-        { status: 503 }
-      );
+    if (calculation.status === 'completed') {
+      return NextResponse.json({ ok: true, data: { calculation } });
     }
 
-    return NextResponse.json({ ok: true, data: { calculation } });
+    return NextResponse.json(
+      {
+        ok: false,
+        code: calculation.error_code || 'CALC_INCOMPLETE',
+        message: calculation.error || 'Calculation incomplete',
+        data: { calculation },
+      },
+      { status: 422 }
+    );
   } catch (e) {
     return NextResponse.json(
       {

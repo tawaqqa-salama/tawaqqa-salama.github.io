@@ -229,6 +229,8 @@ export default function DesignCenterSection({
     const result = await startDesignAnalysis({
       projectId: client.id,
       sheetId: design.ui?.viewer_sheet_id || design.sheets[0]?.id,
+      client,
+      data,
     });
     const analysis =
       result.data?.analysis ||
@@ -247,7 +249,17 @@ export default function DesignCenterSection({
         result: null,
       } as DesignCenterState['analysis']);
     setDesign({ ...design, analysis });
-    setHint(result.ok ? (ar ? 'اكتمل التحليل' : 'Analysis complete') : apiFailMessage(result, ar));
+    if (result.ok && analysis?.status === 'completed') {
+      const kb = (analysis.result?.raw as { knowledge_citations?: unknown[] } | undefined)
+        ?.knowledge_citations;
+      setHint(
+        ar
+          ? `اكتمل تحليل المشروع من البيانات الحقيقية وقاعدة المعرفة (${Array.isArray(kb) ? kb.length : 0} مرجع). كشف CAD للغرف يحتاج محرك رؤية منفصل.`
+          : `Project analysis completed from real data + knowledge base (${Array.isArray(kb) ? kb.length : 0} citations). CAD room detection needs a vision engine.`
+      );
+    } else {
+      setHint(apiFailMessage(result, ar));
+    }
     setBusy(null);
   };
 
@@ -257,6 +269,8 @@ export default function DesignCenterSection({
       projectId: client.id,
       kind,
       analysisId: design.analysis?.id,
+      client,
+      data,
     });
     const system = result.data?.system;
     setDesign({
@@ -273,13 +287,24 @@ export default function DesignCenterSection({
           : s
       ),
     });
-    setHint(result.ok ? (ar ? 'تم التوليد' : 'Generated') : apiFailMessage(result, ar));
+    setHint(
+      result.ok
+        ? ar
+          ? `تم توليد متطلبات ${kind} من بيانات المشروع وقاعدة المعرفة`
+          : `Generated ${kind} requirements from project + knowledge base`
+        : apiFailMessage(result, ar)
+    );
     setBusy(null);
   };
 
   const onCalc = async (kind: (typeof ENGINEERING_CALC_DEFS)[number]['kind']) => {
     setBusy(`calc-${kind}`);
-    const result = await runEngineeringCalculation({ projectId: client.id, kind });
+    const result = await runEngineeringCalculation({
+      projectId: client.id,
+      kind,
+      client,
+      data,
+    });
     const calculation = result.data?.calculation;
     setDesign({
       ...design,
@@ -296,7 +321,13 @@ export default function DesignCenterSection({
           : c
       ),
     });
-    setHint(apiFailMessage(result, ar));
+    setHint(
+      result.ok
+        ? ar
+          ? 'تم تجهيز مدخلات الحساب من بيانات المشروع والمراجع المعرفية'
+          : 'Calculation inputs prepared from project data + knowledge refs'
+        : apiFailMessage(result, ar)
+    );
     setBusy(null);
   };
 
@@ -350,7 +381,12 @@ export default function DesignCenterSection({
 
   const onExport = async (kind: (typeof DESIGN_EXPORT_DEFS)[number]['kind']) => {
     setBusy(`export-${kind}`);
-    const result = await requestDesignExport({ projectId: client.id, kind });
+    const result = await requestDesignExport({
+      projectId: client.id,
+      kind,
+      client,
+      data,
+    });
     const exportJob = result.data?.exportJob;
     setDesign({
       ...design,
@@ -719,8 +755,8 @@ export default function DesignCenterSection({
             <div className={`${card} p-6 text-center space-y-4`}>
               <p className={`text-sm ${muted}`}>
                 {ar
-                  ? 'يشغّل خط تحليل المخطط عبر API قابل للربط بمحرك الذكاء التصميمي الحقيقي.'
-                  : 'Runs the plan-analysis pipeline via an API ready for a real design AI engine.'}
+                  ? 'يحلل بيانات المشروع الفعلية (الإشغال، المساحات، المخططات المرفوعة) ويربطها بقاعدة المعرفة المفهرسة (SBC/NFPA). كشف الغرف من CAD يحتاج محرك رؤية إضافي.'
+                  : 'Analyzes real project fields (occupancy, areas, uploaded drawings) and links the indexed knowledge base (SBC/NFPA). CAD room detection needs an extra vision engine.'}
               </p>
               <button
                 type="button"
@@ -728,7 +764,7 @@ export default function DesignCenterSection({
                 onClick={() => void onAnalyze()}
                 className="inline-flex items-center justify-center gap-2 rounded-xl bg-sky-600 hover:bg-sky-500 text-white font-bold px-6 py-3 text-sm shadow-lg shadow-sky-600/20 disabled:opacity-60"
               >
-                ✨ {ar ? 'إنشاء تصميم بالذكاء الاصطناعي' : 'Generate design with AI'}
+                ✨ {ar ? 'تحليل المشروع وقاعدة المعرفة' : 'Analyze project + knowledge base'}
               </button>
             </div>
 
@@ -767,6 +803,39 @@ export default function DesignCenterSection({
               {design.analysis?.error ? (
                 <p className="text-xs text-amber-600">{design.analysis.error}</p>
               ) : null}
+              {design.analysis?.status === 'completed' && design.analysis.result ? (
+                <div
+                  className={`rounded-lg px-3 py-2 text-xs space-y-1 ${
+                    dark ? 'bg-slate-900 border border-slate-700' : 'bg-emerald-50 border border-emerald-100 text-emerald-950'
+                  }`}
+                >
+                  <p className="font-bold">
+                    {ar ? 'نتائج من بيانات المشروع' : 'Results from project data'}
+                  </p>
+                  <p>
+                    {ar ? 'الإشغال' : 'Occupancy'}: {String(design.analysis.result.occupancy || '—')}
+                  </p>
+                  <p>
+                    {ar ? 'المساحة' : 'Area'}:{' '}
+                    {String(
+                      (design.analysis.result.areas as { building_area_m2?: number | null } | undefined)
+                        ?.building_area_m2 ?? '—'
+                    )}{' '}
+                    m²
+                  </p>
+                  <p>
+                    {ar ? 'مراجع المعرفة' : 'Knowledge refs'}:{' '}
+                    {Array.isArray(
+                      (design.analysis.result.raw as { knowledge_citations?: unknown[] } | undefined)
+                        ?.knowledge_citations
+                    )
+                      ? (
+                          design.analysis.result.raw as { knowledge_citations: unknown[] }
+                        ).knowledge_citations.length
+                      : 0}
+                  </p>
+                </div>
+              ) : null}
             </section>
           </div>
         )}
@@ -792,9 +861,16 @@ export default function DesignCenterSection({
                     onClick={() => void onGenerateSystem(sys.kind)}
                     className="w-full rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-bold py-2.5 disabled:opacity-60"
                   >
-                    Generate Design
+                    {ar ? 'توليد المتطلبات من المعرفة' : 'Generate from knowledge'}
                   </button>
                   {row?.error ? <p className="text-[11px] text-amber-600">{row.error}</p> : null}
+                  {row?.status === 'completed' && row.artifactRefs?.length ? (
+                    <ul className={`text-[11px] space-y-1 max-h-28 overflow-y-auto ${muted}`}>
+                      {row.artifactRefs.slice(0, 4).map((ref, i) => (
+                        <li key={`${sys.kind}-ref-${i}`}>• {ref}</li>
+                      ))}
+                    </ul>
+                  ) : null}
                 </div>
               );
             })}

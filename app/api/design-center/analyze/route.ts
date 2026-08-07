@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
-import { engineUnavailablePayload, runPlanAnalysis } from '@/lib/projects/design-center/engine';
-import { isDesignEngineConfigured } from '@/lib/projects/design-center/engine';
+import { runPlanAnalysis } from '@/lib/projects/design-center/engine';
+import type { ClientRecord } from '@/lib/types/client';
+import type { ProjectEngineeringData } from '@/lib/types/project-reports';
 
 export async function POST(req: Request) {
   try {
@@ -8,6 +9,8 @@ export async function POST(req: Request) {
       projectId?: string;
       sheetId?: string | null;
       versionId?: string | null;
+      client?: ClientRecord;
+      data?: ProjectEngineeringData;
     };
     if (!body.projectId) {
       return NextResponse.json(
@@ -20,20 +23,23 @@ export async function POST(req: Request) {
       projectId: body.projectId,
       sheetId: body.sheetId,
       versionId: body.versionId,
+      context: body.client && body.data ? { client: body.client, data: body.data } : null,
     });
 
-    if (!isDesignEngineConfigured()) {
-      return NextResponse.json(
-        {
-          ok: false,
-          ...engineUnavailablePayload(),
-          data: { analysis },
-        },
-        { status: 503 }
-      );
+    if (analysis.status === 'completed') {
+      return NextResponse.json({ ok: true, data: { analysis } });
     }
 
-    return NextResponse.json({ ok: true, data: { analysis } });
+    return NextResponse.json(
+      {
+        ok: false,
+        code: analysis.error_code || 'ANALYZE_INCOMPLETE',
+        message: analysis.error || 'Analysis incomplete',
+        message_ar: analysis.error,
+        data: { analysis },
+      },
+      { status: analysis.error_code === 'PROJECT_CONTEXT_REQUIRED' ? 400 : 422 }
+    );
   } catch (e) {
     return NextResponse.json(
       {
