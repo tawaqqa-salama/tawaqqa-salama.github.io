@@ -58,3 +58,13 @@ export {
 } from '@/lib/design-intelligence/decision-engine';
 export type * from '@/lib/design-intelligence/types';
 export type * from '@/lib/design-intelligence/rules-types';
+export {
+  codesFromQuotationServices,
+  buildProjectKnowledgeContext,
+  matchKnowledgeDocuments,
+  syncKnowledgeLinksToDesignCenter,
+  syncKnowledgeLinksToDesignCenterSync,
+  runProjectKnowledgeCompliance,
+  describeSalesKnowledgePreview,
+  QUOTATION_SERVICE_KNOWLEDGE_MAP,
+} from '@/lib/design-intelligence/project-knowledge-bridge';

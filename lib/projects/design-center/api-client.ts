@@ -84,7 +84,11 @@ export function runEngineeringCalculation(params: {
   return postJson<{ calculation: EngineeringCalcResult }>('/api/design-center/calculate', params);
 }
 
-export function runComplianceCheck(params: { projectId: string }) {
+export function runComplianceCheck(params: {
+  projectId: string;
+  client?: import('@/lib/types/client').ClientRecord;
+  data?: import('@/lib/types/project-reports').ProjectEngineeringData;
+}) {
   return postJson<{ compliance: DesignComplianceState }>('/api/design-center/compliance', params);
 }
 

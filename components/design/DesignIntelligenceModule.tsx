@@ -304,6 +304,12 @@ export default function DesignIntelligenceModule() {
       ) : null}
 
       {tab === 'knowledge' && (
+        <div className="space-y-4">
+          <div className="rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-950">
+            {lang === 'en'
+              ? 'These Civil Defense / code documents auto-link to Sales quotation scope and Project Design Center compliance (SBC/NFPA + RAG citations).'
+              : 'لوائح الدفاع المدني والأكواد المرفوعة هنا تُربط تلقائياً بنطاق عرض السعر في المبيعات وبفحص الامتثال في مركز تصاميم المشروع (SBC/NFPA + مراجع المعرفة).'}
+          </div>
         <div className="grid grid-cols-1 xl:grid-cols-5 gap-4">
           <div className="xl:col-span-2 rounded-xl border bg-white p-4 space-y-3">
             <h2 className="font-bold text-gray-900">
@@ -393,6 +399,7 @@ export default function DesignIntelligenceModule() {
               </table>
             </ResponsiveTable>
           </div>
+        </div>
         </div>
       )}
 

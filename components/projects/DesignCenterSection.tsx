@@ -1,12 +1,5 @@
 'use client';
 
-import { useMemo, useState } from 'react';
-import { useLanguage } from '@/lib/i18n/LanguageProvider';
-import { uploadPlanAttachment, getPlanFileUrl } from '@/lib/storage/project-files';
-import { isDemoMode } from '@/lib/supabase';
-import BuildingPlanReportSection from '@/components/projects/BuildingPlanReportSection';
-import PlanAttachmentsUpload from '@/components/projects/PlanAttachmentsUpload';
-import SafetyBlueprintsUpload from '@/components/projects/SafetyBlueprintsUpload';
 import {
   DESIGN_CENTER_TABS,
   DESIGN_EXPORT_DEFS,
@@ -27,6 +20,14 @@ import {
   type DesignDrawingFormat,
   type DesignDrawingSheet,
 } from '@/lib/projects/design-center';
+import { syncKnowledgeLinksToDesignCenterSync } from '@/lib/design-intelligence/project-knowledge-bridge';
+import { useLanguage } from '@/lib/i18n/LanguageProvider';
+import { uploadPlanAttachment, getPlanFileUrl } from '@/lib/storage/project-files';
+import { isDemoMode } from '@/lib/supabase';
+import BuildingPlanReportSection from '@/components/projects/BuildingPlanReportSection';
+import PlanAttachmentsUpload from '@/components/projects/PlanAttachmentsUpload';
+import SafetyBlueprintsUpload from '@/components/projects/SafetyBlueprintsUpload';
+import { useEffect, useMemo, useState } from 'react';
 import { EMPTY_PLAN_ATTACHMENTS, EMPTY_SAFETY_BLUEPRINTS } from '@/lib/types/project-reports';
 import type { ClientRecord } from '@/lib/types/client';
 import type {
@@ -119,6 +120,23 @@ export default function DesignCenterSection({
 
   const toggleDark = () =>
     setDesign({ ...design, ui: { ...design.ui, dark_mode: !design.ui?.dark_mode } });
+
+  useEffect(() => {
+    const linked = design.knowledge_links?.linked_document_ids?.length || 0;
+    const services = (client.quotation_services || []).length;
+    if (linked > 0 && design.knowledge_links?.last_synced_at) return;
+    if (!services && !client.activity_type) return;
+    const next = syncKnowledgeLinksToDesignCenterSync(client, data);
+    if (
+      JSON.stringify(next.design_center.knowledge_links) !==
+      JSON.stringify(design.knowledge_links)
+    ) {
+      onPatch({ design_center: next.design_center });
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [client.id]);
+
+  const knowledge = design.knowledge_links;
 
   const uploadFormat = async (files: FileList | null, format: DesignDrawingFormat) => {
     if (!files?.length) return;
@@ -261,22 +279,45 @@ export default function DesignCenterSection({
       ...design,
       compliance: { ...design.compliance, status: 'running' },
     });
-    const result = await runComplianceCheck({ projectId: client.id });
+    const result = await runComplianceCheck({
+      projectId: client.id,
+      client,
+      data,
+    });
+    const compliance =
+      result.data?.compliance || {
+        ...design.compliance,
+        status: 'unavailable' as const,
+        matchPercent: null,
+        findings: [],
+        recommendations: [],
+        checkedAt: new Date().toISOString(),
+        error: apiFailMessage(result, true),
+        error_code: apiFailCode(result),
+        knowledge_citations: [],
+      };
     setDesign({
       ...design,
-      compliance:
-        result.data?.compliance || {
-          ...design.compliance,
-          status: 'unavailable',
-          matchPercent: null,
-          findings: [],
-          recommendations: [],
-          checkedAt: new Date().toISOString(),
-          error: apiFailMessage(result, true),
-          error_code: apiFailCode(result),
-        },
+      compliance,
+      knowledge_links: {
+        ...(design.knowledge_links || {
+          applicable_codes: [],
+          sales_services: [],
+          linked_document_ids: [],
+          linked_document_titles: [],
+          citations: [],
+        }),
+        citations: compliance.knowledge_citations || design.knowledge_links?.citations || [],
+        last_synced_at: new Date().toISOString(),
+      },
     });
-    setHint(apiFailMessage(result, ar));
+    setHint(
+      result.ok
+        ? ar
+          ? `تم فحص الامتثال وربط قاعدة المعرفة (${compliance.knowledge_citations?.length || 0} مرجع)`
+          : `Compliance done with knowledge links (${compliance.knowledge_citations?.length || 0} citations)`
+        : apiFailMessage(result, ar)
+    );
     setBusy(null);
   };
 
@@ -346,6 +387,19 @@ export default function DesignCenterSection({
                 ? `مرتبط بالمشروع · Project ID: ${client.id}`
                 : `Bound to project · Project ID: ${client.id}`}
             </p>
+            {knowledge?.linked_document_ids?.length ? (
+              <p className="text-xs text-emerald-600 mt-1 font-semibold">
+                {ar
+                  ? `مرتبط بقاعدة المعرفة: ${knowledge.linked_document_ids.length} مستند · أكواد: ${(knowledge.applicable_codes || []).join(', ')}`
+                  : `Linked KB: ${knowledge.linked_document_ids.length} docs · codes: ${(knowledge.applicable_codes || []).join(', ')}`}
+              </p>
+            ) : (
+              <p className={`text-xs mt-1 ${muted}`}>
+                {ar
+                  ? 'ارفع لوائح الدفاع المدني في /design ثم اختر بنود العرض في المبيعات للربط التلقائي.'
+                  : 'Upload Civil Defense docs in /design and select sales quotation services to auto-link.'}
+              </p>
+            )}
           </div>
           <div className="flex flex-wrap items-center gap-2">
             <span className={`text-xs px-2.5 py-1 rounded-full font-medium ${statusTone(design.status, dark)}`}>
@@ -760,6 +814,27 @@ export default function DesignCenterSection({
 
         {tab === 'review' && (
           <div className="space-y-4">
+            <div className={`${card} p-4 space-y-2`}>
+              <h3 className="text-sm font-bold">
+                {ar ? 'اشتراطات مرتبطة من المبيعات وقاعدة المعرفة' : 'Linked sales & knowledge requirements'}
+              </h3>
+              <p className={`text-xs ${muted}`}>
+                {(knowledge?.applicable_codes || []).join(' · ') || '—'}
+              </p>
+              {(knowledge?.linked_document_titles || []).length ? (
+                <ul className="text-xs space-y-1 list-disc ps-5">
+                  {knowledge!.linked_document_titles!.slice(0, 12).map((title, i) => (
+                    <li key={`${title}-${i}`}>{title}</li>
+                  ))}
+                </ul>
+              ) : (
+                <p className={`text-xs ${muted}`}>
+                  {ar
+                    ? 'لا مستندات مطابقة بعد — فهرس اللوائح في مركز الذكاء التصميمي.'
+                    : 'No matched documents yet — index regs in Design Intelligence.'}
+                </p>
+              )}
+            </div>
             <div className={`${card} p-5 space-y-4`}>
               <button
                 type="button"
@@ -769,6 +844,11 @@ export default function DesignCenterSection({
               >
                 Run Compliance Check
               </button>
+              <p className={`text-xs ${muted}`}>
+                {ar
+                  ? 'يفحص SBC/NFPA ويربط مقاطع من لوائح الدفاع المدني المرفوعة في قاعدة المعرفة.'
+                  : 'Runs SBC/NFPA checks and cites your uploaded Civil Defense knowledge docs.'}
+              </p>
               <div className="flex flex-wrap gap-3 text-xs">
                 <span className={`px-2 py-1 rounded-full ${statusTone(design.compliance.status, dark)}`}>
                   {design.compliance.status}
@@ -815,6 +895,28 @@ export default function DesignCenterSection({
                 </ul>
               )}
             </section>
+            {(design.compliance.knowledge_citations || []).length ? (
+              <section className={`${card} p-4`}>
+                <h3 className="text-sm font-bold mb-2">
+                  {ar ? 'مراجع قاعدة المعرفة (دفاع مدني)' : 'Knowledge-base citations'}
+                </h3>
+                <ul className="space-y-2 text-xs">
+                  {design.compliance.knowledge_citations!.map((c) => (
+                    <li
+                      key={`${c.document_id}-${c.excerpt.slice(0, 12)}`}
+                      className={`rounded-lg border px-3 py-2 ${dark ? 'border-slate-700' : 'border-slate-200'}`}
+                    >
+                      <div className="font-semibold">{c.title}</div>
+                      <div className={muted}>
+                        {c.code_reference || '—'}
+                        {c.confidence != null ? ` · ${c.confidence}%` : ''}
+                      </div>
+                      <p className="mt-1">{c.excerpt}</p>
+                    </li>
+                  ))}
+                </ul>
+              </section>
+            ) : null}
           </div>
         )}
 

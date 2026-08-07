@@ -88,8 +88,18 @@ export const EMPTY_DESIGN_CENTER: DesignCenterState = {
     checkedAt: null,
     error: null,
     error_code: null,
+    knowledge_citations: [],
   },
   exports: emptyExports(),
+  knowledge_links: {
+    applicable_codes: [],
+    sales_services: [],
+    linked_document_ids: [],
+    linked_document_titles: [],
+    citations: [],
+    last_synced_at: null,
+    source: null,
+  },
   ui: {
     dark_mode: false,
     active_tab: 'drawings',
@@ -134,11 +144,33 @@ export function mergeDesignCenterDefaults(
       recommendations: Array.isArray(base.compliance?.recommendations)
         ? base.compliance!.recommendations
         : [],
+      knowledge_citations: Array.isArray(base.compliance?.knowledge_citations)
+        ? base.compliance!.knowledge_citations
+        : [],
       standards: base.compliance?.standards?.length
         ? base.compliance.standards
         : (['NFPA', 'SBC'] as const),
     },
     exports: emptyExports().map((e) => ({ ...e, ...(exportsByKind.get(e.kind) || {}) })),
+    knowledge_links: {
+      ...EMPTY_DESIGN_CENTER.knowledge_links!,
+      ...(base.knowledge_links || {}),
+      applicable_codes: Array.isArray(base.knowledge_links?.applicable_codes)
+        ? base.knowledge_links!.applicable_codes
+        : [],
+      sales_services: Array.isArray(base.knowledge_links?.sales_services)
+        ? base.knowledge_links!.sales_services
+        : [],
+      linked_document_ids: Array.isArray(base.knowledge_links?.linked_document_ids)
+        ? base.knowledge_links!.linked_document_ids
+        : [],
+      linked_document_titles: Array.isArray(base.knowledge_links?.linked_document_titles)
+        ? base.knowledge_links!.linked_document_titles
+        : [],
+      citations: Array.isArray(base.knowledge_links?.citations)
+        ? base.knowledge_links!.citations
+        : [],
+    },
     ui: { ...EMPTY_DESIGN_CENTER.ui, ...(base.ui || {}) },
   };
 }

@@ -629,6 +629,15 @@ export const EMPTY_PROJECT_ENGINEERING_DATA: ProjectEngineeringData = {
       error_code: null,
     },
     exports: [],
+    knowledge_links: {
+      applicable_codes: [],
+      sales_services: [],
+      linked_document_ids: [],
+      linked_document_titles: [],
+      citations: [],
+      last_synced_at: null,
+      source: null,
+    },
     ui: {
       dark_mode: false,
       active_tab: 'drawings',
