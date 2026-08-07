@@ -4,6 +4,9 @@ set -euo pipefail
 cd "$(dirname "$0")/.."
 export USER_PAGES=true
 export ALLOW_DEMO_MODE=true
+export NEXT_PUBLIC_STATIC_EXPORT=true
+export NEXT_PUBLIC_USER_PAGES=true
+export NEXT_PUBLIC_ALLOW_DEMO_MODE=true
 
 # Route Handlers + middleware غير مدعومة مع output:export
 API_TMP=""

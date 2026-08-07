@@ -155,13 +155,15 @@ export default function SafetyBlueprintsUpload({
     try {
       const response = await fetch('/api/audit/blueprint', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
         body: JSON.stringify(payload),
       });
-      if (response.ok) {
+      const contentType = response.headers.get('content-type') || '';
+      if (response.ok && contentType.includes('application/json')) {
         const json = (await response.json()) as { ok: boolean; result: BlueprintAiAuditResult };
         result = json.result;
       } else {
+        // GitHub Pages returns HTML 404 for /api/* — use local auditor
         result = runBlueprintAiAudit(payload);
       }
     } catch {
