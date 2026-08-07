@@ -42,6 +42,9 @@ jobs:
         env:
           USER_PAGES: "true"
           ALLOW_DEMO_MODE: "true"
+          NEXT_PUBLIC_STATIC_EXPORT: "true"
+          NEXT_PUBLIC_USER_PAGES: "true"
+          NEXT_PUBLIC_ALLOW_DEMO_MODE: "true"
           NEXT_PUBLIC_SUPABASE_URL: ${{ secrets.NEXT_PUBLIC_SUPABASE_URL }}
           NEXT_PUBLIC_SUPABASE_ANON_KEY: ${{ secrets.NEXT_PUBLIC_SUPABASE_ANON_KEY }}
         run: |

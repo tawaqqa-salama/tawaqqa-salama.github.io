@@ -24,6 +24,7 @@ import { syncKnowledgeLinksToDesignCenterSync } from '@/lib/design-intelligence/
 import { useLanguage } from '@/lib/i18n/LanguageProvider';
 import { uploadPlanAttachmentDetailed, getPlanFileUrl } from '@/lib/storage/project-files';
 import { isDemoMode } from '@/lib/supabase';
+import { humanizeFetchError } from '@/lib/api/safe-json';
 import BuildingPlanReportSection from '@/components/projects/BuildingPlanReportSection';
 import PlanAttachmentsUpload from '@/components/projects/PlanAttachmentsUpload';
 import SafetyBlueprintsUpload from '@/components/projects/SafetyBlueprintsUpload';
@@ -78,7 +79,8 @@ function apiFailMessage(
   preferAr: boolean
 ): string {
   if (result.ok) return preferAr ? 'تم' : 'Done';
-  return (preferAr ? result.message_ar : undefined) || result.message;
+  const raw = (preferAr ? result.message_ar : undefined) || result.message;
+  return humanizeFetchError(raw);
 }
 
 function apiFailCode(
@@ -182,7 +184,11 @@ export default function DesignCenterSection({
         );
       }
     } catch (e) {
-      setHint(e instanceof Error ? e.message : ar ? 'فشل رفع الملف' : 'Upload failed');
+      setHint(
+        humanizeFetchError(
+          e instanceof Error ? e.message : ar ? 'فشل رفع الملف' : 'Upload failed'
+        )
+      );
     } finally {
       setBusy(null);
     }

@@ -33,6 +33,7 @@ import { loadCompanyProfile, loadLocalCompanyProfile, type CompanyProfile } from
 import { seedSupervisionReport } from '@/lib/projects/supervision-report';
 import { ensureCertificateNumber, ensureOutgoingNumber } from '@/lib/business/document-numbers';
 import { backupEngineeringDataLocally, updateClientSafe } from '@/lib/supabase/safe-client-write';
+import { humanizeFetchError } from '@/lib/api/safe-json';
 import {
   WORKFLOW_STAGES,
   approveWorkflowStage,
@@ -175,7 +176,9 @@ export default function ProjectReportModal({
     setData(stamped);
 
     if (error) {
-      setMessage(`تعذّر الحفظ على السيرفر — تم حفظ نسخة محلية: ${error.message}`);
+      setMessage(
+        `تعذّر الحفظ على السيرفر — تم حفظ نسخة محلية: ${humanizeFetchError(error.message)}`
+      );
       return false;
     }
 

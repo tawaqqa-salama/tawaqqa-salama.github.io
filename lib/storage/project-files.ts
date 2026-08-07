@@ -5,6 +5,7 @@
  */
 
 import { isDemoMode, supabase } from '@/lib/supabase';
+import { humanizeFetchError, isHtmlAsJsonError } from '@/lib/api/safe-json';
 import type { PlanAttachmentFile } from '@/lib/types/project-reports';
 
 export const PROJECT_FILES_BUCKET = 'project-files';
@@ -96,9 +97,12 @@ export async function uploadPlanAttachmentDetailed(
 
   if (error) {
     const inline = await readDataUrl(file);
+    const storageMsg = isHtmlAsJsonError(error.message)
+      ? humanizeFetchError(error.message)
+      : error.message;
     if (!inline || file.size >= FORCE_STORAGE_MIN_BYTES) {
       throw new Error(
-        `تعذر رفع «${file.name}» إلى السحابة (${error.message}). ` +
+        `تعذر رفع «${file.name}» إلى السحابة (${storageMsg}). ` +
           `أنشئ bucket باسم project-files ونفّذ سكربت scripts/sql/028_project_files_storage.sql ثم أعد المحاولة. ` +
           `بدون Storage لن يظهر الملف من جهاز آخر.`
       );
@@ -109,7 +113,7 @@ export async function uploadPlanAttachmentDetailed(
       file: base,
       cloudPersisted: false,
       warning:
-        `حُفظت معاينة محلية فقط (Storage: ${error.message}). الملف قد لا يظهر من موقع/جهاز آخر حتى يعمل bucket project-files.`,
+        `حُفظت معاينة محلية فقط (Storage: ${storageMsg}). الملف قد لا يظهر من موقع/جهاز آخر حتى يعمل bucket project-files.`,
     };
   }
 

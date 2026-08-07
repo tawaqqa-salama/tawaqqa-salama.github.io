@@ -160,12 +160,15 @@ export async function extractBuildingPermitFromFile(
         }),
       });
       if (res.ok) {
-        const json = (await res.json()) as {
-          ok?: boolean;
-          result?: BuildingPermitExtraction;
-        };
-        if (json.ok && json.result) {
-          result = mergePermitExtractions(result, json.result);
+        const textBody = await res.text();
+        if (!textBody.trimStart().startsWith('<')) {
+          const json = JSON.parse(textBody) as {
+            ok?: boolean;
+            result?: BuildingPermitExtraction;
+          };
+          if (json.ok && json.result) {
+            result = mergePermitExtractions(result, json.result);
+          }
         }
       }
     } catch {
