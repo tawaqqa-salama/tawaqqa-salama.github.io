@@ -1,4 +1,5 @@
 import type { PlanAttachmentFile } from '@/lib/types/project-reports';
+import { humanizeFetchError, isHtmlAsJsonError } from '@/lib/api/safe-json';
 import {
   DESIGN_ANALYSIS_STEPS,
   DESIGN_EXPORT_DEFS,
@@ -16,6 +17,13 @@ import {
 
 function uid(prefix: string) {
   return `${prefix}-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+}
+
+/** Clear cryptic HTML-as-JSON errors persisted from GitHub Pages /api 404s */
+function scrubErrorText(value: string | null | undefined): string | null {
+  if (!value) return value ?? null;
+  if (!isHtmlAsJsonError(value)) return value;
+  return humanizeFetchError(value);
 }
 
 export function emptyAnalysisSteps() {
@@ -126,20 +134,33 @@ export function mergeDesignCenterDefaults(
       ? {
           ...createEmptyAnalysisJob(),
           ...base.analysis,
+          error: scrubErrorText(base.analysis.error),
           steps:
             Array.isArray(base.analysis.steps) && base.analysis.steps.length
               ? base.analysis.steps
               : emptyAnalysisSteps(),
         }
       : null,
-    systems: emptySystems().map((s) => ({ ...s, ...(systemsByKind.get(s.kind) || {}) })),
-    calculations: emptyCalculations().map((c) => ({
-      ...c,
-      ...(calcsByKind.get(c.kind) || {}),
-    })),
+    systems: emptySystems().map((s) => {
+      const row = systemsByKind.get(s.kind);
+      return {
+        ...s,
+        ...(row || {}),
+        error: scrubErrorText(row?.error ?? s.error),
+      };
+    }),
+    calculations: emptyCalculations().map((c) => {
+      const row = calcsByKind.get(c.kind);
+      return {
+        ...c,
+        ...(row || {}),
+        error: scrubErrorText(row?.error ?? c.error),
+      };
+    }),
     compliance: {
       ...EMPTY_DESIGN_CENTER.compliance,
       ...(base.compliance || {}),
+      error: scrubErrorText(base.compliance?.error),
       findings: Array.isArray(base.compliance?.findings) ? base.compliance!.findings : [],
       recommendations: Array.isArray(base.compliance?.recommendations)
         ? base.compliance!.recommendations
@@ -151,7 +172,14 @@ export function mergeDesignCenterDefaults(
         ? base.compliance.standards
         : (['NFPA', 'SBC'] as const),
     },
-    exports: emptyExports().map((e) => ({ ...e, ...(exportsByKind.get(e.kind) || {}) })),
+    exports: emptyExports().map((e) => {
+      const row = exportsByKind.get(e.kind);
+      return {
+        ...e,
+        ...(row || {}),
+        error: scrubErrorText(row?.error ?? e.error),
+      };
+    }),
     knowledge_links: {
       ...EMPTY_DESIGN_CENTER.knowledge_links!,
       ...(base.knowledge_links || {}),
