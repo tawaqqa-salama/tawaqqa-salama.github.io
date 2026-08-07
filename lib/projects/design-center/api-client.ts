@@ -1,15 +1,12 @@
 /**
  * Client for Design Center AI / calculation / export APIs.
- * On GitHub Pages (no /api), falls back to the local engine boundary instead of
- * crashing with: Unexpected token '<', "<html>... is not valid JSON
+ * On GitHub Pages (no /api), falls back to the local knowledge-backed engine.
  */
 
 import { readResponseJson, humanizeFetchError } from '@/lib/api/safe-json';
 import { areApiRoutesAvailable } from '@/lib/runtime/mode';
 import {
-  engineUnavailablePayload,
   generateSystemDesign,
-  isDesignEngineConfigured,
   runCalculation,
   runCompliance,
   runExport,
@@ -25,6 +22,8 @@ import type {
   EngineeringCalcResult,
   FireSystemKind,
 } from '@/lib/projects/design-center/types';
+import type { ClientRecord } from '@/lib/types/client';
+import type { ProjectEngineeringData } from '@/lib/types/project-reports';
 
 export type DesignCenterApiError<T = unknown> = {
   ok: false;
@@ -32,7 +31,6 @@ export type DesignCenterApiError<T = unknown> = {
   message: string;
   message_ar?: string;
   message_en?: string;
-  /** Partial structured state when engine is unavailable but boundary returned a job shell */
   data?: T;
 };
 
@@ -48,65 +46,103 @@ type AnalyzeBody = {
   sheetId?: string | null;
   versionId?: string | null;
   analysis?: DesignAnalysisJob | null;
+  client?: ClientRecord;
+  data?: ProjectEngineeringData;
 };
 
 type SystemBody = {
   projectId: string;
   kind: FireSystemKind;
   analysisId?: string | null;
+  client?: ClientRecord;
+  data?: ProjectEngineeringData;
 };
 
 type CalcBody = {
   projectId: string;
   kind: EngineeringCalcKind;
+  client?: ClientRecord;
+  data?: ProjectEngineeringData;
 };
 
 type ComplianceBody = {
   projectId: string;
-  client?: import('@/lib/types/client').ClientRecord;
-  data?: import('@/lib/types/project-reports').ProjectEngineeringData;
+  client?: ClientRecord;
+  data?: ProjectEngineeringData;
 };
 
 type ExportBody = {
   projectId: string;
   kind: DesignExportKind;
+  client?: ClientRecord;
+  data?: ProjectEngineeringData;
 };
 
-async function runLocalAnalyze(body: AnalyzeBody): Promise<DesignCenterApiResult<{ analysis: DesignAnalysisJob }>> {
+function ctxOf(body: { client?: ClientRecord; data?: ProjectEngineeringData }) {
+  return body.client && body.data ? { client: body.client, data: body.data } : null;
+}
+
+async function runLocalAnalyze(
+  body: AnalyzeBody
+): Promise<DesignCenterApiResult<{ analysis: DesignAnalysisJob }>> {
   const analysis = await runPlanAnalysis({
     projectId: body.projectId,
     sheetId: body.sheetId,
     versionId: body.versionId,
     previous: body.analysis,
+    context: ctxOf(body),
   });
-  if (!isDesignEngineConfigured()) {
-    return {
-      ok: false,
-      ...engineUnavailablePayload(),
-      data: { analysis },
-    };
+  if (analysis.status === 'completed') {
+    return { ok: true, data: { analysis } };
   }
-  return { ok: true, data: { analysis } };
+  return {
+    ok: false,
+    code: analysis.error_code || 'ANALYZE_FAILED',
+    message: analysis.error || 'Analysis incomplete',
+    message_ar: analysis.error || undefined,
+    data: { analysis },
+  };
 }
 
 async function runLocalSystem(
   body: SystemBody
 ): Promise<DesignCenterApiResult<{ system: DesignSystemGeneration }>> {
-  const system = await generateSystemDesign(body);
-  if (!isDesignEngineConfigured()) {
-    return { ok: false, ...engineUnavailablePayload(), data: { system } };
+  const system = await generateSystemDesign({
+    projectId: body.projectId,
+    kind: body.kind,
+    analysisId: body.analysisId,
+    context: ctxOf(body),
+  });
+  if (system.status === 'completed') {
+    return { ok: true, data: { system } };
   }
-  return { ok: true, data: { system } };
+  return {
+    ok: false,
+    code: system.error_code || 'SYSTEM_FAILED',
+    message: system.error || 'System generation incomplete',
+    message_ar: system.error || undefined,
+    data: { system },
+  };
 }
 
 async function runLocalCalc(
   body: CalcBody
 ): Promise<DesignCenterApiResult<{ calculation: EngineeringCalcResult }>> {
-  const calculation = await runCalculation(body);
-  if (!isDesignEngineConfigured()) {
-    return { ok: false, ...engineUnavailablePayload(), data: { calculation } };
+  const calculation = await runCalculation({
+    projectId: body.projectId,
+    kind: body.kind,
+    context: ctxOf(body),
+  });
+  if (calculation.status === 'completed') {
+    return { ok: true, data: { calculation } };
   }
-  return { ok: true, data: { calculation } };
+  return {
+    ok: false,
+    code: calculation.error_code || 'CALC_FAILED',
+    message: calculation.error || 'Calculation incomplete',
+    message_ar: calculation.error || undefined,
+    data: { calculation },
+  };
 }
 
 async function runLocalCompliance(
@@ -114,7 +150,7 @@ async function runLocalCompliance(
 ): Promise<DesignCenterApiResult<{ compliance: DesignComplianceState }>> {
   const compliance = await runCompliance({
     projectId: body.projectId,
-    context: body.client && body.data ? { client: body.client, data: body.data } : null,
+    context: ctxOf(body),
   });
   if (compliance.status === 'failed' && compliance.error_code === 'PROJECT_CONTEXT_REQUIRED') {
     return {
@@ -132,11 +168,21 @@ async function runLocalCompliance(
 async function runLocalExport(
   body: ExportBody
 ): Promise<DesignCenterApiResult<{ exportJob: DesignExportJob }>> {
-  const exportJob = await runExport(body);
-  if (!isDesignEngineConfigured()) {
-    return { ok: false, ...engineUnavailablePayload(), data: { exportJob } };
+  const exportJob = await runExport({
+    projectId: body.projectId,
+    kind: body.kind,
+    context: ctxOf(body),
+  });
+  if (exportJob.status === 'completed') {
+    return { ok: true, data: { exportJob } };
   }
-  return { ok: true, data: { exportJob } };
+  return {
+    ok: false,
+    code: exportJob.error_code || 'EXPORT_FAILED',
+    message: exportJob.error || 'Export incomplete',
+    message_ar: exportJob.error || undefined,
+    data: { exportJob },
+  };
 }
 
 async function localFallback<T>(url: string, body: unknown): Promise<DesignCenterApiResult<T>> {
@@ -178,7 +224,6 @@ async function postJson<T>(url: string, body: unknown): Promise<DesignCenterApiR
     });
     const parsed = await readResponseJson<DesignCenterApiResult<T> & { error?: string }>(res);
     if (!parsed.ok) {
-      // Static host or proxy returned HTML — use local engine instead of raw parse error
       if (parsed.isHtml) {
         return localFallback<T>(url, body);
       }
@@ -209,7 +254,7 @@ async function postJson<T>(url: string, body: unknown): Promise<DesignCenterApiR
     return json;
   } catch (e) {
     const raw = e instanceof Error ? e.message : 'Network error';
-    if (raw.includes("Unexpected token") || raw.includes('Failed to fetch') || raw.includes('NetworkError')) {
+    if (raw.includes('Unexpected token') || raw.includes('Failed to fetch') || raw.includes('NetworkError')) {
       return localFallback<T>(url, body);
     }
     return {

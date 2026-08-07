@@ -14,7 +14,6 @@ import {
   type ProjectEngineeringData,
 } from '@/lib/types/project-reports';
 import { mergeDesignCenterDefaults, addDrawingVersion } from '@/lib/projects/design-center/state';
-import { ENGINE_NOT_CONFIGURED } from '@/lib/projects/design-center/types';
 import { runPlanAnalysis } from '@/lib/projects/design-center/engine';
 import type { ClientRecord } from '@/lib/types/client';
 
@@ -137,13 +136,53 @@ describe('designs stage pipeline', () => {
 });
 
 describe('design center engine boundary', () => {
-  it('does not fabricate analysis results when engine is offline', async () => {
+  it('requires project context when no client/data is passed', async () => {
     const job = await runPlanAnalysis({ projectId: 'proj-1' });
     expect(job.status).toBe('unavailable');
-    expect(job.error_code).toBe(ENGINE_NOT_CONFIGURED);
+    expect(job.error_code).toBe('PROJECT_CONTEXT_REQUIRED');
     expect(job.result).toBeNull();
     expect(job.progress).toBe(0);
-    expect(job.steps.every((s) => s.status === 'unavailable')).toBe(true);
+  });
+
+  it('analyzes real project fields + drawings without inventing CAD rooms', async () => {
+    const data = baseData({
+      building_plan: {
+        ...EMPTY_PROJECT_ENGINEERING_DATA.building_plan,
+        occupancy_classification: 'تجاري',
+        stairs_count: '2',
+        exits_count: '3',
+        building_height_m: '18',
+        total_site_area_m2: '1200',
+      },
+    });
+    const withFile = addDrawingVersion(data.design_center, {
+      id: 'att-1',
+      fileName: 'floor.pdf',
+      format: 'pdf',
+      sizeBytes: 2048,
+      uploadedAt: '2026-01-01T00:00:00.000Z',
+      kind: 'engineering_drawing',
+    });
+    const job = await runPlanAnalysis({
+      projectId: 'proj-1',
+      context: {
+        client: client({
+          activity_type: 'mall',
+          building_area: 2500,
+          floors_count: 3,
+          quotation_services: ['firefighting_plans', 'alarm_plans'],
+        }),
+        data: { ...data, design_center: withFile },
+      },
+    });
+    expect(job.status).toBe('completed');
+    expect(job.progress).toBeGreaterThan(0);
+    expect(job.result?.occupancy).toBeTruthy();
+    expect(job.result?.rooms).toEqual([]);
+    expect(job.result?.walls).toEqual([]);
+    expect(job.steps.find((s) => s.id === 'occupancy_type')?.status).toBe('completed');
+    expect(job.steps.find((s) => s.id === 'detect_rooms')?.status).toBe('unavailable');
+    expect((job.result?.raw as { source?: string })?.source).toBe('project_knowledge_bridge');
   });
 
   it('versions drawings without inventing content', () => {

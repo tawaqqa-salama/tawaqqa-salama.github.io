@@ -1,7 +1,7 @@
 /**
- * Server-side Design Center engine boundary.
- * Plan analysis / system generation / calcs / export stay engine-gated.
- * Compliance uses local SBC/NFPA + company Design Intelligence knowledge bridge.
+ * Design Center engine boundary.
+ * Prefer external DESIGN_AI_ENGINE_* when configured; otherwise run the
+ * knowledge-backed local engine (real project fields + company KB / RAG).
  */
 
 import { createEmptyAnalysisJob, emptyAnalysisSteps } from '@/lib/projects/design-center/state';
@@ -17,13 +17,20 @@ import {
   type FireSystemKind,
 } from '@/lib/projects/design-center/types';
 import { runProjectKnowledgeCompliance } from '@/lib/design-intelligence/project-knowledge-bridge';
+import {
+  runKnowledgeBackedCalculation,
+  runKnowledgeBackedExport,
+  runKnowledgeBackedPlanAnalysis,
+  runKnowledgeBackedSystemDesign,
+  type KnowledgeEngineContext,
+} from '@/lib/projects/design-center/knowledge-engine';
 import type { ClientRecord } from '@/lib/types/client';
 import type { ProjectEngineeringData } from '@/lib/types/project-reports';
 
 const MSG_AR =
-  'محرك الذكاء التصميمي غير مُعدّ بعد. البنية جاهزة للربط عبر API دون بيانات وهمية.';
+  'مرّر بيانات المشروع (العميل + التصاميم) لتشغيل التحليل من قاعدة المعرفة الفعلية.';
 const MSG_EN =
-  'Design intelligence engine is not configured yet. The API boundary is ready — no fabricated results.';
+  'Pass project context (client + engineering data) to run knowledge-backed analysis.';
 
 export function engineUnavailablePayload() {
   return {
@@ -42,76 +49,76 @@ export function isDesignEngineConfigured(): boolean {
   );
 }
 
+export type ComplianceEngineContext = {
+  client: ClientRecord;
+  data: ProjectEngineeringData;
+};
+
 export async function runPlanAnalysis(params: {
   projectId: string;
   sheetId?: string | null;
   versionId?: string | null;
   previous?: DesignAnalysisJob | null;
+  context?: KnowledgeEngineContext | null;
 }): Promise<DesignAnalysisJob> {
-  if (!isDesignEngineConfigured()) {
-    const job = createEmptyAnalysisJob({
-      id: params.previous?.id || createEmptyAnalysisJob().id,
-      status: 'unavailable',
-      progress: 0,
-      steps: emptyAnalysisSteps().map((s) => ({ ...s, status: 'unavailable' })),
-      sourceSheetId: params.sheetId ?? null,
-      sourceVersionId: params.versionId ?? null,
-      startedAt: new Date().toISOString(),
-      finishedAt: new Date().toISOString(),
-      error: MSG_AR,
-      error_code: ENGINE_NOT_CONFIGURED,
-      result: null,
-    });
-    return job;
+  if (isDesignEngineConfigured()) {
+    throw new Error('Design AI engine URL is set but adapter is not implemented yet');
   }
 
-  throw new Error('Design AI engine URL is set but adapter is not implemented yet');
+  if (params.context?.client && params.context?.data) {
+    return runKnowledgeBackedPlanAnalysis({
+      projectId: params.projectId,
+      sheetId: params.sheetId,
+      versionId: params.versionId,
+      previous: params.previous,
+      context: params.context,
+    });
+  }
+
+  return createEmptyAnalysisJob({
+    id: params.previous?.id || createEmptyAnalysisJob().id,
+    status: 'unavailable',
+    progress: 0,
+    steps: emptyAnalysisSteps().map((s) => ({ ...s, status: 'unavailable' })),
+    sourceSheetId: params.sheetId ?? null,
+    sourceVersionId: params.versionId ?? null,
+    startedAt: new Date().toISOString(),
+    finishedAt: new Date().toISOString(),
+    error: MSG_AR,
+    error_code: 'PROJECT_CONTEXT_REQUIRED',
+    result: null,
+  });
 }
 
 export async function generateSystemDesign(params: {
   projectId: string;
   kind: FireSystemKind;
   analysisId?: string | null;
+  context?: KnowledgeEngineContext | null;
 }): Promise<DesignSystemGeneration> {
-  if (!isDesignEngineConfigured()) {
-    return {
-      kind: params.kind,
-      status: 'unavailable',
-      generatedAt: new Date().toISOString(),
-      designId: null,
-      error: MSG_AR,
-      error_code: ENGINE_NOT_CONFIGURED,
-      artifactRefs: [],
-    };
+  if (isDesignEngineConfigured()) {
+    throw new Error('Design AI engine URL is set but adapter is not implemented yet');
   }
-  throw new Error('Design AI engine URL is set but adapter is not implemented yet');
+  return runKnowledgeBackedSystemDesign({
+    projectId: params.projectId,
+    kind: params.kind,
+    context: params.context,
+  });
 }
 
 export async function runCalculation(params: {
   projectId: string;
   kind: EngineeringCalcKind;
+  context?: KnowledgeEngineContext | null;
 }): Promise<EngineeringCalcResult> {
-  if (!isDesignEngineConfigured()) {
-    return {
-      kind: params.kind,
-      status: 'unavailable',
-      updatedAt: new Date().toISOString(),
-      error: MSG_AR,
-      error_code: ENGINE_NOT_CONFIGURED,
-      values: null,
-    };
+  if (isDesignEngineConfigured()) {
+    throw new Error('Design calculation engine adapter is not implemented yet');
   }
-  throw new Error('Design calculation engine adapter is not implemented yet');
+  return runKnowledgeBackedCalculation(params);
 }
-
-export type ComplianceEngineContext = {
-  client: ClientRecord;
-  data: ProjectEngineeringData;
-};
 
 /**
  * Compliance is always runnable locally via SBC/NFPA + company knowledge RAG.
- * External DESIGN_AI_ENGINE_URL can replace this later.
  */
 export async function runCompliance(params: {
   projectId: string;
@@ -150,16 +157,10 @@ export async function runCompliance(params: {
 export async function runExport(params: {
   projectId: string;
   kind: DesignExportKind;
+  context?: KnowledgeEngineContext | null;
 }): Promise<DesignExportJob> {
-  if (!isDesignEngineConfigured()) {
-    return {
-      kind: params.kind,
-      status: 'unavailable',
-      file: null,
-      error: MSG_AR,
-      error_code: ENGINE_NOT_CONFIGURED,
-      updatedAt: new Date().toISOString(),
-    };
+  if (isDesignEngineConfigured()) {
+    throw new Error('Design export engine adapter is not implemented yet');
   }
-  throw new Error('Design export engine adapter is not implemented yet');
+  return runKnowledgeBackedExport(params);
 }
