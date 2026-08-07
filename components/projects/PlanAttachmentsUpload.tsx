@@ -1,7 +1,7 @@
 'use client';
 
 import { useState } from 'react';
-import { uploadPlanAttachment } from '@/lib/storage/project-files';
+import { uploadPlanAttachmentDetailed } from '@/lib/storage/project-files';
 import { isDemoMode } from '@/lib/supabase';
 import type { PlanAttachmentFile, PlanAttachmentsState } from '@/lib/types/project-reports';
 
@@ -14,6 +14,7 @@ type Props = {
 export default function PlanAttachmentsUpload({ value, onChange, clientId }: Props) {
   const [uploading, setUploading] = useState(false);
   const [hint, setHint] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(null);
 
   const addFiles = async (
     files: FileList | null,
@@ -23,24 +24,37 @@ export default function PlanAttachmentsUpload({ value, onChange, clientId }: Pro
     if (!files?.length) return;
     setUploading(true);
     setHint(null);
+    setError(null);
     try {
       const nextFiles: PlanAttachmentFile[] = [];
+      const warnings: string[] = [];
+      let cloud = 0;
       for (const file of Array.from(files)) {
-        const att = await uploadPlanAttachment(file, kind, { clientId });
-        nextFiles.push(att);
+        try {
+          const outcome = await uploadPlanAttachmentDetailed(file, kind, { clientId });
+          nextFiles.push(outcome.file);
+          if (outcome.cloudPersisted) cloud += 1;
+          if (outcome.warning) warnings.push(outcome.warning);
+        } catch (e) {
+          setError(e instanceof Error ? e.message : `تعذر رفع ${file.name}`);
+        }
       }
-      onChange({
-        ...value,
-        [key]: [...(value[key] || []), ...nextFiles],
-      });
-      const stored = nextFiles.filter((f) => f.storagePath).length;
+      if (nextFiles.length) {
+        onChange({
+          ...value,
+          [key]: [...(value[key] || []), ...nextFiles],
+        });
+      }
       if (isDemoMode) {
-        setHint('وضع تجريبي — الملفات تُحفظ محلياً داخل بيانات المشروع');
-      } else if (stored) {
-        setHint(`تم رفع ${stored} ملف/ملفات إلى Supabase Storage (project-files)`);
-      } else {
+        setHint('وضع تجريبي — الملفات تُحفظ محلياً داخل بيانات المشروع ولن تظهر من جهاز آخر');
+      } else if (cloud) {
         setHint(
-          'لم يتوفر Storage — حُفظت معاينات صغيرة داخل البيانات. أنشئ bucket: project-files'
+          `تم رفع ${cloud} ملف/ملفات إلى Supabase Storage (project-files) — تظهر من أي موقع/جهاز بعد الحفظ`
+        );
+      } else if (nextFiles.length) {
+        setHint(
+          warnings[0] ||
+            'لم يتوفر Storage — حُفظت معاينات صغيرة داخل البيانات. أنشئ bucket: project-files'
         );
       }
     } finally {
@@ -57,13 +71,18 @@ export default function PlanAttachmentsUpload({ value, onChange, clientId }: Pro
 
   return (
     <div className="space-y-4">
+      {error ? (
+        <div className="rounded-lg border border-rose-200 bg-rose-50 px-3 py-2 text-xs text-rose-900">
+          {error}
+        </div>
+      ) : null}
       {hint ? (
         <div className="rounded-lg border border-emerald-100 bg-emerald-50 px-3 py-2 text-xs text-emerald-900">
           {hint}
         </div>
       ) : null}
       {uploading ? (
-        <div className="text-xs text-gray-500">جاري الرفع...</div>
+        <div className="text-xs text-gray-500">جاري الرفع والحفظ...</div>
       ) : null}
 
       <div className="rounded-xl border p-4 space-y-2">
@@ -114,11 +133,11 @@ function FileList({
           <span>
             {f.fileName} · {(f.sizeBytes / 1024).toFixed(0)} KB
             {f.storagePath ? (
-              <span className="ms-2 text-emerald-700">☁ Storage</span>
+              <span className="ms-2 text-emerald-700">☁ سحابة</span>
             ) : f.dataUrl ? (
-              <span className="ms-2 text-gray-400">محلي</span>
+              <span className="ms-2 text-amber-700">محلي فقط</span>
             ) : (
-              <span className="ms-2 text-amber-600">بيانات فقط</span>
+              <span className="ms-2 text-gray-400">بيانات فقط</span>
             )}
           </span>
           <button type="button" className="text-rose-600" onClick={() => onRemove(f.id)}>
