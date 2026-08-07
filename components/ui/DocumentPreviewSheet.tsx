@@ -52,30 +52,66 @@ export default function DocumentPreviewSheet() {
   if (!payload) return null;
 
   const printNow = () => {
-    // about:blank avoids leaking the app URL into browser print headers/footers
-    const w = window.open('about:blank', '_blank', 'noopener,noreferrer,width=900,height=700');
-    if (!w) {
-      alert('تعذّر فتح نافذة الطباعة. اسمح بالنوافذ المنبثقة.');
-      return;
-    }
-    w.document.open();
-    w.document.write(payload.html);
-    w.document.close();
-    // Short/blank title further reduces Chrome/Edge print header noise
-    try {
-      w.document.title = ' ';
-    } catch {
-      /* ignore */
-    }
-    const trigger = () => {
-      w.focus();
-      w.print();
+    // Prefer a same-origin hidden iframe — browsers often block window.open() popups.
+    const runPrint = (doc: Document, win: Window) => {
+      try {
+        doc.title = ' ';
+      } catch {
+        /* ignore */
+      }
+      const trigger = () => {
+        try {
+          win.focus();
+        } catch {
+          /* ignore */
+        }
+        win.print();
+      };
+      if (doc.fonts?.ready) {
+        void doc.fonts.ready.then(() => setTimeout(trigger, 120));
+      } else {
+        setTimeout(trigger, 350);
+      }
     };
-    // Wait briefly for fonts/images before print dialog
-    if (w.document.fonts?.ready) {
-      void w.document.fonts.ready.then(() => setTimeout(trigger, 120));
-    } else {
-      setTimeout(trigger, 350);
+
+    try {
+      const iframe = document.createElement('iframe');
+      iframe.setAttribute('aria-hidden', 'true');
+      iframe.style.cssText =
+        'position:fixed;right:0;bottom:0;width:0;height:0;border:0;opacity:0;pointer-events:none;';
+      document.body.appendChild(iframe);
+      const idoc = iframe.contentDocument;
+      const iwin = iframe.contentWindow;
+      if (!idoc || !iwin) {
+        document.body.removeChild(iframe);
+        throw new Error('iframe unavailable');
+      }
+      idoc.open();
+      idoc.write(payload.html);
+      idoc.close();
+      runPrint(idoc, iwin);
+      // Cleanup after print dialog interaction settles
+      setTimeout(() => {
+        try {
+          document.body.removeChild(iframe);
+        } catch {
+          /* ignore */
+        }
+      }, 60_000);
+      return;
+    } catch {
+      // Fallback: popup window (may be blocked)
+      const w = window.open('about:blank', '_blank', 'noopener,noreferrer,width=900,height=700');
+      if (!w) {
+        alert(
+          'تعذّر فتح الطباعة. جرّب زر «تحميل» ثم اطبع الملف، أو اسمح بالنوافذ المنبثقة لهذا الموقع.'
+        );
+        return;
+      }
+      w.document.open();
+      w.document.write(payload.html);
+      w.document.close();
+      runPrint(w.document, w);
     }
   };
 

@@ -81,10 +81,36 @@ export function openDocumentPreview(payload: DocumentPreviewPayload) {
       }
       if (pending !== payload) return;
       pending = null;
-      const w = window.open('', '_blank', 'width=900,height=700');
-      if (!w) return;
-      w.document.write(payload.html);
-      w.document.close();
+      // Last-resort preview without popup: write into a temporary iframe and print
+      try {
+        const iframe = document.createElement('iframe');
+        iframe.style.cssText =
+          'position:fixed;inset:0;width:100%;height:100%;border:0;z-index:99999;background:#fff';
+        document.body.appendChild(iframe);
+        const idoc = iframe.contentDocument;
+        const iwin = iframe.contentWindow;
+        if (!idoc || !iwin) {
+          document.body.removeChild(iframe);
+          return;
+        }
+        idoc.open();
+        idoc.write(payload.html);
+        idoc.close();
+        const closeBtn = idoc.createElement('button');
+        closeBtn.textContent = 'إغلاق';
+        closeBtn.style.cssText =
+          'position:fixed;top:12px;left:12px;z-index:10;padding:8px 14px;font:14px sans-serif;cursor:pointer';
+        closeBtn.onclick = () => {
+          try {
+            document.body.removeChild(iframe);
+          } catch {
+            /* ignore */
+          }
+        };
+        idoc.body.appendChild(closeBtn);
+      } catch {
+        /* ignore */
+      }
     }, 80);
   };
 
