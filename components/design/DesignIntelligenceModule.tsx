@@ -14,6 +14,7 @@ import {
   knowledgeCategories,
   listChecklists,
   listIndexingJobs,
+  listKnowledgeDocuments,
   listKnowledgeDocumentsSync,
   listLessons,
   listNotifications,
@@ -118,6 +119,7 @@ export default function DesignIntelligenceModule() {
     if (!activeWsId && wsId) setActiveWsId(wsId);
     setTasks(listTasks(wsId || undefined));
     setChecklists(listChecklists(wsId || undefined));
+    void listKnowledgeDocuments().then(setDocs);
   }, [activeWsId]);
 
   useEffect(() => {
@@ -151,7 +153,7 @@ export default function DesignIntelligenceModule() {
     setBusy(true);
     setMessage(null);
     try {
-      await uploadAndIndexKnowledgeFile({
+      const doc = await uploadAndIndexKnowledgeFile({
         file,
         meta: {
           title: title.trim(),
@@ -171,8 +173,20 @@ export default function DesignIntelligenceModule() {
       setTitle('');
       setFile(null);
       setNotesMeta('');
-      setDocs(listKnowledgeDocumentsSync());
-      setMessage(lang === 'en' ? 'Document uploaded, chunked, and indexed offline.' : 'تم الرفع والتجزئة والفهرسة دون اتصال.');
+      setDocs(await listKnowledgeDocuments());
+      if (doc.persistedToCloud) {
+        setMessage(
+          lang === 'en'
+            ? 'Document indexed and saved to Supabase (browser cache kept lightweight).'
+            : 'تم فهرسة المستند وحفظه في Supabase — التخزين المحلي للمتصفح لم يعد يمتلئ بالنصوص الكبيرة.'
+        );
+      } else {
+        setMessage(
+          lang === 'en'
+            ? 'Document indexed in session memory. Connect Supabase tables/bucket for durable cloud storage.'
+            : 'تمت الفهرسة في ذاكرة الجلسة. اربط جداول/سلة Supabase للحفظ الدائم على السحابة.'
+        );
+      }
     } catch (e) {
       setMessage(e instanceof Error ? e.message : 'Upload failed');
     } finally {
