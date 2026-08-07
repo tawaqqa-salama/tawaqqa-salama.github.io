@@ -22,7 +22,7 @@ import {
 } from '@/lib/projects/design-center';
 import { syncKnowledgeLinksToDesignCenterSync } from '@/lib/design-intelligence/project-knowledge-bridge';
 import { useLanguage } from '@/lib/i18n/LanguageProvider';
-import { uploadPlanAttachment, getPlanFileUrl } from '@/lib/storage/project-files';
+import { uploadPlanAttachmentDetailed, getPlanFileUrl } from '@/lib/storage/project-files';
 import { isDemoMode } from '@/lib/supabase';
 import BuildingPlanReportSection from '@/components/projects/BuildingPlanReportSection';
 import PlanAttachmentsUpload from '@/components/projects/PlanAttachmentsUpload';
@@ -44,6 +44,11 @@ type Props = {
   onPatch: (partial: Partial<ProjectEngineeringData>) => void;
   onSaveBuildingPlan: (building_plan: BuildingPlanReport, successText: string) => void;
   onPersistBlueprints: (safety_blueprints: SafetyBlueprintsState) => Promise<void>;
+  /** Persist design_center (and optional plan_attachments) to Supabase after upload */
+  onPersistDesignCenter: (
+    design_center: DesignCenterState,
+    extra?: Partial<ProjectEngineeringData>
+  ) => Promise<void>;
 };
 
 const FORMAT_ACCEPT: Record<DesignDrawingFormat | 'all', string> = {
@@ -89,6 +94,7 @@ export default function DesignCenterSection({
   onPatch,
   onSaveBuildingPlan,
   onPersistBlueprints,
+  onPersistDesignCenter,
 }: Props) {
   const { lang } = useLanguage();
   const ar = lang === 'ar';
@@ -144,24 +150,39 @@ export default function DesignCenterSection({
     setHint(null);
     try {
       let next = design;
+      const warnings: string[] = [];
+      let cloudCount = 0;
       for (const file of Array.from(files)) {
-        const att = await uploadPlanAttachment(file, 'engineering_drawing', {
+        const outcome = await uploadPlanAttachmentDetailed(file, 'engineering_drawing', {
           clientId: client.id,
         });
-        next = addDrawingVersion(next, att, {
+        if (outcome.cloudPersisted) cloudCount += 1;
+        if (outcome.warning) warnings.push(outcome.warning);
+        next = addDrawingVersion(next, outcome.file, {
           title: `${format.toUpperCase()} · ${file.name}`,
         });
       }
       setDesign(next);
-      setHint(
-        ar
-          ? isDemoMode
-            ? 'تم حفظ الملف داخل بيانات المشروع (وضع تجريبي)'
-            : 'تم رفع الملف وربطه بإصدارات المخططات في المشروع'
-          : isDemoMode
-            ? 'File saved in project data (demo mode)'
-            : 'File uploaded and versioned on this project'
-      );
+      await onPersistDesignCenter(next);
+      if (warnings.length && !cloudCount) {
+        setHint(warnings[0]);
+      } else if (ar) {
+        setHint(
+          cloudCount
+            ? `تم رفع ${cloudCount} ملف إلى السحابة وحفظه في المشروع — سيظهر من أي جهاز.`
+            : isDemoMode
+              ? 'تم الحفظ محلياً (وضع تجريبي) — لن يظهر من جهاز آخر.'
+              : 'تم الحفظ في بيانات المشروع.'
+        );
+      } else {
+        setHint(
+          cloudCount
+            ? `${cloudCount} file(s) uploaded to cloud and saved on the project — visible on any device.`
+            : 'Saved on the project record.'
+        );
+      }
+    } catch (e) {
+      setHint(e instanceof Error ? e.message : ar ? 'فشل رفع الملف' : 'Upload failed');
     } finally {
       setBusy(null);
     }
@@ -666,7 +687,10 @@ export default function DesignCenterSection({
                 </h4>
                 <PlanAttachmentsUpload
                   value={data.plan_attachments || EMPTY_PLAN_ATTACHMENTS}
-                  onChange={(plan_attachments: PlanAttachmentsState) => onPatch({ plan_attachments })}
+                  onChange={(plan_attachments: PlanAttachmentsState) => {
+                    onPatch({ plan_attachments });
+                    void onPersistDesignCenter(design, { plan_attachments });
+                  }}
                   clientId={client.id}
                 />
                 <h4 className="text-sm font-bold">

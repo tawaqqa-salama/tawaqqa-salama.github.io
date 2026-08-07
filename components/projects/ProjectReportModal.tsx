@@ -41,6 +41,7 @@ import {
   stageApprovalBlockers,
   type WorkflowStageId,
 } from '@/lib/projects/gated-pipeline';
+import { sanitizeEngineeringDataForPersist } from '@/lib/projects/sanitize-engineering-files';
 import type { ClientRecord } from '@/lib/types/client';
 import type { ProjectEngineeringData } from '@/lib/types/project-reports';
 import type { TaxInvoice } from '@/lib/types/tax-invoice';
@@ -134,7 +135,7 @@ export default function ProjectReportModal({
     nextData: ProjectEngineeringData,
     successText: string,
     options?: { issueOutgoing?: boolean; issueCertificate?: boolean; stayOpen?: boolean }
-  ) => {
+  ): Promise<boolean> => {
     setSaving(true);
     setMessage(null);
     const outgoingNumber = options?.issueOutgoing
@@ -143,7 +144,7 @@ export default function ProjectReportModal({
     const certificateNumber = options?.issueCertificate
       ? await ensureCertificateNumber(nextData.completion_certificate?.certificate_number)
       : nextData.completion_certificate?.certificate_number;
-    const stamped: ProjectEngineeringData = {
+    const stampedRaw: ProjectEngineeringData = {
       ...nextData,
       technical_report: {
         ...nextData.technical_report,
@@ -159,6 +160,8 @@ export default function ProjectReportModal({
         ...(certificateNumber ? { certificate_number: certificateNumber } : {}),
       },
     };
+    // Drop bulky inline dataUrls when storagePath exists so JSONB stays lean and syncs across devices
+    const stamped = sanitizeEngineeringDataForPersist(stampedRaw);
     const { error } = await supabase
       .from('clients')
       .update({
@@ -173,7 +176,7 @@ export default function ProjectReportModal({
 
     if (error) {
       setMessage(`تعذّر الحفظ على السيرفر — تم حفظ نسخة محلية: ${error.message}`);
-      return;
+      return false;
     }
 
     setMessage(successText);
@@ -210,6 +213,7 @@ export default function ProjectReportModal({
       })
     );
     requestAnimationFrame(() => onUpdated());
+    return true;
   };
 
   const patch = (partial: Partial<ProjectEngineeringData>) => setData({ ...data, ...partial });
@@ -335,14 +339,27 @@ export default function ProjectReportModal({
               {activeStage === 'designs' && (
                 <div className="space-y-4">
                   <div className="rounded-xl border border-sky-100 bg-sky-50 px-3 py-2 text-xs text-sky-950">
-                    مرحلة التصاميم — Design Center / مركز الذكاء التصميمي. يرث بيانات العقد، ويحفظ جميع المخططات
-                    والنتائج داخل المشروع. يلزم تصنيف الإشغال ورفع مخطط واحد على الأقل للاعتماد.
+                    مرحلة التصاميم — Design Center. رفع المخطط يحفظ تلقائياً في السحابة (bucket:{' '}
+                    <code className="font-mono">project-files</code>) ليظهر من أي جهاز. إن فشل الرفع نفّذ
+                    سكربت <code className="font-mono">scripts/sql/028_project_files_storage.sql</code>.
                   </div>
                   <DesignCenterSection
                     client={client}
                     data={data}
                     saving={saving}
                     onPatch={patch}
+                    onPersistDesignCenter={async (design_center, extra) => {
+                      const ok = await save(
+                        { ...data, design_center, ...extra },
+                        'تم حفظ المخططات في المشروع (سحابة) — تظهر من أي جهاز.',
+                        { stayOpen: true }
+                      );
+                      if (!ok) {
+                        throw new Error(
+                          'تعذر حفظ المخطط على السيرفر. الملف قد يظهر هنا فقط حتى ينجح الحفظ السحابي.'
+                        );
+                      }
+                    }}
                     onSaveBuildingPlan={(building_plan, successText) =>
                       save(
                         {
