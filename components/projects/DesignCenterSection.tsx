@@ -15,6 +15,8 @@ import {
   runEngineeringCalculation,
   runComplianceCheck,
   requestDesignExport,
+  reviewStatusLabel,
+  standardsObservationLines,
   type DesignCenterState,
   type DesignCenterTabId,
   type DesignDrawingFormat,
@@ -875,6 +877,7 @@ export default function DesignCenterSection({
               const row = design.systems.find((s) => s.kind === sys.kind);
               const std = row?.standards;
               const review = std?.requirementsSummary;
+              const observations = std ? standardsObservationLines(std, ar) : [];
               return (
                 <div key={sys.kind} className={`${card} p-4 space-y-3`}>
                   <div className="flex items-start justify-between gap-2">
@@ -950,18 +953,36 @@ export default function DesignCenterSection({
                         <p className={muted}>
                           {ar ? 'عدد المتطلبات' : 'Total'}: {review?.total ?? 0} ·{' '}
                           {ar ? 'تم التحقق' : 'Verified'}: {review?.verified ?? 0} ·{' '}
-                          {ar ? 'الملاحظات' : 'Notes'}: {review?.notes ?? 0}
+                          {ar ? 'الملاحظات' : 'Notes'}:{' '}
+                          {Math.max(review?.notes ?? 0, observations.length)}
                         </p>
                         <p className="text-amber-700 dark:text-amber-300 font-medium">
-                          {review?.reviewStatus === 'needs_engineer_review'
-                            ? ar
-                              ? 'Needs Engineer Review'
-                              : 'Needs Engineer Review'
-                            : review?.reviewStatus === 'not_verified'
-                              ? 'Not Verified'
-                              : 'Partially verified'}
+                          {reviewStatusLabel(review?.reviewStatus, ar)}
                         </p>
                       </div>
+                      {observations.length ? (
+                        <details className="rounded-md border border-amber-300/50 bg-amber-50/70 dark:bg-amber-950/30 dark:border-amber-700/40 px-2 py-1.5 open:pb-2" open>
+                          <summary className="cursor-pointer font-semibold text-amber-900 dark:text-amber-200 list-none flex items-center justify-between gap-2">
+                            <span>
+                              {ar ? 'الملاحظات' : 'Observations'} ({observations.length})
+                            </span>
+                            <span className={`text-[10px] font-normal ${muted}`}>
+                              {ar ? 'اضغط للطي/الفتح' : 'Toggle'}
+                            </span>
+                          </summary>
+                          <ul className="mt-2 space-y-1.5 list-disc ps-4 text-amber-950 dark:text-amber-100">
+                            {observations.map((note, i) => (
+                              <li key={`${sys.kind}-note-${i}`}>{note}</li>
+                            ))}
+                          </ul>
+                        </details>
+                      ) : (review?.notes ?? 0) > 0 ? (
+                        <p className={`text-[10px] ${muted}`}>
+                          {ar
+                            ? 'عدد الملاحظات موجود لكن النص غير محفوظ — أعد «تحديد المراجع المنطبقة» لعرض التفاصيل.'
+                            : 'Notes count exists but text was not saved — re-run Resolve applicable standards.'}
+                        </p>
+                      ) : null}
                     </div>
                   ) : null}
 
@@ -973,8 +994,8 @@ export default function DesignCenterSection({
                   >
                     {std
                       ? ar
-                        ? 'عرض المراجع والمتطلبات'
-                        : 'View standards & requirements'
+                        ? 'تحديث المراجع والمتطلبات'
+                        : 'Refresh standards & requirements'
                       : ar
                         ? 'تحديد المراجع المنطبقة'
                         : 'Resolve applicable standards'}
@@ -991,6 +1012,7 @@ export default function DesignCenterSection({
             {ENGINEERING_CALC_DEFS.map((calc) => {
               const row = design.calculations.find((c) => c.kind === calc.kind);
               const std = row?.standards;
+              const observations = std ? standardsObservationLines(std, ar) : [];
               return (
                 <div key={calc.kind} className={`${card} p-4 space-y-3`}>
                   <div className="flex justify-between gap-2">
@@ -1044,12 +1066,20 @@ export default function DesignCenterSection({
                         {ar ? std.whyApplicable_ar : std.whyApplicable_en}
                       </p>
                       <p className="text-amber-700 dark:text-amber-300 font-medium">
-                        {std.requirementsSummary.reviewStatus === 'needs_engineer_review'
-                          ? 'Needs Engineer Review'
-                          : std.requirementsSummary.reviewStatus === 'not_verified'
-                            ? 'Not Verified'
-                            : 'Partially verified'}
+                        {reviewStatusLabel(std.requirementsSummary.reviewStatus, ar)}
                       </p>
+                      {observations.length ? (
+                        <details className="rounded-md border border-amber-300/50 bg-amber-50/70 dark:bg-amber-950/30 dark:border-amber-700/40 px-2 py-1.5" open>
+                          <summary className="cursor-pointer font-semibold text-amber-900 dark:text-amber-200">
+                            {ar ? 'الملاحظات' : 'Observations'} ({observations.length})
+                          </summary>
+                          <ul className="mt-2 space-y-1.5 list-disc ps-4 text-amber-950 dark:text-amber-100">
+                            {observations.map((note, i) => (
+                              <li key={`${calc.kind}-note-${i}`}>{note}</li>
+                            ))}
+                          </ul>
+                        </details>
+                      ) : null}
                     </div>
                   ) : row?.error ? (
                     <p className="text-[11px] text-amber-600">{row.error}</p>
