@@ -15,6 +15,8 @@ import {
   runEngineeringCalculation,
   runComplianceCheck,
   requestDesignExport,
+  extractAnalysisNotes,
+  jobStatusLabel,
   reviewStatusLabel,
   standardsObservationLines,
   type DesignCenterState,
@@ -803,7 +805,7 @@ export default function DesignCenterSection({
               <div className="flex items-center justify-between gap-2">
                 <h3 className="text-sm font-bold">{ar ? 'شريط التقدم' : 'Progress'}</h3>
                 <span className={`text-xs px-2 py-1 rounded-full ${statusTone(design.analysis?.status, dark)}`}>
-                  {design.analysis?.status || 'idle'} · {analysisProgress}%
+                  {jobStatusLabel(design.analysis?.status, ar)} · {analysisProgress}%
                 </span>
               </div>
               <div className={`h-2.5 rounded-full overflow-hidden ${dark ? 'bg-slate-800' : 'bg-slate-100'}`}>
@@ -827,46 +829,121 @@ export default function DesignCenterSection({
                       {idx + 1}
                     </span>
                     <span className="flex-1 font-medium">{ar ? step.label_ar : step.label_en}</span>
-                    <span className={muted}>{step.status}</span>
+                    <span className={muted}>{jobStatusLabel(step.status, ar)}</span>
                   </li>
                 ))}
               </ol>
               {design.analysis?.error ? (
                 <p className="text-xs text-amber-600">{design.analysis.error}</p>
               ) : null}
-              {design.analysis?.status === 'completed' && design.analysis.result ? (
-                <div
-                  className={`rounded-lg px-3 py-2 text-xs space-y-1 ${
-                    dark ? 'bg-slate-900 border border-slate-700' : 'bg-emerald-50 border border-emerald-100 text-emerald-950'
-                  }`}
-                >
-                  <p className="font-bold">
-                    {ar ? 'نتائج من بيانات المشروع' : 'Results from project data'}
-                  </p>
-                  <p>
-                    {ar ? 'الإشغال' : 'Occupancy'}: {String(design.analysis.result.occupancy || '—')}
-                  </p>
-                  <p>
-                    {ar ? 'المساحة' : 'Area'}:{' '}
-                    {String(
-                      (design.analysis.result.areas as { building_area_m2?: number | null } | undefined)
-                        ?.building_area_m2 ?? '—'
-                    )}{' '}
-                    m²
-                  </p>
-                  <p>
-                    {ar ? 'مراجع المعرفة' : 'Knowledge refs'}:{' '}
-                    {Array.isArray(
-                      (design.analysis.result.raw as { knowledge_citations?: unknown[] } | undefined)
-                        ?.knowledge_citations
-                    )
-                      ? (
-                          design.analysis.result.raw as { knowledge_citations: unknown[] }
-                        ).knowledge_citations.length
-                      : 0}
-                  </p>
-                </div>
-              ) : null}
+              {design.analysis?.status === 'completed' && design.analysis.result
+                ? (() => {
+                    const notes = extractAnalysisNotes(
+                      design.analysis.result,
+                      ar,
+                      design.analysis.steps
+                    );
+                    const areas = design.analysis.result.areas as
+                      | { building_area_m2?: number | null }
+                      | undefined;
+                    return (
+                      <div className="space-y-3">
+                        <div
+                          className={`rounded-lg px-3 py-2 text-xs space-y-1 ${
+                            dark
+                              ? 'bg-slate-900 border border-slate-700'
+                              : 'bg-emerald-50 border border-emerald-100 text-emerald-950'
+                          }`}
+                        >
+                          <p className="font-bold">
+                            {ar ? 'نتائج من بيانات المشروع' : 'Results from project data'}
+                          </p>
+                          <p>
+                            {ar ? 'الإشغال' : 'Occupancy'}:{' '}
+                            {String(design.analysis.result.occupancy || '—')}
+                          </p>
+                          <p>
+                            {ar ? 'المساحة' : 'Area'}:{' '}
+                            {String(areas?.building_area_m2 ?? '—')} m²
+                          </p>
+                          <p>
+                            {ar ? 'مخططات مرفوعة' : 'Drawings'}: {notes.drawingsCount}
+                          </p>
+                          {notes.applicableCodes.length ? (
+                            <p>
+                              {ar ? 'أكواد منطبقة' : 'Applicable codes'}:{' '}
+                              {notes.applicableCodes.join(' · ')}
+                            </p>
+                          ) : null}
+                          {notes.spaceNames.length ? (
+                            <p>
+                              {ar ? 'فراغات' : 'Spaces'}:{' '}
+                              {notes.spaceNames.slice(0, 12).join(' · ')}
+                              {notes.spaceNames.length > 12
+                                ? ` (+${notes.spaceNames.length - 12})`
+                                : ''}
+                            </p>
+                          ) : null}
+                          {notes.summary ? (
+                            <p className={`pt-1 ${muted}`}>{notes.summary}</p>
+                          ) : null}
+                        </div>
+
+                        {(notes.observations.length > 0 || notes.citations.length > 0) && (
+                          <div
+                            className={`rounded-lg px-3 py-2 text-xs space-y-2 ${
+                              dark
+                                ? 'bg-amber-950/40 border border-amber-800/50'
+                                : 'bg-amber-50 border border-amber-200 text-amber-950'
+                            }`}
+                          >
+                            <p className="font-bold">
+                              {ar ? 'الملاحظات' : 'Observations'} (
+                              {notes.observations.length + notes.citations.length})
+                            </p>
+                            {notes.observations.length ? (
+                              <ul className="list-disc ps-4 space-y-1.5">
+                                {notes.observations.map((line, i) => (
+                                  <li key={`an-obs-${i}`}>{line}</li>
+                                ))}
+                              </ul>
+                            ) : null}
+                            {notes.citations.length ? (
+                              <div className="space-y-2 pt-1">
+                                <p className="font-semibold">
+                                  {ar
+                                    ? 'مراجع قاعدة المعرفة'
+                                    : 'Knowledge-base citations'}{' '}
+                                  ({notes.citations.length})
+                                </p>
+                                <ul className="space-y-2">
+                                  {notes.citations.map((c, i) => (
+                                    <li
+                                      key={`an-cite-${i}`}
+                                      className={`rounded-md px-2 py-1.5 ${
+                                        dark
+                                          ? 'bg-slate-950/50 border border-slate-800'
+                                          : 'bg-white/80 border border-amber-100'
+                                      }`}
+                                    >
+                                      <p className="font-semibold">
+                                        {c.documentTitle || (ar ? 'مستند' : 'Document')}
+                                        {c.codeReference ? ` · ${c.codeReference}` : ''}
+                                      </p>
+                                      {c.paragraph ? (
+                                        <p className={`mt-0.5 ${muted}`}>{c.paragraph}</p>
+                                      ) : null}
+                                    </li>
+                                  ))}
+                                </ul>
+                              </div>
+                            ) : null}
+                          </div>
+                        )}
+                      </div>
+                    );
+                  })()
+                : null}
             </section>
           </div>
         )}
