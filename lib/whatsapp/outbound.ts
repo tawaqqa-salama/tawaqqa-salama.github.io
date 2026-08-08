@@ -1,6 +1,6 @@
 import { createWhatsAppProvider } from '@/lib/whatsapp/provider';
 import { requiresTemplate } from '@/lib/whatsapp/service-window';
-import { getMemoryDb, memoryStore } from '@/lib/whatsapp/store/memory';
+import { waRepository } from '@/lib/whatsapp/store/repository';
 import type { WhatsAppMessage } from '@/lib/whatsapp/types';
 
 const MAX_RETRY = 3;
@@ -24,7 +24,7 @@ export async function sendOutboundMessage(input: OutboundSendInput): Promise<{
   message: WhatsAppMessage;
   error?: string;
 }> {
-  const conversation = memoryStore.getConversation(input.conversationId);
+  const conversation = await waRepository.getConversation(input.conversationId);
   if (!conversation) {
     throw new Error('conversation_not_found');
   }
@@ -35,9 +35,9 @@ export async function sendOutboundMessage(input: OutboundSendInput): Promise<{
 
   let message: WhatsAppMessage;
   if (input.forceRetryMessageId) {
-    const existing = memoryStore
-      .listMessages(input.conversationId)
-      .find((m) => m.id === input.forceRetryMessageId);
+    const existing = (await waRepository.listMessages(input.conversationId)).find(
+      (m) => m.id === input.forceRetryMessageId
+    );
     if (!existing) throw new Error('message_not_found');
     if (existing.retry_count >= MAX_RETRY) {
       return { ok: false, message: existing, error: 'max_retries' };
@@ -48,7 +48,7 @@ export async function sendOutboundMessage(input: OutboundSendInput): Promise<{
     existing.error_message = null;
     message = existing;
   } else {
-    const inserted = memoryStore.insertMessage({
+    const inserted = await waRepository.insertMessage({
       conversation_id: input.conversationId,
       whatsapp_message_id: null,
       direction: 'outbound',
@@ -72,8 +72,7 @@ export async function sendOutboundMessage(input: OutboundSendInput): Promise<{
   }
 
   const provider = createWhatsAppProvider();
-  const acc = getMemoryDb().accounts.find((a) => a.id === conversation.whatsapp_account_id);
-  const phoneNumberId = acc?.phone_number_id;
+  const phoneNumberId = waRepository.resolvePhoneNumberId(conversation.whatsapp_account_id);
 
   let result;
   try {
@@ -83,7 +82,7 @@ export async function sendOutboundMessage(input: OutboundSendInput): Promise<{
         templateName: input.templateName || message.template_name || 'welcome',
         language: input.templateLanguage || 'ar',
         components: input.templateComponents,
-        phoneNumberId,
+        phoneNumberId: phoneNumberId || undefined,
       });
     } else if (input.kind === 'image' || message.message_type === 'image') {
       result = await provider.sendImage({
@@ -91,7 +90,7 @@ export async function sendOutboundMessage(input: OutboundSendInput): Promise<{
         kind: 'image',
         link: input.mediaUrl || message.media_url || undefined,
         caption: input.caption || message.caption || undefined,
-        phoneNumberId,
+        phoneNumberId: phoneNumberId || undefined,
       });
     } else if (input.kind === 'document' || message.message_type === 'document') {
       result = await provider.sendDocument({
@@ -100,22 +99,25 @@ export async function sendOutboundMessage(input: OutboundSendInput): Promise<{
         link: input.mediaUrl || message.media_url || undefined,
         caption: input.caption || message.caption || undefined,
         filename: input.filename,
-        phoneNumberId,
+        phoneNumberId: phoneNumberId || undefined,
       });
     } else {
       result = await provider.sendText({
         to: conversation.phone_number,
         text: input.text || message.text || '',
-        phoneNumberId,
+        phoneNumberId: phoneNumberId || undefined,
       });
     }
   } catch (e) {
     message.status = 'failed';
     message.error_code = 'SEND_EXCEPTION';
     message.error_message = e instanceof Error ? e.message : 'send_failed';
-    memoryStore.audit('message.send_failed', 'whatsapp_message', message.id, input.userId || null, {
-      error: message.error_message,
-    });
+    if (message.whatsapp_message_id) {
+      await waRepository.updateMessageStatus(message.whatsapp_message_id, 'failed', {
+        code: message.error_code,
+        message: message.error_message,
+      });
+    }
     return { ok: false, message, error: message.error_message };
   }
 
@@ -123,19 +125,18 @@ export async function sendOutboundMessage(input: OutboundSendInput): Promise<{
     message.status = 'failed';
     message.error_code = result.errorCode || 'SEND_FAILED';
     message.error_message = result.errorMessage || 'send_failed';
-    memoryStore.audit('message.send_failed', 'whatsapp_message', message.id, input.userId || null, {
-      error: message.error_message,
-      code: message.error_code,
-    });
+    if (result.providerMessageId) {
+      message.whatsapp_message_id = result.providerMessageId;
+      await waRepository.updateMessageStatus(result.providerMessageId, 'failed', {
+        code: message.error_code,
+        message: message.error_message,
+      });
+    }
     return { ok: false, message, error: message.error_message || undefined };
   }
 
   message.status = 'sent';
   message.whatsapp_message_id = result.providerMessageId || message.whatsapp_message_id;
   message.raw_payload = result.raw || { stubbed: result.stubbed };
-  memoryStore.audit('message.sent', 'whatsapp_message', message.id, input.userId || null, {
-    providerMessageId: message.whatsapp_message_id,
-    kind: message.message_type,
-  });
   return { ok: true, message };
 }

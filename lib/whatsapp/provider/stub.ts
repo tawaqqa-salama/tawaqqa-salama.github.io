@@ -1,7 +1,6 @@
 import type {
   ProviderMediaResult,
   ProviderSendResult,
-  SendMediaInput,
   SendTemplateInput,
   SendTextInput,
   WhatsAppProvider,
@@ -30,12 +29,12 @@ export class StubWhatsAppProvider implements WhatsAppProvider {
     };
   }
 
-  async sendImage(input: SendMediaInput): Promise<ProviderSendResult> {
+  async sendImage(): Promise<ProviderSendResult> {
     seq += 1;
     return { ok: true, stubbed: true, providerMessageId: `stub-img-${seq}` };
   }
 
-  async sendDocument(input: SendMediaInput): Promise<ProviderSendResult> {
+  async sendDocument(): Promise<ProviderSendResult> {
     seq += 1;
     return { ok: true, stubbed: true, providerMessageId: `stub-doc-${seq}` };
   }

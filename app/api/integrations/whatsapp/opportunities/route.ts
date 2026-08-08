@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server';
-import { memoryStore } from '@/lib/whatsapp/store/memory';
+import { advanceClientToSalesPipeline } from '@/lib/whatsapp/crm-bridge';
+import { waRepository } from '@/lib/whatsapp/store/repository';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -19,7 +20,7 @@ export async function POST(request: Request) {
   if (!body.customerId) {
     return NextResponse.json({ ok: false, error: 'customerId_required' }, { status: 400 });
   }
-  const opportunity = memoryStore.createOpportunity({
+  const opportunity = await waRepository.createOpportunity({
     customer_id: body.customerId,
     conversation_id: body.conversationId,
     service: body.service,
@@ -30,10 +31,14 @@ export async function POST(request: Request) {
     assigned_user_id: body.assigned_user_id,
     notes: body.notes,
   });
+
+  // Bind to existing CRM pipeline (marketing → sales) — same as convertToSales
+  await advanceClientToSalesPipeline(body.customerId);
+
   return NextResponse.json({
     ok: true,
     opportunity,
-    next: { salesPath: `/sales?client=${body.customerId}` },
+    next: { salesPath: `/sales?client=${body.customerId}`, pipeline_stage: 'sales' },
   });
 }
 
@@ -42,6 +47,6 @@ export async function GET(request: Request) {
   const customerId = url.searchParams.get('customerId') || undefined;
   return NextResponse.json({
     ok: true,
-    opportunities: memoryStore.listOpportunities(customerId),
+    opportunities: await waRepository.listOpportunities(customerId),
   });
 }

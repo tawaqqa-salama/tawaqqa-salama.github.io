@@ -1,14 +1,8 @@
-import { getWhatsAppEnvConfig } from '@/lib/whatsapp/config';
+import { resolveCrmClientForWhatsApp } from '@/lib/whatsapp/crm-bridge';
 import { extractLeadFields } from '@/lib/whatsapp/lead-extract';
 import { normalizeWhatsAppPhone } from '@/lib/whatsapp/phone';
 import { createWhatsAppProvider } from '@/lib/whatsapp/provider';
-import { memoryStore } from '@/lib/whatsapp/store/memory';
-import {
-  syncClientRow,
-  syncContact,
-  syncConversation,
-  syncMessage,
-} from '@/lib/whatsapp/store/supabase-sync';
+import { waRepository } from '@/lib/whatsapp/store/repository';
 import type { InboundParsedMessage, InboundStatusUpdate, WhatsAppMessage } from '@/lib/whatsapp/types';
 import { parseMetaWebhookPayload } from '@/lib/whatsapp/webhook-parse';
 
@@ -21,16 +15,6 @@ export type InboundProcessResult = {
   errors: string[];
 };
 
-function ensureAccount(phoneNumberId: string) {
-  const cfg = getWhatsAppEnvConfig();
-  return memoryStore.ensureEnvAccount(phoneNumberId, {
-    phone_number_id: phoneNumberId,
-    waba_id: cfg.wabaId,
-    business_name: 'توقع سلامة',
-    provider: cfg.provider === 'stub' ? 'meta' : cfg.provider,
-  });
-}
-
 async function persistMediaIfNeeded(
   msg: InboundParsedMessage,
   customerId: string,
@@ -41,7 +25,7 @@ async function persistMediaIfNeeded(
   const provider = createWhatsAppProvider();
   const media = await provider.getMedia(msg.mediaId);
   const mediaUrl = media.url || `whatsapp-media://${msg.mediaId}`;
-  memoryStore.addAttachment({
+  await waRepository.addAttachment({
     customer_id: customerId,
     conversation_id: conversationId,
     message_id: messageId,
@@ -67,36 +51,21 @@ export async function processInboundMessage(
     throw new Error('invalid_phone');
   }
 
-  const account = ensureAccount(msg.phoneNumberId);
-  memoryStore.touchAccountWebhook(account.id);
+  const account = await waRepository.ensureAccount(msg.phoneNumberId);
 
-  let createdLead = false;
-  let client = memoryStore.findClientByPhone(phone);
-  if (!client) {
-    client = memoryStore.createLeadFromWhatsApp({
-      phone,
-      profileName: msg.profileName,
-    });
-    createdLead = true;
-  } else {
-    memoryStore.upsertContact({
-      customer_id: client.id,
-      phone_number: phone,
-      profile_name: msg.profileName,
-    });
-    memoryStore.updateClient(client.id, {
-      last_contact_date: msg.timestamp.slice(0, 10),
-      whatsapp_profile_name: msg.profileName || client.whatsapp_profile_name,
-    });
-  }
-
-  const conversation = memoryStore.findOrCreateConversation({
-    customer_id: client.id,
-    account_id: account.id,
-    phone_number: phone,
+  // CRM spine: find existing clients row or create Lead with nextLeadCode pattern
+  const { client, createdLead } = await resolveCrmClientForWhatsApp({
+    phone,
+    profileName: msg.profileName,
   });
 
-  const { message, duplicate } = memoryStore.insertMessage({
+  const conversation = await waRepository.findOrCreateConversation({
+    customerId: client.id,
+    accountId: account.id,
+    phone,
+  });
+
+  const { message, duplicate } = await waRepository.insertMessage({
     conversation_id: conversation.id,
     whatsapp_message_id: msg.providerMessageId,
     direction: 'inbound',
@@ -107,7 +76,7 @@ export async function processInboundMessage(
     media_type: msg.mediaMimeType || null,
     caption: msg.caption || null,
     template_name: null,
-    interactive_payload: msg.interactive,
+    interactive_payload: msg.interactive ?? null,
     sent_by_user_id: null,
     status: 'received',
     error_code: null,
@@ -123,8 +92,7 @@ export async function processInboundMessage(
       message.media_url = mediaUrl;
     }
 
-    // Notify assignee or unassigned inbox
-    memoryStore.addNotification({
+    await waRepository.addNotification({
       user_id: conversation.assigned_user_id,
       conversation_id: conversation.id,
       customer_id: client.id,
@@ -134,8 +102,11 @@ export async function processInboundMessage(
 
     if (msg.text) {
       const extracted = await extractLeadFields(msg.text);
-      if (extracted && (extracted.activity || extracted.city || extracted.area || extracted.requested_service)) {
-        memoryStore.saveExtraction({
+      if (
+        extracted &&
+        (extracted.activity || extracted.city || extracted.area || extracted.requested_service)
+      ) {
+        await waRepository.saveExtraction({
           conversation_id: conversation.id,
           customer_id: client.id,
           message_id: message.id,
@@ -144,16 +115,6 @@ export async function processInboundMessage(
       }
     }
 
-    // Durable mirror (when Supabase + 031 schema available)
-    const contact = memoryStore.findContactByPhone(phone);
-    await Promise.all([
-      syncClientRow(client),
-      contact ? syncContact(contact) : Promise.resolve(),
-      syncConversation(conversation),
-      syncMessage(message),
-    ]);
-
-    // mark read at provider (best effort)
     void createWhatsAppProvider().markAsRead(msg.providerMessageId, msg.phoneNumberId);
   }
 
@@ -166,7 +127,7 @@ export async function processInboundMessage(
   };
 }
 
-export function processStatusUpdate(update: InboundStatusUpdate): boolean {
+export async function processStatusUpdate(update: InboundStatusUpdate): Promise<boolean> {
   const mapped =
     update.status === 'failed'
       ? 'failed'
@@ -175,7 +136,7 @@ export function processStatusUpdate(update: InboundStatusUpdate): boolean {
         : update.status === 'delivered'
           ? 'delivered'
           : 'sent';
-  const msg = memoryStore.updateMessageStatus(update.providerMessageId, mapped, {
+  const msg = await waRepository.updateMessageStatus(update.providerMessageId, mapped, {
     code: update.errorCode,
     message: update.errorMessage,
   });
@@ -207,7 +168,7 @@ export async function processWhatsAppWebhookBody(body: unknown): Promise<Inbound
   }
 
   for (const st of statuses) {
-    if (processStatusUpdate(st)) result.statusUpdates += 1;
+    if (await processStatusUpdate(st)) result.statusUpdates += 1;
   }
 
   return result;

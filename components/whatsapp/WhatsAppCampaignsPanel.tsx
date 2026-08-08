@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { startTransition, useEffect, useState } from 'react';
 import { useAuth } from '@/lib/auth/AuthProvider';
 import { hasWhatsAppPermission } from '@/lib/whatsapp/permissions';
 
@@ -41,7 +41,10 @@ export default function WhatsAppCampaignsPanel() {
   };
 
   useEffect(() => {
-    if (can) void reload();
+    if (!can) return;
+    startTransition(() => {
+      void reload();
+    });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [can]);
 

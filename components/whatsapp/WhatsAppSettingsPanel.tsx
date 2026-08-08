@@ -16,13 +16,9 @@ export default function WhatsAppSettingsPanel() {
       apiVersion: string;
       webhookConfigured: boolean;
       hasAppSecret: boolean;
+      memoryMode?: boolean;
+      cloudApiReady?: boolean;
     };
-    accounts?: Array<{
-      phone_number_id: string;
-      business_name: string | null;
-      status: string;
-      last_webhook_at: string | null;
-    }>;
     webhookPath?: string;
   } | null>(null);
   const [testResult, setTestResult] = useState<string | null>(null);
@@ -100,16 +96,17 @@ export default function WhatsAppSettingsPanel() {
             <dd dir="ltr">{c?.apiVersion || '—'}</dd>
           </div>
           <div className="rounded-lg bg-gray-50 p-2">
-            <dt className="text-gray-500">آخر Webhook</dt>
-            <dd dir="ltr">
-              {data?.accounts?.[0]?.last_webhook_at
-                ? new Date(data.accounts[0].last_webhook_at).toLocaleString('ar-SA')
-                : '—'}
+            <dt className="text-gray-500">وضع CRM</dt>
+            <dd>
+              {c?.memoryMode
+                ? 'ذاكرة محلية (اختبار/عرض) — ليس مسار إنتاج'
+                : 'clients + pipeline (Supabase)'}
             </dd>
           </div>
         </dl>
         <p className="text-[11px] text-gray-500">
-          Access Token لا يُعرض في الواجهة أبدًا — يُضبط عبر متغيرات البيئة فقط.
+          Access Token لا يُعرض في الواجهة أبدًا — يُضبط عبر متغيرات البيئة فقط. المسار النهائي =
+          Meta Cloud API + جدول clients.
         </p>
         <button
           type="button"

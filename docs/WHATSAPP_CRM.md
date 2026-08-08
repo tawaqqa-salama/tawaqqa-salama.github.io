@@ -55,10 +55,18 @@ npm run db:apply-dds
 
 يمكن لاحقًا إضافة Twilio / 360dialog دون إعادة بناء CRM.
 
+## ربط CRM (إلزامي)
+
+- العميل = صف `clients` فقط (لا جدول Customer موازٍ).
+- البحث بالهاتف عبر `crm-bridge` (يدعم `05…` / `966…` / `+966…`).
+- رقم جديد → `nextLeadCode()` + إدخال بنفس نمط التسويق (`pipeline_stage=marketing`, `lead_source=WhatsApp`).
+- فرصة بيع → `pipeline_stage=sales` (نفس convert-to-sales) ثم `/sales` لعرض السعر.
+- `WHATSAPP_FORCE_MEMORY=true` أو وضع demo بدون Supabase = اختبارات فقط.
+
 ## ملاحظات تشغيل
 
 - GitHub Pages (static export) لا يشغّل Webhook — يلزم استضافة Node.
 - الرسائل الحرة فقط ضمن نافذة 24 ساعة؛ خارجها استخدم Templates.
-- Access Token لا يُرسل للواجهة أبدًا.
-- محرك المعالجة يعمل على store داخل العملية مع مرآة Supabase (`supabase-sync`) عند توفر المفاتيح وسكربت `031`.
+- Access Token في env فقط — لا Frontend ولا نص مكشوف في DB.
+- جداول واتساب (`whatsapp_*`) عبر `waRepository` → Supabase عند التهيئة.
 - لكتابة موثوقة من Webhook استخدم `SUPABASE_SERVICE_ROLE_KEY` على الخادم فقط.

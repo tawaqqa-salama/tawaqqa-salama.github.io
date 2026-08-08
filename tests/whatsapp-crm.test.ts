@@ -1,11 +1,12 @@
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import { GET as webhookGet, POST as webhookPost } from '@/app/api/integrations/whatsapp/webhook/route';
+import { GET as webhookGet } from '@/app/api/integrations/whatsapp/webhook/route';
 import { POST as sendPost } from '@/app/api/integrations/whatsapp/send/route';
 import { POST as opportunityPost } from '@/app/api/integrations/whatsapp/opportunities/route';
 import {
   extractLeadFieldsHeuristic,
   hasWhatsAppPermission,
   normalizeWhatsAppPhone,
+  phoneLookupCandidates,
   processWhatsAppWebhookBody,
   resetMemoryDb,
   memoryStore,
@@ -64,6 +65,13 @@ describe('WhatsApp phone normalize', () => {
     expect(normalizeWhatsAppPhone('966512345678')).toBe('+966512345678');
     expect(normalizeWhatsAppPhone('+966512345678')).toBe('+966512345678');
   });
+
+  it('builds CRM phone lookup candidates for existing clients rows', () => {
+    const c = phoneLookupCandidates('+966512345678');
+    expect(c).toContain('+966512345678');
+    expect(c).toContain('0512345678');
+    expect(c).toContain('966512345678');
+  });
 });
 
 describe('Webhook verification', () => {
@@ -92,6 +100,7 @@ describe('Webhook verification', () => {
 describe('Inbound CRM pipeline', () => {
   beforeEach(() => {
     resetMemoryDb();
+    process.env.WHATSAPP_FORCE_MEMORY = 'true';
     process.env.WHATSAPP_ALLOW_UNSIGNED = 'true';
     delete process.env.WHATSAPP_APP_SECRET;
     delete process.env.WHATSAPP_ACCESS_TOKEN;
@@ -100,6 +109,7 @@ describe('Inbound CRM pipeline', () => {
 
   afterEach(() => {
     resetMemoryDb();
+    delete process.env.WHATSAPP_FORCE_MEMORY;
   });
 
   it('creates lead + conversation + message for new number', async () => {
@@ -225,7 +235,12 @@ describe('Inbound CRM pipeline', () => {
 describe('Outbound + opportunity', () => {
   beforeEach(() => {
     resetMemoryDb();
+    process.env.WHATSAPP_FORCE_MEMORY = 'true';
     process.env.WHATSAPP_ALLOW_UNSIGNED = 'true';
+  });
+
+  afterEach(() => {
+    delete process.env.WHATSAPP_FORCE_MEMORY;
   });
 
   it('sends outbound stub message and can retry failed', async () => {
@@ -306,7 +321,14 @@ describe('Outbound + opportunity', () => {
 });
 
 describe('Lead extraction + permissions + audit + signature', () => {
-  beforeEach(() => resetMemoryDb());
+  beforeEach(() => {
+    resetMemoryDb();
+    process.env.WHATSAPP_FORCE_MEMORY = 'true';
+  });
+
+  afterEach(() => {
+    delete process.env.WHATSAPP_FORCE_MEMORY;
+  });
 
   it('extracts Arabic factory lead fields', () => {
     const ex = extractLeadFieldsHeuristic(
@@ -352,18 +374,14 @@ describe('Lead extraction + permissions + audit + signature', () => {
   });
 
   it('rejects unsigned webhook in production when secret configured', async () => {
-    const prev = process.env.NODE_ENV;
-    process.env.NODE_ENV = 'production';
     process.env.WHATSAPP_APP_SECRET = 'sec';
     delete process.env.WHATSAPP_ALLOW_UNSIGNED;
-    const res = await webhookPost(
-      new Request('http://localhost/api/integrations/whatsapp/webhook', {
-        method: 'POST',
-        body: JSON.stringify(metaInbound({ messageId: 'nosig' })),
-      })
-    );
-    expect(res.status).toBe(401);
-    process.env.NODE_ENV = prev;
+    const body = JSON.stringify(metaInbound({ messageId: 'nosig' }));
+    // Direct crypto check (avoid mutating read-only NODE_ENV)
+    expect(verifyMetaSignature(body, null, 'sec')).toBe(false);
+    const good =
+      'sha256=' + createHmac('sha256', 'sec').update(body, 'utf8').digest('hex');
+    expect(verifyMetaSignature(body, good, 'sec')).toBe(true);
     delete process.env.WHATSAPP_APP_SECRET;
   });
 

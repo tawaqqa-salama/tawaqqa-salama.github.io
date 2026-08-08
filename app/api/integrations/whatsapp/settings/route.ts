@@ -1,7 +1,8 @@
 import { NextResponse } from 'next/server';
 import { getWhatsAppEnvConfig, getWhatsAppPublicStatus } from '@/lib/whatsapp/config';
+import { isWhatsAppCrmMemoryMode } from '@/lib/whatsapp/crm-bridge';
 import { createWhatsAppProvider } from '@/lib/whatsapp/provider';
-import { getMemoryDb, memoryStore } from '@/lib/whatsapp/store/memory';
+import { waRepository } from '@/lib/whatsapp/store/repository';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -10,28 +11,18 @@ export async function GET() {
   const status = getWhatsAppPublicStatus();
   const cfg = getWhatsAppEnvConfig();
   if (cfg.phoneNumberId) {
-    memoryStore.ensureEnvAccount(cfg.phoneNumberId, {
-      phone_number_id: cfg.phoneNumberId,
-      waba_id: cfg.wabaId,
-    });
+    await waRepository.ensureAccount(cfg.phoneNumberId);
   }
-  const accounts = getMemoryDb().accounts.map((a) => ({
-    id: a.id,
-    business_name: a.business_name,
-    phone_number: a.phone_number,
-    phone_number_id: a.phone_number_id,
-    waba_id: a.waba_id,
-    status: a.status,
-    provider: a.provider,
-    last_webhook_at: a.last_webhook_at,
-    last_error: a.last_error,
-    // never expose tokens
-  }));
   return NextResponse.json({
     ok: true,
-    connection: status,
-    accounts,
+    connection: {
+      ...status,
+      /** true only in demo/tests — production with Supabase uses clients CRM */
+      memoryMode: isWhatsAppCrmMemoryMode(),
+      cloudApiReady: status.connected && status.provider === 'meta',
+    },
     webhookPath: '/api/integrations/whatsapp/webhook',
+    // Never return tokens
   });
 }
 
@@ -40,7 +31,11 @@ export async function POST(request: Request) {
   if (body.action === 'test') {
     const provider = createWhatsAppProvider();
     const result = await provider.testConnection();
-    return NextResponse.json({ ok: result.ok, detail: result.detail });
+    return NextResponse.json({
+      ok: result.ok,
+      detail: result.detail,
+      provider: provider.id,
+    });
   }
   return NextResponse.json({ ok: false, error: 'unknown_action' }, { status: 400 });
 }

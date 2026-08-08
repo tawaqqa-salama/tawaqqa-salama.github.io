@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server';
+import { updateCrmClientFields } from '@/lib/whatsapp/crm-bridge';
 import { normalizeWhatsAppPhone } from '@/lib/whatsapp/phone';
-import { memoryStore } from '@/lib/whatsapp/store/memory';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -35,41 +35,31 @@ export async function PATCH(request: Request) {
     .filter(Boolean)
     .join('\n');
 
-  const client = memoryStore.updateClient(
-    body.customerId,
-    {
-      ...(body.owner_name !== undefined ? { owner_name: body.owner_name, name: body.owner_name } : {}),
-      ...(body.phone !== undefined
-        ? { phone: normalizeWhatsAppPhone(body.phone) || body.phone }
-        : {}),
-      ...(body.email !== undefined ? { email: body.email } : {}),
-      ...(body.business_name !== undefined ? { business_name: body.business_name } : {}),
-      ...(body.activity_type !== undefined ? { activity_type: body.activity_type } : {}),
-      ...(body.city !== undefined ? { city: body.city } : {}),
-      ...(body.district !== undefined ? { district: body.district } : {}),
-      ...(body.street !== undefined ? { street: body.street } : {}),
-      ...(body.region !== undefined ? { region: body.region } : {}),
-      ...(body.building_area !== undefined ? { building_area: body.building_area } : {}),
-      ...(body.floors_count !== undefined ? { floors_count: body.floors_count } : {}),
-      ...(body.lead_notes !== undefined || notesExtra
-        ? {
-            lead_notes: [body.lead_notes, notesExtra].filter(Boolean).join('\n') || null,
-          }
-        : {}),
-    },
-    body.userId
-  );
+  const client = await updateCrmClientFields(body.customerId, {
+    ...(body.owner_name !== undefined
+      ? { owner_name: body.owner_name, name: body.owner_name }
+      : {}),
+    ...(body.phone !== undefined
+      ? { phone: normalizeWhatsAppPhone(body.phone) || body.phone }
+      : {}),
+    ...(body.email !== undefined ? { email: body.email } : {}),
+    ...(body.business_name !== undefined ? { business_name: body.business_name } : {}),
+    ...(body.activity_type !== undefined ? { activity_type: body.activity_type } : {}),
+    ...(body.city !== undefined ? { city: body.city } : {}),
+    ...(body.district !== undefined ? { district: body.district } : {}),
+    ...(body.street !== undefined ? { street: body.street } : {}),
+    ...(body.region !== undefined ? { region: body.region } : {}),
+    ...(body.building_area !== undefined ? { building_area: body.building_area } : {}),
+    ...(body.floors_count !== undefined ? { floors_count: body.floors_count } : {}),
+    ...(body.lead_notes !== undefined || notesExtra
+      ? {
+          lead_notes: [body.lead_notes, notesExtra].filter(Boolean).join('\n') || null,
+        }
+      : {}),
+  });
 
   if (!client) {
     return NextResponse.json({ ok: false, error: 'not_found' }, { status: 404 });
-  }
-
-  if (body.phone) {
-    memoryStore.upsertContact({
-      customer_id: client.id,
-      phone_number: client.phone || body.phone,
-      profile_name: client.whatsapp_profile_name,
-    });
   }
 
   return NextResponse.json({ ok: true, customer: client });

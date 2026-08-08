@@ -1,6 +1,6 @@
 'use client';
 
-import { useCallback, useEffect, useState } from 'react';
+import { startTransition, useCallback, useEffect, useState } from 'react';
 import Link from 'next/link';
 import { useAuth } from '@/lib/auth/AuthProvider';
 import { hasWhatsAppPermission } from '@/lib/whatsapp/permissions';
@@ -126,16 +126,33 @@ export default function WhatsAppInbox() {
 
   useEffect(() => {
     if (!canView) return;
-    void loadConversations();
-    void fetch('/api/integrations/whatsapp/templates')
-      .then((r) => r.json())
-      .then((d) => {
-        if (d.ok) setTemplates(d.templates || []);
+    let cancelled = false;
+    startTransition(() => {
+      void loadConversations().then(() => {
+        if (cancelled) return;
       });
+      void fetch('/api/integrations/whatsapp/templates')
+        .then((r) => r.json())
+        .then((d) => {
+          if (!cancelled && d.ok) setTemplates(d.templates || []);
+        });
+    });
+    return () => {
+      cancelled = true;
+    };
   }, [canView, loadConversations]);
 
   useEffect(() => {
-    if (selectedId) void loadThread(selectedId);
+    if (!selectedId) return;
+    let cancelled = false;
+    startTransition(() => {
+      void loadThread(selectedId).then(() => {
+        if (cancelled) return;
+      });
+    });
+    return () => {
+      cancelled = true;
+    };
   }, [selectedId, loadThread]);
 
   if (!canView) {
