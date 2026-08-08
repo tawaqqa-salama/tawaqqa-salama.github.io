@@ -4,7 +4,11 @@
  */
 
 import { isDemoMode, supabase } from '@/lib/supabase';
-import { INLINE_PREVIEW_MAX_BYTES, PROJECT_FILES_BUCKET } from '@/lib/storage/project-files';
+import {
+  INLINE_PREVIEW_MAX_BYTES,
+  PROJECT_FILES_BUCKET,
+  buildStorageObjectPath,
+} from '@/lib/storage/project-files';
 import type { QuotationDocumentFile, QuotationDocumentKind } from '@/lib/types/quotation-documents';
 
 function uid() {
@@ -52,7 +56,8 @@ export async function uploadQuotationDocument(
   }
 
   const folder = opts?.clientId || 'general';
-  const path = `${folder}/quotation/${kind}/${id}-${file.name.replace(/[^\w.\u0600-\u06FF-]+/g, '_')}`;
+  // Original Arabic name kept in base.fileName; Storage key is ASCII-only
+  const path = buildStorageObjectPath([folder, 'quotation', kind], id, file.name);
 
   const { error } = await supabase.storage.from(PROJECT_FILES_BUCKET).upload(path, file, {
     contentType: file.type || 'application/octet-stream',
