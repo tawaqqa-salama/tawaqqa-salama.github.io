@@ -55,6 +55,7 @@ jobs:
             echo "::warning::Supabase غير مربوط — البناء بوضع تجريبي. أضف الأسرار حسب docs/SUPABASE.md"
           fi
           # إخفاء Route Handlers + middleware أثناء البناء الثابت (output: export)
+          # نُبقي robots.txt / sitemap.xml (force-static) لأنهما متوافقان مع التصدير الثابت
           if [ -d app/api ]; then
             mv app/api .api-build-tmp
           fi

@@ -515,16 +515,31 @@ export async function trackWebsiteWhatsAppClick(input: {
   };
 }
 
+function safeIsoDate(value: unknown): string {
+  const d = value ? new Date(String(value)) : new Date();
+  if (Number.isNaN(d.getTime())) return new Date().toISOString();
+  return d.toISOString();
+}
+
 export async function buildSitemapXml(origin: string) {
-  const pages = await listWebsitePages();
-  const published = pages.filter((p) => p.published);
-  const urls = published
-    .map(
-      (p) =>
-        `  <url><loc>${origin}/w/${p.slug}</loc><lastmod>${new Date(String(p.updated_at || Date.now())).toISOString()}</lastmod></url>`
+  try {
+    const pages = await listWebsitePages();
+    const published = pages.filter((p) => p.published);
+    const urls = (published.length
+      ? published
+      : [{ slug: '', updated_at: new Date().toISOString() }]
     )
-    .join('\n');
-  return `<?xml version="1.0" encoding="UTF-8"?>\n<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">\n${urls}\n</urlset>`;
+      .map((p) => {
+        const path = p.slug ? `/w/${p.slug}` : '/';
+        return `  <url><loc>${origin}${path}</loc><lastmod>${safeIsoDate(p.updated_at)}</lastmod></url>`;
+      })
+      .join('\n');
+    return `<?xml version="1.0" encoding="UTF-8"?>\n<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">\n${urls}\n</urlset>`;
+  } catch {
+    // Static export / missing website tables — never break Pages build
+    const now = new Date().toISOString();
+    return `<?xml version="1.0" encoding="UTF-8"?>\n<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">\n  <url><loc>${origin}/</loc><lastmod>${now}</lastmod></url>\n</urlset>`;
+  }
 }
 
 export function robotsTxt(origin: string) {
