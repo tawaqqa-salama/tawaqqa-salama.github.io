@@ -94,24 +94,29 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       const result = await signInWithEmailPassword(email, password);
       if (result.error || !result.session) return result.error || 'فشل تسجيل الدخول';
       setSession(result.session);
-      // Profile refresh must not block leaving the login screen
-      void getUserProfile(result.session.userId).then((user) => setProfile(user));
-      void syncSessionCookie(result.session, result.session.companyId || undefined);
-      void logActivity({
-        actionType: 'LOGIN',
-        details: `تسجيل دخول ناجح (${result.session.fullName}) عبر البريد`,
-        pageUrl: '/login',
-        module: 'auth',
-        actor: {
-          userId: result.session.userId,
-          userName: result.session.fullName,
-          userRole: result.session.roleCode,
-        },
-        metadata: { method: 'email', role: roleLabel(result.session.roleCode) },
-      });
+      // Side-effects must never fail the login UX
+      try {
+        void getUserProfile(result.session.userId).then((user) => setProfile(user));
+        void syncSessionCookie(result.session, result.session.companyId || undefined);
+        void logActivity({
+          actionType: 'LOGIN',
+          details: `تسجيل دخول ناجح (${result.session.fullName || ''}) عبر البريد`,
+          pageUrl: '/login',
+          module: 'auth',
+          actor: {
+            userId: result.session.userId,
+            userName: result.session.fullName || result.session.email,
+            userRole: result.session.roleCode,
+          },
+          metadata: { method: 'email', role: roleLabel(result.session.roleCode) },
+        });
+      } catch {
+        // ignore post-login side effects
+      }
       return null;
-    } catch {
-      return 'تعذر إكمال تسجيل الدخول. حاول مرة أخرى.';
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : '';
+      return msg || 'تعذر إكمال تسجيل الدخول. حاول مرة أخرى.';
     }
   }, []);
 
@@ -133,23 +138,28 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       const result = await verifyPhoneOtp(phone, code);
       if (result.error || !result.session) return result.error || 'فشل تسجيل الدخول';
       setSession(result.session);
-      void getUserProfile(result.session.userId).then((user) => setProfile(user));
-      void syncSessionCookie(result.session, result.session.companyId || undefined);
-      void logActivity({
-        actionType: 'LOGIN',
-        details: `تسجيل دخول ناجح (${result.session.fullName}) عبر الجوال`,
-        pageUrl: '/login',
-        module: 'auth',
-        actor: {
-          userId: result.session.userId,
-          userName: result.session.fullName,
-          userRole: result.session.roleCode,
-        },
-        metadata: { method: 'phone', role: roleLabel(result.session.roleCode) },
-      });
+      try {
+        void getUserProfile(result.session.userId).then((user) => setProfile(user));
+        void syncSessionCookie(result.session, result.session.companyId || undefined);
+        void logActivity({
+          actionType: 'LOGIN',
+          details: `تسجيل دخول ناجح (${result.session.fullName || ''}) عبر الجوال`,
+          pageUrl: '/login',
+          module: 'auth',
+          actor: {
+            userId: result.session.userId,
+            userName: result.session.fullName || result.session.email,
+            userRole: result.session.roleCode,
+          },
+          metadata: { method: 'phone', role: roleLabel(result.session.roleCode) },
+        });
+      } catch {
+        // ignore post-login side effects
+      }
       return null;
-    } catch {
-      return 'تعذر إكمال تسجيل الدخول. حاول مرة أخرى.';
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : '';
+      return msg || 'تعذر إكمال تسجيل الدخول. حاول مرة أخرى.';
     }
   }, []);
 

@@ -25,6 +25,30 @@ async function withTimeout<T>(promise: PromiseLike<T>, ms: number, label: string
   }
 }
 
+function authErrorMessage(error: unknown, fallback: string): string {
+  const raw =
+    (error && typeof error === 'object' && 'message' in error
+      ? String((error as { message?: unknown }).message || '')
+      : error instanceof Error
+        ? error.message
+        : '') || '';
+  const msg = raw.trim();
+  if (!msg) return fallback;
+  if (/timeout/i.test(msg)) {
+    return 'انتهت مهلة الاتصال بخادم الدخول. تحقق من الشبكة أو جرّب لاحقاً.';
+  }
+  if (/failed to fetch|networkerror|load failed|fetch failed|network request failed/i.test(msg)) {
+    return 'تعذر الاتصال بخادم الدخول. تحقق من الإنترنت أو من إعدادات Supabase.';
+  }
+  if (/invalid login credentials|invalid_credentials/i.test(msg)) {
+    return 'بيانات الدخول غير صحيحة';
+  }
+  if (/email not confirmed/i.test(msg)) {
+    return 'البريد غير مؤكد — أكّد الحساب من رسالة التفعيل ثم أعد المحاولة.';
+  }
+  return msg;
+}
+
 /** Saudi mobile (05xxxxxxxx) or international E.164-ish (+... / 00...) */
 function isValidPhone(phone: string): boolean {
   if (/^05\d{8}$/.test(phone)) return true;
@@ -130,8 +154,17 @@ async function fetchRole(roleCode: string, companyId: string): Promise<AppRole |
 }
 
 async function getCredential(userId: string): Promise<DemoCredential | null> {
-  const { data } = await supabase.from('demo_credentials').select('*').eq('user_id', userId).maybeSingle();
-  return (data as DemoCredential | null) ?? null;
+  try {
+    const { data, error } = await supabase
+      .from('demo_credentials')
+      .select('*')
+      .eq('user_id', userId)
+      .maybeSingle();
+    if (error) return null;
+    return (data as DemoCredential | null) ?? null;
+  } catch {
+    return null;
+  }
 }
 
 export async function restoreAuthSession(): Promise<AuthResult> {
@@ -159,65 +192,84 @@ export async function signInWithEmailPassword(email: string, password: string): 
 
   try {
     if (!isDemoMode) {
-      const { data, error } = await withTimeout(
-        supabase.auth.signInWithPassword({
-          email: trimmedEmail,
-          password,
-        }),
-        AUTH_TIMEOUT_MS,
-        'auth_timeout'
-      );
-      if (error || !data.user) {
-        return { session: null, error: error?.message || 'فشل تسجيل الدخول' };
+      let authData: { user: { id: string } | null } | null = null;
+      let authError: { message?: string } | null = null;
+      try {
+        const result = await withTimeout(
+          supabase.auth.signInWithPassword({
+            email: trimmedEmail,
+            password,
+          }),
+          AUTH_TIMEOUT_MS,
+          'auth_timeout'
+        );
+        authData = result.data;
+        authError = result.error;
+      } catch (e) {
+        // Network / timeout — try legacy demo_credentials row as last resort on Pages
+        const legacy = await tryLegacyPasswordLogin(trimmedEmail, password);
+        if (legacy.session) return legacy;
+        return { session: null, error: authErrorMessage(e, 'فشل الاتصال بخادم الدخول') };
       }
-      const { data: profile } = await withTimeout(
-        supabase.from('users').select('*').eq('auth_user_id', data.user.id).maybeSingle(),
-        8000,
-        'profile_timeout'
-      );
-      const user =
-        (profile as AppUser | null) ??
-        (await withTimeout(fetchUserByEmail(trimmedEmail), 8000, 'profile_timeout'));
+
+      if (authError || !authData?.user) {
+        // Wrong password in Auth: still allow demo_credentials match for migrated rows
+        const legacy = await tryLegacyPasswordLogin(trimmedEmail, password);
+        if (legacy.session) return legacy;
+        return {
+          session: null,
+          error: authErrorMessage(authError, 'فشل تسجيل الدخول'),
+        };
+      }
+
+      let user: AppUser | null = null;
+      try {
+        const { data: profile } = await withTimeout(
+          supabase.from('users').select('*').eq('auth_user_id', authData.user.id).maybeSingle(),
+          8000,
+          'profile_timeout'
+        );
+        user = (profile as AppUser | null) ?? (await fetchUserByEmail(trimmedEmail));
+      } catch {
+        user = await fetchUserByEmail(trimmedEmail).catch(() => null);
+      }
+
       if (!user || !user.is_active) {
         return { session: null, error: 'لا يوجد ملف موظف مرتبط بهذا الحساب' };
       }
-      const role = await withTimeout(
-        fetchRole(user.role_code, user.company_id),
-        5000,
-        'role_timeout'
-      ).catch(() => null);
+      const role = await fetchRole(user.role_code, user.company_id).catch(() => null);
       const permissions = resolveUserPermissions(user, role);
       const session = toSession(user, permissions, 'email');
       saveSession(session, user.company_id);
-      // Never block login UI on last_login write (RLS / network can stall)
       void supabase.from('users').update({ last_login_at: session.loggedInAt }).eq('id', user.id);
       return { session, error: null };
     }
 
-    const user = await fetchUserByEmail(trimmedEmail);
-    if (!user || !user.is_active) {
-      return { session: null, error: 'بيانات الدخول غير صحيحة' };
-    }
-    const cred = await getCredential(user.id);
-    if (!cred || cred.password !== password) {
-      return { session: null, error: 'بيانات الدخول غير صحيحة' };
-    }
-    const role = await fetchRole(user.role_code, user.company_id);
-    const permissions = resolveUserPermissions(user, role);
-    const session = toSession(user, permissions, 'email');
-    saveSession(session, user.company_id);
-    void supabase.from('users').update({ last_login_at: session.loggedInAt }).eq('id', user.id);
-    return { session, error: null };
+    return tryLegacyPasswordLogin(trimmedEmail, password);
   } catch (e) {
-    const msg = e instanceof Error ? e.message : '';
-    if (msg.includes('timeout')) {
-      return {
-        session: null,
-        error: 'انتهت مهلة الاتصال بخادم الدخول. تحقق من الشبكة أو جرّب لاحقاً.',
-      };
-    }
-    return { session: null, error: 'تعذر إكمال تسجيل الدخول. حاول مرة أخرى.' };
+    return {
+      session: null,
+      error: authErrorMessage(e, 'تعذر إكمال تسجيل الدخول. حاول مرة أخرى.'),
+    };
   }
+}
+
+/** Demo-credentials / plaintext password path (also used as Pages fallback). */
+async function tryLegacyPasswordLogin(email: string, password: string): Promise<AuthResult> {
+  const user = await fetchUserByEmail(email);
+  if (!user || !user.is_active) {
+    return { session: null, error: 'بيانات الدخول غير صحيحة' };
+  }
+  const cred = await getCredential(user.id);
+  if (!cred || cred.password !== password) {
+    return { session: null, error: 'بيانات الدخول غير صحيحة' };
+  }
+  const role = await fetchRole(user.role_code, user.company_id).catch(() => null);
+  const permissions = resolveUserPermissions(user, role);
+  const session = toSession(user, permissions, 'email');
+  saveSession(session, user.company_id);
+  void supabase.from('users').update({ last_login_at: session.loggedInAt }).eq('id', user.id);
+  return { session, error: null };
 }
 
 function randomOtp(): string {

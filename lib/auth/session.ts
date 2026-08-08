@@ -30,7 +30,11 @@ export function loadSession(): AuthSession | null {
 /** Persist local session + sync httpOnly cookie for middleware/API (best-effort). */
 export function saveSession(session: AuthSession, companyId?: string): void {
   if (typeof window === 'undefined') return;
-  window.localStorage.setItem(STORAGE_KEY, JSON.stringify(session));
+  try {
+    window.localStorage.setItem(STORAGE_KEY, JSON.stringify(session));
+  } catch {
+    // Private mode / quota — in-memory AuthProvider session still works for this tab
+  }
   void syncSessionCookie(session, companyId);
 }
 
