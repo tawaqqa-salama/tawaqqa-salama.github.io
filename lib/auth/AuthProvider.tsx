@@ -52,16 +52,37 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const hydrate = useCallback(async () => {
     setLoading(true);
-    const { session: next } = await restoreAuthSession();
-    setSession(next);
-    if (next) {
-      const user = await getUserProfile(next.userId);
-      setProfile(user);
-      await syncSessionCookie(next, user?.company_id);
-    } else {
+    try {
+      // Hard cap so GitHub Pages / slow Supabase can never leave the UI stuck
+      const result = await Promise.race([
+        restoreAuthSession(),
+        new Promise<{ session: null; error: string }>((resolve) =>
+          setTimeout(() => resolve({ session: null, error: 'session_timeout' }), 6000)
+        ),
+      ]);
+      const next = result.session;
+      setSession(next);
+      if (next) {
+        try {
+          const user = await Promise.race([
+            getUserProfile(next.userId),
+            new Promise<null>((resolve) => setTimeout(() => resolve(null), 4000)),
+          ]);
+          setProfile(user);
+          // Never block UI on cookie sync (absent on GitHub Pages)
+          void syncSessionCookie(next, user?.company_id || next.companyId || undefined);
+        } catch {
+          setProfile(null);
+        }
+      } else {
+        setProfile(null);
+      }
+    } catch {
+      setSession(null);
       setProfile(null);
+    } finally {
+      setLoading(false);
     }
-    setLoading(false);
   }, []);
 
   useEffect(() => {
@@ -74,7 +95,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setSession(result.session);
     const profile = await getUserProfile(result.session.userId);
     setProfile(profile);
-    await syncSessionCookie(result.session, profile?.company_id);
+    void syncSessionCookie(result.session, profile?.company_id);
     void logActivity({
       actionType: 'LOGIN',
       details: `تسجيل دخول ناجح (${result.session.fullName}) عبر البريد`,
@@ -98,7 +119,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setSession(result.session);
     const profile = await getUserProfile(result.session.userId);
     setProfile(profile);
-    await syncSessionCookie(result.session, profile?.company_id);
+    void syncSessionCookie(result.session, profile?.company_id);
     void logActivity({
       actionType: 'LOGIN',
       details: `تسجيل دخول ناجح (${result.session.fullName}) عبر الجوال`,

@@ -14,6 +14,7 @@ import { useLanguage } from '@/lib/i18n/LanguageProvider';
 import type { DepartmentId } from '@/lib/constants/navigation';
 import { DEPARTMENT_TO_MODULE } from '@/lib/tenant/types';
 import { isSuperAdminRole } from '@/lib/tenant/rbac';
+import { areApiRoutesAvailable } from '@/lib/runtime/mode';
 
 const DocumentPreviewSheet = dynamic(() => import('@/components/ui/DocumentPreviewSheet'), {
   ssr: false,
@@ -55,6 +56,11 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
 
   useEffect(() => {
     if (!session || isPublic) return;
+    // GitHub Pages has no /api — skip (all modules visible client-side; server enforces on Node)
+    if (!areApiRoutesAvailable()) {
+      setEnabledModules([]);
+      return;
+    }
     void fetch('/api/tenant/context')
       .then((r) => r.json())
       .then((j) => {

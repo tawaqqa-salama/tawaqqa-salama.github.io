@@ -2,16 +2,24 @@
 
 import { useEffect, useState } from 'react';
 import { useLanguage } from '@/lib/i18n/LanguageProvider';
+import { useAuth } from '@/lib/auth/AuthProvider';
+import { areApiRoutesAvailable } from '@/lib/runtime/mode';
 
 type TenantLite = { id: string; name: string; code?: string };
 
 export default function TenantSwitcher() {
   const { t } = useLanguage();
+  const { session } = useAuth();
   const [tenant, setTenant] = useState<TenantLite | null>(null);
   const [memberships, setMemberships] = useState<Array<{ company_id: string }>>([]);
   const [tenants, setTenants] = useState<TenantLite[]>([]);
 
   useEffect(() => {
+    // On GitHub Pages APIs are unavailable — hide switcher (single-tenant showcase)
+    if (!areApiRoutesAvailable()) {
+      setTenant(null);
+      return;
+    }
     void fetch('/api/tenant/context')
       .then((r) => r.json())
       .then((j) => {
@@ -27,8 +35,9 @@ export default function TenantSwitcher() {
         } else if (j.tenant) {
           setTenants([j.tenant]);
         }
-      });
-  }, []);
+      })
+      .catch(() => undefined);
+  }, [session?.companyId, session?.fullName]);
 
   if (!tenant) return null;
 
