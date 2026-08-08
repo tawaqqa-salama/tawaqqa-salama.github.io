@@ -14,6 +14,7 @@ import {
 } from '@/lib/design-intelligence/knowledge-base';
 import { createEmptyAnalysisJob, emptyAnalysisSteps } from '@/lib/projects/design-center/state';
 import {
+  bindingForCalc,
   buildProjectDesignStandardsContext,
   filterCitationsToApplicableCodes,
   resolveApplicableStandards,
@@ -57,51 +58,6 @@ const SYSTEM_QUERY_AR: Record<FireSystemKind, string> = {
   clean_agent: 'اشتراطات أنظمة العوامل النظيفة للإطفاء',
 };
 
-const CALC_KB: Record<
-  EngineeringCalcKind,
-  { codes: string[]; query_ar: string; label_ar: string }
-> = {
-  hydraulic: {
-    codes: ['NFPA-13'],
-    query_ar: 'الحسابات الهيدروليكية للمرشات NFPA-13',
-    label_ar: 'هيدروليك',
-  },
-  battery: {
-    codes: ['NFPA-72'],
-    query_ar: 'بطاريات أنظمة الإنذار NFPA-72 مدة الاحتياطي',
-    label_ar: 'بطاريات',
-  },
-  voltage_drop: {
-    codes: ['NFPA-72'],
-    query_ar: 'هبوط الجهد دوائر الإنذار',
-    label_ar: 'هبوط الجهد',
-  },
-  pipe_sizing: {
-    codes: ['NFPA-13', 'NFPA-14'],
-    query_ar: 'أقطار أنابيب الإطفاء NFPA-13',
-    label_ar: 'أقطار الأنابيب',
-  },
-  water_demand: {
-    codes: ['NFPA-13'],
-    query_ar: 'طلب المياه لأنظمة المرشات',
-    label_ar: 'طلب المياه',
-  },
-  pump: {
-    codes: ['NFPA-20'],
-    query_ar: 'مضخات الإطفاء NFPA-20',
-    label_ar: 'المضخة',
-  },
-  tank_size: {
-    codes: ['NFPA-22', 'SBC-801'],
-    query_ar: 'خزانات مياه الإطفاء',
-    label_ar: 'الخزان',
-  },
-  pressure_loss: {
-    codes: ['NFPA-13'],
-    query_ar: 'فاقد الضغط في شبكات الإطفاء',
-    label_ar: 'فاقد الضغط',
-  },
-};
 
 /**
  * Analyze project using uploaded drawings metadata + building plan fields + KB RAG.
@@ -310,33 +266,58 @@ export async function runKnowledgeBackedCalculation(params: {
   kind: EngineeringCalcKind;
   context?: KnowledgeEngineContext | null;
 }): Promise<EngineeringCalcResult> {
-  const meta = CALC_KB[params.kind];
-  const client = params.context?.client;
-  const plan = params.context?.data.building_plan;
-  const area = num(client?.building_area);
-  const floors = num(client?.floors_count);
-  const height = num(plan?.building_height_m);
-  const rag = await ragQuery(meta.query_ar, 4);
+  const binding = bindingForCalc(params.kind);
+
+  if (!params.context?.client || !params.context?.data) {
+    return {
+      kind: params.kind,
+      status: 'failed',
+      updatedAt: new Date().toISOString(),
+      error: 'مطلوب سياق المشروع لتحديد مراجع الحساب — لا تُعرض قائمة أكواد ثابتة لكل البطاقات.',
+      error_code: 'PROJECT_CONTEXT_REQUIRED',
+      values: null,
+      standards: null,
+    };
+  }
+
+  const client = params.context.client;
+  const plan = params.context.data.building_plan;
+  const area = num(client.building_area);
+  const floors = num(client.floors_count);
+  const height = num(plan.building_height_m);
+
+  // Resolve standards for the linked system only (Battery → fire_alarm, Hydraulic → sprinkler, …)
+  const baseCtx = buildProjectDesignStandardsContext(client, params.context.data);
+  const standardsCtx = {
+    ...baseCtx,
+    hasFirePump: binding.forceFirePump ? true : baseCtx.hasFirePump,
+    hasStandpipe: binding.forceStandpipe ? true : baseCtx.hasStandpipe,
+  };
+  const resolved = resolveApplicableStandards(standardsCtx, binding.system);
+  const snapshot = toSystemStandardsSnapshot(binding.system, resolved);
+
+  const rag = await ragQuery(binding.query_ar, 4);
+  const kbLines = filterCitationsToApplicableCodes(rag.citations || [], snapshot);
 
   const values: Record<string, number | string> = {
-    source: 'project_knowledge_bridge',
+    source: 'standards_applicability_engine',
     kind: params.kind,
-    codes: meta.codes.join(', '),
+    linked_system: binding.system,
+    // Only codes that apply to THIS calc’s system — never the full project dump
+    codes: [
+      ...snapshot.primary.map((r) => r.code),
+      ...snapshot.saudiCode.map((r) => r.code),
+      ...snapshot.conditional.map((r) => r.code),
+    ].join(', '),
     building_area_m2: area ?? '',
     floors_count: floors ?? '',
     building_height_m: height ?? '',
-    sprinkler_declared: plan?.sprinkler_system || '',
-    fire_alarm_declared: plan?.fire_alarm_system || '',
-    knowledge_hits_json: JSON.stringify(
-      (rag.citations || []).slice(0, 4).map((c) => ({
-        title: c.documentTitle,
-        code: c.codeReference,
-        excerpt: c.paragraph.slice(0, 180),
-        confidence: c.confidence,
-      }))
-    ),
+    sprinkler_declared: plan.sprinkler_system || '',
+    fire_alarm_declared: plan.fire_alarm_system || '',
+    knowledge_hits_count: kbLines.length,
     note_ar:
-      'المدخلات من بيانات المشروع الحقيقية والمراجع من قاعدة المعرفة. النتائج العددية النهائية للهيدروليك/المضخات تُعتمد بعد برنامج حساب معتمد من المهندس.',
+      'المراجع من محرك الانطباق حسب نظام الحساب فقط. النتائج العددية النهائية تُعتمد بعد برنامج حساب معتمد من المهندس.',
+    review_status: snapshot.requirementsSummary.reviewStatus,
   };
 
   // Deterministic planning estimates only (clearly labeled) — not pump selection
@@ -359,6 +340,7 @@ export async function runKnowledgeBackedCalculation(params: {
     error: null,
     error_code: null,
     values,
+    standards: snapshot,
   };
 }
 

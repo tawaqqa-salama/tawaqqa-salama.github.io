@@ -68,6 +68,7 @@ export function emptyCalculations(): EngineeringCalcResult[] {
     error: null,
     error_code: null,
     values: null,
+    standards: null,
   }));
 }
 

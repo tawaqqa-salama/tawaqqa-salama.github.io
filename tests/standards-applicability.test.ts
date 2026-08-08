@@ -5,8 +5,12 @@ import {
   snapshotToArtifactRefs,
   toSystemStandardsSnapshot,
   getStandardsCatalog,
+  bindingForCalc,
 } from '@/lib/projects/design-center/standards';
-import { runKnowledgeBackedSystemDesign } from '@/lib/projects/design-center/knowledge-engine';
+import {
+  runKnowledgeBackedCalculation,
+  runKnowledgeBackedSystemDesign,
+} from '@/lib/projects/design-center/knowledge-engine';
 import { EMPTY_PROJECT_ENGINEERING_DATA, type ProjectEngineeringData } from '@/lib/types/project-reports';
 import { mergeDesignCenterDefaults } from '@/lib/projects/design-center/state';
 import type { ClientRecord } from '@/lib/types/client';
@@ -267,5 +271,56 @@ describe('knowledge-backed system design uses applicability engine', () => {
     );
     const lines = snapshotToArtifactRefs(snap);
     expect(lines.every((l) => l.includes('Edition not verified') || l.includes('SAUDI'))).toBe(true);
+  });
+});
+
+describe('calculation cards use per-calc system binding (not one shared dump)', () => {
+  it('maps battery/voltage to fire_alarm and hydraulic/pump to sprinkler', () => {
+    expect(bindingForCalc('battery').system).toBe('fire_alarm');
+    expect(bindingForCalc('voltage_drop').system).toBe('fire_alarm');
+    expect(bindingForCalc('hydraulic').system).toBe('sprinkler');
+    expect(bindingForCalc('pump').system).toBe('sprinkler');
+    expect(bindingForCalc('pump').forceFirePump).toBe(true);
+  });
+
+  it('Battery calc shows NFPA-72 and not NFPA-13/20', async () => {
+    const result = await runKnowledgeBackedCalculation({
+      projectId: 'proj-std-1',
+      kind: 'battery',
+      context: { client: client(), data: data() },
+    });
+    expect(result.status).toBe('completed');
+    expect(result.standards?.system).toBe('fire_alarm');
+    expect(result.standards?.primary.some((p) => p.code === 'NFPA-72')).toBe(true);
+    expect(result.standards?.primary.some((p) => p.code === 'NFPA-13')).toBe(false);
+    expect(String(result.values?.codes || '')).toContain('NFPA-72');
+    expect(String(result.values?.codes || '')).not.toContain('NFPA-13');
+  });
+
+  it('Hydraulic and Battery do not share the same primary codes', async () => {
+    const hyd = await runKnowledgeBackedCalculation({
+      projectId: 'proj-std-1',
+      kind: 'hydraulic',
+      context: { client: client(), data: data() },
+    });
+    const bat = await runKnowledgeBackedCalculation({
+      projectId: 'proj-std-1',
+      kind: 'battery',
+      context: { client: client(), data: data() },
+    });
+    const hydPrimary = hyd.standards?.primary.map((p) => p.code) || [];
+    const batPrimary = bat.standards?.primary.map((p) => p.code) || [];
+    expect(hydPrimary).toContain('NFPA-13');
+    expect(batPrimary).toContain('NFPA-72');
+    expect(hydPrimary).not.toEqual(batPrimary);
+  });
+
+  it('Pump calc includes conditional NFPA-20', async () => {
+    const result = await runKnowledgeBackedCalculation({
+      projectId: 'proj-std-1',
+      kind: 'pump',
+      context: { client: client(), data: data() },
+    });
+    expect(result.standards?.conditional.some((p) => p.code === 'NFPA-20')).toBe(true);
   });
 });

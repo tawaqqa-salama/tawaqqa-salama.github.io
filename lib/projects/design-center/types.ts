@@ -133,8 +133,10 @@ export type EngineeringCalcResult = {
   updatedAt?: string | null;
   error?: string | null;
   error_code?: string | null;
-  /** Populated only by calculation engine */
+  /** Populated only by calculation engine — inputs/estimates, not a code dump */
   values?: Record<string, number | string> | null;
+  /** Dynamic standards for this calc’s linked system (not project-wide dump) */
+  standards?: import('@/lib/projects/design-center/standards/types').SystemStandardsSnapshot | null;
 };
 
 export type ComplianceFinding = {
