@@ -25,7 +25,13 @@ WhatsApp → Webhook → CRM (clients) → Lead → Opportunity → عرض سع�
 
 ## Webhook URL
 
-سجّل في Meta Developer Console:
+سجّل في Meta Developer Console (استضافة Node مثل Vercel — ليس GitHub Pages):
+
+```
+https://YOUR_HOST/api/whatsapp/webhook
+```
+
+المسار البديل (نفس المعالج):
 
 ```
 https://YOUR_HOST/api/integrations/whatsapp/webhook
@@ -34,7 +40,9 @@ https://YOUR_HOST/api/integrations/whatsapp/webhook
 - GET: تحقق الاشتراك (`hub.verify_token`)
 - POST: رسائل + حالات التسليم (توقيع مطلوب عند ضبط `WHATSAPP_APP_SECRET`)
 
-المسار مستثنى من جلسة الدخول في `middleware.ts`.
+كلا المسارين مستثنيان من جلسة الدخول في `middleware.ts`.
+
+**مهم:** واجهة `github.io` للعرض فقط — الحفظ/Webhook يعملان على Node (مثل `tawaqqa-salama.vercel.app`).
 
 ## قاعدة البيانات
 

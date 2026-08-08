@@ -36,7 +36,8 @@ export async function GET() {
       hasAccessToken: status.hasAccessToken,
       access_token_set_via_env: status.source === 'env',
     },
-    webhookPath: '/api/integrations/whatsapp/webhook',
+    webhookPath: '/api/whatsapp/webhook',
+    webhookPathCanonical: '/api/integrations/whatsapp/webhook',
     // Never return tokens
   });
 }

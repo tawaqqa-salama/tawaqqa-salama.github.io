@@ -1,9 +1,9 @@
 'use client';
 
-import { startTransition, useEffect, useState } from 'react';
+import { startTransition, useEffect, useMemo, useState } from 'react';
 import { useAuth } from '@/lib/auth/AuthProvider';
+import { areApiRoutesAvailable } from '@/lib/runtime/mode';
 import { hasWhatsAppPermission } from '@/lib/whatsapp/permissions';
-import NumericInput from '@/components/ui/NumericInput';
 
 type FormState = {
   business_name: string;
@@ -28,6 +28,7 @@ const EMPTY: FormState = {
 export default function WhatsAppSettingsPanel() {
   const { session } = useAuth();
   const can = hasWhatsAppPermission(session?.permissions, 'whatsapp.settings');
+  const apiOk = areApiRoutesAvailable();
 
   const [form, setForm] = useState<FormState>(EMPTY);
   const [hasAccessToken, setHasAccessToken] = useState(false);
@@ -36,21 +37,35 @@ export default function WhatsAppSettingsPanel() {
   const [connection, setConnection] = useState<{
     connected?: boolean;
     provider?: string;
-    webhookConfigured?: boolean;
     memoryMode?: boolean;
     source?: string;
   } | null>(null);
-  const [webhookPath, setWebhookPath] = useState('/api/integrations/whatsapp/webhook');
   const [busy, setBusy] = useState(false);
   const [hint, setHint] = useState<string | null>(null);
   const [testResult, setTestResult] = useState<string | null>(null);
+  const [copied, setCopied] = useState(false);
+
+  const webhookUrls = useMemo(() => {
+    const origin =
+      typeof window !== 'undefined' ? window.location.origin : 'https://YOUR_HOST';
+    // Prefer Node/Vercel host for Meta — GitHub Pages cannot receive webhooks
+    const nodeHint =
+      origin.includes('github.io')
+        ? 'https://tawaqqa-salama.vercel.app'
+        : origin;
+    return {
+      primary: `${nodeHint}/api/whatsapp/webhook`,
+      canonical: `${nodeHint}/api/integrations/whatsapp/webhook`,
+      onPages: origin.includes('github.io'),
+    };
+  }, []);
 
   const load = async () => {
+    if (!apiOk) return;
     const res = await fetch('/api/integrations/whatsapp/settings');
     const d = await res.json();
     if (!d.ok) return;
     setConnection(d.connection || null);
-    setWebhookPath(d.webhookPath || webhookPath);
     setHasAccessToken(Boolean(d.form?.hasAccessToken));
     setHasVerifyToken(Boolean(d.form?.has_webhook_verify_token));
     setEnvLocked(Boolean(d.form?.access_token_set_via_env));
@@ -72,21 +87,28 @@ export default function WhatsAppSettingsPanel() {
       void load();
     });
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [can]);
+  }, [can, apiOk]);
 
   if (!can) {
     return (
       <div className="rounded-xl border border-rose-200 bg-rose-50 p-4 text-sm text-rose-800" dir="rtl">
-        لا صلاحية لإعدادات واتساب. يلزم صلاحية <code className="font-mono">whatsapp.settings</code> أو
-        قسم الإعدادات / مدير النظام.
+        لا صلاحية لإعدادات واتساب.
       </div>
     );
   }
 
-  const save = async () => {
+  const saveAndTest = async () => {
+    if (!apiOk) {
+      setHint(
+        'هذه الصفحة على GitHub Pages لا تشغّل /api. افتح نفس الشاشة على استضافة Node (مثل Vercel) للحفظ والاختبار.'
+      );
+      return;
+    }
     setBusy(true);
     setHint(null);
-    const res = await fetch('/api/integrations/whatsapp/settings', {
+    setTestResult(null);
+
+    const saveRes = await fetch('/api/integrations/whatsapp/settings', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
@@ -100,40 +122,63 @@ export default function WhatsAppSettingsPanel() {
         api_version: form.api_version,
       }),
     });
-    const d = await res.json();
-    setBusy(false);
-    if (!d.ok) {
-      setHint(d.error || 'تعذر الحفظ');
+    const saved = await saveRes.json();
+    if (!saved.ok) {
+      setBusy(false);
+      setHint(saved.error || 'تعذر الحفظ');
       return;
     }
-    setHint(d.warning || 'تم حفظ الإعدادات. Access Token لا يُعرض بعد الحفظ.');
-    setForm((p) => ({ ...p, access_token: '', webhook_verify_token: '' }));
-    setConnection(d.connection || null);
-    setHasAccessToken(Boolean(d.settings?.hasAccessToken || d.connection?.hasAccessToken));
-    await load();
-  };
 
-  const test = async () => {
-    setBusy(true);
-    setTestResult(null);
-    const res = await fetch('/api/integrations/whatsapp/settings', {
+    setForm((p) => ({ ...p, access_token: '', webhook_verify_token: '' }));
+    setHasAccessToken(Boolean(saved.settings?.hasAccessToken || saved.connection?.hasAccessToken));
+    setConnection(saved.connection || null);
+
+    const testRes = await fetch('/api/integrations/whatsapp/settings', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ action: 'test' }),
     });
-    const d = await res.json();
+    const tested = await testRes.json();
     setBusy(false);
-    setTestResult(d.ok ? `متصل: ${d.detail}` : `فشل: ${d.detail || d.error}`);
+    setHint(saved.warning || 'تم تحديث الإعدادات.');
+    setTestResult(
+      tested.ok
+        ? `الاتصال ناجح: ${tested.detail}`
+        : `الحفظ تم لكن الاختبار فشل: ${tested.detail || tested.error}`
+    );
+    await load();
+  };
+
+  const copyWebhook = async () => {
+    try {
+      await navigator.clipboard.writeText(webhookUrls.primary);
+      setCopied(true);
+      window.setTimeout(() => setCopied(false), 1500);
+    } catch {
+      setHint(`انسخ يدويًا: ${webhookUrls.primary}`);
+    }
   };
 
   return (
     <div className="space-y-4" dir="rtl">
+      {!apiOk || webhookUrls.onPages ? (
+        <div className="rounded-xl border border-amber-300 bg-amber-50 px-4 py-3 text-xs text-amber-950">
+          أنت الآن على <strong>GitHub Pages</strong> — لا يعمل حفظ الضبط ولا Webhook هنا.
+          <br />
+          افتح الضبط على Node/Vercel (مثال:{' '}
+          <code className="font-mono" dir="ltr">
+            https://tawaqqa-salama.vercel.app/settings/integrations/whatsapp
+          </code>
+          ) ثم سجّل في Meta نفس رابط الـWebhook أدناه.
+        </div>
+      ) : null}
+
       <div className="rounded-xl border bg-white p-5 space-y-4">
         <div className="flex flex-wrap items-center justify-between gap-2">
           <div>
-            <h2 className="font-bold text-gray-900">ربط واتساب / الضبط</h2>
+            <h2 className="font-bold text-gray-900">ربط واتساب</h2>
             <p className="text-xs text-gray-500 mt-1">
-              أدخل أرقام ومعرّفات Meta Cloud API هنا. التوكن يُحفظ في الخادم فقط ولا يُعاد للواجهة.
+              WhatsApp Business Platform / Cloud API — بدون WhatsApp Web
             </p>
           </div>
           <span
@@ -143,114 +188,91 @@ export default function WhatsAppSettingsPanel() {
                 : 'bg-amber-50 text-amber-900'
             }`}
           >
-            {connection?.connected ? 'Connected' : 'Not Connected'}
+            {connection?.connected ? 'متصل' : 'غير متصل'}
           </span>
         </div>
 
-        <div className="grid sm:grid-cols-2 gap-3">
+        <div className="space-y-3">
           <label className="block text-xs space-y-1">
-            <span className="font-semibold text-gray-700">اسم النشاط</span>
-            <input
-              className="w-full border rounded-lg px-3 py-2 text-sm"
-              value={form.business_name}
-              onChange={(e) => setForm({ ...form, business_name: e.target.value })}
-              placeholder="توقع سلامة"
-            />
-          </label>
-
-          <label className="block text-xs space-y-1">
-            <span className="font-semibold text-gray-700">رقم واتساب الظاهر (اختياري)</span>
-            <NumericInput
-              className="w-full border rounded-lg px-3 py-2 text-sm dir-ltr text-left"
-              value={form.phone_number}
-              onChange={(phone_number) => setForm({ ...form, phone_number })}
-              placeholder="9665XXXXXXXX"
-              maxLength={15}
-            />
-          </label>
-
-          <label className="block text-xs space-y-1 sm:col-span-2">
-            <span className="font-semibold text-gray-700">Phone Number ID *</span>
+            <span className="font-semibold text-gray-700">رقم التعريف للهاتف (Phone Number ID) *</span>
             <input
               dir="ltr"
-              className="w-full border rounded-lg px-3 py-2 text-sm font-mono text-left"
+              className="w-full border rounded-lg px-3 py-2.5 text-sm font-mono text-left"
               value={form.phone_number_id}
               onChange={(e) => setForm({ ...form, phone_number_id: e.target.value.trim() })}
-              placeholder="من Meta → WhatsApp → API Setup"
-              required
+              placeholder="380386…"
+              inputMode="numeric"
             />
           </label>
 
-          <label className="block text-xs space-y-1 sm:col-span-2">
-            <span className="font-semibold text-gray-700">WhatsApp Business Account ID (WABA)</span>
+          <label className="block text-xs space-y-1">
+            <span className="font-semibold text-gray-700">Business Account ID (WABA)</span>
             <input
               dir="ltr"
-              className="w-full border rounded-lg px-3 py-2 text-sm font-mono text-left"
+              className="w-full border rounded-lg px-3 py-2.5 text-sm font-mono text-left"
               value={form.waba_id}
               onChange={(e) => setForm({ ...form, waba_id: e.target.value.trim() })}
-              placeholder="WABA ID"
+              placeholder="105175…"
+              inputMode="numeric"
             />
           </label>
 
-          <label className="block text-xs space-y-1 sm:col-span-2">
+          <label className="block text-xs space-y-1">
             <span className="font-semibold text-gray-700">
-              Access Token {hasAccessToken ? '(محفوظ — اتركه فارغًا للإبقاء)' : '*'}
+              الرمز (Access Token) {hasAccessToken ? '— محفوظ، أدخل للتحديث فقط' : '*'}
             </span>
             <input
               type="password"
               autoComplete="new-password"
               dir="ltr"
-              className="w-full border rounded-lg px-3 py-2 text-sm font-mono text-left"
+              className="w-full border rounded-lg px-3 py-2.5 text-sm font-mono text-left"
               value={form.access_token}
               onChange={(e) => setForm({ ...form, access_token: e.target.value })}
               placeholder={
                 envLocked
-                  ? 'مضبوط عبر متغير البيئة — أدخل قيمة جديدة للاستبدال في هذه الجلسة'
+                  ? 'مضبوط في البيئة — الصق توكن جديد للاستبدال'
                   : hasAccessToken
-                    ? '•••••••• (أدخل لتحديث التوكن)'
-                    : 'Permanent / System User token'
+                    ? '••••••••'
+                    : 'EAA…'
               }
             />
+            <span className="text-[10px] text-gray-500">لا يُعرض التوكن بعد الحفظ لأسباب أمنية.</span>
           </label>
 
           <label className="block text-xs space-y-1">
             <span className="font-semibold text-gray-700">
-              Webhook Verify Token {hasVerifyToken ? '(محفوظ — أدخل للتحديث)' : ''}
+              رمز التحقق (Verify Token) {hasVerifyToken ? '— محفوظ' : ''}
             </span>
             <input
               dir="ltr"
-              className="w-full border rounded-lg px-3 py-2 text-sm font-mono text-left"
+              className="w-full border rounded-lg px-3 py-2.5 text-sm font-mono text-left"
               value={form.webhook_verify_token}
               onChange={(e) => setForm({ ...form, webhook_verify_token: e.target.value })}
-              placeholder="نفس القيمة في Meta Callback"
+              placeholder="whatsapp_token_…"
             />
           </label>
 
           <label className="block text-xs space-y-1">
-            <span className="font-semibold text-gray-700">API Version</span>
-            <input
-              dir="ltr"
-              className="w-full border rounded-lg px-3 py-2 text-sm font-mono text-left"
-              value={form.api_version}
-              onChange={(e) => setForm({ ...form, api_version: e.target.value.trim() })}
-              placeholder="v21.0"
-            />
+            <span className="font-semibold text-gray-700">رابط التنبيهات (Webhook URL)</span>
+            <div className="flex gap-2">
+              <input
+                dir="ltr"
+                readOnly
+                className="flex-1 border rounded-lg px-3 py-2.5 text-sm font-mono text-left bg-slate-50"
+                value={webhookUrls.primary}
+              />
+              <button
+                type="button"
+                onClick={() => void copyWebhook()}
+                className="shrink-0 rounded-lg border px-3 text-xs font-bold text-gray-700"
+              >
+                {copied ? 'تم' : 'نسخ'}
+              </button>
+            </div>
+            <p className="text-[10px] text-gray-500" dir="ltr">
+              Alias أيضًا: {webhookUrls.canonical}
+            </p>
           </label>
-        </div>
-
-        <div className="rounded-lg bg-slate-50 border px-3 py-2 text-[11px] text-gray-600 space-y-1">
-          <p>
-            <span className="font-semibold">Webhook URL: </span>
-            <code className="font-mono" dir="ltr">
-              {typeof window !== 'undefined'
-                ? `${window.location.origin}${webhookPath}`
-                : webhookPath}
-            </code>
-          </p>
-          <p>المزوّد: {connection?.provider || '—'} · المصدر: {connection?.source || '—'}</p>
-          {connection?.memoryMode ? (
-            <p className="text-amber-800">وضع العرض/الاختبار — احفظ ثم اختبر الاتصال على استضافة Node.</p>
-          ) : null}
         </div>
 
         {hint ? (
@@ -258,26 +280,20 @@ export default function WhatsAppSettingsPanel() {
             {hint}
           </p>
         ) : null}
+        {testResult ? (
+          <p className="text-xs rounded-lg bg-emerald-50 border border-emerald-200 text-emerald-950 px-3 py-2">
+            {testResult}
+          </p>
+        ) : null}
 
-        <div className="flex flex-wrap gap-2">
-          <button
-            type="button"
-            disabled={busy || !form.phone_number_id.trim()}
-            onClick={() => void save()}
-            className="rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white text-sm font-bold px-5 py-2.5 disabled:opacity-50"
-          >
-            حفظ الضبط
-          </button>
-          <button
-            type="button"
-            disabled={busy}
-            onClick={() => void test()}
-            className="rounded-lg border border-emerald-600 text-emerald-800 text-sm font-bold px-5 py-2.5 disabled:opacity-50"
-          >
-            اختبار الاتصال
-          </button>
-        </div>
-        {testResult ? <p className="text-xs text-gray-700">{testResult}</p> : null}
+        <button
+          type="button"
+          disabled={busy || !form.phone_number_id.trim()}
+          onClick={() => void saveAndTest()}
+          className="w-full rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white text-sm font-bold py-3 disabled:opacity-50"
+        >
+          {busy ? 'جارٍ التحديث…' : 'تحديث واختبار الاتصال'}
+        </button>
       </div>
     </div>
   );

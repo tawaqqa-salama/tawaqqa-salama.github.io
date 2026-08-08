@@ -1,5 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { GET as webhookGet } from '@/app/api/integrations/whatsapp/webhook/route';
+import { GET as webhookAliasGet } from '@/app/api/whatsapp/webhook/route';
 import { POST as sendPost } from '@/app/api/integrations/whatsapp/send/route';
 import { POST as opportunityPost } from '@/app/api/integrations/whatsapp/opportunities/route';
 import {
@@ -98,6 +99,15 @@ describe('Webhook verification', () => {
     );
     const res = await webhookGet(req);
     expect(res.status).toBe(403);
+  });
+
+  it('supports /api/whatsapp/webhook alias used by Meta/Vercel', async () => {
+    const req = new Request(
+      'http://localhost/api/whatsapp/webhook?hub.mode=subscribe&hub.verify_token=verify-me&hub.challenge=alias-ok'
+    );
+    const res = await webhookAliasGet(req);
+    expect(res.status).toBe(200);
+    expect(await res.text()).toBe('alias-ok');
   });
 });
 

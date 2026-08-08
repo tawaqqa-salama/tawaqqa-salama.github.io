@@ -14,6 +14,7 @@ const PUBLIC_PREFIXES = [
   '/assets',
   '/api/auth/session', // allow establishing cookie
   '/api/integrations/whatsapp/webhook', // Meta Cloud API webhook (verified by token/signature)
+  '/api/whatsapp/webhook', // alias used by Meta/Vercel callback URLs
 ];
 
 const PUBLIC_EXACT = new Set(['/', '/login']);
