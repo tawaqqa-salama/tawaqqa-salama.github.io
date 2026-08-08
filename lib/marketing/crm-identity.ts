@@ -47,7 +47,7 @@ export type ResolvedCrmClient = {
   createdLead: boolean;
 };
 
-function useMemory(): boolean {
+function isMemoryStore(): boolean {
   if (process.env.SOCIAL_FORCE_MEMORY === 'true') return true;
   if (process.env.WHATSAPP_FORCE_MEMORY === 'true') return true;
   if (!isSupabaseConfigured || isDemoMode) return true;
@@ -55,7 +55,7 @@ function useMemory(): boolean {
 }
 
 export function isMarketingCrmMemoryMode(): boolean {
-  return useMemory();
+  return isMemoryStore();
 }
 
 function mapRow(row: ClientRecord & Record<string, unknown>, createdLead: boolean): ResolvedCrmClient {
@@ -83,7 +83,7 @@ async function linkSocialIdentity(
   platformUserId: string,
   meta?: { username?: string | null; displayName?: string | null; profileUrl?: string | null }
 ) {
-  if (useMemory()) {
+  if (isMemoryStore()) {
     marketingMemory.linkIdentity({
       customer_id: customerId,
       platform,
@@ -109,7 +109,7 @@ async function linkSocialIdentity(
 }
 
 async function findExisting(input: IdentityMatchInput): Promise<ClientRecord | null> {
-  if (useMemory()) {
+  if (isMemoryStore()) {
     return marketingMemory.findClient(input) as ClientRecord | null;
   }
 
@@ -145,7 +145,7 @@ async function findExisting(input: IdentityMatchInput): Promise<ClientRecord | n
 }
 
 async function applyPatch(clientId: string, patch: Record<string, unknown>) {
-  if (useMemory()) {
+  if (isMemoryStore()) {
     marketingMemory.updateClient(clientId, patch);
     return;
   }
@@ -209,7 +209,7 @@ export async function resolveCrmClientFromChannel(
   }
 
   // Create Lead on existing clients table
-  const leadCode = useMemory() ? marketingMemory.nextLeadCode() : await nextLeadCode();
+  const leadCode = isMemoryStore() ? marketingMemory.nextLeadCode() : await nextLeadCode();
   const phone = input.phone ? normalizeWhatsAppPhone(input.phone) || input.phone : null;
   const name =
     input.businessName ||
@@ -242,7 +242,7 @@ export async function resolveCrmClientFromChannel(
     ...attr,
   };
 
-  if (useMemory()) {
+  if (isMemoryStore()) {
     const created = marketingMemory.createClient(row);
     if (input.platform && input.platformUserId) {
       await linkSocialIdentity(created.id, input.platform, input.platformUserId, {
@@ -295,7 +295,7 @@ export async function resolveCrmClientFromChannel(
 }
 
 export async function listCustomerTimeline(customerId: string) {
-  if (useMemory()) return marketingMemory.listTimeline(customerId);
+  if (isMemoryStore()) return marketingMemory.listTimeline(customerId);
   const { data } = await supabase
     .from('customer_timeline_events')
     .select('*')
@@ -316,7 +316,7 @@ export async function appendTimelineEvent(input: {
   occurred_at?: string;
   metadata?: Record<string, unknown>;
 }) {
-  if (useMemory()) {
+  if (isMemoryStore()) {
     marketingMemory.addTimeline(input);
     return;
   }

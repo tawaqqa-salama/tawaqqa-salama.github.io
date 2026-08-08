@@ -55,8 +55,27 @@ export default function WebsiteHub() {
   }, []);
 
   useEffect(() => {
-    void load();
-  }, [load]);
+    let cancelled = false;
+    void (async () => {
+      const [bundle, funnelRes] = await Promise.all([
+        fetch('/api/integrations/website/bundle').then((r) => r.json()),
+        fetch('/api/integrations/marketing/funnel').then((r) => r.json()),
+      ]);
+      if (cancelled) return;
+      if (bundle.ok) {
+        setSite(bundle.site);
+        setPages(bundle.pages || []);
+        setServices(bundle.services || []);
+        setForms(bundle.forms || []);
+        setBlog(bundle.blog || []);
+        setProjects(bundle.showcases || []);
+      }
+      if (funnelRes.ok) setFunnel(funnelRes);
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   const saveSettings = async () => {
     if (!site) return;

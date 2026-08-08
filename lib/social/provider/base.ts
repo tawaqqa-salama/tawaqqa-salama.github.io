@@ -2,6 +2,7 @@ import type { ProviderCapability, SocialPlatform } from '@/lib/social/types';
 import type {
   ConnectedProfile,
   OAuthStartResult,
+  ProviderResult,
   SocialAnalytics,
   SocialMediaProvider,
   SocialMessageItem,
@@ -19,48 +20,88 @@ export abstract class BaseSocialProvider implements SocialMediaProvider {
     return this.capabilities().includes(capability);
   }
 
-  async connect(_input?: { redirectUri: string; state: string }) {
-    return unsupported(`ربط ${this.platform} عبر OAuth غير مُعد — أضف بيانات التطبيق الرسمية في البيئة.`);
+  async connect(input?: {
+    redirectUri: string;
+    state: string;
+  }): Promise<ProviderResult<OAuthStartResult>> {
+    void input;
+    return unsupported(
+      `ربط ${this.platform} عبر OAuth غير مُعد — أضف بيانات التطبيق الرسمية في البيئة.`
+    );
   }
 
-  async handleOAuthCallback(_input: { code: string; redirectUri: string }) {
+  async handleOAuthCallback(input: {
+    code: string;
+    redirectUri: string;
+  }): Promise<ProviderResult<ConnectedProfile>> {
+    void input;
     return unsupported(`OAuth callback لـ ${this.platform} غير مُعد.`);
   }
 
-  async disconnect(_accountId: string) {
+  async disconnect(accountId: string): Promise<ProviderResult<{ disconnected: true }>> {
+    void accountId;
     return ok({ disconnected: true as const });
   }
 
-  async refreshToken(_refreshToken: string) {
+  async refreshToken(refreshToken: string): Promise<ProviderResult<ConnectedProfile>> {
+    void refreshToken;
     return unsupported(`تجديد التوكن غير مدعوم عبر API الحالية لـ ${this.platform}.`);
   }
 
-  async getProfile(_accessToken: string) {
+  async getProfile(
+    accessToken: string
+  ): Promise<ProviderResult<Omit<ConnectedProfile, 'accessToken' | 'refreshToken'>>> {
+    void accessToken;
     return unsupported(`جلب الملف غير مدعوم عبر API الحالية لـ ${this.platform}.`);
   }
 
-  async getPosts(_accessToken: string, _opts?: { limit?: number }) {
+  async getPosts(
+    accessToken: string,
+    opts?: { limit?: number }
+  ): Promise<ProviderResult<unknown[]>> {
+    void accessToken;
+    void opts;
     return unsupported(`جلب المنشورات غير مدعوم عبر API الحالية لـ ${this.platform}.`);
   }
 
-  async publishPost(_accessToken: string, _input: SocialPostInput) {
+  async publishPost(
+    accessToken: string,
+    input: SocialPostInput
+  ): Promise<ProviderResult<{ platformPostId: string }>> {
+    void accessToken;
+    void input;
     return unsupported(`النشر غير مدعوم عبر API الرسمية الحالية لـ ${this.platform}.`);
   }
 
-  async getAnalytics(_accessToken: string, _range: { since: string; until: string }) {
+  async getAnalytics(
+    accessToken: string,
+    range: { since: string; until: string }
+  ): Promise<ProviderResult<SocialAnalytics>> {
+    void accessToken;
+    void range;
     return unsupported(`التحليلات غير متاحة عبر API الرسمية الحالية لـ ${this.platform}.`);
   }
 
-  async getMessages(_accessToken: string, _opts?: { limit?: number }) {
+  async getMessages(
+    accessToken: string,
+    opts?: { limit?: number }
+  ): Promise<ProviderResult<SocialMessageItem[]>> {
+    void accessToken;
+    void opts;
     return unsupported(`الرسائل غير متاحة عبر API الرسمية الحالية لـ ${this.platform}.`);
   }
 
-  async getComments(_accessToken: string, _opts?: { limit?: number }) {
+  async getComments(
+    accessToken: string,
+    opts?: { limit?: number }
+  ): Promise<ProviderResult<SocialMessageItem[]>> {
+    void accessToken;
+    void opts;
     return unsupported(`التعليقات غير متاحة عبر API الرسمية الحالية لـ ${this.platform}.`);
   }
 }
 
-/** Demo/test provider — never used as “production complete” without labeling. */
+/** Demo/test provider — labeled demo; not a substitute for live OAuth credentials. */
 export class DemoSocialProvider extends BaseSocialProvider {
   constructor(public readonly platform: SocialPlatform) {
     super();
@@ -77,7 +118,8 @@ export class DemoSocialProvider extends BaseSocialProvider {
     return ok<OAuthStartResult>({ authorizeUrl: url, state });
   }
 
-  async handleOAuthCallback(_input: { code: string; redirectUri: string }) {
+  async handleOAuthCallback(input: { code: string; redirectUri: string }) {
+    void input;
     return ok<ConnectedProfile>({
       accountId: `demo_${this.platform}_1`,
       accountName: `Demo ${this.platform}`,

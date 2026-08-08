@@ -58,27 +58,20 @@ export default function MarketingPage() {
 function MarketingPageInner() {
   const { t } = useLanguage();
   const searchParams = useSearchParams();
-  const initialTab = (searchParams.get('tab') as TabId | null) || 'dashboard';
+  const tabFromUrl = searchParams.get('tab') as TabId | null;
+  const validTabs: TabId[] = [
+    'dashboard',
+    'leads',
+    'campaigns',
+    'whatsapp',
+    'social',
+    'website',
+    'followups',
+    'pipeline',
+  ];
   const [tab, setTab] = useState<TabId>(
-    [
-      'dashboard',
-      'leads',
-      'campaigns',
-      'whatsapp',
-      'social',
-      'website',
-      'followups',
-      'pipeline',
-    ].includes(initialTab)
-      ? initialTab
-      : 'dashboard'
+    tabFromUrl && validTabs.includes(tabFromUrl) ? tabFromUrl : 'dashboard'
   );
-
-  useEffect(() => {
-    const q = searchParams.get('tab') as TabId | null;
-    if (q && q !== tab) setTab(q);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [searchParams]);
   const [leads, setLeads] = useState<ClientRecord[]>([]);
   const [allClients, setAllClients] = useState<ClientRecord[]>([]);
   const [followUps, setFollowUps] = useState<ClientFollowUp[]>([]);
@@ -103,7 +96,23 @@ function MarketingPageInner() {
   };
 
   useEffect(() => {
-    fetchData();
+    let cancelled = false;
+    void (async () => {
+      setLoading(true);
+      const [{ data: clients }, { data: ups }] = await Promise.all([
+        supabase.from('clients').select('*').order('created_at', { ascending: false }),
+        supabase.from('client_follow_ups').select('*').order('follow_up_date', { ascending: false }),
+      ]);
+      if (cancelled) return;
+      const all = (clients || []) as ClientRecord[];
+      setAllClients(all);
+      setLeads(all.filter(shouldShowInMarketing));
+      setFollowUps((ups || []) as ClientFollowUp[]);
+      setLoading(false);
+    })();
+    return () => {
+      cancelled = true;
+    };
   }, []);
 
   const filteredLeads = useMemo(() => {

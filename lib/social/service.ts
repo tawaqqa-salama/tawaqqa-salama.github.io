@@ -10,7 +10,7 @@ import { getSocialProvider } from '@/lib/social/provider';
 import type { SocialPlatform } from '@/lib/social/types';
 import { isDemoMode, isSupabaseConfigured, supabase } from '@/lib/supabase';
 
-function useMemory() {
+function isMemoryStore() {
   return isMarketingCrmMemoryMode();
 }
 
@@ -48,7 +48,7 @@ function publicAccount(row: {
 }
 
 export async function listSocialAccounts() {
-  if (useMemory()) return marketingMemory.accounts.list().map(publicAccount);
+  if (isMemoryStore()) return marketingMemory.accounts.list().map(publicAccount);
   const { data } = await supabase
     .from('social_accounts')
     .select(
@@ -119,7 +119,7 @@ export async function completeOAuth(
     metadata: {},
   };
 
-  if (useMemory()) {
+  if (isMemoryStore()) {
     const saved = marketingMemory.accounts.upsert(row);
     marketingMemory.audit('social.account.connect', { platform, account_id: profile.accountId });
     return { ok: true as const, supported: true as const, data: publicAccount(saved) };
@@ -159,7 +159,7 @@ export async function completeOAuth(
 }
 
 export async function disconnectAccount(id: string) {
-  if (useMemory()) {
+  if (isMemoryStore()) {
     const a = marketingMemory.accounts.disconnect(id);
     return { ok: Boolean(a), account: a ? publicAccount(a) : null };
   }
@@ -221,7 +221,7 @@ export async function ingestInboundSocialMessage(input: {
     },
   });
 
-  if (useMemory()) {
+  if (isMemoryStore()) {
     let conv = marketingMemory.conversations
       .list()
       .find(
@@ -326,7 +326,7 @@ export async function ingestInboundSocialMessage(input: {
 }
 
 export async function listInbox() {
-  if (useMemory()) {
+  if (isMemoryStore()) {
     const clients = marketingMemory.listClients();
     return marketingMemory.conversations.list().map((c) => {
       const client = clients.find((x) => x.id === c.customer_id);
@@ -369,7 +369,7 @@ export async function listInbox() {
 }
 
 export async function getConversationDetail(id: string) {
-  if (useMemory()) {
+  if (isMemoryStore()) {
     const conv = marketingMemory.conversations.get(id);
     if (!conv) return null;
     return { conversation: conv, messages: marketingMemory.messages.list(id) };
@@ -400,7 +400,7 @@ export async function createOrUpdatePost(input: {
   ai_suggested?: boolean;
 }) {
   const status = input.status || (input.publish_at ? 'scheduled' : 'draft');
-  if (useMemory()) {
+  if (isMemoryStore()) {
     const existing = input.id ? marketingMemory.posts.get(input.id) : null;
     const post = {
       id: input.id || randomUUID(),
@@ -464,7 +464,7 @@ export async function createOrUpdatePost(input: {
 }
 
 export async function listPosts() {
-  if (useMemory()) return marketingMemory.posts.list();
+  if (isMemoryStore()) return marketingMemory.posts.list();
   const { data } = await supabase
     .from('social_posts')
     .select('*, social_post_targets(*)')
@@ -488,7 +488,7 @@ export async function duplicatePost(id: string) {
 }
 
 export async function deletePost(id: string) {
-  if (useMemory()) {
+  if (isMemoryStore()) {
     marketingMemory.posts.remove(id);
     return { ok: true };
   }
@@ -504,7 +504,7 @@ export async function publishPostNow(id: string) {
   const platforms = (post.platforms as string[]) || [];
   const results: Array<Record<string, unknown>> = [];
 
-  if (useMemory()) {
+  if (isMemoryStore()) {
     const mem = marketingMemory.posts.get(id)!;
     mem.status = 'publishing';
     for (const t of mem.targets) {
@@ -520,7 +520,7 @@ export async function publishPostNow(id: string) {
         t.status = 'published';
         t.platform_post_id = pub.data.platformPostId;
       }
-      results.push({ platform: t.platform, ...t });
+      results.push({ ...t });
     }
     mem.status = mem.targets.every((t) => t.status === 'published' || t.status === 'unsupported')
       ? mem.targets.some((t) => t.status === 'published')
@@ -623,7 +623,7 @@ export async function getDashboardStats(range: string) {
     range === 'today' ? 1 : range === '7d' ? 7 : range === '90d' ? 90 : range === 'custom' ? 30 : 30;
   const since = Date.now() - days * 86400000;
 
-  if (useMemory() || !isSupabaseConfigured || isDemoMode) {
+  if (isMemoryStore() || !isSupabaseConfigured || isDemoMode) {
     const clients = marketingMemory.listClients().filter((c) => new Date(c.created_at).getTime() >= since);
     const accounts = marketingMemory.accounts.list();
     const posts = marketingMemory.posts.list();
@@ -725,7 +725,7 @@ export async function getDashboardStats(range: string) {
 }
 
 export async function syncAccountAnalytics(accountId: string) {
-  if (useMemory()) {
+  if (isMemoryStore()) {
     const acc = marketingMemory.accounts.list().find((a) => a.id === accountId);
     if (!acc) return { ok: false, error: 'not found' };
     const provider = getSocialProvider(acc.platform as SocialPlatform);

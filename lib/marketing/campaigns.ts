@@ -3,12 +3,12 @@ import { isMarketingCrmMemoryMode } from '@/lib/marketing/crm-identity';
 import { marketingMemory } from '@/lib/marketing/store/memory';
 import { supabase } from '@/lib/supabase';
 
-function useMemory() {
+function isMemoryStore() {
   return isMarketingCrmMemoryMode();
 }
 
 export async function listMarketingCampaigns() {
-  if (useMemory()) return marketingMemory.campaigns.list();
+  if (isMemoryStore()) return marketingMemory.campaigns.list();
   const { data } = await supabase
     .from('marketing_campaigns')
     .select('*')
@@ -38,7 +38,7 @@ export async function saveMarketingCampaign(input: {
       .replace(/[^\w\u0600-\u06FF_]/g, '')
       .slice(0, 64);
 
-  if (useMemory()) {
+  if (isMemoryStore()) {
     const row = {
       id: input.id || randomUUID(),
       name: input.name,
@@ -101,7 +101,7 @@ export async function saveMarketingCampaign(input: {
 
 export async function campaignPerformance(campaignId?: string) {
   const campaigns = await listMarketingCampaigns();
-  const clients = useMemory()
+  const clients = isMemoryStore()
     ? marketingMemory.listClients()
     : (
         await supabase

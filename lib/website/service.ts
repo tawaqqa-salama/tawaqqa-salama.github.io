@@ -15,7 +15,7 @@ import {
 import { marketingMemory } from '@/lib/marketing/store/memory';
 import { isSupabaseConfigured, isDemoMode, supabase } from '@/lib/supabase';
 
-function useMemory() {
+function isMemoryStore() {
   return isMarketingCrmMemoryMode();
 }
 
@@ -41,7 +41,7 @@ const DEFAULT_SERVICES = [
 ];
 
 export async function getOrCreateWebsiteSite() {
-  if (useMemory()) {
+  if (isMemoryStore()) {
     let site = marketingMemory.website.get();
     if (!site) {
       site = marketingMemory.website.save({
@@ -162,7 +162,7 @@ export async function getOrCreateWebsiteSite() {
 
 export async function updateWebsiteSettings(patch: Record<string, unknown>) {
   const site = await getOrCreateWebsiteSite();
-  if (useMemory()) {
+  if (isMemoryStore()) {
     return marketingMemory.website.save({
       ...(site as ReturnType<typeof marketingMemory.website.get> & object),
       ...patch,
@@ -181,7 +181,7 @@ export async function updateWebsiteSettings(patch: Record<string, unknown>) {
 
 export async function listWebsitePages() {
   const site = await getOrCreateWebsiteSite();
-  if (useMemory()) return marketingMemory.website.pages().filter((p) => p.site_id === site.id);
+  if (isMemoryStore()) return marketingMemory.website.pages().filter((p) => p.site_id === site.id);
   const { data } = await supabase
     .from('website_pages')
     .select('*')
@@ -192,7 +192,7 @@ export async function listWebsitePages() {
 
 export async function saveWebsitePage(input: Record<string, unknown>) {
   const site = await getOrCreateWebsiteSite();
-  if (useMemory()) {
+  if (isMemoryStore()) {
     return marketingMemory.website.savePage({
       id: input.id || randomUUID(),
       site_id: site.id,
@@ -221,7 +221,7 @@ export async function saveWebsitePage(input: Record<string, unknown>) {
 
 export async function listWebsiteServices() {
   const site = await getOrCreateWebsiteSite();
-  if (useMemory()) return marketingMemory.website.services().filter((s) => s.site_id === site.id);
+  if (isMemoryStore()) return marketingMemory.website.services().filter((s) => s.site_id === site.id);
   const { data } = await supabase
     .from('website_services')
     .select('*')
@@ -232,7 +232,7 @@ export async function listWebsiteServices() {
 
 export async function saveWebsiteService(input: Record<string, unknown>) {
   const site = await getOrCreateWebsiteSite();
-  if (useMemory()) {
+  if (isMemoryStore()) {
     return marketingMemory.website.saveService({
       id: input.id || randomUUID(),
       site_id: site.id,
@@ -260,14 +260,14 @@ export async function saveWebsiteService(input: Record<string, unknown>) {
 
 export async function listWebsiteForms() {
   const site = await getOrCreateWebsiteSite();
-  if (useMemory()) return marketingMemory.website.forms().filter((f) => f.site_id === site.id);
+  if (isMemoryStore()) return marketingMemory.website.forms().filter((f) => f.site_id === site.id);
   const { data } = await supabase.from('website_forms').select('*').eq('site_id', site.id);
   return data || [];
 }
 
 export async function saveWebsiteForm(input: Record<string, unknown>) {
   const site = await getOrCreateWebsiteSite();
-  if (useMemory()) {
+  if (isMemoryStore()) {
     return marketingMemory.website.saveForm({
       id: input.id || randomUUID(),
       site_id: site.id,
@@ -295,7 +295,7 @@ export async function saveWebsiteForm(input: Record<string, unknown>) {
 
 export async function listBlogPosts() {
   const site = await getOrCreateWebsiteSite();
-  if (useMemory()) return marketingMemory.website.blog().filter((b) => b.site_id === site.id);
+  if (isMemoryStore()) return marketingMemory.website.blog().filter((b) => b.site_id === site.id);
   const { data } = await supabase
     .from('website_blog_posts')
     .select('*')
@@ -306,7 +306,7 @@ export async function listBlogPosts() {
 
 export async function saveBlogPost(input: Record<string, unknown>) {
   const site = await getOrCreateWebsiteSite();
-  if (useMemory()) {
+  if (isMemoryStore()) {
     return marketingMemory.website.saveBlog({
       id: input.id || randomUUID(),
       site_id: site.id,
@@ -335,7 +335,7 @@ export async function saveBlogPost(input: Record<string, unknown>) {
 
 export async function listProjectShowcases() {
   const site = await getOrCreateWebsiteSite();
-  if (useMemory()) return marketingMemory.website.showcases().filter((s) => s.site_id === site.id);
+  if (isMemoryStore()) return marketingMemory.website.showcases().filter((s) => s.site_id === site.id);
   const { data } = await supabase
     .from('website_project_showcases')
     .select('*, clients:client_id(id, client_code, business_name, city, activity_type)')
@@ -346,7 +346,7 @@ export async function listProjectShowcases() {
 
 export async function saveProjectShowcase(input: Record<string, unknown>) {
   const site = await getOrCreateWebsiteSite();
-  if (useMemory()) {
+  if (isMemoryStore()) {
     return marketingMemory.website.saveShowcase({
       id: input.id || randomUUID(),
       site_id: site.id,
@@ -384,7 +384,7 @@ export type FormSubmitInput = {
 
 /** Website form → Lead/Client on existing CRM. */
 export async function submitWebsiteForm(input: FormSubmitInput) {
-  const site = await getOrCreateWebsiteSite();
+  await getOrCreateWebsiteSite();
   const forms = await listWebsiteForms();
   const form = forms.find((f) => f.slug === input.formSlug && f.active !== false);
   if (!form) throw new Error('النموذج غير موجود أو غير مفعّل');
@@ -438,7 +438,7 @@ export async function submitWebsiteForm(input: FormSubmitInput) {
     created_at: new Date().toISOString(),
   };
 
-  if (useMemory()) {
+  if (isMemoryStore()) {
     marketingMemory.website.addSubmission(submission);
   } else {
     await supabase.from('website_form_submissions').insert(submission);
@@ -550,6 +550,6 @@ export async function getWebsiteBundle() {
     forms,
     blog,
     showcases,
-    memoryMode: useMemory() || isDemoMode || !isSupabaseConfigured,
+    memoryMode: isMemoryStore() || isDemoMode || !isSupabaseConfigured,
   };
 }

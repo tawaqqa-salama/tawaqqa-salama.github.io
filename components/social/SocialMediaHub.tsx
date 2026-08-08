@@ -56,11 +56,6 @@ export default function SocialMediaHub({ initialSub = 'dashboard' }: { initialSu
     target_audience: '',
   });
 
-  const loadDashboard = useCallback(async () => {
-    const res = await fetch(`/api/integrations/social/dashboard?range=${range}`).then((r) => r.json());
-    if (res.ok) setStats(res);
-  }, [range]);
-
   const loadAccounts = useCallback(async () => {
     const res = await fetch('/api/integrations/social/accounts').then((r) => r.json());
     if (res.ok) {
@@ -68,11 +63,6 @@ export default function SocialMediaHub({ initialSub = 'dashboard' }: { initialSu
       if (res.platforms) setPlatforms(res.platforms);
       setProviders(res.providers || []);
     }
-  }, []);
-
-  const loadInbox = useCallback(async () => {
-    const res = await fetch('/api/integrations/social/inbox').then((r) => r.json());
-    if (res.ok) setInbox(res.conversations || []);
   }, []);
 
   const loadPosts = useCallback(async () => {
@@ -88,12 +78,30 @@ export default function SocialMediaHub({ initialSub = 'dashboard' }: { initialSu
   }, []);
 
   useEffect(() => {
-    void loadDashboard();
-    void loadAccounts();
-    void loadInbox();
-    void loadPosts();
-    void loadCampaigns();
-  }, [loadDashboard, loadAccounts, loadInbox, loadPosts, loadCampaigns]);
+    let cancelled = false;
+    void (async () => {
+      const [dash, acc, inboxRes, postsRes, camps] = await Promise.all([
+        fetch(`/api/integrations/social/dashboard?range=${range}`).then((r) => r.json()),
+        fetch('/api/integrations/social/accounts').then((r) => r.json()),
+        fetch('/api/integrations/social/inbox').then((r) => r.json()),
+        fetch('/api/integrations/social/posts').then((r) => r.json()),
+        fetch('/api/integrations/marketing/campaigns?performance=1').then((r) => r.json()),
+      ]);
+      if (cancelled) return;
+      if (dash.ok) setStats(dash);
+      if (acc.ok) {
+        setAccounts(acc.accounts || []);
+        if (acc.platforms) setPlatforms(acc.platforms);
+        setProviders(acc.providers || []);
+      }
+      if (inboxRes.ok) setInbox(inboxRes.conversations || []);
+      if (postsRes.ok) setPosts(postsRes.posts || []);
+      if (camps.ok) setCampaigns(camps.campaigns || []);
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [range]);
 
   const totals = (stats?.totals || {}) as Record<string, number | null>;
 
@@ -111,7 +119,8 @@ export default function SocialMediaHub({ initialSub = 'dashboard' }: { initialSu
       return;
     }
     if (res.authorizeUrl) {
-      window.location.href = res.authorizeUrl;
+      // OAuth redirect to official provider authorize URL
+      globalThis.location.assign(res.authorizeUrl);
     }
   };
 

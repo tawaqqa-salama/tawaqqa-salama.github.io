@@ -1,5 +1,7 @@
 import type { ProviderCapability, ProviderResult, SocialPlatform } from '@/lib/social/types';
 
+export type { ProviderResult };
+
 export type OAuthStartResult = {
   authorizeUrl: string;
   state: string;
@@ -76,11 +78,11 @@ export interface SocialMediaProvider {
   getComments(accessToken: string, opts?: { limit?: number }): Promise<ProviderResult<SocialMessageItem[]>>;
 }
 
-export function unsupported(reason: string): ProviderResult<never> {
+export function unsupported<T = never>(reason: string): ProviderResult<T> {
   return { ok: false, supported: false, reason };
 }
 
-export function fail(error: string): ProviderResult<never> {
+export function fail<T = never>(error: string): ProviderResult<T> {
   return { ok: false, supported: true, error };
 }
 
