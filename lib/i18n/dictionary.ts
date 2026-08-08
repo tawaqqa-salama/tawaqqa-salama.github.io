@@ -86,6 +86,9 @@ const ar: Dict = {
   'settings.buildingCodeShort': 'كود البناء',
   'settings.tabs': 'تبويبات الإعدادات',
   'settings.zatcaShort': 'ZATCA',
+  'settings.companyLanguage': 'لغة الواجهة',
+  'settings.companyLanguageHint':
+    'العربية والإنجليزية من الشريط العلوي. Bahasa Indonesia تُختار من هنا فقط ضمن إعدادات الشركة.',
 
   'finance.approvals': 'الاعتماد المالي',
   'finance.dashboard': 'لوحة التحكم',
@@ -479,6 +482,9 @@ const en: Dict = {
   'settings.buildingCodeShort': 'Building code',
   'settings.tabs': 'Settings tabs',
   'settings.zatcaShort': 'ZATCA',
+  'settings.companyLanguage': 'Interface language',
+  'settings.companyLanguageHint':
+    'Arabic and English are available from the top bar. Bahasa Indonesia is selected here only in company settings.',
 
   'finance.approvals': 'Financial approval',
   'finance.dashboard': 'Dashboard',
@@ -832,6 +838,9 @@ const id: Dict = {
   'tenant.switcher': 'Perusahaan saat ini',
   'tenant.suspended': 'Akun ditangguhkan',
   'tenant.moduleDisabled': 'Modul ini tidak diaktifkan untuk perusahaan Anda',
+  'settings.companyLanguage': 'Bahasa antarmuka',
+  'settings.companyLanguageHint':
+    'Arab dan Inggris tersedia di bilah atas. Bahasa Indonesia hanya dipilih di sini pada pengaturan perusahaan.',
   'marketing.title': 'Pemasaran',
   'projects.title': 'Manajemen Proyek',
 };

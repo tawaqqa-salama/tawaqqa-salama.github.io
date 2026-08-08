@@ -3,14 +3,18 @@
 import { FormEvent, useEffect, useState, type ReactNode } from 'react';
 import Link from 'next/link';
 import PageHeader from '@/components/shared/PageHeader';
+import LanguageSwitcher from '@/components/layout/LanguageSwitcher';
 import {
   DEFAULT_COMPANY_PROFILE,
   loadCompanyProfile,
   saveCompanyProfile,
   type CompanyProfile,
 } from '@/lib/company-profile';
+import { useLanguage } from '@/lib/i18n/LanguageProvider';
+import { SUPPORTED_LOCALES, localeLabel, type AppLocale } from '@/lib/i18n/types';
 
 export default function CompanySettingsPage() {
+  const { lang, setLang, t } = useLanguage();
   const [form, setForm] = useState<CompanyProfile>(DEFAULT_COMPANY_PROFILE);
   const [saving, setSaving] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
@@ -68,6 +72,28 @@ export default function CompanySettingsPage() {
       />
 
       <form onSubmit={onSubmit} className="space-y-4">
+        <Section title={t('settings.companyLanguage')}>
+          <p className="text-sm text-gray-600">{t('settings.companyLanguageHint')}</p>
+          <div className="flex flex-col sm:flex-row sm:items-center gap-4">
+            <LanguageSwitcher variant="full" />
+            <label className="flex flex-wrap items-center gap-2 text-sm">
+              <span className="text-xs font-semibold text-gray-600">{t('common.language')}</span>
+              <select
+                className="border rounded-xl px-3 py-2 text-sm bg-white min-w-[12rem]"
+                value={lang}
+                onChange={(e) => setLang(e.target.value as AppLocale)}
+                aria-label={t('settings.companyLanguage')}
+              >
+                {SUPPORTED_LOCALES.map((locale) => (
+                  <option key={locale} value={locale}>
+                    {localeLabel(locale)}
+                  </option>
+                ))}
+              </select>
+            </label>
+          </div>
+        </Section>
+
         <Section title="بيانات المنشأة">
           <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
             <Field label="اسم الشركة / المكتب الرئيسي" value={form.name} onChange={(v) => update('name', v)} required />
