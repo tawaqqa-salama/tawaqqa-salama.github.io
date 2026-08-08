@@ -30,7 +30,12 @@ export function hasWhatsAppPermission(
       return true;
     }
   }
-  if (permissions.includes('dept.settings' as PermissionCode) && needed === 'whatsapp.settings') {
+  if (
+    needed === 'whatsapp.settings' &&
+    (permissions.includes('dept.settings' as PermissionCode) ||
+      permissions.includes('dept.marketing' as PermissionCode) ||
+      permissions.includes('whatsapp.manage' as PermissionCode))
+  ) {
     return true;
   }
   return hasPermission(permissions as PermissionCode[], needed as PermissionCode);
