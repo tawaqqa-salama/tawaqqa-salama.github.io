@@ -90,49 +90,67 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, [hydrate]);
 
   const loginWithEmail = useCallback(async (email: string, password: string) => {
-    const result = await signInWithEmailPassword(email, password);
-    if (result.error || !result.session) return result.error || 'فشل تسجيل الدخول';
-    setSession(result.session);
-    const profile = await getUserProfile(result.session.userId);
-    setProfile(profile);
-    void syncSessionCookie(result.session, profile?.company_id);
-    void logActivity({
-      actionType: 'LOGIN',
-      details: `تسجيل دخول ناجح (${result.session.fullName}) عبر البريد`,
-      pageUrl: '/login',
-      module: 'auth',
-      actor: {
-        userId: result.session.userId,
-        userName: result.session.fullName,
-        userRole: result.session.roleCode,
-      },
-      metadata: { method: 'email', role: roleLabel(result.session.roleCode) },
-    });
-    return null;
+    try {
+      const result = await signInWithEmailPassword(email, password);
+      if (result.error || !result.session) return result.error || 'فشل تسجيل الدخول';
+      setSession(result.session);
+      // Profile refresh must not block leaving the login screen
+      void getUserProfile(result.session.userId).then((user) => setProfile(user));
+      void syncSessionCookie(result.session, result.session.companyId || undefined);
+      void logActivity({
+        actionType: 'LOGIN',
+        details: `تسجيل دخول ناجح (${result.session.fullName}) عبر البريد`,
+        pageUrl: '/login',
+        module: 'auth',
+        actor: {
+          userId: result.session.userId,
+          userName: result.session.fullName,
+          userRole: result.session.roleCode,
+        },
+        metadata: { method: 'email', role: roleLabel(result.session.roleCode) },
+      });
+      return null;
+    } catch {
+      return 'تعذر إكمال تسجيل الدخول. حاول مرة أخرى.';
+    }
   }, []);
 
-  const sendPhoneCode = useCallback(async (phone: string) => requestPhoneOtp(phone), []);
+  const sendPhoneCode = useCallback(async (phone: string) => {
+    try {
+      return await Promise.race([
+        requestPhoneOtp(phone),
+        new Promise<{ error: string }>((resolve) =>
+          setTimeout(() => resolve({ error: 'انتهت مهلة إرسال رمز التحقق.' }), 12_000)
+        ),
+      ]);
+    } catch {
+      return { error: 'تعذر إرسال رمز التحقق.' };
+    }
+  }, []);
 
   const loginWithPhone = useCallback(async (phone: string, code: string) => {
-    const result = await verifyPhoneOtp(phone, code);
-    if (result.error || !result.session) return result.error || 'فشل تسجيل الدخول';
-    setSession(result.session);
-    const profile = await getUserProfile(result.session.userId);
-    setProfile(profile);
-    void syncSessionCookie(result.session, profile?.company_id);
-    void logActivity({
-      actionType: 'LOGIN',
-      details: `تسجيل دخول ناجح (${result.session.fullName}) عبر الجوال`,
-      pageUrl: '/login',
-      module: 'auth',
-      actor: {
-        userId: result.session.userId,
-        userName: result.session.fullName,
-        userRole: result.session.roleCode,
-      },
-      metadata: { method: 'phone', role: roleLabel(result.session.roleCode) },
-    });
-    return null;
+    try {
+      const result = await verifyPhoneOtp(phone, code);
+      if (result.error || !result.session) return result.error || 'فشل تسجيل الدخول';
+      setSession(result.session);
+      void getUserProfile(result.session.userId).then((user) => setProfile(user));
+      void syncSessionCookie(result.session, result.session.companyId || undefined);
+      void logActivity({
+        actionType: 'LOGIN',
+        details: `تسجيل دخول ناجح (${result.session.fullName}) عبر الجوال`,
+        pageUrl: '/login',
+        module: 'auth',
+        actor: {
+          userId: result.session.userId,
+          userName: result.session.fullName,
+          userRole: result.session.roleCode,
+        },
+        metadata: { method: 'phone', role: roleLabel(result.session.roleCode) },
+      });
+      return null;
+    } catch {
+      return 'تعذر إكمال تسجيل الدخول. حاول مرة أخرى.';
+    }
   }, []);
 
   const logout = useCallback(async () => {

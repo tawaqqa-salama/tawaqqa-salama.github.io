@@ -37,23 +37,33 @@ export default function LoginPage() {
     event.preventDefault();
     setBusy(true);
     setError(null);
-    const err = await loginWithEmail(email, password);
-    setBusy(false);
-    if (err) setError(err);
-    else router.replace('/me');
+    try {
+      const err = await loginWithEmail(email, password);
+      if (err) setError(err);
+      else router.replace('/me');
+    } catch {
+      setError('تعذر إكمال تسجيل الدخول. حاول مرة أخرى.');
+    } finally {
+      setBusy(false);
+    }
   };
 
   const onSendOtp = async () => {
     setBusy(true);
     setError(null);
-    const result = await sendPhoneCode(phone);
-    setBusy(false);
-    if (result.error) {
-      setError(result.error);
-      return;
+    try {
+      const result = await sendPhoneCode(phone);
+      if (result.error) {
+        setError(result.error);
+        return;
+      }
+      setOtpSent(true);
+      setDemoOtp(result.demoOtp ?? null);
+    } catch {
+      setError('تعذر إرسال رمز التحقق.');
+    } finally {
+      setBusy(false);
     }
-    setOtpSent(true);
-    setDemoOtp(result.demoOtp ?? null);
   };
 
   const onPhoneSubmit = async (event: FormEvent) => {
@@ -64,10 +74,15 @@ export default function LoginPage() {
     }
     setBusy(true);
     setError(null);
-    const err = await loginWithPhone(phone, otp);
-    setBusy(false);
-    if (err) setError(err);
-    else router.replace('/me');
+    try {
+      const err = await loginWithPhone(phone, otp);
+      if (err) setError(err);
+      else router.replace('/me');
+    } catch {
+      setError('تعذر إكمال تسجيل الدخول. حاول مرة أخرى.');
+    } finally {
+      setBusy(false);
+    }
   };
 
   return (

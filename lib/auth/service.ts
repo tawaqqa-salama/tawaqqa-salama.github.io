@@ -7,8 +7,23 @@ import { isDemoMode, supabase } from '@/lib/supabase';
 const DEMO_COMPANY_ID = 'co-tawaqqa';
 const DEMO_BRANCH_ID = 'br-hq';
 const BOOTSTRAP_COMPANY_CODE = process.env.DEFAULT_TENANT_CODE || 'TWAQQA';
+const AUTH_TIMEOUT_MS = 12_000;
 
 type AuthResult = { session: AuthSession | null; error: string | null; demoOtp?: string };
+
+async function withTimeout<T>(promise: PromiseLike<T>, ms: number, label: string): Promise<T> {
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  try {
+    return await Promise.race([
+      Promise.resolve(promise),
+      new Promise<T>((_, reject) => {
+        timer = setTimeout(() => reject(new Error(label)), ms);
+      }),
+    ]);
+  } finally {
+    if (timer) clearTimeout(timer);
+  }
+}
 
 /** Saudi mobile (05xxxxxxxx) or international E.164-ish (+... / 00...) */
 function isValidPhone(phone: string): boolean {
@@ -142,45 +157,67 @@ export async function signInWithEmailPassword(email: string, password: string): 
     return { session: null, error: 'أدخل البريد الإلكتروني وكلمة المرور' };
   }
 
-  if (!isDemoMode) {
-    const { data, error } = await supabase.auth.signInWithPassword({
-      email: trimmedEmail,
-      password,
-    });
-    if (error || !data.user) {
-      return { session: null, error: error?.message || 'فشل تسجيل الدخول' };
+  try {
+    if (!isDemoMode) {
+      const { data, error } = await withTimeout(
+        supabase.auth.signInWithPassword({
+          email: trimmedEmail,
+          password,
+        }),
+        AUTH_TIMEOUT_MS,
+        'auth_timeout'
+      );
+      if (error || !data.user) {
+        return { session: null, error: error?.message || 'فشل تسجيل الدخول' };
+      }
+      const { data: profile } = await withTimeout(
+        supabase.from('users').select('*').eq('auth_user_id', data.user.id).maybeSingle(),
+        8000,
+        'profile_timeout'
+      );
+      const user =
+        (profile as AppUser | null) ??
+        (await withTimeout(fetchUserByEmail(trimmedEmail), 8000, 'profile_timeout'));
+      if (!user || !user.is_active) {
+        return { session: null, error: 'لا يوجد ملف موظف مرتبط بهذا الحساب' };
+      }
+      const role = await withTimeout(
+        fetchRole(user.role_code, user.company_id),
+        5000,
+        'role_timeout'
+      ).catch(() => null);
+      const permissions = resolveUserPermissions(user, role);
+      const session = toSession(user, permissions, 'email');
+      saveSession(session, user.company_id);
+      // Never block login UI on last_login write (RLS / network can stall)
+      void supabase.from('users').update({ last_login_at: session.loggedInAt }).eq('id', user.id);
+      return { session, error: null };
     }
-    const { data: profile } = await supabase
-      .from('users')
-      .select('*')
-      .eq('auth_user_id', data.user.id)
-      .maybeSingle();
-    const user = (profile as AppUser | null) ?? (await fetchUserByEmail(trimmedEmail));
+
+    const user = await fetchUserByEmail(trimmedEmail);
     if (!user || !user.is_active) {
-      return { session: null, error: 'لا يوجد ملف موظف مرتبط بهذا الحساب' };
+      return { session: null, error: 'بيانات الدخول غير صحيحة' };
+    }
+    const cred = await getCredential(user.id);
+    if (!cred || cred.password !== password) {
+      return { session: null, error: 'بيانات الدخول غير صحيحة' };
     }
     const role = await fetchRole(user.role_code, user.company_id);
     const permissions = resolveUserPermissions(user, role);
     const session = toSession(user, permissions, 'email');
     saveSession(session, user.company_id);
-    await supabase.from('users').update({ last_login_at: session.loggedInAt }).eq('id', user.id);
+    void supabase.from('users').update({ last_login_at: session.loggedInAt }).eq('id', user.id);
     return { session, error: null };
+  } catch (e) {
+    const msg = e instanceof Error ? e.message : '';
+    if (msg.includes('timeout')) {
+      return {
+        session: null,
+        error: 'انتهت مهلة الاتصال بخادم الدخول. تحقق من الشبكة أو جرّب لاحقاً.',
+      };
+    }
+    return { session: null, error: 'تعذر إكمال تسجيل الدخول. حاول مرة أخرى.' };
   }
-
-  const user = await fetchUserByEmail(trimmedEmail);
-  if (!user || !user.is_active) {
-    return { session: null, error: 'بيانات الدخول غير صحيحة' };
-  }
-  const cred = await getCredential(user.id);
-  if (!cred || cred.password !== password) {
-    return { session: null, error: 'بيانات الدخول غير صحيحة' };
-  }
-  const role = await fetchRole(user.role_code, user.company_id);
-  const permissions = resolveUserPermissions(user, role);
-  const session = toSession(user, permissions, 'email');
-  saveSession(session, user.company_id);
-  await supabase.from('users').update({ last_login_at: session.loggedInAt }).eq('id', user.id);
-  return { session, error: null };
 }
 
 function randomOtp(): string {
@@ -303,7 +340,7 @@ export async function verifyPhoneOtp(phone: string, code: string): Promise<AuthR
       const permissions = resolveUserPermissions(user, role);
       const session = toSession(user, permissions, 'phone');
       saveSession(session, user.company_id);
-      await supabase.from('users').update({ last_login_at: session.loggedInAt }).eq('id', user.id);
+      void supabase.from('users').update({ last_login_at: session.loggedInAt }).eq('id', user.id);
       return { session, error: null };
     }
 
@@ -318,7 +355,7 @@ export async function verifyPhoneOtp(phone: string, code: string): Promise<AuthR
       const permissions = resolveUserPermissions(user, role);
       const session = toSession(user, permissions, 'phone');
       saveSession(session, user.company_id);
-      await supabase.from('users').update({ last_login_at: session.loggedInAt }).eq('id', user.id);
+      void supabase.from('users').update({ last_login_at: session.loggedInAt }).eq('id', user.id);
       return { session, error: null };
     }
 
@@ -338,7 +375,7 @@ export async function verifyPhoneOtp(phone: string, code: string): Promise<AuthR
   const permissions = resolveUserPermissions(user, role);
   const session = toSession(user, permissions, 'phone');
   saveSession(session, user.company_id);
-  await supabase.from('users').update({ last_login_at: session.loggedInAt }).eq('id', user.id);
+  void supabase.from('users').update({ last_login_at: session.loggedInAt }).eq('id', user.id);
   return { session, error: null };
 }
 
