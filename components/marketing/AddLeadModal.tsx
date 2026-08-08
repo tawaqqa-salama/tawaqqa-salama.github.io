@@ -12,7 +12,10 @@ export interface LeadFormData {
   business_name: string;
   lead_status: string;
   lead_notes: string;
+  lead_source: string;
 }
+
+const LEAD_SOURCES = ['WhatsApp', 'Website', 'Phone', 'Referral', 'Campaign', 'Other'] as const;
 
 const EMPTY_LEAD: LeadFormData = {
   owner_name: '',
@@ -20,6 +23,7 @@ const EMPTY_LEAD: LeadFormData = {
   business_name: '',
   lead_status: 'مهتم',
   lead_notes: '',
+  lead_source: 'Phone',
 };
 
 interface AddLeadModalProps {
@@ -101,6 +105,20 @@ export default function AddLeadModal({
             >
               {LEAD_STATUSES.map((status) => (
                 <option key={status} value={status}>{status}</option>
+              ))}
+            </select>
+          </div>
+          <div>
+            <label className="block text-xs font-semibold text-gray-700 mb-1">المصدر</label>
+            <select
+              value={form.lead_source}
+              onChange={(e) => setForm((p) => ({ ...p, lead_source: e.target.value }))}
+              className="w-full p-2.5 border rounded-xl text-sm bg-white"
+            >
+              {LEAD_SOURCES.map((source) => (
+                <option key={source} value={source}>
+                  {source}
+                </option>
               ))}
             </select>
           </div>

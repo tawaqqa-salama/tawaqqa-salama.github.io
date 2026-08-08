@@ -1,12 +1,15 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { supabase } from '@/lib/supabase';
 import { nextLeadCode } from '@/lib/business/document-numbers';
 import { shouldShowInMarketing } from '@/lib/business/pipeline';
 import AddLeadModal from '@/components/marketing/AddLeadModal';
 import FollowUpModal from '@/components/marketing/FollowUpModal';
 import PipelineStatusBoard from '@/components/marketing/PipelineStatusBoard';
+import WhatsAppInbox from '@/components/whatsapp/WhatsAppInbox';
+import WhatsAppDashboardCards from '@/components/whatsapp/WhatsAppDashboardCards';
+import WhatsAppCampaignsPanel from '@/components/whatsapp/WhatsAppCampaignsPanel';
 import ResponsiveTable from '@/components/ui/ResponsiveTable';
 import ModuleSubNavSlot from '@/components/layout/ModuleSubNavSlot';
 import ModuleTabBar from '@/components/layout/ModuleTabBar';
@@ -14,7 +17,15 @@ import { useLanguage } from '@/lib/i18n/LanguageProvider';
 import type { ClientFollowUp } from '@/lib/types/sales';
 import type { ClientRecord } from '@/lib/types/client';
 
-type TabId = 'dashboard' | 'campaigns' | 'leads' | 'followups' | 'pipeline';
+type TabId =
+  | 'dashboard'
+  | 'whatsapp'
+  | 'campaigns'
+  | 'leads'
+  | 'followups'
+  | 'pipeline';
+
+const SOURCE_FILTERS = ['الكل', 'WhatsApp', 'Website', 'Phone', 'Referral', 'Campaign', 'Other'] as const;
 
 export default function MarketingPage() {
   const { t } = useLanguage();
@@ -27,6 +38,7 @@ export default function MarketingPage() {
   const [followUpClient, setFollowUpClient] = useState<ClientRecord | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
+  const [sourceFilter, setSourceFilter] = useState<(typeof SOURCE_FILTERS)[number]>('الكل');
 
   const fetchData = async () => {
     setLoading(true);
@@ -45,16 +57,35 @@ export default function MarketingPage() {
     fetchData();
   }, []);
 
+  const filteredLeads = useMemo(() => {
+    if (sourceFilter === 'الكل') return leads;
+    return leads.filter((l) => (l.lead_source || '') === sourceFilter);
+  }, [leads, sourceFilter]);
+
+  const whatsappFunnel = useMemo(() => {
+    const wa = allClients.filter((c) => c.lead_source === 'WhatsApp' || c.source_channel === 'whatsapp');
+    return {
+      total: wa.length,
+      newCount: wa.filter((c) => c.pipeline_stage === 'marketing' && (c.lead_status === 'new' || c.lead_status === 'مهتم')).length,
+      qualified: wa.filter((c) => c.lead_status === 'مؤهل').length,
+      quotes: wa.filter((c) => Boolean(c.quotation_number)).length,
+      contracted: wa.filter((c) => c.pipeline_stage === 'finance' || c.pipeline_stage === 'projects' || c.pipeline_stage === 'completed').length,
+      notInterested: wa.filter((c) => c.lead_status === 'غير مهتم').length,
+    };
+  }, [allClients]);
+
   const handleAddLead = async (form: {
     owner_name: string;
     phone: string;
     business_name: string;
     lead_status: string;
     lead_notes: string;
+    lead_source: string;
   }) => {
     setIsSubmitting(true);
     setErrorMessage(null);
     const leadCode = await nextLeadCode();
+    const channel = form.lead_source === 'WhatsApp' ? 'whatsapp' : form.lead_source.toLowerCase();
     const { error } = await supabase.from('clients').insert([
       {
         client_code: leadCode,
@@ -65,6 +96,9 @@ export default function MarketingPage() {
         pipeline_stage: 'marketing',
         lead_status: form.lead_status,
         lead_notes: form.lead_notes || null,
+        lead_source: form.lead_source,
+        source_channel: channel,
+        first_contact_at: new Date().toISOString(),
         last_contact_date: new Date().toISOString().slice(0, 10),
         financial_status: 'بانتظار الدفعة',
         engineering_status: 'جديد',
@@ -134,7 +168,8 @@ export default function MarketingPage() {
           idleClassName="bg-white border border-gray-200 text-gray-800"
           items={[
             { id: 'dashboard', label: t('marketing.tab.dashboard') },
-            { id: 'campaigns', label: t('marketing.tab.campaigns') },
+            { id: 'whatsapp', label: 'صندوق واتساب' },
+            { id: 'campaigns', label: 'حملات واتساب' },
             { id: 'leads', label: t('marketing.tab.leads') },
             { id: 'followups', label: t('marketing.tab.followups') },
             { id: 'pipeline', label: t('marketing.tab.pipeline') },
@@ -142,62 +177,97 @@ export default function MarketingPage() {
         />
       </ModuleSubNavSlot>
 
-      {(tab === 'dashboard' || tab === 'campaigns') && (
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
-          <div className="rounded-xl border bg-white p-4">
-            <p className="text-xs text-gray-500">{t('marketing.stat.activeLeads')}</p>
-            <p className="text-2xl font-bold text-gray-900 mt-1">{leads.length}</p>
+      {tab === 'dashboard' && (
+        <div className="space-y-4">
+          <WhatsAppDashboardCards />
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+            <div className="rounded-xl border bg-white p-4">
+              <p className="text-xs text-gray-500">{t('marketing.stat.activeLeads')}</p>
+              <p className="text-2xl font-bold text-gray-900 mt-1">{leads.length}</p>
+            </div>
+            <div className="rounded-xl border bg-white p-4">
+              <p className="text-xs text-gray-500">{t('marketing.stat.followups')}</p>
+              <p className="text-2xl font-bold text-gray-900 mt-1">{followUps.length}</p>
+            </div>
+            <div className="rounded-xl border bg-white p-4">
+              <p className="text-xs text-gray-500">WhatsApp Leads</p>
+              <p className="text-2xl font-bold text-gray-900 mt-1">{whatsappFunnel.total}</p>
+            </div>
           </div>
-          <div className="rounded-xl border bg-white p-4">
-            <p className="text-xs text-gray-500">{t('marketing.stat.followups')}</p>
-            <p className="text-2xl font-bold text-gray-900 mt-1">{followUps.length}</p>
-          </div>
-          <div className="rounded-xl border bg-white p-4">
-            <p className="text-xs text-gray-500">{t('marketing.stat.journey')}</p>
-            <p className="text-sm text-gray-700 mt-2 leading-relaxed">
-              {tab === 'campaigns' ? t('marketing.campaignsHint') : t('marketing.dashboardHint')}
-            </p>
-          </div>
-          <div className="md:col-span-3 rounded-xl border border-teal-100 bg-teal-50 p-4 text-sm text-teal-900">
-            {t('marketing.banner')}
+          <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-2">
+            {[
+              ['العملاء', whatsappFunnel.total],
+              ['الجدد', whatsappFunnel.newCount],
+              ['المؤهلون', whatsappFunnel.qualified],
+              ['عروض الأسعار', whatsappFunnel.quotes],
+              ['المتعاقدون', whatsappFunnel.contracted],
+              ['غير المهتمين', whatsappFunnel.notInterested],
+            ].map(([label, value]) => (
+              <div key={String(label)} className="rounded-xl border border-emerald-100 bg-emerald-50/60 p-3">
+                <p className="text-[10px] text-emerald-900/70">{label}</p>
+                <p className="text-lg font-bold text-emerald-950">{value}</p>
+              </div>
+            ))}
           </div>
         </div>
       )}
 
+      {tab === 'whatsapp' && <WhatsAppInbox />}
+
+      {tab === 'campaigns' && <WhatsAppCampaignsPanel />}
+
       {tab === 'leads' && (
-        <ResponsiveTable className="bg-white rounded-xl border shadow-sm">
-          <table className="w-full text-right text-sm table-as-cards">
-            <thead className="bg-gray-50 border-b text-gray-600">
-              <tr>
-                <th className="p-4">{t('marketing.col.client')}</th>
-                <th className="p-4">{t('marketing.col.phone')}</th>
-                <th className="p-4">{t('marketing.col.interest')}</th>
-                <th className="p-4">{t('marketing.col.lastContact')}</th>
-                <th className="p-4">{t('marketing.col.action')}</th>
-              </tr>
-            </thead>
-            <tbody>
-              {loading ? (
-                <tr><td colSpan={5} className="p-8 text-center text-gray-400">{t('common.loading')}</td></tr>
-              ) : leads.length === 0 ? (
-                <tr><td colSpan={5} className="p-8 text-center text-gray-400">{t('marketing.emptyLeads')}</td></tr>
-              ) : (
-                leads.map((lead) => (
-                  <tr key={lead.id} className="border-b hover:bg-gray-50">
-                    <td className="p-4 font-semibold" data-label={t('marketing.col.client')}>{lead.owner_name || lead.name}</td>
-                    <td className="p-4 font-mono isolate-ltr" data-label={t('marketing.col.phone')}>{lead.phone}</td>
-                    <td className="p-4" data-label={t('marketing.col.interest')}>{lead.lead_status || 'مهتم'}</td>
-                    <td className="p-4 text-gray-500 isolate-ltr" data-label={t('marketing.col.lastContact')}>{lead.last_contact_date || '—'}</td>
-                    <td className="p-4 flex flex-wrap gap-2" data-label={t('marketing.col.action')}>
-                      <button onClick={() => setFollowUpClient(lead)} className="touch-target px-3 bg-gray-100 rounded-lg text-xs">{t('marketing.followUp')}</button>
-                      <button onClick={() => convertToSales(lead)} className="touch-target px-3 bg-blue-600 text-white rounded-lg text-xs">{t('marketing.convertSales')}</button>
-                    </td>
-                  </tr>
-                ))
-              )}
-            </tbody>
-          </table>
-        </ResponsiveTable>
+        <div className="space-y-3">
+          <div className="flex flex-wrap gap-2">
+            {SOURCE_FILTERS.map((s) => (
+              <button
+                key={s}
+                type="button"
+                onClick={() => setSourceFilter(s)}
+                className={`text-xs px-3 py-1.5 rounded-lg border font-semibold ${
+                  sourceFilter === s ? 'bg-purple-600 text-white border-purple-600' : 'bg-white'
+                }`}
+              >
+                {s === 'الكل' ? 'كل المصادر' : s}
+              </button>
+            ))}
+          </div>
+          <ResponsiveTable className="bg-white rounded-xl border shadow-sm">
+            <table className="w-full text-right text-sm table-as-cards">
+              <thead className="bg-gray-50 border-b text-gray-600">
+                <tr>
+                  <th className="p-4">{t('marketing.col.client')}</th>
+                  <th className="p-4">{t('marketing.col.phone')}</th>
+                  <th className="p-4">المصدر</th>
+                  <th className="p-4">{t('marketing.col.interest')}</th>
+                  <th className="p-4">{t('marketing.col.lastContact')}</th>
+                  <th className="p-4">{t('marketing.col.action')}</th>
+                </tr>
+              </thead>
+              <tbody>
+                {loading ? (
+                  <tr><td colSpan={6} className="p-8 text-center text-gray-400">{t('common.loading')}</td></tr>
+                ) : filteredLeads.length === 0 ? (
+                  <tr><td colSpan={6} className="p-8 text-center text-gray-400">{t('marketing.emptyLeads')}</td></tr>
+                ) : (
+                  filteredLeads.map((lead) => (
+                    <tr key={lead.id} className="border-b hover:bg-gray-50">
+                      <td className="p-4 font-semibold" data-label={t('marketing.col.client')}>{lead.owner_name || lead.name}</td>
+                      <td className="p-4 font-mono isolate-ltr" data-label={t('marketing.col.phone')}>{lead.phone}</td>
+                      <td className="p-4" data-label="المصدر">{lead.lead_source || '—'}</td>
+                      <td className="p-4" data-label={t('marketing.col.interest')}>{lead.lead_status || 'مهتم'}</td>
+                      <td className="p-4 text-gray-500 isolate-ltr" data-label={t('marketing.col.lastContact')}>{lead.last_contact_date || '—'}</td>
+                      <td className="p-4 flex flex-wrap gap-2" data-label={t('marketing.col.action')}>
+                        <button onClick={() => setFollowUpClient(lead)} className="touch-target px-3 bg-gray-100 rounded-lg text-xs">{t('marketing.followUp')}</button>
+                        <button onClick={() => convertToSales(lead)} className="touch-target px-3 bg-blue-600 text-white rounded-lg text-xs">{t('marketing.convertSales')}</button>
+                      </td>
+                    </tr>
+                  ))
+                )}
+              </tbody>
+            </table>
+          </ResponsiveTable>
+        </div>
       )}
 
       {tab === 'followups' && (

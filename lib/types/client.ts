@@ -51,6 +51,13 @@ export interface ClientRecord {
   pipeline_stage?: PipelineStage | null;
   lead_status?: string | null;
   lead_notes?: string | null;
+  /** مصدر العميل: WhatsApp | Website | Phone | Referral | Campaign | Other */
+  lead_source?: string | null;
+  /** قناة التواصل الأولى مثل whatsapp */
+  source_channel?: string | null;
+  first_contact_at?: string | null;
+  whatsapp_profile_name?: string | null;
+  email?: string | null;
   next_follow_up_date?: string | null;
   last_contact_date?: string | null;
   quotation_number?: string | null;

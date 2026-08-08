@@ -13,6 +13,7 @@ const PUBLIC_PREFIXES = [
   '/icons',
   '/assets',
   '/api/auth/session', // allow establishing cookie
+  '/api/integrations/whatsapp/webhook', // Meta Cloud API webhook (verified by token/signature)
 ];
 
 const PUBLIC_EXACT = new Set(['/', '/login']);
