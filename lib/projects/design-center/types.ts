@@ -108,8 +108,13 @@ export type DesignSystemGeneration = {
   designId?: string | null;
   error?: string | null;
   error_code?: string | null;
-  /** Artifact refs from real engine only */
+  /**
+   * Legacy flat lines for exports — populated from structured standards snapshot only.
+   * Do not dump project-wide sales codes here.
+   */
   artifactRefs?: string[];
+  /** Dynamic applicability result (Primary / Saudi / Related / Conditional) */
+  standards?: import('@/lib/projects/design-center/standards/types').SystemStandardsSnapshot | null;
 };
 
 export type EngineeringCalcKind =
