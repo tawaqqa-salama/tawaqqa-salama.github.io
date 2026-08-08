@@ -15,6 +15,11 @@ const PUBLIC_PREFIXES = [
   '/api/auth/session', // allow establishing cookie
   '/api/integrations/whatsapp/webhook', // Meta Cloud API webhook (verified by token/signature)
   '/api/whatsapp/webhook', // alias used by Meta/Vercel callback URLs
+  '/api/social/webhook', // Meta Instagram/Facebook messaging webhooks
+  '/api/public/website', // public website lead forms
+  '/api/integrations/social/oauth', // OAuth redirects (callback completes without cookie)
+  '/sitemap.xml',
+  '/robots.txt',
 ];
 
 const PUBLIC_EXACT = new Set(['/', '/login']);

@@ -15,7 +15,20 @@ export interface LeadFormData {
   lead_source: string;
 }
 
-const LEAD_SOURCES = ['WhatsApp', 'Website', 'Phone', 'Referral', 'Campaign', 'Other'] as const;
+const LEAD_SOURCES = [
+  'WhatsApp',
+  'Website',
+  'Instagram',
+  'Facebook',
+  'LinkedIn',
+  'TikTok',
+  'X',
+  'Google',
+  'Phone',
+  'Referral',
+  'Campaign',
+  'Other',
+] as const;
 
 const EMPTY_LEAD: LeadFormData = {
   owner_name: '',

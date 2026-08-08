@@ -20,6 +20,7 @@ import ContractOnboardingSection from '@/components/projects/ContractOnboardingS
 import DesignCenterSection from '@/components/projects/DesignCenterSection';
 import WorkflowStageRail from '@/components/projects/WorkflowStageRail';
 import WhatsAppCustomerActivity from '@/components/whatsapp/WhatsAppCustomerActivity';
+import CustomerSocialTimeline from '@/components/marketing/CustomerSocialTimeline';
 import InvoicePromptModal from '@/components/invoices/InvoicePromptModal';
 import {
   downloadTaxInvoice,
@@ -311,6 +312,7 @@ export default function ProjectReportModal({
 
             <div className="flex-1 p-5 overflow-y-auto space-y-4">
               <WhatsAppCustomerActivity customerId={client.id} />
+              <CustomerSocialTimeline customerId={client.id} />
               <div className="md:hidden">
                 <WorkflowStageRail
                   client={client}
