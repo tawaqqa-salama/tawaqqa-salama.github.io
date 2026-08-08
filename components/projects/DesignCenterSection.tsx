@@ -28,7 +28,7 @@ import { humanizeFetchError } from '@/lib/api/safe-json';
 import BuildingPlanReportSection from '@/components/projects/BuildingPlanReportSection';
 import PlanAttachmentsUpload from '@/components/projects/PlanAttachmentsUpload';
 import SafetyBlueprintsUpload from '@/components/projects/SafetyBlueprintsUpload';
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { EMPTY_PLAN_ATTACHMENTS, EMPTY_SAFETY_BLUEPRINTS } from '@/lib/types/project-reports';
 import type { ClientRecord } from '@/lib/types/client';
 import type {
@@ -105,7 +105,9 @@ export default function DesignCenterSection({
   const tab = (design.ui?.active_tab || 'drawings') as DesignCenterTabId;
   const [busy, setBusy] = useState<string | null>(null);
   const [hint, setHint] = useState<string | null>(null);
+  const [hintTone, setHintTone] = useState<'ok' | 'warn' | 'error'>('warn');
   const [viewerUrl, setViewerUrl] = useState<string | null>(null);
+  const fileInputRefs = useRef<Partial<Record<DesignDrawingFormat, HTMLInputElement | null>>>({});
 
   const shell = dark
     ? 'rounded-2xl border border-slate-700 bg-slate-950 text-slate-100'
@@ -150,6 +152,8 @@ export default function DesignCenterSection({
     if (!files?.length) return;
     setBusy('upload');
     setHint(null);
+    setHintTone('warn');
+    const inputEl = fileInputRefs.current[format];
     try {
       let next = design;
       const warnings: string[] = [];
@@ -167,28 +171,35 @@ export default function DesignCenterSection({
       setDesign(next);
       await onPersistDesignCenter(next);
       if (warnings.length && !cloudCount) {
+        setHintTone('warn');
         setHint(warnings[0]);
       } else if (ar) {
+        setHintTone('ok');
         setHint(
           cloudCount
-            ? `تم رفع ${cloudCount} ملف إلى السحابة وحفظه في المشروع — سيظهر من أي جهاز.`
+            ? `تم رفع ${cloudCount} ملف إلى السحابة وتسجيله في «إدارة إصدارات المخططات» — سيظهر من أي جهاز.`
             : isDemoMode
               ? 'تم الحفظ محلياً (وضع تجريبي) — لن يظهر من جهاز آخر.'
-              : 'تم الحفظ في بيانات المشروع.'
+              : 'تم الحفظ في بيانات المشروع وظهر في إدارة الإصدارات.'
         );
       } else {
+        setHintTone('ok');
         setHint(
           cloudCount
-            ? `${cloudCount} file(s) uploaded to cloud and saved on the project — visible on any device.`
+            ? `${cloudCount} file(s) uploaded to cloud and listed under drawing versions.`
             : 'Saved on the project record.'
         );
       }
+      if (inputEl) inputEl.value = '';
     } catch (e) {
+      setHintTone('error');
       setHint(
         humanizeFetchError(
           e instanceof Error ? e.message : ar ? 'فشل رفع الملف' : 'Upload failed'
         )
       );
+      // Clear native filename so it doesn't look like a successful upload
+      if (inputEl) inputEl.value = '';
     } finally {
       setBusy(null);
     }
@@ -499,8 +510,18 @@ export default function DesignCenterSection({
       <div className="p-4 sm:p-6 space-y-5">
         {hint ? (
           <div
-            className={`rounded-lg px-3 py-2 text-xs ${
-              dark ? 'bg-slate-800 text-slate-200 border border-slate-700' : 'bg-amber-50 text-amber-950 border border-amber-100'
+            className={`rounded-lg px-3 py-2 text-xs leading-relaxed ${
+              hintTone === 'error'
+                ? dark
+                  ? 'bg-rose-950/50 text-rose-100 border border-rose-800'
+                  : 'bg-rose-50 text-rose-950 border border-rose-200'
+                : hintTone === 'ok'
+                  ? dark
+                    ? 'bg-emerald-950/40 text-emerald-100 border border-emerald-800'
+                    : 'bg-emerald-50 text-emerald-950 border border-emerald-200'
+                  : dark
+                    ? 'bg-slate-800 text-slate-200 border border-slate-700'
+                    : 'bg-amber-50 text-amber-950 border border-amber-100'
             }`}
           >
             {hint}
@@ -526,12 +547,20 @@ export default function DesignCenterSection({
                   <div className="text-sm font-bold">{ar ? arLabel : enLabel}</div>
                   <p className={`text-xs mt-1 ${muted}`}>{fmt.toUpperCase()}</p>
                   <input
+                    ref={(el) => {
+                      fileInputRefs.current[fmt] = el;
+                    }}
                     type="file"
                     className="mt-3 w-full text-xs"
                     accept={FORMAT_ACCEPT[fmt]}
                     disabled={busy === 'upload'}
                     onChange={(e) => void uploadFormat(e.target.files, fmt)}
                   />
+                  <p className={`text-[10px] mt-2 ${muted}`}>
+                    {ar
+                      ? 'اسم الملف في الخانة ≠ حفظ. النجاح = ظهوره تحت إدارة الإصدارات.'
+                      : 'Filename in the picker ≠ saved. Success = listed under versions.'}
+                  </p>
                 </label>
               ))}
             </div>
@@ -543,8 +572,8 @@ export default function DesignCenterSection({
               {!design.sheets.length ? (
                 <p className={`text-xs ${muted}`}>
                   {ar
-                    ? 'لا توجد مخططات بعد — ارفع ملفاً ليُحفظ داخل المشروع مع رقم إصدار.'
-                    : 'No drawings yet — upload a file to version it on this project.'}
+                    ? 'لا توجد مخططات محفوظة بعد. إن اخترت ملفاً وظهرت رسالة حمراء/صفراء بالأعلى فالش رفع فشل (غالباً تخزين project-files غير مفعّل) — الملف لم يُسجَّل.'
+                    : 'No drawings saved yet. If you picked a file and see a warning above, upload failed (often project-files Storage) — nothing was registered.'}
                 </p>
               ) : (
                 <ul className="space-y-3">

@@ -14,6 +14,27 @@ export const INLINE_PREVIEW_MAX_BYTES = 1_500_000;
 /** Prefer Storage for anything above this; avoid embedding large PDFs in JSONB */
 export const FORCE_STORAGE_MIN_BYTES = 350_000;
 
+/** User-facing Arabic explanation when Supabase Storage bucket is missing/misconfigured */
+export function formatProjectFilesStorageError(fileName: string, storageMsg: string): string {
+  const detail = String(storageMsg || '').trim();
+  const bucketMissing =
+    /bucket|not found|does not exist|404|row-level security|policy|permission|unauthorized|JWT/i.test(
+      detail
+    );
+  return [
+    `تعذر حفظ الملف «${fileName}» في السحابة — لذلك لم يُسجَّل كمخطط في المشروع.`,
+    bucketMissing
+      ? 'السبب غالباً: مجلد التخزين project-files غير مُنشأ أو صلاحياته غير مضبوطة في Supabase.'
+      : detail
+        ? `تفاصيل تقنية: ${detail}`
+        : null,
+    'الحل: من لوحة Supabase → Storage أنشئ bucket باسم project-files (خاص/private)، أو نفّذ سكربت إعداد التخزين رقم 028 من مجلد scripts/sql، ثم أعد رفع الملف.',
+    'ملاحظة: ظهور اسم الملف داخل خانة الاختيار لا يعني أنه حُفظ — يظهر في «إدارة إصدارات المخططات» فقط بعد نجاح الرفع.',
+  ]
+    .filter(Boolean)
+    .join(' ');
+}
+
 function uid() {
   return `att-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
 }
@@ -101,11 +122,7 @@ export async function uploadPlanAttachmentDetailed(
       ? humanizeFetchError(error.message)
       : error.message;
     if (!inline || file.size >= FORCE_STORAGE_MIN_BYTES) {
-      throw new Error(
-        `تعذر رفع «${file.name}» إلى السحابة (${storageMsg}). ` +
-          `أنشئ bucket باسم project-files ونفّذ سكربت scripts/sql/028_project_files_storage.sql ثم أعد المحاولة. ` +
-          `بدون Storage لن يظهر الملف من جهاز آخر.`
-      );
+      throw new Error(formatProjectFilesStorageError(file.name, storageMsg));
     }
     base.dataUrl = inline;
     base.storagePath = null;
@@ -113,7 +130,8 @@ export async function uploadPlanAttachmentDetailed(
       file: base,
       cloudPersisted: false,
       warning:
-        `حُفظت معاينة محلية فقط (Storage: ${storageMsg}). الملف قد لا يظهر من موقع/جهاز آخر حتى يعمل bucket project-files.`,
+        `حُفظت معاينة محلية فقط لأن تخزين الملفات (Storage) غير جاهز: ${storageMsg}. ` +
+        `الملف قد لا يظهر من جهاز آخر حتى يُفعَّل bucket باسم project-files في Supabase.`,
     };
   }
 
