@@ -15,24 +15,11 @@ BEGIN
     'project-files',
     false,
     52428800,
-    ARRAY[
-      'application/pdf',
-      'image/png',
-      'image/jpeg',
-      'image/jpg',
-      'application/acad',
-      'application/x-autocad',
-      'image/vnd.dwg',
-      'application/dxf',
-      'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
-      'application/vnd.ms-excel',
-      'text/csv',
-      'application/octet-stream'
-    ]
+    NULL  -- allow all MIME types; app still sends correct Content-Type per file
   )
   ON CONFLICT (id) DO UPDATE SET
     file_size_limit = EXCLUDED.file_size_limit,
-    allowed_mime_types = EXCLUDED.allowed_mime_types;
+    allowed_mime_types = NULL;
 END $$;
 
 DO $$

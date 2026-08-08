@@ -341,10 +341,13 @@ export default function ProjectReportModal({
 
               {activeStage === 'designs' && (
                 <div className="space-y-4">
-                  <div className="rounded-xl border border-sky-100 bg-sky-50 px-3 py-2 text-xs text-sky-950">
-                    مرحلة التصاميم — Design Center. رفع المخطط يحفظ تلقائياً في السحابة (bucket:{' '}
-                    <code className="font-mono">project-files</code>) ليظهر من أي جهاز. إن فشل الرفع نفّذ
-                    سكربت <code className="font-mono">scripts/sql/028_project_files_storage.sql</code>.
+                  <div className="rounded-xl border border-sky-100 bg-sky-50 px-3 py-2 text-xs text-sky-950 leading-relaxed">
+                    مرحلة التصاميم — Design Center. الرفع يحفظ في السحابة (
+                    <code className="font-mono">project-files</code>) ويظهر تحت «إدارة إصدارات
+                    المخططات». إن فشل الرفع رغم وجود المجلد: راجع Policies (INSERT لـ anon /
+                    authenticated) وأنواع MIME المسموحة، أو نفّذ سكربت{' '}
+                    <code className="font-mono">029</code> لفتح كل الأنواع. اسم الملف في خانة
+                    الاختيار ≠ حفظ ناجح.
                   </div>
                   <DesignCenterSection
                     client={client}

@@ -14,6 +14,49 @@ export const INLINE_PREVIEW_MAX_BYTES = 1_500_000;
 /** Prefer Storage for anything above this; avoid embedding large PDFs in JSONB */
 export const FORCE_STORAGE_MIN_BYTES = 350_000;
 
+/** User-facing Arabic explanation when Storage upload fails (bucket may already exist). */
+export function formatProjectFilesStorageError(fileName: string, storageMsg: string): string {
+  const detail = String(storageMsg || '').trim();
+  const lower = detail.toLowerCase();
+  const mimeIssue = /mime|content.type|not supported|invalid.*type/i.test(detail);
+  const rlsIssue = /row-level security|rls|policy|permission|unauthorized|jwt|403|401/i.test(
+    lower
+  );
+  const missingBucket = /bucket not found|no such bucket|does not exist/i.test(lower);
+
+  const cause = missingBucket
+    ? 'السبب: مجلد project-files غير موجود في هذا المشروع.'
+    : rlsIssue
+      ? 'السبب الأرجح: صلاحيات الرفع (Policies) تمنع المستخدم الحالي رغم وجود المجلد.'
+      : mimeIssue
+        ? 'السبب الأرجح: نوع الملف غير مسموح في إعدادات الـ bucket (MIME types).'
+        : detail
+          ? `تفاصيل الخطأ من Supabase: ${detail}`
+          : 'السبب غير واضح من رسالة التخزين.';
+
+  return [
+    `تعذر حفظ الملف «${fileName}» في السحابة — لذلك لم يُسجَّل في «إدارة إصدارات المخططات».`,
+    cause,
+    missingBucket
+      ? 'الحل: أنشئ bucket باسم project-files أو نفّذ سكربت إعداد التخزين 028.'
+      : 'الحل: من Storage → project-files → Policies تأكد أن INSERT مسموح لـ anon و authenticated، ومن Settings اسمح بـ application/pdf و application/octet-stream (أو اترك قائمة الأنواع فارغة للسماح للكل)، ثم أعد الرفع.',
+    'ملاحظة: ظهور اسم الملف في خانة الاختيار لا يعني أنه حُفظ — النجاح = ظهوره تحت إدارة الإصدارات.',
+  ].join(' ');
+}
+
+function resolveUploadContentType(file: File): string {
+  const name = file.name.toLowerCase();
+  if (file.type && file.type !== 'application/octet-stream') return file.type;
+  if (name.endsWith('.pdf')) return 'application/pdf';
+  if (name.endsWith('.png')) return 'image/png';
+  if (name.endsWith('.jpg') || name.endsWith('.jpeg')) return 'image/jpeg';
+  if (name.endsWith('.dwg')) return 'application/acad';
+  if (name.endsWith('.dxf')) return 'application/dxf';
+  if (name.endsWith('.ifc')) return 'application/octet-stream';
+  if (name.endsWith('.rvt') || name.endsWith('.rfa')) return 'application/octet-stream';
+  return file.type || 'application/octet-stream';
+}
+
 function uid() {
   return `att-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
 }
@@ -91,7 +134,7 @@ export async function uploadPlanAttachmentDetailed(
   const path = `${folder}/${kind}/${id}-${safeName}`;
 
   const { error } = await supabase.storage.from(PROJECT_FILES_BUCKET).upload(path, file, {
-    contentType: file.type || 'application/octet-stream',
+    contentType: resolveUploadContentType(file),
     upsert: false,
   });
 
@@ -101,11 +144,7 @@ export async function uploadPlanAttachmentDetailed(
       ? humanizeFetchError(error.message)
       : error.message;
     if (!inline || file.size >= FORCE_STORAGE_MIN_BYTES) {
-      throw new Error(
-        `تعذر رفع «${file.name}» إلى السحابة (${storageMsg}). ` +
-          `أنشئ bucket باسم project-files ونفّذ سكربت scripts/sql/028_project_files_storage.sql ثم أعد المحاولة. ` +
-          `بدون Storage لن يظهر الملف من جهاز آخر.`
-      );
+      throw new Error(formatProjectFilesStorageError(file.name, storageMsg));
     }
     base.dataUrl = inline;
     base.storagePath = null;
@@ -113,7 +152,8 @@ export async function uploadPlanAttachmentDetailed(
       file: base,
       cloudPersisted: false,
       warning:
-        `حُفظت معاينة محلية فقط (Storage: ${storageMsg}). الملف قد لا يظهر من موقع/جهاز آخر حتى يعمل bucket project-files.`,
+        `حُفظت معاينة محلية فقط (رفع السحابة فشل: ${storageMsg}). ` +
+        `تحقق من Policies وأنواع الملفات المسموحة على bucket project-files — المجلد قد يكون موجوداً لكن الرفع مرفوض.`,
     };
   }
 
@@ -166,7 +206,7 @@ export async function uploadCompletionAttachment(
   const path = `${folder}/completion/${kind}/${id}-${file.name.replace(/[^\w.\u0600-\u06FF-]+/g, '_')}`;
 
   const { error } = await supabase.storage.from(PROJECT_FILES_BUCKET).upload(path, file, {
-    contentType: file.type || 'application/octet-stream',
+    contentType: resolveUploadContentType(file),
     upsert: false,
   });
 
