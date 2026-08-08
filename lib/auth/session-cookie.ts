@@ -26,7 +26,7 @@ export function sessionToCookiePayload(
     email: session.email,
     fullName: session.fullName,
     roleCode: session.roleCode,
-    companyId,
+    companyId: companyId || session.companyId || undefined,
     loggedInAt: session.loggedInAt,
     method: session.method,
   };

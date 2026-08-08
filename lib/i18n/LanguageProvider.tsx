@@ -24,6 +24,7 @@ import {
   isAppLocale,
   localeDir,
   LOCALE_STORAGE_KEY,
+  SUPPORTED_LOCALES,
   type AppLocale,
 } from '@/lib/i18n/types';
 
@@ -86,7 +87,8 @@ export function LanguageProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const toggleLang = useCallback(() => {
-    setLang(lang === 'ar' ? 'en' : 'ar');
+    const idx = SUPPORTED_LOCALES.indexOf(lang);
+    setLang(SUPPORTED_LOCALES[(idx + 1) % SUPPORTED_LOCALES.length]);
   }, [lang, setLang]);
 
   const value = useMemo<LanguageContextValue>(() => {

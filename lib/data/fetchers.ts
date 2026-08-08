@@ -1,3 +1,4 @@
+import { loadSession } from '@/lib/auth/session';
 import { supabase } from '@/lib/supabase';
 import { mergeLocalClientOverrides } from '@/lib/supabase/safe-client-write';
 import { shouldShowInProjects } from '@/lib/business/pipeline';
@@ -16,27 +17,49 @@ export type ListFetchOptions = {
   offset?: number;
   /** عند true يُجلب project_engineering_data (أثقل) */
   includeEngineering?: boolean;
+  /** Tenant scope — defaults to session.companyId when available */
+  companyId?: string | null;
 };
+
+/** Resolve company_id for client-side queries (never trust arbitrary IDs from UI alone). */
+export function resolveFetchCompanyId(explicit?: string | null): string | null {
+  if (explicit) return explicit;
+  return loadSession()?.companyId || null;
+}
+
+function applyCompanyFilter<T extends { eq: (col: string, val: string) => T }>(
+  query: T,
+  companyId: string | null
+): T {
+  if (!companyId) return query;
+  return query.eq('company_id', companyId);
+}
 
 export async function fetchClientsList(options: ListFetchOptions = {}): Promise<ClientRecord[]> {
   const limit = options.limit ?? LIST_PAGE_SIZE;
   const offset = options.offset ?? 0;
   const columns = options.includeEngineering ? PROJECT_LIST_COLUMNS : CLIENT_LIST_COLUMNS;
+  const companyId = resolveFetchCompanyId(options.companyId);
 
-  const { data, error } = await supabase
+  let query = supabase
     .from('clients')
     .select(columns)
     .order('created_at', { ascending: false })
     .range(offset, offset + limit - 1);
+  query = applyCompanyFilter(query, companyId);
+
+  const { data, error } = await query;
 
   if (error) {
     console.warn('[fetchClientsList]', error.message);
     // إن فشل جلب أعمدة معيّنة (مثل JSON الهندسي) جرّب * 
-    const { data: allData, error: allError } = await supabase
+    let fallback = supabase
       .from('clients')
       .select('*')
       .order('created_at', { ascending: false })
       .range(offset, offset + limit - 1);
+    fallback = applyCompanyFilter(fallback, companyId);
+    const { data: allData, error: allError } = await fallback;
     if (allError) {
       console.warn('[fetchClientsList] * fallback failed:', allError.message);
       return [];
@@ -49,9 +72,15 @@ export async function fetchClientsList(options: ListFetchOptions = {}): Promise<
   return ((data || []) as unknown as ClientRecord[]).map((row) => mergeLocalClientOverrides(row));
 }
 
-export async function fetchClientById(id: string): Promise<ClientRecord | null> {
+export async function fetchClientById(
+  id: string,
+  companyId?: string | null
+): Promise<ClientRecord | null> {
   if (!id) return null;
-  const { data, error } = await supabase.from('clients').select('*').eq('id', id).maybeSingle();
+  const tenantId = resolveFetchCompanyId(companyId);
+  let query = supabase.from('clients').select('*').eq('id', id);
+  query = applyCompanyFilter(query, tenantId);
+  const { data, error } = await query.maybeSingle();
   if (error || !data) {
     // محاولة استعادة من النسخة المحلية للتقارير إن وُجدت
     const local = mergeLocalClientOverrides({ id } as ClientRecord);
@@ -60,33 +89,46 @@ export async function fetchClientById(id: string): Promise<ClientRecord | null> 
     }
     return null;
   }
+  // Defense-in-depth: reject cross-tenant rows even if filter was skipped
+  if (tenantId && (data as { company_id?: string }).company_id && (data as { company_id: string }).company_id !== tenantId) {
+    return null;
+  }
   return mergeLocalClientOverrides(data as ClientRecord);
 }
 
 export async function fetchSalesDocuments(limit = ARCHIVE_PAGE_SIZE): Promise<SalesDocument[]> {
-  const { data } = await supabase
+  const companyId = resolveFetchCompanyId();
+  let query = supabase
     .from('sales_documents')
     .select('id, client_id, doc_type, doc_number, subtotal, vat_amount, total_amount, status, archived, created_at')
     .order('created_at', { ascending: false })
     .limit(limit);
+  query = applyCompanyFilter(query, companyId);
+  const { data } = await query;
   return (data || []) as SalesDocument[];
 }
 
 export async function fetchSalesContracts(limit = ARCHIVE_PAGE_SIZE): Promise<SalesContract[]> {
-  const { data } = await supabase
+  const companyId = resolveFetchCompanyId();
+  let query = supabase
     .from('sales_contracts')
     .select('*')
     .order('created_at', { ascending: false })
     .limit(limit);
+  query = applyCompanyFilter(query, companyId);
+  const { data } = await query;
   return (data || []) as SalesContract[];
 }
 
 export async function fetchSalesReturns(limit = LIST_PAGE_SIZE): Promise<SalesReturn[]> {
-  const { data } = await supabase
+  const companyId = resolveFetchCompanyId();
+  let query = supabase
     .from('sales_returns')
     .select('id, client_id, return_number, amount, reason, status, created_at')
     .order('created_at', { ascending: false })
     .limit(limit);
+  query = applyCompanyFilter(query, companyId);
+  const { data } = await query;
   return (data || []) as SalesReturn[];
 }
 
@@ -119,11 +161,14 @@ export async function fetchProjectsList(limit = PROJECTS_PAGE_SIZE): Promise<Cli
 
   // 2) إن رجعت قائمة قصيرة بشكل مريب، أعد الجلب بـ *
   if (rows.length === 0) {
-    const { data, error } = await supabase
+    const companyId = resolveFetchCompanyId();
+    let query = supabase
       .from('clients')
       .select('*')
       .order('created_at', { ascending: false })
       .limit(fetchLimit);
+    query = applyCompanyFilter(query, companyId);
+    const { data, error } = await query;
     if (!error && data?.length) {
       rows = (data as ClientRecord[]).map((row) => mergeLocalClientOverrides(row));
     }

@@ -18,11 +18,13 @@ const PUBLIC_PREFIXES = [
   '/api/social/webhook', // Meta Instagram/Facebook messaging webhooks
   '/api/public/website', // public website lead forms
   '/api/integrations/social/oauth', // OAuth redirects (callback completes without cookie)
+  '/api/onboarding', // tenant self-serve onboarding (token-gated when configured)
+  '/onboarding',
   '/sitemap.xml',
   '/robots.txt',
 ];
 
-const PUBLIC_EXACT = new Set(['/', '/login']);
+const PUBLIC_EXACT = new Set(['/', '/login', '/onboarding']);
 
 function isPublic(pathname: string): boolean {
   if (PUBLIC_EXACT.has(pathname)) return true;

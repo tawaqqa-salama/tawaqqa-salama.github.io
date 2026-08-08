@@ -17,6 +17,20 @@ const ar: Dict = {
   'common.language': 'اللغة',
   'common.arabic': 'العربية',
   'common.english': 'English',
+  'common.indonesian': 'Bahasa Indonesia',
+  'platform.title': 'إدارة المنصة',
+  'platform.subtitle': 'إدارة الشركات والاشتراكات والوحدات',
+  'platform.tenants': 'الشركات',
+  'platform.createTenant': 'إنشاء شركة',
+  'platform.modules': 'الوحدات',
+  'platform.subscriptions': 'الاشتراكات',
+  'platform.audit': 'سجل التدقيق',
+  'platform.supportAccess': 'دخول دعم',
+  'onboarding.title': 'إعداد الشركة',
+  'onboarding.subtitle': 'أنشئ حساب شركتك على منصة توقع',
+  'tenant.switcher': 'الشركة الحالية',
+  'tenant.suspended': 'الحساب موقوف',
+  'tenant.moduleDisabled': 'هذه الوحدة غير مفعّلة لشركتك',
 
   'shell.checkingSession': 'جاري التحقق من الجلسة...',
   'shell.systems': 'الأنظمة',
@@ -396,6 +410,20 @@ const en: Dict = {
   'common.language': 'Language',
   'common.arabic': 'العربية',
   'common.english': 'English',
+  'common.indonesian': 'Bahasa Indonesia',
+  'platform.title': 'Platform Admin',
+  'platform.subtitle': 'Manage tenants, subscriptions, and modules',
+  'platform.tenants': 'Tenants',
+  'platform.createTenant': 'Create tenant',
+  'platform.modules': 'Modules',
+  'platform.subscriptions': 'Subscriptions',
+  'platform.audit': 'Audit log',
+  'platform.supportAccess': 'Support access',
+  'onboarding.title': 'Company setup',
+  'onboarding.subtitle': 'Create your company account on Taqwa Platform',
+  'tenant.switcher': 'Current company',
+  'tenant.suspended': 'Account suspended',
+  'tenant.moduleDisabled': 'This module is not enabled for your company',
 
   'shell.checkingSession': 'Checking session...',
   'shell.systems': 'Systems',
@@ -762,7 +790,53 @@ const en: Dict = {
   'finance.vat.fullReport': 'View full report →',
 };
 
-export const translations: Record<AppLocale, Dict> = { ar, en };
+/** Bahasa Indonesia — English base + localized shell/platform overrides */
+const id: Dict = {
+  ...en,
+  'common.language': 'Bahasa',
+  'common.indonesian': 'Bahasa Indonesia',
+  'common.loading': 'Memuat...',
+  'common.close': 'Tutup',
+  'common.save': 'Simpan',
+  'common.cancel': 'Batal',
+  'common.search': 'Cari',
+  'common.logout': 'Keluar',
+  'common.logoutConfirmTitle': 'Keluar',
+  'common.logoutConfirmBody': 'Apakah Anda ingin keluar dari sistem?',
+  'common.logoutConfirm': 'Keluar',
+  'common.employee': 'Staf',
+  'shell.login': 'Masuk',
+  'shell.checkingSession': 'Memeriksa sesi...',
+  'shell.systems': 'Sistem',
+  'shell.homeSubtitle': 'Beranda',
+  'switcher.title': 'Departemen platform',
+  'switcher.subtitle': 'Langsung ke departemen',
+  'nav.marketing': 'Pemasaran',
+  'nav.sales': 'Penjualan',
+  'nav.procurement': 'Pengadaan',
+  'nav.finance': 'Keuangan',
+  'nav.hr': 'SDM',
+  'nav.projects': 'Proyek',
+  'nav.design': 'Desain',
+  'nav.settings': 'Pengaturan',
+  'platform.title': 'Admin Platform',
+  'platform.subtitle': 'Kelola tenant, langganan, dan modul',
+  'platform.tenants': 'Perusahaan',
+  'platform.createTenant': 'Buat perusahaan',
+  'platform.modules': 'Modul',
+  'platform.subscriptions': 'Langganan',
+  'platform.audit': 'Log audit',
+  'platform.supportAccess': 'Akses dukungan',
+  'onboarding.title': 'Pengaturan perusahaan',
+  'onboarding.subtitle': 'Buat akun perusahaan Anda di Platform Taqwa',
+  'tenant.switcher': 'Perusahaan saat ini',
+  'tenant.suspended': 'Akun ditangguhkan',
+  'tenant.moduleDisabled': 'Modul ini tidak diaktifkan untuk perusahaan Anda',
+  'marketing.title': 'Pemasaran',
+  'projects.title': 'Manajemen Proyek',
+};
+
+export const translations: Record<AppLocale, Dict> = { ar, en, id };
 
 export type TranslationKey = keyof typeof ar;
 
@@ -771,8 +845,8 @@ export function translate(
   key: TranslationKey | string,
   vars?: Record<string, string | number>
 ): string {
-  const table = translations[locale] || translations.ar;
-  let text = table[key] ?? translations.ar[key] ?? key;
+  const table = translations[locale] || translations.en;
+  let text = table[key] ?? translations.en[key] ?? translations.ar[key] ?? key;
   if (vars) {
     for (const [name, value] of Object.entries(vars)) {
       text = text.replaceAll(`{${name}}`, String(value));
@@ -879,6 +953,11 @@ const PROFILE_TITLE_MAP: Record<string, TranslationKey> = {
 };
 
 const ROLE_CODE_KEYS: Record<string, TranslationKey> = {
+  super_admin: 'common.fullAccess',
+  tenant_admin: 'common.fullAccess',
+  manager: 'common.employee',
+  employee: 'common.employee',
+  viewer: 'common.employee',
   admin: 'me.role.admin',
   engineer: 'me.role.engineer',
   sales: 'me.role.sales',
