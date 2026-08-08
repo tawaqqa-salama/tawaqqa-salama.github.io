@@ -301,8 +301,8 @@ export default function DesignCenterSection({
     setHint(
       result.ok
         ? ar
-          ? `تم توليد متطلبات ${kind} من بيانات المشروع وقاعدة المعرفة`
-          : `Generated ${kind} requirements from project + knowledge base`
+          ? `حُددت المراجع المنطبقة لـ ${kind} (Primary/SBC/Related/Conditional) — بدون دمج أكواد أنظمة أخرى`
+          : `Applicable standards resolved for ${kind} (Primary/SBC/Related/Conditional) — no cross-system dump`
         : apiFailMessage(result, ar)
     );
     setBusy(null);
@@ -873,6 +873,8 @@ export default function DesignCenterSection({
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             {FIRE_SYSTEM_DEFS.map((sys) => {
               const row = design.systems.find((s) => s.kind === sys.kind);
+              const std = row?.standards;
+              const review = std?.requirementsSummary;
               return (
                 <div key={sys.kind} className={`${card} p-4 space-y-3`}>
                   <div className="flex items-start justify-between gap-2">
@@ -884,22 +886,100 @@ export default function DesignCenterSection({
                       {row?.status || 'idle'}
                     </span>
                   </div>
+
+                  {std ? (
+                    <div className={`text-[11px] space-y-2 rounded-lg px-2.5 py-2 ${dark ? 'bg-slate-950/60 border border-slate-800' : 'bg-slate-50 border border-slate-100'}`}>
+                      <p className="font-bold">{ar ? 'المراجع المطبقة' : 'Applicable standards'}</p>
+                      <div>
+                        <p className="font-semibold text-sky-700 dark:text-sky-300">Primary</p>
+                        {std.primary.length ? (
+                          std.primary.map((r) => (
+                            <p key={`p-${sys.kind}-${r.code}`} className={muted}>
+                              {r.code} · {r.editionLabel}
+                            </p>
+                          ))
+                        ) : (
+                          <p className={muted}>{ar ? 'لا يوجد' : 'None'}</p>
+                        )}
+                      </div>
+                      <div>
+                        <p className="font-semibold text-emerald-700 dark:text-emerald-300">
+                          {ar ? 'الكود السعودي' : 'Saudi Code'}
+                        </p>
+                        {std.saudiCode.length ? (
+                          std.saudiCode.map((r) => (
+                            <p key={`s-${sys.kind}-${r.code}`} className={muted}>
+                              {r.code} · {r.editionLabel}
+                            </p>
+                          ))
+                        ) : (
+                          <p className={muted}>{ar ? 'لا يوجد' : 'None'}</p>
+                        )}
+                      </div>
+                      <div>
+                        <p className="font-semibold">{ar ? 'Related' : 'Related'}</p>
+                        {std.related.length ? (
+                          std.related.map((r) => (
+                            <p key={`r-${sys.kind}-${r.code}`} className={muted}>
+                              {r.code} · {r.editionLabel}
+                            </p>
+                          ))
+                        ) : (
+                          <p className={muted}>{ar ? 'لا يوجد' : 'None'}</p>
+                        )}
+                      </div>
+                      <div>
+                        <p className="font-semibold text-amber-700 dark:text-amber-300">Conditional</p>
+                        <p className={muted}>
+                          {std.conditional.length
+                            ? std.conditional.map((r) => r.code).join(', ')
+                            : ar
+                              ? 'لا يوجد'
+                              : 'None'}
+                          {std.conditional.length > 1
+                            ? ` (${std.conditional.length} ${ar ? 'مراجع' : 'standards'})`
+                            : ''}
+                        </p>
+                      </div>
+                      <div>
+                        <p className="font-semibold">{ar ? 'لماذا ينطبق؟' : 'Why applicable?'}</p>
+                        <p className={muted}>{ar ? std.whyApplicable_ar : std.whyApplicable_en}</p>
+                      </div>
+                      <div>
+                        <p className="font-semibold">{ar ? 'فحص المتطلبات' : 'Requirements check'}</p>
+                        <p className={muted}>
+                          {ar ? 'عدد المتطلبات' : 'Total'}: {review?.total ?? 0} ·{' '}
+                          {ar ? 'تم التحقق' : 'Verified'}: {review?.verified ?? 0} ·{' '}
+                          {ar ? 'الملاحظات' : 'Notes'}: {review?.notes ?? 0}
+                        </p>
+                        <p className="text-amber-700 dark:text-amber-300 font-medium">
+                          {review?.reviewStatus === 'needs_engineer_review'
+                            ? ar
+                              ? 'Needs Engineer Review'
+                              : 'Needs Engineer Review'
+                            : review?.reviewStatus === 'not_verified'
+                              ? 'Not Verified'
+                              : 'Partially verified'}
+                        </p>
+                      </div>
+                    </div>
+                  ) : null}
+
                   <button
                     type="button"
                     disabled={!!busy}
                     onClick={() => void onGenerateSystem(sys.kind)}
                     className="w-full rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-bold py-2.5 disabled:opacity-60"
                   >
-                    {ar ? 'توليد المتطلبات من المعرفة' : 'Generate from knowledge'}
+                    {std
+                      ? ar
+                        ? 'عرض المراجع والمتطلبات'
+                        : 'View standards & requirements'
+                      : ar
+                        ? 'تحديد المراجع المنطبقة'
+                        : 'Resolve applicable standards'}
                   </button>
                   {row?.error ? <p className="text-[11px] text-amber-600">{row.error}</p> : null}
-                  {row?.status === 'completed' && row.artifactRefs?.length ? (
-                    <ul className={`text-[11px] space-y-1 max-h-28 overflow-y-auto ${muted}`}>
-                      {row.artifactRefs.slice(0, 4).map((ref, i) => (
-                        <li key={`${sys.kind}-ref-${i}`}>• {ref}</li>
-                      ))}
-                    </ul>
-                  ) : null}
                 </div>
               );
             })}

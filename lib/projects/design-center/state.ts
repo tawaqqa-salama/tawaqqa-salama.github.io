@@ -56,6 +56,7 @@ export function emptySystems(): DesignSystemGeneration[] {
     error: null,
     error_code: null,
     artifactRefs: [],
+    standards: null,
   }));
 }
 

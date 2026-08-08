@@ -13,6 +13,13 @@ import {
   ragQuery,
 } from '@/lib/design-intelligence/knowledge-base';
 import { createEmptyAnalysisJob, emptyAnalysisSteps } from '@/lib/projects/design-center/state';
+import {
+  buildProjectDesignStandardsContext,
+  filterCitationsToApplicableCodes,
+  resolveApplicableStandards,
+  snapshotToArtifactRefs,
+  toSystemStandardsSnapshot,
+} from '@/lib/projects/design-center/standards';
 import type {
   DesignAnalysisJob,
   DesignAnalysisStep,
@@ -38,50 +45,16 @@ function num(v: string | number | null | undefined): number | null {
   return Number.isFinite(n) ? n : null;
 }
 
-const SYSTEM_KB: Record<
-  FireSystemKind,
-  { codes: string[]; query_ar: string; label_ar: string }
-> = {
-  fire_alarm: {
-    codes: ['NFPA-72', 'SBC-801'],
-    query_ar: 'اشتراطات نظام الإنذار والكشف الدفاع المدني NFPA-72',
-    label_ar: 'نظام الإنذار',
-  },
-  sprinkler: {
-    codes: ['NFPA-13', 'SBC-801'],
-    query_ar: 'اشتراطات المرشات الآلية NFPA-13 الدفاع المدني',
-    label_ar: 'المرشات',
-  },
-  hose_reel: {
-    codes: ['NFPA-14', 'SBC-801'],
-    query_ar: 'اشتراطات خراطيم الإطفاء NFPA-14',
-    label_ar: 'خراطيم الإطفاء',
-  },
-  fire_extinguisher: {
-    codes: ['NFPA-10', 'SBC-801'],
-    query_ar: 'اشتراطات طفايات الحريق الدفاع المدني',
-    label_ar: 'طفايات الحريق',
-  },
-  fm200: {
-    codes: ['NFPA-2001', 'SBC-801'],
-    query_ar: 'اشتراطات أنظمة الغاز النظيف FM200',
-    label_ar: 'FM-200',
-  },
-  co2: {
-    codes: ['NFPA-12', 'SBC-801'],
-    query_ar: 'اشتراطات نظام ثاني أكسيد الكربون للإطفاء',
-    label_ar: 'CO2',
-  },
-  kitchen_hood: {
-    codes: ['NFPA-96', 'SBC-801'],
-    query_ar: 'اشتراطات أنظمة إطفاء مطابخ الشفاطات',
-    label_ar: 'شفاط المطبخ',
-  },
-  clean_agent: {
-    codes: ['NFPA-2001', 'SBC-801'],
-    query_ar: 'اشتراطات أنظمة العوامل النظيفة للإطفاء',
-    label_ar: 'عامل نظيف',
-  },
+/** RAG query hints only — codes come from the Applicability Engine catalog */
+const SYSTEM_QUERY_AR: Record<FireSystemKind, string> = {
+  fire_alarm: 'اشتراطات نظام الإنذار والكشف الدفاع المدني NFPA-72',
+  sprinkler: 'اشتراطات المرشات الآلية NFPA-13 الدفاع المدني',
+  hose_reel: 'اشتراطات خراطيم الإطفاء NFPA-14',
+  fire_extinguisher: 'اشتراطات طفايات الحريق الدفاع المدني',
+  fm200: 'اشتراطات أنظمة الغاز النظيف FM200',
+  co2: 'اشتراطات نظام ثاني أكسيد الكربون للإطفاء',
+  kitchen_hood: 'اشتراطات أنظمة إطفاء مطابخ الشفاطات',
+  clean_agent: 'اشتراطات أنظمة العوامل النظيفة للإطفاء',
 };
 
 const CALC_KB: Record<
@@ -292,31 +265,43 @@ export async function runKnowledgeBackedSystemDesign(params: {
   kind: FireSystemKind;
   context?: KnowledgeEngineContext | null;
 }): Promise<DesignSystemGeneration> {
-  const meta = SYSTEM_KB[params.kind];
-  const citations: string[] = [];
-  if (params.context) {
-    const ctx = buildProjectKnowledgeContext(params.context.client, params.context.data);
-    const rag = await ragQuery(`${meta.query_ar} — ${ctx.query_ar}`, 5);
-    for (const c of rag.citations || []) {
-      citations.push(
-        `${c.documentTitle}${c.codeReference ? ` (${c.codeReference})` : ''}: ${c.paragraph.slice(0, 160)}`
-      );
-    }
-    citations.unshift(
-      `نطاق المشروع: ${ctx.projectName} · إشغال: ${ctx.occupancy || ctx.activityType || '—'} · أكواد: ${[...meta.codes, ...ctx.applicable_codes].join(', ')}`
-    );
-  } else {
-    citations.push(`أكواد مرجعية: ${meta.codes.join(', ')}`);
+  const queryAr = SYSTEM_QUERY_AR[params.kind];
+
+  if (!params.context?.client || !params.context?.data) {
+    return {
+      kind: params.kind,
+      status: 'failed',
+      generatedAt: new Date().toISOString(),
+      designId: null,
+      error: 'مطلوب سياق المشروع لتحديد المراجع المنطبقة — لا تُعرض أكواد ثابتة بدون سياق.',
+      error_code: 'PROJECT_CONTEXT_REQUIRED',
+      artifactRefs: [],
+      standards: null,
+    };
   }
+
+  const standardsCtx = buildProjectDesignStandardsContext(
+    params.context.client,
+    params.context.data
+  );
+  // Resolve for THIS system only — never merge other systems' primary codes
+  const resolved = resolveApplicableStandards(standardsCtx, params.kind);
+  const snapshot = toSystemStandardsSnapshot(params.kind, resolved);
+  const artifactRefs = snapshotToArtifactRefs(snapshot);
+
+  // RAG may explain requirements but cannot invent standards outside the snapshot
+  const rag = await ragQuery(queryAr, 5);
+  const kbLines = filterCitationsToApplicableCodes(rag.citations || [], snapshot);
 
   return {
     kind: params.kind,
     status: 'completed',
     generatedAt: new Date().toISOString(),
-    designId: `kb-${params.kind}-${Date.now().toString(36)}`,
+    designId: `std-${params.kind}-${Date.now().toString(36)}`,
     error: null,
     error_code: null,
-    artifactRefs: citations.slice(0, 8),
+    artifactRefs: [...artifactRefs, ...kbLines].slice(0, 12),
+    standards: snapshot,
   };
 }
 
