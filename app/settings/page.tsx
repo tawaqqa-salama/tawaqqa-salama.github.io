@@ -33,6 +33,12 @@ export default function SettingsPage() {
       enabled: canAccess('settings'),
     },
     {
+      title: 'التكاملات — واتساب',
+      desc: 'WhatsApp Business Cloud API: حالة الربط، Webhook، واختبار الاتصال (بدون عرض التوكن)',
+      href: '/settings/integrations/whatsapp',
+      enabled: canAccess('settings'),
+    },
+    {
       title: 'سجل النشاطات',
       desc: 'تتبع دخول الموظفين وتصفح الصفحات وعمليات الإنشاء والتعديل والطباعة والأرشفة',
       href: '/settings/activity',

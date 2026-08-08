@@ -1,3 +1,6 @@
+import { normalizeWhatsAppPhone } from '@/lib/whatsapp/phone';
+import { createWhatsAppProvider } from '@/lib/whatsapp/provider';
+
 export type WhatsAppNotifyPayload = {
   to: string;
   template?: string;
@@ -7,7 +10,7 @@ export type WhatsAppNotifyPayload = {
 
 export type WhatsAppNotifyResult = {
   ok: boolean;
-  provider: 'stub' | 'webhook';
+  provider: 'stub' | 'webhook' | 'meta';
   messageId?: string;
   error?: string;
   /** true when stub accepted the payload without external send */
@@ -15,25 +18,56 @@ export type WhatsAppNotifyResult = {
 };
 
 /**
- * إرسال إشعار واتساب عبر Webhook خارجي إن وُجدت متغيرات البيئة،
- * وإلا يُسجَّل كـ stub آمن دون إرسال خارجي.
+ * إرسال إشعار واتساب:
+ * 1) Cloud API (Meta) عند ضبط WHATSAPP_ACCESS_TOKEN + PHONE_NUMBER_ID
+ * 2) وإلا Webhook خارجي WHATSAPP_WEBHOOK_URL
+ * 3) وإلا stub آمن
  */
 export async function sendWhatsAppNotification(
   payload: WhatsAppNotifyPayload
 ): Promise<WhatsAppNotifyResult> {
-  const phone = payload.to.replace(/\s+/g, '');
-  if (!/^(\+966|966|05)\d{8,9}$/.test(phone)) {
+  const phone = normalizeWhatsAppPhone(payload.to);
+  if (!phone || !/^\+9665\d{8}$/.test(phone)) {
     return { ok: false, provider: 'stub', error: 'رقم جوال غير صالح' };
+  }
+
+  const cloud = createWhatsAppProvider();
+  if (cloud.id === 'meta') {
+    if (payload.template) {
+      const result = await cloud.sendTemplate({
+        to: phone,
+        templateName: payload.template,
+        language: 'ar',
+      });
+      return {
+        ok: result.ok,
+        provider: 'meta',
+        messageId: result.providerMessageId,
+        error: result.errorMessage,
+        stubbed: result.stubbed,
+      };
+    }
+    const result = await cloud.sendText({ to: phone, text: payload.message });
+    return {
+      ok: result.ok,
+      provider: 'meta',
+      messageId: result.providerMessageId,
+      error: result.errorMessage,
+      stubbed: result.stubbed,
+    };
   }
 
   const webhook = process.env.WHATSAPP_WEBHOOK_URL || process.env.NEXT_PUBLIC_WHATSAPP_WEBHOOK_URL;
   if (!webhook) {
+    const stub = await createWhatsAppProvider('stub').sendText({
+      to: phone,
+      text: payload.message,
+    });
     return {
       ok: true,
       provider: 'stub',
-      messageId: `stub-${Date.now()}`,
+      messageId: stub.providerMessageId || `stub-${Date.now()}`,
       stubbed: true,
-      error: undefined,
     };
   }
 

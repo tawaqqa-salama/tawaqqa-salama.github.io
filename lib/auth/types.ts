@@ -5,7 +5,13 @@ export type PermissionCode =
   | '*'
   | `dept.${DepartmentId}`
   | 'users.manage'
-  | 'me.page';
+  | 'me.page'
+  | 'whatsapp.view'
+  | 'whatsapp.send'
+  | 'whatsapp.manage'
+  | 'whatsapp.campaigns'
+  | 'whatsapp.settings'
+  | 'whatsapp.assign';
 
 export type AppRoleCode = 'admin' | 'engineer' | 'sales' | 'accountant' | 'staff';
 
