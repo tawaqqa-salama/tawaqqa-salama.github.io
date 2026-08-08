@@ -24,7 +24,7 @@ import {
   isAppLocale,
   localeDir,
   LOCALE_STORAGE_KEY,
-  SUPPORTED_LOCALES,
+  HEADER_LOCALES,
   type AppLocale,
 } from '@/lib/i18n/types';
 
@@ -87,8 +87,10 @@ export function LanguageProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const toggleLang = useCallback(() => {
-    const idx = SUPPORTED_LOCALES.indexOf(lang);
-    setLang(SUPPORTED_LOCALES[(idx + 1) % SUPPORTED_LOCALES.length]);
+    // Header toggle cycles Ar ↔ En only; Indonesian is set from company settings
+    const current = HEADER_LOCALES.includes(lang) ? lang : 'en';
+    const idx = HEADER_LOCALES.indexOf(current);
+    setLang(HEADER_LOCALES[(idx + 1) % HEADER_LOCALES.length]);
   }, [lang, setLang]);
 
   const value = useMemo<LanguageContextValue>(() => {

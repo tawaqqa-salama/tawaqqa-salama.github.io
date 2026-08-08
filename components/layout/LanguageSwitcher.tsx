@@ -1,14 +1,32 @@
 'use client';
 
 import { useLanguage } from '@/lib/i18n/LanguageProvider';
-import { SUPPORTED_LOCALES, localeLabel, type AppLocale } from '@/lib/i18n/types';
+import {
+  HEADER_LOCALES,
+  SUPPORTED_LOCALES,
+  localeLabel,
+  localeShortCode,
+  type AppLocale,
+} from '@/lib/i18n/types';
 
 type LanguageSwitcherProps = {
   className?: string;
+  /**
+   * `header` (default): Ar | En only — used on home/header.
+   * `full`: Ar | En | Id — company settings / tenant regional options.
+   */
+  variant?: 'header' | 'full';
+  /** Optional explicit locale list (overrides variant). */
+  locales?: AppLocale[];
 };
 
-export default function LanguageSwitcher({ className = '' }: LanguageSwitcherProps) {
+export default function LanguageSwitcher({
+  className = '',
+  variant = 'header',
+  locales,
+}: LanguageSwitcherProps) {
   const { lang, setLang, t } = useLanguage();
+  const options = locales ?? (variant === 'full' ? SUPPORTED_LOCALES : HEADER_LOCALES);
 
   const select = (next: AppLocale) => {
     if (next !== lang) setLang(next);
@@ -20,7 +38,7 @@ export default function LanguageSwitcher({ className = '' }: LanguageSwitcherPro
       role="group"
       aria-label={t('common.language')}
     >
-      {SUPPORTED_LOCALES.map((locale, index) => (
+      {options.map((locale, index) => (
         <span key={locale} className="inline-flex items-center">
           {index > 0 ? (
             <span className="lang-switcher__sep" aria-hidden="true">
@@ -34,7 +52,7 @@ export default function LanguageSwitcher({ className = '' }: LanguageSwitcherPro
             aria-pressed={lang === locale}
             title={localeLabel(locale)}
           >
-            {locale === 'ar' ? 'Ar' : locale === 'id' ? 'Id' : 'En'}
+            {localeShortCode(locale)}
           </button>
         </span>
       ))}
