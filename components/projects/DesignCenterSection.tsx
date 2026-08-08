@@ -335,8 +335,8 @@ export default function DesignCenterSection({
     setHint(
       result.ok
         ? ar
-          ? 'تم تجهيز مدخلات الحساب من بيانات المشروع والمراجع المعرفية'
-          : 'Calculation inputs prepared from project data + knowledge refs'
+          ? `مراجع ${kind} حسب النظام المرتبط فقط (${calculation?.standards?.system || '—'}) — ليست قائمة موحّدة`
+          : `${kind} standards for linked system only (${calculation?.standards?.system || '—'}) — not a shared dump`
         : apiFailMessage(result, ar)
     );
     setBusy(null);
@@ -990,10 +990,18 @@ export default function DesignCenterSection({
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             {ENGINEERING_CALC_DEFS.map((calc) => {
               const row = design.calculations.find((c) => c.kind === calc.kind);
+              const std = row?.standards;
               return (
                 <div key={calc.kind} className={`${card} p-4 space-y-3`}>
                   <div className="flex justify-between gap-2">
-                    <h3 className="text-sm font-bold">{ar ? calc.label_ar : calc.label_en}</h3>
+                    <div>
+                      <h3 className="text-sm font-bold">{ar ? calc.label_ar : calc.label_en}</h3>
+                      {std ? (
+                        <p className={`text-[10px] mt-0.5 ${muted}`}>
+                          {ar ? 'نظام مرتبط' : 'Linked system'}: {std.system}
+                        </p>
+                      ) : null}
+                    </div>
                     <span className={`text-[10px] px-2 py-1 rounded-full ${statusTone(row?.status, dark)}`}>
                       {row?.status || 'idle'}
                     </span>
@@ -1002,23 +1010,54 @@ export default function DesignCenterSection({
                     type="button"
                     disabled={!!busy}
                     onClick={() => void onCalc(calc.kind)}
-                    className={`w-full rounded-lg border text-xs font-semibold py-2 ${
-                      dark ? 'border-slate-600 hover:bg-slate-800' : 'border-slate-300 hover:bg-slate-50'
-                    }`}
+                    className="w-full rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-bold py-2.5 disabled:opacity-60"
                   >
-                    {ar ? 'تشغيل الحساب' : 'Run calculation'}
+                    {ar ? 'تحليل مراجع الحساب' : 'Resolve calc standards'}
                   </button>
-                  {row?.values ? (
-                    <pre className={`text-[10px] overflow-auto p-2 rounded ${dark ? 'bg-slate-950' : 'bg-slate-50'}`}>
-                      {JSON.stringify(row.values, null, 2)}
-                    </pre>
+                  {std ? (
+                    <div
+                      className={`text-[11px] space-y-1.5 rounded-lg px-2.5 py-2 ${
+                        dark ? 'bg-slate-950/60 border border-slate-800' : 'bg-slate-50 border border-slate-100'
+                      }`}
+                    >
+                      <p>
+                        <span className="font-semibold text-sky-700 dark:text-sky-300">Primary: </span>
+                        {std.primary.map((r) => r.code).join(', ') || '—'}
+                      </p>
+                      <p>
+                        <span className="font-semibold text-emerald-700 dark:text-emerald-300">
+                          {ar ? 'كود سعودي' : 'Saudi'}:{' '}
+                        </span>
+                        {std.saudiCode.map((r) => r.code).join(', ') || '—'}
+                      </p>
+                      <p>
+                        <span className="font-semibold">Related: </span>
+                        {std.related.map((r) => r.code).join(', ') || '—'}
+                      </p>
+                      <p>
+                        <span className="font-semibold text-amber-700 dark:text-amber-300">
+                          Conditional:{' '}
+                        </span>
+                        {std.conditional.map((r) => r.code).join(', ') || '—'}
+                      </p>
+                      <p className={`text-[10px] ${muted}`}>
+                        {ar ? std.whyApplicable_ar : std.whyApplicable_en}
+                      </p>
+                      <p className="text-amber-700 dark:text-amber-300 font-medium">
+                        {std.requirementsSummary.reviewStatus === 'needs_engineer_review'
+                          ? 'Needs Engineer Review'
+                          : std.requirementsSummary.reviewStatus === 'not_verified'
+                            ? 'Not Verified'
+                            : 'Partially verified'}
+                      </p>
+                    </div>
                   ) : row?.error ? (
                     <p className="text-[11px] text-amber-600">{row.error}</p>
                   ) : (
                     <p className={`text-[11px] ${muted}`}>
                       {ar
-                        ? 'النتائج تُملأ تلقائياً عند ربط محرك الحسابات.'
-                        : 'Results populate automatically once the calc engine is connected.'}
+                        ? 'اضغط لتحليل المراجع المنطبقة على هذا الحساب فقط — بدون قائمة أكواد موحّدة لكل البطاقات.'
+                        : 'Resolve standards that apply to this calculation only — not one shared code list.'}
                     </p>
                   )}
                 </div>
