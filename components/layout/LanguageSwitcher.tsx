@@ -1,7 +1,7 @@
 'use client';
 
 import { useLanguage } from '@/lib/i18n/LanguageProvider';
-import type { AppLocale } from '@/lib/i18n/types';
+import { SUPPORTED_LOCALES, localeLabel, type AppLocale } from '@/lib/i18n/types';
 
 type LanguageSwitcherProps = {
   className?: string;
@@ -20,27 +20,24 @@ export default function LanguageSwitcher({ className = '' }: LanguageSwitcherPro
       role="group"
       aria-label={t('common.language')}
     >
-      <button
-        type="button"
-        onClick={() => select('ar')}
-        className={`lang-switcher__btn ${lang === 'ar' ? 'is-active' : ''}`}
-        aria-pressed={lang === 'ar'}
-        title={t('common.arabic')}
-      >
-        Ar
-      </button>
-      <span className="lang-switcher__sep" aria-hidden="true">
-        |
-      </span>
-      <button
-        type="button"
-        onClick={() => select('en')}
-        className={`lang-switcher__btn ${lang === 'en' ? 'is-active' : ''}`}
-        aria-pressed={lang === 'en'}
-        title={t('common.english')}
-      >
-        En
-      </button>
+      {SUPPORTED_LOCALES.map((locale, index) => (
+        <span key={locale} className="inline-flex items-center">
+          {index > 0 ? (
+            <span className="lang-switcher__sep" aria-hidden="true">
+              |
+            </span>
+          ) : null}
+          <button
+            type="button"
+            onClick={() => select(locale)}
+            className={`lang-switcher__btn ${lang === locale ? 'is-active' : ''}`}
+            aria-pressed={lang === locale}
+            title={localeLabel(locale)}
+          >
+            {locale === 'ar' ? 'Ar' : locale === 'id' ? 'Id' : 'En'}
+          </button>
+        </span>
+      ))}
     </div>
   );
 }

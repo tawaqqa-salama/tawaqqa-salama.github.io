@@ -1,6 +1,17 @@
+import { loadSession } from '@/lib/auth/session';
 import { supabase, isDemoMode } from '@/lib/supabase';
 import { DEFAULT_ZATCA_SETTINGS, ZATCA_LOCAL_SETTINGS_KEY } from '@/lib/zatca/constants';
 import type { ZatcaSettings } from '@/lib/zatca/types';
+
+async function resolveZatcaCompanyRow(): Promise<Record<string, unknown> | null> {
+  const companyId = loadSession()?.companyId;
+  if (companyId) {
+    const { data } = await supabase.from('companies').select('*').eq('id', companyId).maybeSingle();
+    if (data) return data as Record<string, unknown>;
+  }
+  const { data } = await supabase.from('companies').select('*').eq('code', 'TWAQQA').maybeSingle();
+  return (data as Record<string, unknown>) || null;
+}
 
 export function loadLocalZatcaSettings(): ZatcaSettings {
   if (typeof window === 'undefined') return { ...DEFAULT_ZATCA_SETTINGS };
@@ -27,9 +38,8 @@ export async function loadZatcaSettings(): Promise<ZatcaSettings> {
   const local = loadLocalZatcaSettings();
   if (isDemoMode) return local;
 
-  const { data } = await supabase.from('companies').select('*').eq('code', 'TWAQQA').maybeSingle();
-  if (!data) return local;
-  const row = data as Record<string, unknown>;
+  const row = await resolveZatcaCompanyRow();
+  if (!row) return local;
 
   return {
     ...local,
@@ -54,8 +64,8 @@ export async function saveZatcaSettings(
   saveLocalZatcaSettings(settings);
   if (isDemoMode) return { error: null };
 
-  const { data: existing } = await supabase.from('companies').select('id').eq('code', 'TWAQQA').maybeSingle();
-  if (!existing?.id) {
+  const row = await resolveZatcaCompanyRow();
+  if (!row?.id) {
     return {
       error: null,
       warning: 'حُفظت إعدادات ZATCA محلياً. لم يُعثر على سجل الشركة في قاعدة البيانات.',
@@ -78,7 +88,7 @@ export async function saveZatcaSettings(
     updated_at: new Date().toISOString(),
   };
 
-  const { error } = await supabase.from('companies').update(payload).eq('id', existing.id);
+  const { error } = await supabase.from('companies').update(payload).eq('id', String(row.id));
   if (error) {
     return {
       error: null,

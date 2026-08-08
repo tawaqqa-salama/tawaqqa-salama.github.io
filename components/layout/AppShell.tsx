@@ -12,12 +12,14 @@ import { onDocumentPreviewMountRequest } from '@/lib/print/document-preview';
 import { useAuth } from '@/lib/auth/AuthProvider';
 import { useLanguage } from '@/lib/i18n/LanguageProvider';
 import type { DepartmentId } from '@/lib/constants/navigation';
+import { DEPARTMENT_TO_MODULE } from '@/lib/tenant/types';
+import { isSuperAdminRole } from '@/lib/tenant/rbac';
 
 const DocumentPreviewSheet = dynamic(() => import('@/components/ui/DocumentPreviewSheet'), {
   ssr: false,
 });
 
-const PUBLIC_PATHS = ['/login'];
+const PUBLIC_PATHS = ['/login', '/onboarding', '/platform'];
 
 const ROUTE_DEPARTMENT: Record<string, DepartmentId> = {
   '/marketing': 'marketing',
@@ -45,10 +47,22 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
   const { session, loading, canAccess, canManageStaff } = useAuth();
   const { t } = useLanguage();
   const [previewMounted, setPreviewMounted] = useState(false);
+  const [enabledModules, setEnabledModules] = useState<string[] | null>(null);
 
   const isPublic = PUBLIC_PATHS.some((path) => pathname === path || pathname.startsWith(`${path}/`));
 
   useEffect(() => onDocumentPreviewMountRequest(() => setPreviewMounted(true)), []);
+
+  useEffect(() => {
+    if (!session || isPublic) return;
+    void fetch('/api/tenant/context')
+      .then((r) => r.json())
+      .then((j) => {
+        if (j.ok && Array.isArray(j.modules)) setEnabledModules(j.modules);
+        else setEnabledModules([]);
+      })
+      .catch(() => setEnabledModules([]));
+  }, [session, isPublic]);
 
   useEffect(() => {
     if (loading) return;
@@ -61,6 +75,11 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
       return;
     }
     if (!session) return;
+
+    if (pathname.startsWith('/platform') && !isSuperAdminRole(session.roleCode)) {
+      router.replace('/me');
+      return;
+    }
 
     const department = resolveDepartment(pathname);
     if (department && !canAccess(department)) {
@@ -78,8 +97,22 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
       if (department !== 'settings') {
         router.replace('/me');
       }
+      return;
     }
-  }, [loading, session, isPublic, pathname, router, canAccess, canManageStaff]);
+
+    // Module feature flags (UI gate — APIs also enforce via requireModule)
+    if (
+      department &&
+      enabledModules &&
+      enabledModules.length > 0 &&
+      !isSuperAdminRole(session.roleCode)
+    ) {
+      const mod = DEPARTMENT_TO_MODULE[department];
+      if (mod && !enabledModules.includes(mod)) {
+        router.replace('/me');
+      }
+    }
+  }, [loading, session, isPublic, pathname, router, canAccess, canManageStaff, enabledModules]);
 
   if (loading) {
     return (

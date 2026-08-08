@@ -1,3 +1,4 @@
+import { loadSession } from '@/lib/auth/session';
 import { PLATFORM_NAME, PLATFORM_SHORT_NAME } from '@/lib/constants/branding';
 import { supabase, isDemoMode } from '@/lib/supabase';
 
@@ -57,12 +58,22 @@ export const DEFAULT_COMPANY_PROFILE: CompanyProfile = {
   quotation_validity_days: 14,
 };
 
-const LOCAL_KEY = 'tawaqqa_company_profile_v1';
+const LOCAL_KEY_PREFIX = 'tawaqqa_company_profile_v1';
 
-export function loadLocalCompanyProfile(): CompanyProfile {
+function localKeyForTenant(companyId?: string | null): string {
+  return companyId ? `${LOCAL_KEY_PREFIX}:${companyId}` : LOCAL_KEY_PREFIX;
+}
+
+function resolveProfileCompanyId(explicit?: string | null): string | null {
+  if (explicit) return explicit;
+  return loadSession()?.companyId || null;
+}
+
+export function loadLocalCompanyProfile(companyId?: string | null): CompanyProfile {
   if (typeof window === 'undefined') return DEFAULT_COMPANY_PROFILE;
   try {
-    const raw = localStorage.getItem(LOCAL_KEY);
+    const key = localKeyForTenant(resolveProfileCompanyId(companyId));
+    const raw = localStorage.getItem(key) || localStorage.getItem(LOCAL_KEY_PREFIX);
     if (!raw) return DEFAULT_COMPANY_PROFILE;
     return { ...DEFAULT_COMPANY_PROFILE, ...JSON.parse(raw) };
   } catch {
@@ -70,9 +81,9 @@ export function loadLocalCompanyProfile(): CompanyProfile {
   }
 }
 
-export function saveLocalCompanyProfile(profile: CompanyProfile) {
+export function saveLocalCompanyProfile(profile: CompanyProfile, companyId?: string | null) {
   if (typeof window === 'undefined') return;
-  localStorage.setItem(LOCAL_KEY, JSON.stringify(profile));
+  localStorage.setItem(localKeyForTenant(resolveProfileCompanyId(companyId)), JSON.stringify(profile));
 }
 
 function extractMissingColumn(message: string): string | null {
@@ -90,7 +101,8 @@ function extractMissingColumn(message: string): string | null {
 
 async function upsertCompanyPayload(
   payload: Record<string, unknown>,
-  existingId?: string
+  existingId?: string,
+  insertCode = 'TWAQQA'
 ): Promise<{ error: string | null; skippedColumns: string[] }> {
   const current: Record<string, unknown> = { ...payload };
   const skippedColumns: string[] = [];
@@ -99,7 +111,7 @@ async function upsertCompanyPayload(
     const result = existingId
       ? await supabase.from('companies').update(current).eq('id', existingId)
       : await supabase.from('companies').insert({
-          code: 'TWAQQA',
+          code: insertCode,
           ...current,
           is_active: true,
           created_at: new Date().toISOString(),
@@ -139,15 +151,25 @@ function pickTextAny(
   return fallback;
 }
 
-/** يحمّل من جدول companies إن وجد، مع دمج التخزين المحلي للشعار والحقول الإضافية */
-export async function loadCompanyProfile(): Promise<CompanyProfile> {
-  const local = loadLocalCompanyProfile();
+/** يحمّل من جدول companies للشركة الحالية (session)، مع دمج التخزين المحلي */
+export async function loadCompanyProfile(companyId?: string | null): Promise<CompanyProfile> {
+  const tenantId = resolveProfileCompanyId(companyId);
+  const local = loadLocalCompanyProfile(tenantId);
   if (isDemoMode) return local;
 
-  const { data } = await supabase.from('companies').select('*').eq('code', 'TWAQQA').maybeSingle();
+  let data: Record<string, unknown> | null = null;
+  if (tenantId) {
+    const byId = await supabase.from('companies').select('*').eq('id', tenantId).maybeSingle();
+    data = (byId.data as Record<string, unknown>) || null;
+  }
+  if (!data) {
+    // Legacy fallback for pre-session installs (single-tenant TWAQQA)
+    const byCode = await supabase.from('companies').select('*').eq('code', 'TWAQQA').maybeSingle();
+    data = (byCode.data as Record<string, unknown>) || null;
+  }
   if (!data) return local;
 
-  const row = data as Record<string, unknown>;
+  const row = data;
   return {
     ...local,
     name: pickText(row, 'name', local.name),
@@ -191,12 +213,22 @@ export async function loadCompanyProfile(): Promise<CompanyProfile> {
 }
 
 export async function saveCompanyProfile(
-  profile: CompanyProfile
+  profile: CompanyProfile,
+  companyId?: string | null
 ): Promise<{ error: string | null; warning?: string | null }> {
-  saveLocalCompanyProfile(profile);
+  const tenantId = resolveProfileCompanyId(companyId);
+  saveLocalCompanyProfile(profile, tenantId);
   if (isDemoMode) return { error: null };
 
-  const { data: existing } = await supabase.from('companies').select('id').eq('code', 'TWAQQA').maybeSingle();
+  let existingId: string | undefined;
+  if (tenantId) {
+    const { data: byId } = await supabase.from('companies').select('id').eq('id', tenantId).maybeSingle();
+    existingId = byId?.id as string | undefined;
+  }
+  if (!existingId) {
+    const { data: byCode } = await supabase.from('companies').select('id').eq('code', 'TWAQQA').maybeSingle();
+    existingId = byCode?.id as string | undefined;
+  }
   const payload: Record<string, unknown> = {
     name: profile.name,
     legal_name: profile.legal_name,
@@ -224,7 +256,7 @@ export async function saveCompanyProfile(
     updated_at: new Date().toISOString(),
   };
 
-  const result = await upsertCompanyPayload(payload, existing?.id);
+  const result = await upsertCompanyPayload(payload, existingId);
   if (result.error) {
     return {
       error: null,

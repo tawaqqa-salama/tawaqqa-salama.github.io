@@ -8,8 +8,10 @@ import { getVisibleSidebarNav } from '@/lib/constants/navigation';
 import { useAuth } from '@/lib/auth/AuthProvider';
 import AppSwitcher from '@/components/layout/AppSwitcher';
 import LanguageSwitcher from '@/components/layout/LanguageSwitcher';
+import TenantSwitcher from '@/components/tenant/TenantSwitcher';
 import { useModuleSubNav } from '@/components/layout/ModuleSubNavContext';
 import { useLanguage } from '@/lib/i18n/LanguageProvider';
+import { isSuperAdminRole } from '@/lib/tenant/rbac';
 
 const LAUNCHER_HREF = '/me';
 
@@ -235,6 +237,15 @@ export default function AppHeader() {
         </div>
 
         <div className="flex items-center gap-2 sm:gap-3 text-sm text-gray-600 shrink-0">
+          <TenantSwitcher />
+          {session && isSuperAdminRole(session.roleCode) ? (
+            <Link
+              href="/platform"
+              className="hidden md:inline text-xs font-semibold px-2 py-1 rounded-lg border border-slate-200 hover:bg-slate-50"
+            >
+              {t('platform.title')}
+            </Link>
+          ) : null}
           <LanguageSwitcher />
           <span className="flex items-center gap-2 bg-[var(--erp-page)] border border-[var(--erp-border)] rounded-full px-2 sm:px-3 py-1.5 min-h-[44px]">
             <span className="h-7 w-7 rounded-full bg-[var(--erp-primary)] text-white flex items-center justify-center text-xs">

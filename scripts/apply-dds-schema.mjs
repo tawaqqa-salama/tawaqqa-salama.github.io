@@ -42,6 +42,7 @@ const files = [
   '030_quotation_documents.sql',
   '031_whatsapp_crm.sql',
   '032_social_website_crm.sql',
+  '033_multi_tenant_saas.sql',
 ];
 
 if (!process.env.DATABASE_URL) {

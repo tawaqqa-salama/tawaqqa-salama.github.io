@@ -3,33 +3,60 @@ import { resolveUserPermissions } from '@/lib/auth/permissions';
 import { clearSession, loadSession, saveSession } from '@/lib/auth/session';
 import { isDemoMode, supabase } from '@/lib/supabase';
 
-/** معرفات الوضع التجريبي فقط — في Supabase الحقيقي تُجلب من جدول companies */
+/** Demo / bootstrap defaults — production uses the actor's session company */
 const DEMO_COMPANY_ID = 'co-tawaqqa';
 const DEMO_BRANCH_ID = 'br-hq';
-const COMPANY_CODE = 'TWAQQA';
+const BOOTSTRAP_COMPANY_CODE = process.env.DEFAULT_TENANT_CODE || 'TWAQQA';
 
 type AuthResult = { session: AuthSession | null; error: string | null; demoOtp?: string };
 
-async function resolveTenantIds(): Promise<{
+/** Saudi mobile (05xxxxxxxx) or international E.164-ish (+... / 00...) */
+function isValidPhone(phone: string): boolean {
+  if (/^05\d{8}$/.test(phone)) return true;
+  if (/^\+?[1-9]\d{7,14}$/.test(phone.replace(/[\s-]/g, ''))) return true;
+  return false;
+}
+
+async function resolveTenantIds(preferredCompanyId?: string | null): Promise<{
   companyId: string;
   branchId: string | null;
   error: string | null;
 }> {
   if (isDemoMode) {
-    return { companyId: DEMO_COMPANY_ID, branchId: DEMO_BRANCH_ID, error: null };
+    return {
+      companyId: preferredCompanyId || loadSession()?.companyId || DEMO_COMPANY_ID,
+      branchId: DEMO_BRANCH_ID,
+      error: null,
+    };
   }
 
+  const sessionCompanyId = preferredCompanyId || loadSession()?.companyId || null;
+  if (sessionCompanyId) {
+    const { data: branch } = await supabase
+      .from('branches')
+      .select('id')
+      .eq('company_id', sessionCompanyId)
+      .eq('code', 'HQ')
+      .maybeSingle();
+    return {
+      companyId: sessionCompanyId,
+      branchId: (branch?.id as string) || null,
+      error: null,
+    };
+  }
+
+  // Bootstrap fallback for first install / migration only
   const { data: company, error: companyError } = await supabase
     .from('companies')
     .select('id')
-    .eq('code', COMPANY_CODE)
+    .eq('code', BOOTSTRAP_COMPANY_CODE)
     .maybeSingle();
 
   if (companyError || !company?.id) {
     return {
       companyId: '',
       branchId: null,
-      error: 'تعذر العثور على الشركة في قاعدة البيانات. تأكد من وجود شركة برمز TWAQQA.',
+      error: 'Unable to resolve company. Sign in with a tenant membership or set DEFAULT_TENANT_CODE.',
     };
   }
 
@@ -44,14 +71,18 @@ async function resolveTenantIds(): Promise<{
 }
 
 function toSession(user: AppUser, permissions: PermissionCode[], method: 'email' | 'phone'): AuthSession {
+  const isPlatformAdmin =
+    user.role_code === 'super_admin' || Boolean((user as { is_platform_admin?: boolean }).is_platform_admin);
   return {
     userId: user.id,
     email: user.email,
     fullName: user.full_name,
     username: user.username,
     roleCode: user.role_code,
-    permissions,
+    permissions: isPlatformAdmin ? (['*', ...permissions] as PermissionCode[]) : permissions,
     phone: user.phone,
+    companyId: user.company_id,
+    isPlatformAdmin,
     loggedInAt: new Date().toISOString(),
     method,
   };
@@ -331,13 +362,19 @@ export async function signOutAuth(): Promise<void> {
   }
 }
 
-export async function listUsers(): Promise<AppUser[]> {
-  const { data } = await supabase.from('users').select('*').order('created_at', { ascending: true });
+export async function listUsers(companyId?: string | null): Promise<AppUser[]> {
+  const tenantId = companyId || loadSession()?.companyId || null;
+  let query = supabase.from('users').select('*').order('created_at', { ascending: true });
+  if (tenantId) query = query.eq('company_id', tenantId);
+  const { data } = await query;
   return (data as AppUser[]) || [];
 }
 
-export async function listRoles(): Promise<AppRole[]> {
-  const { data } = await supabase.from('roles').select('*').order('code', { ascending: true });
+export async function listRoles(companyId?: string | null): Promise<AppRole[]> {
+  const tenantId = companyId || loadSession()?.companyId || null;
+  let query = supabase.from('roles').select('*').order('code', { ascending: true });
+  if (tenantId) query = query.eq('company_id', tenantId);
+  const { data } = await query;
   return (data as AppRole[]) || [];
 }
 
@@ -346,6 +383,7 @@ export async function getUserProfile(userId: string): Promise<AppUser | null> {
 }
 
 export async function upsertEmployee(input: {
+  company_id?: string | null;
   id?: string;
   full_name: string;
   email: string;
@@ -379,11 +417,14 @@ export async function upsertEmployee(input: {
   if (!isUpdate && !phone) {
     return { user: null, error: 'أكمل رقم الجوال' };
   }
-  if (phone && !/^05\d{8}$/.test(phone)) {
-    return { user: null, error: 'رقم الجوال يجب أن يكون 05xxxxxxxx' };
+  if (phone && !isValidPhone(phone)) {
+    return {
+      user: null,
+      error: 'رقم الجوال غير صالح — استخدم 05xxxxxxxx أو صيغة دولية مثل +62812…',
+    };
   }
 
-  const tenant = await resolveTenantIds();
+  const tenant = await resolveTenantIds(input.company_id || loadSession()?.companyId);
   if (tenant.error || !tenant.companyId) {
     return { user: null, error: tenant.error || 'تعذر تحديد الشركة' };
   }
@@ -434,6 +475,14 @@ export async function upsertEmployee(input: {
     return { user: null, error: 'كلمة المرور يجب ألا تقل عن 6 أحرف' };
   }
 
+  try {
+    const { canCreateUser } = await import('@/lib/tenant/limits');
+    const limit = await canCreateUser(tenant.companyId);
+    if (!limit.ok) return { user: null, error: limit.reason || 'User limit reached' };
+  } catch {
+    // limits module optional during early boot
+  }
+
   let authUserId: string | null = null;
   if (!isDemoMode) {
     const { data: currentAuth } = await supabase.auth.getSession();
@@ -474,6 +523,17 @@ export async function upsertEmployee(input: {
       phone,
       password: input.password,
     });
+  }
+  try {
+    const { ensureMembership } = await import('@/lib/tenant/service');
+    await ensureMembership({
+      userId: user.id,
+      companyId: tenant.companyId,
+      roleCode: String(payload.role_code || 'staff'),
+      isDefault: true,
+    });
+  } catch {
+    // membership table may be absent until 033 is applied
   }
   return { user, error: null };
 }

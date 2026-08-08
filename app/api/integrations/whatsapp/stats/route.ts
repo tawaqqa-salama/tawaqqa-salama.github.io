@@ -3,11 +3,16 @@ import { isWhatsAppCrmMemoryMode } from '@/lib/whatsapp/crm-bridge';
 import { isSupabaseConfigured, supabase } from '@/lib/supabase';
 import { memoryStore } from '@/lib/whatsapp/store/memory';
 import { waRepository } from '@/lib/whatsapp/store/repository';
+import { withTenantApi } from '@/lib/tenant/api-guard';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
 
 export async function GET(request: Request) {
+  const gated = await withTenantApi(request, { module: 'whatsapp' });
+  if ('response' in gated) return gated.response;
+  const { tenantId } = gated.ctx;
+
   const url = new URL(request.url);
   const range = (url.searchParams.get('range') || '30d') as 'today' | '7d' | '30d' | 'custom';
 
@@ -22,6 +27,7 @@ export async function GET(request: Request) {
     supabase
       .from('clients')
       .select('id, pipeline_stage, lead_status, quotation_number, created_at, lead_source, source_channel')
+      .eq('company_id', tenantId)
       .or('lead_source.eq.WhatsApp,source_channel.eq.whatsapp')
       .gte('created_at', since),
     waRepository.listConversations(),

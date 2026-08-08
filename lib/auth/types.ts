@@ -23,9 +23,45 @@ export type PermissionCode =
   | 'website.manage'
   | 'website.publish'
   | 'website.forms'
-  | 'website.settings';
+  | 'website.settings'
+  | 'platform.tenants'
+  | 'platform.subscriptions'
+  | 'platform.modules'
+  | 'platform.audit'
+  | 'platform.impersonate'
+  | 'projects.view'
+  | 'projects.create'
+  | 'projects.edit'
+  | 'projects.delete'
+  | 'clients.view'
+  | 'clients.create'
+  | 'clients.edit'
+  | 'clients.delete'
+  | 'crm.view'
+  | 'crm.manage'
+  | 'marketing.view'
+  | 'marketing.manage'
+  | 'documents.view'
+  | 'documents.upload'
+  | 'documents.delete'
+  | 'reports.view'
+  | 'reports.create'
+  | 'reports.export'
+  | 'users.view'
+  | 'settings.view'
+  | 'settings.manage';
 
-export type AppRoleCode = 'admin' | 'engineer' | 'sales' | 'accountant' | 'staff';
+export type AppRoleCode =
+  | 'super_admin'
+  | 'tenant_admin'
+  | 'admin'
+  | 'manager'
+  | 'engineer'
+  | 'sales'
+  | 'accountant'
+  | 'employee'
+  | 'staff'
+  | 'viewer';
 
 export type AppUser = {
   id: string;
@@ -75,6 +111,9 @@ export type AuthSession = {
   roleCode: string;
   permissions: PermissionCode[];
   phone?: string | null;
+  /** Active tenant (companies.id) — required for tenant-scoped work */
+  companyId?: string | null;
+  isPlatformAdmin?: boolean;
   loggedInAt: string;
   method: 'email' | 'phone';
 };
