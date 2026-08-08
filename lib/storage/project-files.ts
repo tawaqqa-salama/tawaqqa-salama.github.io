@@ -14,25 +14,47 @@ export const INLINE_PREVIEW_MAX_BYTES = 1_500_000;
 /** Prefer Storage for anything above this; avoid embedding large PDFs in JSONB */
 export const FORCE_STORAGE_MIN_BYTES = 350_000;
 
-/** User-facing Arabic explanation when Supabase Storage bucket is missing/misconfigured */
+/** User-facing Arabic explanation when Storage upload fails (bucket may already exist). */
 export function formatProjectFilesStorageError(fileName: string, storageMsg: string): string {
   const detail = String(storageMsg || '').trim();
-  const bucketMissing =
-    /bucket|not found|does not exist|404|row-level security|policy|permission|unauthorized|JWT/i.test(
-      detail
-    );
+  const lower = detail.toLowerCase();
+  const mimeIssue = /mime|content.type|not supported|invalid.*type/i.test(detail);
+  const rlsIssue = /row-level security|rls|policy|permission|unauthorized|jwt|403|401/i.test(
+    lower
+  );
+  const missingBucket = /bucket not found|no such bucket|does not exist/i.test(lower);
+
+  const cause = missingBucket
+    ? 'السبب: مجلد project-files غير موجود في هذا المشروع.'
+    : rlsIssue
+      ? 'السبب الأرجح: صلاحيات الرفع (Policies) تمنع المستخدم الحالي رغم وجود المجلد.'
+      : mimeIssue
+        ? 'السبب الأرجح: نوع الملف غير مسموح في إعدادات الـ bucket (MIME types).'
+        : detail
+          ? `تفاصيل الخطأ من Supabase: ${detail}`
+          : 'السبب غير واضح من رسالة التخزين.';
+
   return [
-    `تعذر حفظ الملف «${fileName}» في السحابة — لذلك لم يُسجَّل كمخطط في المشروع.`,
-    bucketMissing
-      ? 'السبب غالباً: مجلد التخزين project-files غير مُنشأ أو صلاحياته غير مضبوطة في Supabase.'
-      : detail
-        ? `تفاصيل تقنية: ${detail}`
-        : null,
-    'الحل: من لوحة Supabase → Storage أنشئ bucket باسم project-files (خاص/private)، أو نفّذ سكربت إعداد التخزين رقم 028 من مجلد scripts/sql، ثم أعد رفع الملف.',
-    'ملاحظة: ظهور اسم الملف داخل خانة الاختيار لا يعني أنه حُفظ — يظهر في «إدارة إصدارات المخططات» فقط بعد نجاح الرفع.',
-  ]
-    .filter(Boolean)
-    .join(' ');
+    `تعذر حفظ الملف «${fileName}» في السحابة — لذلك لم يُسجَّل في «إدارة إصدارات المخططات».`,
+    cause,
+    missingBucket
+      ? 'الحل: أنشئ bucket باسم project-files أو نفّذ سكربت إعداد التخزين 028.'
+      : 'الحل: من Storage → project-files → Policies تأكد أن INSERT مسموح لـ anon و authenticated، ومن Settings اسمح بـ application/pdf و application/octet-stream (أو اترك قائمة الأنواع فارغة للسماح للكل)، ثم أعد الرفع.',
+    'ملاحظة: ظهور اسم الملف في خانة الاختيار لا يعني أنه حُفظ — النجاح = ظهوره تحت إدارة الإصدارات.',
+  ].join(' ');
+}
+
+function resolveUploadContentType(file: File): string {
+  const name = file.name.toLowerCase();
+  if (file.type && file.type !== 'application/octet-stream') return file.type;
+  if (name.endsWith('.pdf')) return 'application/pdf';
+  if (name.endsWith('.png')) return 'image/png';
+  if (name.endsWith('.jpg') || name.endsWith('.jpeg')) return 'image/jpeg';
+  if (name.endsWith('.dwg')) return 'application/acad';
+  if (name.endsWith('.dxf')) return 'application/dxf';
+  if (name.endsWith('.ifc')) return 'application/octet-stream';
+  if (name.endsWith('.rvt') || name.endsWith('.rfa')) return 'application/octet-stream';
+  return file.type || 'application/octet-stream';
 }
 
 function uid() {
@@ -112,7 +134,7 @@ export async function uploadPlanAttachmentDetailed(
   const path = `${folder}/${kind}/${id}-${safeName}`;
 
   const { error } = await supabase.storage.from(PROJECT_FILES_BUCKET).upload(path, file, {
-    contentType: file.type || 'application/octet-stream',
+    contentType: resolveUploadContentType(file),
     upsert: false,
   });
 
@@ -130,8 +152,8 @@ export async function uploadPlanAttachmentDetailed(
       file: base,
       cloudPersisted: false,
       warning:
-        `حُفظت معاينة محلية فقط لأن تخزين الملفات (Storage) غير جاهز: ${storageMsg}. ` +
-        `الملف قد لا يظهر من جهاز آخر حتى يُفعَّل bucket باسم project-files في Supabase.`,
+        `حُفظت معاينة محلية فقط (رفع السحابة فشل: ${storageMsg}). ` +
+        `تحقق من Policies وأنواع الملفات المسموحة على bucket project-files — المجلد قد يكون موجوداً لكن الرفع مرفوض.`,
     };
   }
 
@@ -184,7 +206,7 @@ export async function uploadCompletionAttachment(
   const path = `${folder}/completion/${kind}/${id}-${file.name.replace(/[^\w.\u0600-\u06FF-]+/g, '_')}`;
 
   const { error } = await supabase.storage.from(PROJECT_FILES_BUCKET).upload(path, file, {
-    contentType: file.type || 'application/octet-stream',
+    contentType: resolveUploadContentType(file),
     upsert: false,
   });
 

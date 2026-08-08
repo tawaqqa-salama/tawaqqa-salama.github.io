@@ -342,11 +342,12 @@ export default function ProjectReportModal({
               {activeStage === 'designs' && (
                 <div className="space-y-4">
                   <div className="rounded-xl border border-sky-100 bg-sky-50 px-3 py-2 text-xs text-sky-950 leading-relaxed">
-                    مرحلة التصاميم — Design Center. رفع المخطط يحفظ تلقائياً في السحابة (مجلد{' '}
+                    مرحلة التصاميم — Design Center. الرفع يحفظ في السحابة (
                     <code className="font-mono">project-files</code>) ويظهر تحت «إدارة إصدارات
-                    المخططات». إن ظهرت رسالة فشل: أنشئ الـ bucket من Supabase Storage أو نفّذ سكربت
-                    إعداد التخزين <code className="font-mono">028</code> ثم أعد الرفع. ظهور اسم الملف
-                    في خانة الاختيار وحده لا يعني أنه حُفظ.
+                    المخططات». إن فشل الرفع رغم وجود المجلد: راجع Policies (INSERT لـ anon /
+                    authenticated) وأنواع MIME المسموحة، أو نفّذ سكربت{' '}
+                    <code className="font-mono">029</code> لفتح كل الأنواع. اسم الملف في خانة
+                    الاختيار ≠ حفظ ناجح.
                   </div>
                   <DesignCenterSection
                     client={client}
