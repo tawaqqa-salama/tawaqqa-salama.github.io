@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server';
-import { getWhatsAppEnvConfig } from '@/lib/whatsapp/config';
+import { ensureWhatsAppRuntimeHydrated, getWhatsAppEnvConfig } from '@/lib/whatsapp/config';
 import { verifyMetaSignature } from '@/lib/whatsapp/crypto';
 import { processWhatsAppWebhookBody } from '@/lib/whatsapp/inbound';
 import { createWhatsAppProvider } from '@/lib/whatsapp/provider';
@@ -9,6 +9,7 @@ export const dynamic = 'force-dynamic';
 
 /** Meta webhook verification (GET). Public — no session cookie. */
 export async function GET(request: Request) {
+  await ensureWhatsAppRuntimeHydrated();
   const url = new URL(request.url);
   const mode = url.searchParams.get('hub.mode');
   const token = url.searchParams.get('hub.verify_token');
@@ -34,6 +35,7 @@ export async function GET(request: Request) {
 
 /** Meta webhook events (POST). Validates signature when app secret is set. */
 export async function POST(request: Request) {
+  await ensureWhatsAppRuntimeHydrated();
   const rawBody = await request.text();
   const cfg = getWhatsAppEnvConfig();
   const signature = request.headers.get('x-hub-signature-256');

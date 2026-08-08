@@ -10,5 +10,10 @@ export * from '@/lib/whatsapp/inbound';
 export * from '@/lib/whatsapp/outbound';
 export * from '@/lib/whatsapp/provider';
 export * from '@/lib/whatsapp/crm-bridge';
+export {
+  saveWhatsAppSettings,
+  resetRuntimeWhatsAppSettings,
+  resolveWhatsAppRuntimeConfig,
+} from '@/lib/whatsapp/runtime-config';
 export { memoryStore, resetMemoryDb, getMemoryDb } from '@/lib/whatsapp/store/memory';
 export { waRepository } from '@/lib/whatsapp/store/repository';

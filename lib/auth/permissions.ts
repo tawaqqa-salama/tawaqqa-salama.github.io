@@ -46,6 +46,7 @@ export const DEFAULT_ROLE_PERMISSIONS: Record<string, PermissionCode[]> = {
     'whatsapp.manage',
     'whatsapp.assign',
     'whatsapp.campaigns',
+    'whatsapp.settings',
     'me.page',
   ],
   accountant: ['dept.finance', 'me.page'],

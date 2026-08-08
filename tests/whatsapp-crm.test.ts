@@ -1,5 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { GET as webhookGet } from '@/app/api/integrations/whatsapp/webhook/route';
+import { GET as webhookAliasGet } from '@/app/api/whatsapp/webhook/route';
 import { POST as sendPost } from '@/app/api/integrations/whatsapp/send/route';
 import { POST as opportunityPost } from '@/app/api/integrations/whatsapp/opportunities/route';
 import {
@@ -13,8 +14,12 @@ import {
   verifyMetaSignature,
   createWhatsAppProvider,
   requiresTemplate,
+  saveWhatsAppSettings,
+  resetRuntimeWhatsAppSettings,
+  resolveWhatsAppRuntimeConfig,
 } from '@/lib/whatsapp';
 import { createHmac } from 'node:crypto';
+import { POST as settingsPost } from '@/app/api/integrations/whatsapp/settings/route';
 
 function metaInbound(overrides?: {
   messageId?: string;
@@ -94,6 +99,15 @@ describe('Webhook verification', () => {
     );
     const res = await webhookGet(req);
     expect(res.status).toBe(403);
+  });
+
+  it('supports /api/whatsapp/webhook alias used by Meta/Vercel', async () => {
+    const req = new Request(
+      'http://localhost/api/whatsapp/webhook?hub.mode=subscribe&hub.verify_token=verify-me&hub.challenge=alias-ok'
+    );
+    const res = await webhookAliasGet(req);
+    expect(res.status).toBe(200);
+    expect(await res.text()).toBe('alias-ok');
   });
 });
 
@@ -352,7 +366,8 @@ describe('Lead extraction + permissions + audit + signature', () => {
   it('checks whatsapp permissions', () => {
     expect(hasWhatsAppPermission(['*'], 'whatsapp.settings')).toBe(true);
     expect(hasWhatsAppPermission(['dept.marketing'], 'whatsapp.view')).toBe(true);
-    expect(hasWhatsAppPermission(['dept.marketing'], 'whatsapp.settings')).toBe(false);
+    expect(hasWhatsAppPermission(['dept.marketing'], 'whatsapp.settings')).toBe(true);
+    expect(hasWhatsAppPermission(['me.page'], 'whatsapp.settings')).toBe(false);
     expect(hasWhatsAppPermission(['whatsapp.campaigns'], 'whatsapp.campaigns')).toBe(true);
   });
 
@@ -388,6 +403,48 @@ describe('Lead extraction + permissions + audit + signature', () => {
   it('provider factory returns stub without credentials', () => {
     delete process.env.WHATSAPP_ACCESS_TOKEN;
     delete process.env.WHATSAPP_PHONE_NUMBER_ID;
+    resetRuntimeWhatsAppSettings();
     expect(createWhatsAppProvider().id).toBe('stub');
+  });
+
+  it('saves settings from UI and resolves Meta config without exposing token', async () => {
+    resetRuntimeWhatsAppSettings();
+    delete process.env.WHATSAPP_ACCESS_TOKEN;
+    delete process.env.WHATSAPP_PHONE_NUMBER_ID;
+    process.env.WHATSAPP_TOKEN_ENCRYPTION_KEY = 'test-encryption-key-32bytes!!';
+
+    const saved = await saveWhatsAppSettings({
+      phone_number_id: '1234567890',
+      waba_id: 'waba-1',
+      phone_number: '966512345678',
+      webhook_verify_token: 'verify-xyz',
+      access_token: 'EAAB-secret-token',
+      business_name: 'توقع',
+    });
+    expect(saved.ok).toBe(true);
+    expect(saved.settings?.hasAccessToken).toBe(true);
+    expect(JSON.stringify(saved)).not.toContain('EAAB-secret-token');
+
+    const cfg = resolveWhatsAppRuntimeConfig();
+    expect(cfg.phoneNumberId).toBe('1234567890');
+    expect(cfg.accessToken).toBe('EAAB-secret-token');
+    expect(cfg.configured).toBe(true);
+
+    const res = await settingsPost(
+      new Request('http://localhost', {
+        method: 'POST',
+        body: JSON.stringify({
+          action: 'save',
+          phone_number_id: '999',
+          access_token: 'token-2',
+        }),
+      })
+    );
+    const body = await res.json();
+    expect(body.ok).toBe(true);
+    expect(JSON.stringify(body)).not.toContain('token-2');
+
+    resetRuntimeWhatsAppSettings();
+    delete process.env.WHATSAPP_TOKEN_ENCRYPTION_KEY;
   });
 });
