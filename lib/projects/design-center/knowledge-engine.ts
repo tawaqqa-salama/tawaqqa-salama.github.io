@@ -116,6 +116,53 @@ export async function runKnowledgeBackedPlanAnalysis(params: {
   const done = steps.filter((s) => s.status === 'completed').length;
   const progress = Math.round((done / steps.length) * 100);
 
+  const observations_ar: string[] = [];
+  const observations_en: string[] = [];
+  const note = (ar: string, en: string) => {
+    observations_ar.push(ar);
+    observations_en.push(en);
+  };
+  note(
+    'كشف الغرف والجدران من ملفات CAD/BIM يحتاج محرك رؤية منفصل — غير مفعّل حالياً.',
+    'CAD/BIM room and wall detection needs a separate vision engine — not configured yet.'
+  );
+  if (!(plan.building_height_m || plan.underground_depth_m)) {
+    note(
+      'الأبعاد: أدخل ارتفاع المبنى/عمق البدروم في تقرير المخطط لاستخراج الأبعاد.',
+      'Dimensions: enter building height / basement depth in the plan report to extract dimensions.'
+    );
+  }
+  if (!(client.building_area || plan.total_site_area_m2)) {
+    note(
+      'المساحات: أكمل مساحة المبنى أو مساحة الموقع في بيانات المشروع.',
+      'Areas: fill building area or site area in project data.'
+    );
+  }
+  if (!plan.stairs_count) {
+    note(
+      'السلالم: لا يوجد عدد سلالم في بيانات المبنى — أدخله يدوياً أو انتظر محرك CAD.',
+      'Stairs: no stair count in building data — enter it manually or wait for CAD vision.'
+    );
+  }
+  if (!(plan.exits_count || plan.emergency_exits_doors)) {
+    note(
+      'المخارج: لا يوجد عدد مخارج/أبواب طوارئ في بيانات المبنى.',
+      'Exits: no exit / emergency-door count in building data.'
+    );
+  }
+  if (!plan.floors_description) {
+    note(
+      'أسماء الفراغات: أضف وصف الأدوار/الفراغات في تقرير المخطط.',
+      'Space names: add floor/space description in the plan report.'
+    );
+  }
+  if (!hasDrawing) {
+    note(
+      'لم يُرفع مخطط هندسي بعد — ارفع PDF/CAD من تبويب إدارة المخططات.',
+      'No engineering drawing uploaded yet — upload PDF/CAD from Plan Management.'
+    );
+  }
+
   const model: DesignBuildingModel = {
     occupancy: ctx.occupancy || ctx.activityType,
     areas: {
@@ -172,6 +219,8 @@ export async function runKnowledgeBackedPlanAnalysis(params: {
       rag_confidence: rag.confidence,
       rag_reliable: rag.reliable,
       cad_vision: 'not_configured',
+      observations_ar,
+      observations_en,
       note_ar:
         'التحليل مبني على بيانات المشروع الفعلية + قاعدة المعرفة المفهرسة. كشف الغرف/الجدران من CAD يحتاج محرك رؤية منفصل.',
       note_en:
