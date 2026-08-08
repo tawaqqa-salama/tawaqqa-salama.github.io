@@ -23,9 +23,12 @@ export function formatProjectFilesStorageError(fileName: string, storageMsg: str
     lower
   );
   const missingBucket = /bucket not found|no such bucket|does not exist/i.test(lower);
+  const invalidKey = /invalid key|invalid.*path|not a valid key/i.test(lower);
 
   const cause = missingBucket
     ? 'السبب: مجلد project-files غير موجود في هذا المشروع.'
+    : invalidKey
+      ? 'السبب: اسم الملف يحتوي حروفاً غير مسموحة في مفتاح التخزين (مثل العربية). يجب أن يكون مسار Storage بأحرف لاتينية فقط مع الإبقاء على الاسم الأصلي للعرض.'
     : rlsIssue
       ? 'السبب الأرجح: صلاحيات الرفع (Policies) تمنع المستخدم الحالي رغم وجود المجلد.'
       : mimeIssue
@@ -63,7 +66,56 @@ function uid() {
 
 function extOf(name: string): string {
   const n = name.toLowerCase();
-  return n.includes('.') ? n.split('.').pop() || 'bin' : 'bin';
+  const ext = n.includes('.') ? n.split('.').pop() || 'bin' : 'bin';
+  const safe = ext.replace(/[^a-z0-9]/g, '');
+  return safe || 'bin';
+}
+
+/**
+ * Supabase Storage object keys must be ASCII-safe.
+ * Arabic filenames (e.g. الفندق.pdf) cause: Invalid key.
+ * Keep the original name in metadata (`fileName`) for UI; only sanitize the Storage path.
+ */
+export function sanitizeStorageFileName(originalName: string): string {
+  const raw = String(originalName || 'file').trim() || 'file';
+  const lastDot = raw.lastIndexOf('.');
+  const base = lastDot > 0 ? raw.slice(0, lastDot) : raw;
+  const ext = lastDot > 0 ? extOf(raw) : '';
+
+  const asciiBase = base
+    .normalize('NFKD')
+    .replace(/[\u0300-\u036f]/g, '')
+    // Drop Arabic and any other non-ASCII — Storage rejects them
+    .replace(/[^A-Za-z0-9._-]+/g, '_')
+    .replace(/_+/g, '_')
+    .replace(/^[._-]+|[._-]+$/g, '')
+    .slice(0, 80);
+
+  const stem = asciiBase || 'file';
+  return ext ? `${stem}.${ext}` : stem;
+}
+
+/** `{folder}/.../{id}-{safeAsciiName}` — never puts Arabic in the object key */
+export function buildStorageObjectPath(
+  parts: string[],
+  id: string,
+  originalFileName: string
+): string {
+  const safeName = sanitizeStorageFileName(originalFileName);
+  const safeId = String(id || 'id')
+    .replace(/[^A-Za-z0-9._-]+/g, '_')
+    .replace(/_+/g, '_')
+    .replace(/^_|_$/g, '') || 'id';
+  const safeParts = parts
+    .map((p) => {
+      const cleaned = String(p || 'x')
+        .replace(/[^A-Za-z0-9._-]+/g, '_')
+        .replace(/_+/g, '_')
+        .replace(/^_|_$/g, '');
+      return cleaned || 'x';
+    })
+    .filter(Boolean);
+  return [...safeParts, `${safeId}-${safeName}`].join('/');
 }
 
 async function readDataUrl(file: File): Promise<string | null> {
@@ -130,8 +182,8 @@ export async function uploadPlanAttachmentDetailed(
   }
 
   const folder = opts?.clientId || 'general';
-  const safeName = file.name.replace(/[^\w.\u0600-\u06FF-]+/g, '_');
-  const path = `${folder}/${kind}/${id}-${safeName}`;
+  // Keep original Arabic name in base.fileName for UI; Storage key is ASCII-only
+  const path = buildStorageObjectPath([folder, kind], id, file.name);
 
   const { error } = await supabase.storage.from(PROJECT_FILES_BUCKET).upload(path, file, {
     contentType: resolveUploadContentType(file),
@@ -203,7 +255,7 @@ export async function uploadCompletionAttachment(
   }
 
   const folder = opts?.clientId || 'general';
-  const path = `${folder}/completion/${kind}/${id}-${file.name.replace(/[^\w.\u0600-\u06FF-]+/g, '_')}`;
+  const path = buildStorageObjectPath([folder, 'completion', kind], id, file.name);
 
   const { error } = await supabase.storage.from(PROJECT_FILES_BUCKET).upload(path, file, {
     contentType: resolveUploadContentType(file),

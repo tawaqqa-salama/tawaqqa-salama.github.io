@@ -254,7 +254,10 @@ export async function listKnowledgeDocuments(): Promise<DiKnowledgeDocument[]> {
 async function tryUploadToStorage(file: File, docId: string): Promise<{ path: string | null; bucket: string }> {
   if (isDemoMode || typeof window === 'undefined') return { path: null, bucket: BUCKET };
   try {
-    const path = `${docId}/${file.name}`;
+    // Avoid Supabase "Invalid key" for Arabic filenames; title stays in doc metadata
+    const { buildStorageObjectPath } = await import('@/lib/storage/project-files');
+    const safeDocId = String(docId).replace(/[^A-Za-z0-9._-]+/g, '_') || 'doc';
+    const path = buildStorageObjectPath([safeDocId], `doc-${Date.now().toString(36)}`, file.name);
     const { error } = await supabase.storage.from(BUCKET).upload(path, file, {
       upsert: true,
       contentType: file.type || undefined,
