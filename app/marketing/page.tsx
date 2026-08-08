@@ -1,6 +1,7 @@
 'use client';
 
-import { useEffect, useMemo, useState } from 'react';
+import { Suspense, useEffect, useMemo, useState } from 'react';
+import { useSearchParams } from 'next/navigation';
 import { supabase } from '@/lib/supabase';
 import { nextLeadCode } from '@/lib/business/document-numbers';
 import { shouldShowInMarketing } from '@/lib/business/pipeline';
@@ -10,6 +11,9 @@ import PipelineStatusBoard from '@/components/marketing/PipelineStatusBoard';
 import WhatsAppInbox from '@/components/whatsapp/WhatsAppInbox';
 import WhatsAppDashboardCards from '@/components/whatsapp/WhatsAppDashboardCards';
 import WhatsAppCampaignsPanel from '@/components/whatsapp/WhatsAppCampaignsPanel';
+import SocialMediaHub from '@/components/social/SocialMediaHub';
+import WebsiteHub from '@/components/website/WebsiteHub';
+import MarketingCrmFunnel from '@/components/marketing/MarketingCrmFunnel';
 import ResponsiveTable from '@/components/ui/ResponsiveTable';
 import ModuleSubNavSlot from '@/components/layout/ModuleSubNavSlot';
 import ModuleTabBar from '@/components/layout/ModuleTabBar';
@@ -19,17 +23,55 @@ import type { ClientRecord } from '@/lib/types/client';
 
 type TabId =
   | 'dashboard'
-  | 'whatsapp'
-  | 'campaigns'
   | 'leads'
+  | 'campaigns'
+  | 'whatsapp'
+  | 'social'
+  | 'website'
   | 'followups'
   | 'pipeline';
 
-const SOURCE_FILTERS = ['الكل', 'WhatsApp', 'Website', 'Phone', 'Referral', 'Campaign', 'Other'] as const;
+const SOURCE_FILTERS = [
+  'الكل',
+  'WhatsApp',
+  'Website',
+  'Instagram',
+  'Facebook',
+  'LinkedIn',
+  'TikTok',
+  'X',
+  'Google',
+  'Phone',
+  'Referral',
+  'Campaign',
+  'Other',
+] as const;
 
 export default function MarketingPage() {
+  return (
+    <Suspense fallback={<div className="text-sm text-gray-400 py-10 text-center">جاري التحميل...</div>}>
+      <MarketingPageInner />
+    </Suspense>
+  );
+}
+
+function MarketingPageInner() {
   const { t } = useLanguage();
-  const [tab, setTab] = useState<TabId>('dashboard');
+  const searchParams = useSearchParams();
+  const tabFromUrl = searchParams.get('tab') as TabId | null;
+  const validTabs: TabId[] = [
+    'dashboard',
+    'leads',
+    'campaigns',
+    'whatsapp',
+    'social',
+    'website',
+    'followups',
+    'pipeline',
+  ];
+  const [tab, setTab] = useState<TabId>(
+    tabFromUrl && validTabs.includes(tabFromUrl) ? tabFromUrl : 'dashboard'
+  );
   const [leads, setLeads] = useState<ClientRecord[]>([]);
   const [allClients, setAllClients] = useState<ClientRecord[]>([]);
   const [followUps, setFollowUps] = useState<ClientFollowUp[]>([]);
@@ -54,7 +96,23 @@ export default function MarketingPage() {
   };
 
   useEffect(() => {
-    fetchData();
+    let cancelled = false;
+    void (async () => {
+      setLoading(true);
+      const [{ data: clients }, { data: ups }] = await Promise.all([
+        supabase.from('clients').select('*').order('created_at', { ascending: false }),
+        supabase.from('client_follow_ups').select('*').order('follow_up_date', { ascending: false }),
+      ]);
+      if (cancelled) return;
+      const all = (clients || []) as ClientRecord[];
+      setAllClients(all);
+      setLeads(all.filter(shouldShowInMarketing));
+      setFollowUps((ups || []) as ClientFollowUp[]);
+      setLoading(false);
+    })();
+    return () => {
+      cancelled = true;
+    };
   }, []);
 
   const filteredLeads = useMemo(() => {
@@ -167,10 +225,12 @@ export default function MarketingPage() {
           activeClassName="bg-purple-600 text-white shadow-sm"
           idleClassName="bg-white border border-gray-200 text-gray-800"
           items={[
-            { id: 'dashboard', label: t('marketing.tab.dashboard') },
-            { id: 'whatsapp', label: 'صندوق واتساب' },
-            { id: 'campaigns', label: 'حملات واتساب' },
+            { id: 'dashboard', label: 'Overview' },
             { id: 'leads', label: t('marketing.tab.leads') },
+            { id: 'campaigns', label: 'Campaigns' },
+            { id: 'whatsapp', label: 'WhatsApp' },
+            { id: 'social', label: 'السوشال ميديا' },
+            { id: 'website', label: 'Website' },
             { id: 'followups', label: t('marketing.tab.followups') },
             { id: 'pipeline', label: t('marketing.tab.pipeline') },
           ]}
@@ -179,6 +239,7 @@ export default function MarketingPage() {
 
       {tab === 'dashboard' && (
         <div className="space-y-4">
+          <MarketingCrmFunnel />
           <WhatsAppDashboardCards />
           <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
             <div className="rounded-xl border bg-white p-4">
@@ -214,7 +275,42 @@ export default function MarketingPage() {
 
       {tab === 'whatsapp' && <WhatsAppInbox />}
 
-      {tab === 'campaigns' && <WhatsAppCampaignsPanel />}
+      {tab === 'social' && (
+        <SocialMediaHub
+          initialSub={
+            (searchParams.get('socialSub') as
+              | 'dashboard'
+              | 'accounts'
+              | 'inbox'
+              | 'content'
+              | 'calendar'
+              | 'campaigns'
+              | 'analytics'
+              | null) || 'dashboard'
+          }
+        />
+      )}
+
+      {tab === 'website' && <WebsiteHub />}
+
+      {tab === 'campaigns' && (
+        <div className="space-y-4">
+          <WhatsAppCampaignsPanel />
+          <div className="rounded-xl border bg-white p-4">
+            <p className="text-sm font-bold mb-2">حملات السوشال / الموقع</p>
+            <p className="text-xs text-gray-500 mb-3">
+              تُدار أيضًا من تبويب السوشال ميديا → الحملات، وترتبط بـ UTM والـ CRM.
+            </p>
+            <button
+              type="button"
+              className="text-xs px-3 py-2 rounded-lg bg-teal-700 text-white"
+              onClick={() => setTab('social')}
+            >
+              فتح حملات السوشال ميديا
+            </button>
+          </div>
+        </div>
+      )}
 
       {tab === 'leads' && (
         <div className="space-y-3">

@@ -41,6 +41,7 @@ const files = [
   '029_rls_tenant_lockdown.sql',
   '030_quotation_documents.sql',
   '031_whatsapp_crm.sql',
+  '032_social_website_crm.sql',
 ];
 
 if (!process.env.DATABASE_URL) {

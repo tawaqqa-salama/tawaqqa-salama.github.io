@@ -11,7 +11,19 @@ export type PermissionCode =
   | 'whatsapp.manage'
   | 'whatsapp.campaigns'
   | 'whatsapp.settings'
-  | 'whatsapp.assign';
+  | 'whatsapp.assign'
+  | 'social.view'
+  | 'social.manage'
+  | 'social.publish'
+  | 'social.accounts'
+  | 'social.inbox'
+  | 'social.campaigns'
+  | 'social.analytics'
+  | 'website.view'
+  | 'website.manage'
+  | 'website.publish'
+  | 'website.forms'
+  | 'website.settings';
 
 export type AppRoleCode = 'admin' | 'engineer' | 'sales' | 'accountant' | 'staff';
 
