@@ -83,9 +83,22 @@ export function buildProjectDesignStandardsContext(
     (k) => selectedSystems.includes(k) || (k === 'kitchen_hood' && kitchenActivity)
   );
 
+  const visionRaw = data.design_center?.analysis?.result?.raw as
+    | {
+        cad_vision?: string;
+        cad_vision_result?: {
+          occupancy?: string | null;
+          gross_floor_area_m2?: number | null;
+        } | null;
+      }
+    | undefined;
+  const visionMeta =
+    visionRaw?.cad_vision === 'local_client' ? visionRaw.cad_vision_result : null;
+
   const occupancy =
     plan.occupancy_classification ||
     data.technical_report?.building_classification ||
+    visionMeta?.occupancy ||
     null;
 
   return {
@@ -94,7 +107,12 @@ export function buildProjectDesignStandardsContext(
     occupancy,
     activityType: client.activity_type || null,
     buildingUse: occupancy || client.activity_type || null,
-    buildingAreaM2: num(client.building_area) ?? num(plan.total_site_area_m2),
+    buildingAreaM2:
+      num(client.building_area) ??
+      num(plan.total_site_area_m2) ??
+      (typeof visionMeta?.gross_floor_area_m2 === 'number'
+        ? visionMeta.gross_floor_area_m2
+        : null),
     floorsCount: floors,
     buildingHeightM: height,
     hasFirePump,

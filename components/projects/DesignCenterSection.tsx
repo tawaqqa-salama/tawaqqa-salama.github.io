@@ -24,6 +24,9 @@ import {
   canCreateSystemDesign,
   systemDesignInputGate,
   formatUnknownValue,
+  analyzeCadDrawing,
+  resolveDrawingBlobForVision,
+  type CADAnalysisResult,
   type DesignCenterState,
   type DesignCenterTabId,
   type DesignDrawingFormat,
@@ -167,6 +170,7 @@ export default function DesignCenterSection({
       let next = design;
       const warnings: string[] = [];
       let cloudCount = 0;
+      let visionFile: File | null = null;
       for (const file of Array.from(files)) {
         const outcome = await uploadPlanAttachmentDetailed(file, 'engineering_drawing', {
           clientId: client.id,
@@ -176,27 +180,90 @@ export default function DesignCenterSection({
         next = addDrawingVersion(next, outcome.file, {
           title: `${format.toUpperCase()} · ${file.name}`,
         });
+        const lower = file.name.toLowerCase();
+        if (
+          format === 'pdf' ||
+          file.type.startsWith('image/') ||
+          /\.(png|jpe?g|webp)$/i.test(lower)
+        ) {
+          visionFile = file;
+        }
       }
       setDesign(next);
       await onPersistDesignCenter(next);
-      if (warnings.length && !cloudCount) {
+
+      if (visionFile) {
+        setBusy('analyze');
+        setHintTone('warn');
+        setHint(
+          ar
+            ? 'جاري التحليل المحلي للمخطط بعد الرفع...'
+            : 'Running local drawing analysis after upload...'
+        );
+        const cadVision = await analyzeCadDrawing(visionFile, {
+          dpi: 300,
+          enableOcr: true,
+          onProgress: (message_ar, message_en) => {
+            setHint(ar ? message_ar : message_en);
+          },
+        });
+        const engData = { ...data, design_center: next };
+        const result = await startDesignAnalysis({
+          projectId: client.id,
+          sheetId: next.sheets[0]?.id,
+          client,
+          data: engData,
+          cadVision,
+        });
+        const analysis = result.data?.analysis || null;
+        if (analysis) {
+          const readiness = computeDesignReadiness(client, {
+            ...engData,
+            design_center: { ...next, analysis },
+          });
+          next = {
+            ...next,
+            analysis,
+            readiness: {
+              level: readiness.level,
+              updatedAt: new Date().toISOString(),
+              reasons_ar: readiness.reasons_ar,
+              reasons_en: readiness.reasons_en,
+            },
+          };
+          setDesign(next);
+          await onPersistDesignCenter(next);
+        }
+        setHintTone(
+          cadVision.status === 'completed' || cadVision.status === 'partial' ? 'ok' : 'warn'
+        );
+        setHint(
+          ar
+            ? cadVision.status === 'password_protected'
+              ? 'PDF محمي بكلمة مرور — أزل الحماية أو أكمل الإدخال اليدوي'
+              : `تم الرفع والتحليل المحلي: ${cadVision.zones.length} فراغ · مقياس ${cadVision.scale.ratio_text || 'غير معروف'}`
+            : cadVision.status === 'password_protected'
+              ? 'Password-protected PDF — remove protection or enter fields manually'
+              : `Uploaded & locally analyzed: ${cadVision.zones.length} zones · scale ${cadVision.scale.ratio_text || 'unknown'}`
+        );
+      } else if (warnings.length && !cloudCount) {
         setHintTone('warn');
         setHint(warnings[0]);
       } else if (ar) {
         setHintTone('ok');
         setHint(
           cloudCount
-            ? `تم رفع ${cloudCount} ملف إلى السحابة وتسجيله في «إدارة إصدارات المخططات» — سيظهر من أي جهاز.`
+            ? `تم رفع ${cloudCount} ملف. لتحليل DWG صدّره كـ PDF ثم ارفع للتحليل المحلي.`
             : isDemoMode
               ? 'تم الحفظ محلياً (وضع تجريبي) — لن يظهر من جهاز آخر.'
-              : 'تم الحفظ في بيانات المشروع وظهر في إدارة الإصدارات.'
+              : 'تم الحفظ. لتحليل DWG صدّر PDF وشغّل التحليل.'
         );
       } else {
         setHintTone('ok');
         setHint(
           cloudCount
-            ? `${cloudCount} file(s) uploaded to cloud and listed under drawing versions.`
-            : 'Saved on the project record.'
+            ? `${cloudCount} file(s) uploaded. Export DWG to PDF for local vision.`
+            : 'Saved on the project record. Export DWG to PDF for local vision.'
         );
       }
       if (inputEl) inputEl.value = '';
@@ -225,6 +292,80 @@ export default function DesignCenterSection({
     setViewerUrl(url);
   };
 
+  const runLocalCadVision = async (
+    preferredSheetId?: string | null
+  ): Promise<CADAnalysisResult | null> => {
+    const sheetId = preferredSheetId || design.ui?.viewer_sheet_id || design.sheets[0]?.id;
+    const sheet = design.sheets.find((s) => s.id === sheetId) || design.sheets[0];
+    const ver = sheet ? getActiveVersion(sheet) : null;
+    const attachment =
+      ver?.file ||
+      data.plan_attachments?.engineering_drawings?.[0] ||
+      null;
+    if (!attachment) return null;
+
+    const remoteUrl = await getPlanFileUrl(attachment);
+    const resolved = await resolveDrawingBlobForVision({
+      dataUrl: attachment.dataUrl,
+      remoteUrl,
+      fileName: attachment.fileName,
+    });
+    if (!resolved) {
+      return {
+        status: 'failed',
+        engine: 'local_client',
+        source_kind: 'unsupported',
+        file_name: attachment.fileName || null,
+        processed_at: new Date().toISOString(),
+        width_px: 0,
+        height_px: 0,
+        dpi: 300,
+        scale: {
+          ratio_text: null,
+          scale_denominator: null,
+          meters_per_pixel: null,
+          source: 'unknown',
+          dpi: 300,
+        },
+        title_block: {
+          project_name: null,
+          sheet_number: null,
+          drawing_title: null,
+          occupancy: null,
+          area_m2: null,
+          scale_text: null,
+          revision: null,
+          raw_text: '',
+          source: 'none',
+        },
+        zones: [],
+        walls: [],
+        gross_floor_area_m2: null,
+        exits_count: null,
+        doors_count: null,
+        occupancy: null,
+        extracted_text: '',
+        warnings_ar: ['تعذر تحميل المخطط للتحليل المحلي'],
+        warnings_en: ['Could not load drawing for local analysis'],
+        error: 'DRAWING_UNREADABLE',
+        error_code: 'DRAWING_UNREADABLE',
+        privacy: 'local_only',
+      };
+    }
+
+    return analyzeCadDrawing(resolved.blob, {
+      dpi: 300,
+      enableOcr: true,
+      onProgress: (message_ar, message_en) => {
+        setHintTone('warn');
+        setHint(ar ? message_ar : message_en);
+      },
+    }).then((result) => ({
+      ...result,
+      file_name: result.file_name || resolved.fileName,
+    }));
+  };
+
   const onAnalyze = async () => {
     setBusy('analyze');
     setHint(null);
@@ -232,10 +373,10 @@ export default function DesignCenterSection({
       ...design,
       analysis: {
         id: design.analysis?.id || `analysis-${Date.now()}`,
-        status: 'queued',
-        progress: 5,
+        status: 'running',
+        progress: 8,
         steps: emptyAnalysisSteps().map((s, i) =>
-          i === 0 ? { ...s, status: 'queued' } : s
+          i === 0 ? { ...s, status: 'running' } : s
         ),
         sourceSheetId: design.ui?.viewer_sheet_id || design.sheets[0]?.id || null,
         sourceVersionId: null,
@@ -246,11 +387,20 @@ export default function DesignCenterSection({
         result: null,
       },
     });
+
+    let cadVision: CADAnalysisResult | null = null;
+    try {
+      cadVision = await runLocalCadVision();
+    } catch {
+      cadVision = null;
+    }
+
     const result = await startDesignAnalysis({
       projectId: client.id,
       sheetId: design.ui?.viewer_sheet_id || design.sheets[0]?.id,
       client,
       data,
+      cadVision,
     });
     const analysis =
       result.data?.analysis ||
@@ -287,7 +437,11 @@ export default function DesignCenterSection({
       (analysis?.status === 'completed' || analysis?.status === 'needs_engineer_review')
     ) {
       const raw = analysis.result?.raw as
-        | { knowledge_docs_available?: number; knowledge_citations?: unknown[] }
+        | {
+            knowledge_docs_available?: number;
+            knowledge_citations?: unknown[];
+            cad_vision?: string;
+          }
         | undefined;
       const kbCount =
         typeof raw?.knowledge_docs_available === 'number'
@@ -295,11 +449,24 @@ export default function DesignCenterSection({
           : Array.isArray(raw?.knowledge_citations)
             ? raw.knowledge_citations.length
             : 0;
-      setHintTone('ok');
+      const localCad = raw?.cad_vision === 'local_client';
+      setHintTone(
+        cadVision?.status === 'password_protected' || cadVision?.status === 'failed'
+          ? 'warn'
+          : 'ok'
+      );
       setHint(
         ar
-          ? `تحليل من بيانات المشروع الفعلية. ${knowledgeAvailabilityLabel(kbCount, true)}. محرك تحليل CAD غير متاح حاليًا.`
-          : `Analysis from real project fields. ${knowledgeAvailabilityLabel(kbCount, false)}. CAD analysis engine is not available.`
+          ? localCad
+            ? `اكتمل التحليل المحلي للمخطط. ${knowledgeAvailabilityLabel(kbCount, true)}. راجع System Applicable Standards داخل بطاقة النظام.`
+            : `تحليل من بيانات المشروع. ${knowledgeAvailabilityLabel(kbCount, true)}. ${
+                cadVision?.warnings_ar?.[0] || 'ارفع PDF/صورة لتشغيل محرك الرؤية المحلي.'
+              }`
+          : localCad
+            ? `Local drawing analysis finished. ${knowledgeAvailabilityLabel(kbCount, false)}. Resolve System Applicable Standards inside the system card.`
+            : `Project-field analysis. ${knowledgeAvailabilityLabel(kbCount, false)}. ${
+                cadVision?.warnings_en?.[0] || 'Upload a PDF/image to run the local vision engine.'
+              }`
       );
     } else {
       setHintTone('error');
@@ -507,6 +674,30 @@ export default function DesignCenterSection({
     ? knowledge.project_references
     : knowledge?.applicable_codes || [];
   const kbDocCount = knowledge?.linked_document_ids?.length || 0;
+  const cadVisionMeta = useMemo(() => {
+    const raw = design.analysis?.result?.raw as
+      | {
+          cad_vision?: string;
+          cad_vision_result?: {
+            status?: string;
+            zones_count?: number;
+            walls_count?: number;
+            gross_floor_area_m2?: number | null;
+            occupancy?: string | null;
+            scale?: { ratio_text?: string | null };
+            warnings_ar?: string[];
+            warnings_en?: string[];
+            error?: string | null;
+            error_code?: string | null;
+          } | null;
+        }
+      | undefined;
+    return {
+      active: raw?.cad_vision === 'local_client',
+      result: raw?.cad_vision_result || null,
+      status: raw?.cad_vision || 'not_run',
+    };
+  }, [design.analysis?.result?.raw]);
 
   return (
     <div className={`${shell} overflow-hidden`} data-design-center data-theme={dark ? 'dark' : 'light'}>
@@ -868,34 +1059,69 @@ export default function DesignCenterSection({
 
         {tab === 'ai_center' && (
           <div className="space-y-5">
-            <div
-              className={`rounded-xl px-4 py-3 text-sm border ${
-                dark
-                  ? 'bg-amber-950/40 border-amber-800 text-amber-100'
-                  : 'bg-amber-50 border-amber-200 text-amber-950'
-              }`}
-            >
-              <p className="font-bold">
-                {ar ? 'محرك تحليل CAD غير متاح حاليًا' : 'CAD analysis engine is not available'}
-              </p>
-              <p className={`text-xs mt-1 ${muted}`}>
-                {ar
-                  ? 'لن تُحاكى الغرف/الجدران/الأسقف/MEP. ارفع أو حدّث المخطط ثم أكمل الحقول الهندسية يدوياً.'
-                  : 'Rooms/walls/ceiling/MEP will not be simulated. Upload or update the drawing, then complete engineering fields manually.'}
-              </p>
-              <button
-                type="button"
-                onClick={() => setTab('drawings')}
-                className="mt-3 rounded-lg bg-amber-600 hover:bg-amber-500 text-white text-xs font-bold px-4 py-2"
+            {cadVisionMeta.active ? (
+              <div
+                className={`rounded-xl px-4 py-3 text-sm border ${
+                  dark
+                    ? 'bg-emerald-950/40 border-emerald-800 text-emerald-100'
+                    : 'bg-emerald-50 border-emerald-200 text-emerald-950'
+                }`}
               >
-                {ar ? 'رفع/تحديث المخطط' : 'Upload / update drawing'}
-              </button>
-            </div>
+                <p className="font-bold">
+                  {ar
+                    ? 'محرك الرؤية المحلي نشط (Canvas — داخل المتصفح)'
+                    : 'Local CAD vision engine active (in-browser Canvas)'}
+                </p>
+                <p className={`text-xs mt-1 ${muted}`}>
+                  {ar
+                    ? `فراغات مكتشفة: ${cadVisionMeta.result?.zones_count ?? 0} · جدران: ${cadVisionMeta.result?.walls_count ?? 0} · مقياس: ${cadVisionMeta.result?.scale?.ratio_text || 'غير معروف'} · مساحة: ${cadVisionMeta.result?.gross_floor_area_m2 ?? 'Needs Engineer Input'} m²`
+                    : `Zones: ${cadVisionMeta.result?.zones_count ?? 0} · Walls: ${cadVisionMeta.result?.walls_count ?? 0} · Scale: ${cadVisionMeta.result?.scale?.ratio_text || 'Unknown'} · Area: ${cadVisionMeta.result?.gross_floor_area_m2 ?? 'Needs Engineer Input'} m²`}
+                </p>
+                <p className={`text-[11px] mt-1 ${muted}`}>
+                  {ar
+                    ? 'المعالجة 100% محلية في الذاكرة. الأسقف/MEP ما زالت غير متاحة.'
+                    : 'Processing is 100% local in memory. Ceiling/MEP still not available.'}
+                </p>
+                <button
+                  type="button"
+                  onClick={() => setTab('drawings')}
+                  className="mt-3 rounded-lg bg-emerald-700 hover:bg-emerald-600 text-white text-xs font-bold px-4 py-2"
+                >
+                  {ar ? 'رفع/تحديث المخطط' : 'Upload / update drawing'}
+                </button>
+              </div>
+            ) : (
+              <div
+                className={`rounded-xl px-4 py-3 text-sm border ${
+                  dark
+                    ? 'bg-amber-950/40 border-amber-800 text-amber-100'
+                    : 'bg-amber-50 border-amber-200 text-amber-950'
+                }`}
+              >
+                <p className="font-bold">
+                  {ar
+                    ? 'محرك الرؤية المحلي جاهز — بانتظار PDF/صورة'
+                    : 'Local vision engine ready — waiting for PDF/image'}
+                </p>
+                <p className={`text-xs mt-1 ${muted}`}>
+                  {ar
+                    ? 'ارفع مخطط PDF أو صورة ثم اضغط «تحليل بيانات المشروع». المعالجة تتم داخل المتصفح بدون إرسال الرسم لخادم خارجي. DWG يحتاج تصدير PDF.'
+                    : 'Upload a PDF/image then click Analyze project data. Processing stays in the browser — no external vision API. DWG needs PDF export.'}
+                </p>
+                <button
+                  type="button"
+                  onClick={() => setTab('drawings')}
+                  className="mt-3 rounded-lg bg-amber-600 hover:bg-amber-500 text-white text-xs font-bold px-4 py-2"
+                >
+                  {ar ? 'رفع/تحديث المخطط' : 'Upload / update drawing'}
+                </button>
+              </div>
+            )}
             <div className={`${card} p-6 text-center space-y-4`}>
               <p className={`text-sm ${muted}`}>
                 {ar
-                  ? 'يحلل الحقول الفعلية فقط (إشغال، مساحات، أبعاد، مخارج…). مراجع قاعدة المعرفة تُعرض كـ «متاحة» وليس «منطبقة» حتى يعمل Applicability Engine داخل بطاقة النظام.'
-                  : 'Analyzes real fields only (occupancy, areas, dimensions, egress…). Knowledge-base refs are “available”, not “applicable”, until the Applicability Engine runs inside a system card.'}
+                  ? 'يشغّل محرك الرؤية المحلي على المخطط + الحقول الفعلية. مراجع قاعدة المعرفة «متاحة» وليست «منطبقة» حتى يعمل Applicability Engine داخل بطاقة النظام.'
+                  : 'Runs the local vision engine on the drawing + real fields. Knowledge-base refs are “available”, not “applicable”, until Applicability Engine runs inside a system card.'}
               </p>
               <button
                 type="button"

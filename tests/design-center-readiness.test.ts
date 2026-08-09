@@ -171,7 +171,7 @@ describe('runKnowledgeBackedSystemDesign gate', () => {
 });
 
 describe('analysis honesty — no fake CAD completion', () => {
-  it('marks CAD steps not_available and never invents rooms', async () => {
+  it('does not invent rooms without local vision payload; ceiling/MEP stay unavailable', async () => {
     const data = withDrawing({
       ...EMPTY_PROJECT_ENGINEERING_DATA,
       design_center: mergeDesignCenterDefaults(null),
@@ -182,14 +182,14 @@ describe('analysis honesty — no fake CAD completion', () => {
       context: { client: client(), data },
     });
     expect(['completed', 'needs_engineer_review']).toContain(job.status);
-    expect(job.steps.find((s) => s.id === 'analyze_plan')?.status).toBe('not_available');
-    expect(job.steps.find((s) => s.id === 'detect_rooms')?.status).toBe('not_available');
-    expect(job.steps.find((s) => s.id === 'detect_walls')?.status).toBe('not_available');
+    expect(job.steps.find((s) => s.id === 'analyze_plan')?.status).toBe('pending');
+    expect(job.steps.find((s) => s.id === 'detect_rooms')?.status).toBe('pending');
+    expect(job.steps.find((s) => s.id === 'detect_walls')?.status).toBe('pending');
     expect(job.steps.find((s) => s.id === 'ceiling_analysis')?.status).toBe('not_available');
     expect(job.steps.find((s) => s.id === 'mep_coordination')?.status).toBe('not_available');
     expect(job.steps.find((s) => s.id === 'occupancy_type')?.status).toBe('completed');
     expect(job.result?.rooms).toEqual([]);
-    expect((job.result?.raw as { cad_vision?: string })?.cad_vision).toBe('not_available');
+    expect((job.result?.raw as { cad_vision?: string })?.cad_vision).toBe('not_run');
     expect((job.result?.raw as { applicable_standards_count?: unknown })?.applicable_standards_count).toBeNull();
   });
 

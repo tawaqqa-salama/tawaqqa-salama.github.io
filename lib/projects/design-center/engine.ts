@@ -71,7 +71,11 @@ export async function runPlanAnalysis(params: {
       sheetId: params.sheetId,
       versionId: params.versionId,
       previous: params.previous,
-      context: params.context,
+      context: {
+        client: params.context.client,
+        data: params.context.data,
+        cadVision: params.context.cadVision ?? null,
+      },
     });
   }
 

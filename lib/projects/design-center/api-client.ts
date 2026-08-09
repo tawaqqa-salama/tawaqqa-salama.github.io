@@ -22,6 +22,7 @@ import type {
   EngineeringCalcResult,
   FireSystemKind,
 } from '@/lib/projects/design-center/types';
+import type { CADAnalysisResult } from '@/lib/projects/design-center/vision/types';
 import type { ClientRecord } from '@/lib/types/client';
 import type { ProjectEngineeringData } from '@/lib/types/project-reports';
 
@@ -48,6 +49,8 @@ type AnalyzeBody = {
   analysis?: DesignAnalysisJob | null;
   client?: ClientRecord;
   data?: ProjectEngineeringData;
+  /** Browser-only local CAD vision result */
+  cadVision?: CADAnalysisResult | null;
 };
 
 type SystemBody = {
@@ -78,8 +81,14 @@ type ExportBody = {
   data?: ProjectEngineeringData;
 };
 
-function ctxOf(body: { client?: ClientRecord; data?: ProjectEngineeringData }) {
-  return body.client && body.data ? { client: body.client, data: body.data } : null;
+function ctxOf(body: {
+  client?: ClientRecord;
+  data?: ProjectEngineeringData;
+  cadVision?: CADAnalysisResult | null;
+}) {
+  return body.client && body.data
+    ? { client: body.client, data: body.data, cadVision: body.cadVision ?? null }
+    : null;
 }
 
 async function runLocalAnalyze(
@@ -92,7 +101,7 @@ async function runLocalAnalyze(
     previous: body.analysis,
     context: ctxOf(body),
   });
-  if (analysis.status === 'completed') {
+  if (analysis.status === 'completed' || analysis.status === 'needs_engineer_review') {
     return { ok: true, data: { analysis } };
   }
   return {

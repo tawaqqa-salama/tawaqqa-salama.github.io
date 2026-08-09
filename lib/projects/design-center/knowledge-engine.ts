@@ -22,6 +22,7 @@ import {
   toSystemStandardsSnapshot,
 } from '@/lib/projects/design-center/standards';
 import { systemDesignInputGate } from '@/lib/projects/design-center/readiness';
+import type { CADAnalysisResult } from '@/lib/projects/design-center/vision/types';
 import type {
   DesignAnalysisJob,
   DesignAnalysisStep,
@@ -39,6 +40,8 @@ import type { ProjectEngineeringData } from '@/lib/types/project-reports';
 export type KnowledgeEngineContext = {
   client: ClientRecord;
   data: ProjectEngineeringData;
+  /** Optional in-browser CAD/PDF vision result (never invent if absent) */
+  cadVision?: CADAnalysisResult | null;
 };
 
 function num(v: string | number | null | undefined): number | null {
@@ -71,6 +74,11 @@ export async function runKnowledgeBackedPlanAnalysis(params: {
   context: KnowledgeEngineContext;
 }): Promise<DesignAnalysisJob> {
   const { client, data } = params.context;
+  const vision = params.context.cadVision || null;
+  const visionOk =
+    !!vision &&
+    (vision.status === 'completed' || vision.status === 'partial') &&
+    vision.engine === 'local_client';
   const plan = data.building_plan;
   const sheets = data.design_center?.sheets || [];
   const drawings = data.plan_attachments?.engineering_drawings || [];
@@ -90,40 +98,93 @@ export async function runKnowledgeBackedPlanAnalysis(params: {
     byId.set(id, { ...prev, status });
   };
 
-  // CAD/PDF vision engine is not available — never mark CAD steps completed without a real engine result
-  set('analyze_plan', 'not_available');
-  set('detect_rooms', 'not_available');
-  set('detect_walls', 'not_available');
+  const visionArea =
+    visionOk && vision.gross_floor_area_m2 != null && vision.gross_floor_area_m2 > 0
+      ? vision.gross_floor_area_m2
+      : null;
+  const visionOccupancy =
+    visionOk && vision.occupancy ? vision.occupancy : null;
+  const visionRooms = visionOk ? vision.zones || [] : [];
+  const visionWalls = visionOk ? vision.walls || [] : [];
+  const visionExits =
+    visionOk && vision.exits_count != null
+      ? vision.exits_count
+      : visionOk && vision.doors_count != null
+        ? vision.doors_count
+        : null;
+
+  if (visionOk) {
+    set('analyze_plan', 'completed');
+    set('detect_rooms', visionRooms.length ? 'completed' : 'needs_engineer_review');
+    set('detect_walls', visionWalls.length ? 'completed' : 'needs_engineer_review');
+  } else if (vision?.status === 'password_protected') {
+    set('analyze_plan', 'failed');
+    set('detect_rooms', 'not_available');
+    set('detect_walls', 'not_available');
+  } else if (vision?.status === 'unsupported' || vision?.status === 'failed') {
+    set('analyze_plan', vision.status === 'failed' ? 'failed' : 'not_available');
+    set('detect_rooms', 'not_available');
+    set('detect_walls', 'not_available');
+  } else if (!hasDrawing) {
+    set('analyze_plan', 'failed');
+    set('detect_rooms', 'not_available');
+    set('detect_walls', 'not_available');
+  } else {
+    // Drawing present but vision not run (e.g. server path) — do not fake CAD
+    set('analyze_plan', 'pending');
+    set('detect_rooms', 'pending');
+    set('detect_walls', 'pending');
+  }
+
+  const hasDims =
+    Boolean(plan.building_height_m || plan.underground_depth_m) ||
+    (visionOk && vision.scale.meters_per_pixel != null);
   set(
     'extract_dimensions',
-    plan.building_height_m || plan.underground_depth_m ? 'completed' : 'needs_engineer_review'
+    hasDims ? 'completed' : 'needs_engineer_review'
   );
   set(
     'extract_areas',
-    client.building_area || plan.total_site_area_m2 ? 'completed' : 'needs_engineer_review'
+    client.building_area || plan.total_site_area_m2 || visionArea
+      ? 'completed'
+      : 'needs_engineer_review'
   );
   set(
     'occupancy_type',
-    ctx.occupancy || ctx.activityType ? 'completed' : 'needs_engineer_review'
+    ctx.occupancy || ctx.activityType || visionOccupancy
+      ? 'completed'
+      : 'needs_engineer_review'
   );
   set('detect_stairs', plan.stairs_count ? 'completed' : 'needs_engineer_review');
   set(
     'detect_exits',
-    plan.exits_count || plan.emergency_exits_doors ? 'completed' : 'needs_engineer_review'
+    plan.exits_count || plan.emergency_exits_doors || visionExits != null
+      ? 'completed'
+      : 'needs_engineer_review'
   );
+  const spaceNamesFromVision = visionRooms
+    .map((z, i) => z.label || `Zone ${i + 1}`)
+    .slice(0, 40);
   set(
     'read_space_names',
-    plan.floors_description ? 'completed' : 'needs_engineer_review'
+    plan.floors_description || spaceNamesFromVision.length
+      ? 'completed'
+      : 'needs_engineer_review'
   );
+  // Ceiling / MEP still require specialized engines
   set('ceiling_analysis', 'not_available');
   set('mep_coordination', 'not_available');
   const digitalReady =
-    Boolean(ctx.occupancy || ctx.activityType) &&
-    Boolean(client.building_area || plan.total_site_area_m2) &&
-    hasDrawing;
+    Boolean(ctx.occupancy || ctx.activityType || visionOccupancy) &&
+    Boolean(client.building_area || plan.total_site_area_m2 || visionArea) &&
+    (hasDrawing || visionOk);
   set(
     'build_digital_model',
-    digitalReady ? 'needs_engineer_review' : 'pending'
+    visionOk && visionRooms.length
+      ? 'needs_engineer_review'
+      : digitalReady
+        ? 'needs_engineer_review'
+        : 'pending'
   );
 
   const steps = Array.from(byId.values());
@@ -136,59 +197,89 @@ export async function runKnowledgeBackedPlanAnalysis(params: {
     observations_ar.push(ar);
     observations_en.push(en);
   };
-  note(
-    'محرك تحليل CAD غير متاح حاليًا — لن تُحاكى الغرف/الجدران/الأسقف/MEP.',
-    'CAD analysis engine is not available — rooms/walls/ceiling/MEP will not be simulated.'
-  );
-  if (!(plan.building_height_m || plan.underground_depth_m)) {
+
+  if (visionOk) {
     note(
-      'الأبعاد: أدخل ارتفاع المبنى/عمق البدروم في تقرير المخطط لاستخراج الأبعاد.',
-      'Dimensions: enter building height / basement depth in the plan report to extract dimensions.'
+      `محرك الرؤية المحلي عالج المخطط (${vision.file_name || 'drawing'}) — ${visionRooms.length} فراغ · ${visionWalls.length} جدار.`,
+      `Local vision engine processed the drawing (${vision.file_name || 'drawing'}) — ${visionRooms.length} zones · ${visionWalls.length} walls.`
+    );
+    const warnAr = vision.warnings_ar || [];
+    const warnEn = vision.warnings_en || [];
+    const warnN = Math.max(warnAr.length, warnEn.length);
+    for (let i = 0; i < warnN; i++) {
+      if (warnAr[i] || warnEn[i]) note(warnAr[i] || warnEn[i] || '', warnEn[i] || warnAr[i] || '');
+    }
+  } else if (vision?.status === 'password_protected') {
+    note(
+      'ملف PDF محمي بكلمة مرور — أزل الحماية أو أكمل الإدخال اليدوي.',
+      'Password-protected PDF — remove protection or enter fields manually.'
+    );
+  } else if (vision?.status === 'unsupported') {
+    note(
+      'صيغة الملف غير مدعومة للمحرك المحلي — صدّر PDF/صورة.',
+      'File format unsupported by local vision — export PDF/image.'
+    );
+  } else if (!hasDrawing) {
+    note(
+      'لم يُرفع مخطط هندسي بعد — ارفع PDF أو صورة من تبويب إدارة المخططات.',
+      'No engineering drawing uploaded yet — upload PDF/image from Plan Management.'
+    );
+  } else {
+    note(
+      'لم يُشغَّل محرك الرؤية المحلي بعد — اضغط «تحليل بيانات المشروع» من المتصفح.',
+      'Local vision engine has not run yet — click Analyze project data in the browser.'
     );
   }
-  if (!(client.building_area || plan.total_site_area_m2)) {
+
+  if (!(plan.building_height_m || plan.underground_depth_m) && !(visionOk && vision.scale.meters_per_pixel)) {
     note(
-      'المساحات: أكمل مساحة المبنى أو مساحة الموقع في بيانات المشروع.',
-      'Areas: fill building area or site area in project data.'
+      'الأبعاد: أدخل ارتفاع المبنى أو تأكد من وجود مقياس الرسم على اللوحة.',
+      'Dimensions: enter building height or ensure a drawing scale is present on the sheet.'
+    );
+  }
+  if (!(client.building_area || plan.total_site_area_m2 || visionArea)) {
+    note(
+      'المساحات: أكمل مساحة المبنى أو أعد التحليل بعد اكتشاف المقياس.',
+      'Areas: fill building area or re-analyze after scale detection.'
     );
   }
   if (!plan.stairs_count) {
     note(
-      'السلالم: لا يوجد عدد سلالم في بيانات المبنى — أدخله يدوياً أو انتظر محرك CAD.',
-      'Stairs: no stair count in building data — enter it manually or wait for CAD vision.'
+      'السلالم: لا يوجد عدد سلالم مستخرج — Needs Engineer Input.',
+      'Stairs: no stair count extracted — Needs Engineer Input.'
     );
   }
-  if (!(plan.exits_count || plan.emergency_exits_doors)) {
+  if (!(plan.exits_count || plan.emergency_exits_doors || visionExits != null)) {
     note(
-      'المخارج: لا يوجد عدد مخارج/أبواب طوارئ في بيانات المبنى.',
-      'Exits: no exit / emergency-door count in building data.'
+      'المخارج: لا يوجد عدد مخارج/أبواب — Needs Engineer Input.',
+      'Exits: no exit/door count — Needs Engineer Input.'
     );
   }
-  if (!plan.floors_description) {
+  if (!plan.floors_description && !spaceNamesFromVision.length) {
     note(
-      'أسماء الفراغات: أضف وصف الأدوار/الفراغات في تقرير المخطط.',
-      'Space names: add floor/space description in the plan report.'
-    );
-  }
-  if (!hasDrawing) {
-    note(
-      'لم يُرفع مخطط هندسي بعد — ارفع PDF/CAD من تبويب إدارة المخططات.',
-      'No engineering drawing uploaded yet — upload PDF/CAD from Plan Management.'
+      'أسماء الفراغات: أضف وصف الأدوار أو اعتمد الفراغات المكتشفة بعد المراجعة.',
+      'Space names: add floor description or accept detected zones after review.'
     );
   }
 
+  const occupancyOut = ctx.occupancy || visionOccupancy || ctx.activityType;
+  const areaOut = num(client.building_area) ?? visionArea;
+
   const model: DesignBuildingModel = {
-    occupancy: ctx.occupancy || ctx.activityType,
+    occupancy: occupancyOut,
     areas: {
-      building_area_m2: num(client.building_area),
+      building_area_m2: areaOut,
       site_area_m2: num(plan.total_site_area_m2) ?? num(client.land_area),
       floors_count: num(client.floors_count),
       height_m: num(plan.building_height_m),
+      vision_gross_floor_area_m2: visionArea,
     },
     dimensions: {
       building_height_m: plan.building_height_m || null,
       underground_depth_m: plan.underground_depth_m || null,
       basement_floors: plan.basement_floors_count || null,
+      scale_ratio: visionOk ? vision.scale.ratio_text : null,
+      meters_per_pixel: visionOk ? vision.scale.meters_per_pixel : null,
     },
     stairs: plan.stairs_count
       ? [{ count: plan.stairs_count, source: 'building_plan' }]
@@ -197,18 +288,20 @@ export async function runKnowledgeBackedPlanAnalysis(params: {
       ? [{ count: plan.exits_count, source: 'building_plan' }]
       : plan.emergency_exits_doors
         ? [{ doors: plan.emergency_exits_doors, source: 'building_plan' }]
-        : [],
+        : visionExits != null
+          ? [{ count: visionExits, source: 'local_cad_vision' }]
+          : [],
     space_names: plan.floors_description
       ? String(plan.floors_description)
           .split(/[\n,،;/|]+/)
           .map((s) => s.trim())
           .filter(Boolean)
           .slice(0, 40)
-      : [],
-    rooms: [],
-    walls: [],
+      : spaceNamesFromVision,
+    rooms: visionRooms,
+    walls: visionWalls,
     raw: {
-      source: 'project_knowledge_bridge',
+      source: visionOk ? 'local_cad_vision+knowledge' : 'project_knowledge_bridge',
       projectId: params.projectId,
       projectName: ctx.projectName,
       applicable_codes: ctx.applicable_codes,
@@ -232,21 +325,46 @@ export async function runKnowledgeBackedPlanAnalysis(params: {
       })),
       rag_confidence: rag.confidence,
       rag_reliable: rag.reliable,
-      cad_vision: 'not_available',
+      cad_vision: visionOk ? 'local_client' : vision?.status || 'not_run',
+      cad_vision_result: visionOk
+        ? {
+            status: vision.status,
+            scale: vision.scale,
+            title_block: vision.title_block,
+            zones_count: visionRooms.length,
+            walls_count: visionWalls.length,
+            gross_floor_area_m2: visionArea,
+            occupancy: visionOccupancy,
+            exits_count: vision.exits_count,
+            doors_count: vision.doors_count,
+            privacy: vision.privacy,
+            warnings_ar: vision.warnings_ar,
+            warnings_en: vision.warnings_en,
+          }
+        : vision
+          ? {
+              status: vision.status,
+              error: vision.error,
+              error_code: vision.error_code,
+              warnings_ar: vision.warnings_ar,
+              warnings_en: vision.warnings_en,
+            }
+          : null,
       project_references: ctx.applicable_codes,
       knowledge_docs_available: matched.length,
-      // Never claim KB docs are "applicable standards"
       applicable_standards_count: null,
       observations_ar,
       observations_en,
-      note_ar:
-        'التحليل مبني على حقول المشروع الفعلية + مراجع متاحة في قاعدة المعرفة. محرك تحليل CAD غير متاح حاليًا.',
-      note_en:
-        'Analysis uses real project fields + references available in the knowledge base. CAD analysis engine is not available.',
+      note_ar: visionOk
+        ? 'تحليل محلي للمخطط (Canvas) + حقول المشروع + مراجع متاحة في قاعدة المعرفة. الأسقف/MEP غير متاحة.'
+        : 'تحليل من حقول المشروع + مراجع متاحة في قاعدة المعرفة. شغّل محرك الرؤية المحلي من المتصفح على PDF/صورة.',
+      note_en: visionOk
+        ? 'Local Canvas drawing analysis + project fields + knowledge-base references. Ceiling/MEP not available.'
+        : 'Project fields + knowledge-base references. Run the local vision engine in the browser on a PDF/image.',
     },
   };
 
-  const missingCritical = !hasDrawing && !ctx.occupancy && !ctx.activityType;
+  const missingCritical = !hasDrawing && !ctx.occupancy && !ctx.activityType && !visionOccupancy;
   if (missingCritical) {
     return createEmptyAnalysisJob({
       id: params.previous?.id || createEmptyAnalysisJob().id,
@@ -284,10 +402,18 @@ export async function runKnowledgeBackedPlanAnalysis(params: {
     sourceVersionId: params.versionId ?? null,
     startedAt: new Date().toISOString(),
     finishedAt: new Date().toISOString(),
-    error: hasDrawing
-      ? null
-      : 'محرك تحليل CAD غير متاح حاليًا — ارفع/حدّث المخطط من تبويب إدارة المخططات.',
-    error_code: hasDrawing ? null : 'CAD_ENGINE_NOT_AVAILABLE',
+    error:
+      vision?.status === 'password_protected'
+        ? 'PDF محمي بكلمة مرور'
+        : vision?.status === 'failed'
+          ? vision.error
+          : null,
+    error_code:
+      vision?.status === 'password_protected'
+        ? 'PDF_PASSWORD_PROTECTED'
+        : vision?.status === 'failed'
+          ? vision.error_code
+          : null,
     result: model,
   });
 }

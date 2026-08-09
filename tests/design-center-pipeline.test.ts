@@ -218,8 +218,10 @@ describe('design center engine boundary', () => {
     expect(job.result?.rooms).toEqual([]);
     expect(job.result?.walls).toEqual([]);
     expect(job.steps.find((s) => s.id === 'occupancy_type')?.status).toBe('completed');
-    expect(job.steps.find((s) => s.id === 'detect_rooms')?.status).toBe('not_available');
-    expect(job.steps.find((s) => s.id === 'analyze_plan')?.status).toBe('not_available');
+    // Without browser vision payload, CAD steps stay pending (not fabricated completed)
+    expect(job.steps.find((s) => s.id === 'detect_rooms')?.status).toBe('pending');
+    expect(job.steps.find((s) => s.id === 'analyze_plan')?.status).toBe('pending');
+    expect(job.result?.rooms).toEqual([]);
     expect((job.result?.raw as { source?: string })?.source).toBe('project_knowledge_bridge');
   });
 
