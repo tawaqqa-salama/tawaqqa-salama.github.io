@@ -10,6 +10,7 @@ import AppSwitcher from '@/components/layout/AppSwitcher';
 import LanguageSwitcher from '@/components/layout/LanguageSwitcher';
 import TenantSwitcher from '@/components/tenant/TenantSwitcher';
 import { useModuleSubNav } from '@/components/layout/ModuleSubNavContext';
+import { useProjectStagesDrawer } from '@/components/layout/ProjectStagesDrawerContext';
 import { useLanguage } from '@/lib/i18n/LanguageProvider';
 import { isSuperAdminRole } from '@/lib/tenant/rbac';
 
@@ -113,6 +114,14 @@ export default function AppHeader() {
   );
   const { session, logout } = useAuth();
   const { hasSubNav, open: subNavOpen, toggleSubNav, isMobile } = useModuleSubNav();
+  const {
+    active: stagesActive,
+    open: stagesOpen,
+    toggle: toggleStages,
+  } = useProjectStagesDrawer();
+  const showHamburger = hasSubNav || stagesActive;
+  const menuOpen = stagesActive ? stagesOpen : subNavOpen;
+  const onMenuToggle = stagesActive ? toggleStages : toggleSubNav;
   const [switcherOpen, setSwitcherOpen] = useState(false);
   const [logoutConfirmOpen, setLogoutConfirmOpen] = useState(false);
   const [loggingOut, setLoggingOut] = useState(false);
@@ -171,18 +180,32 @@ export default function AppHeader() {
               gap: '8px',
             }}
           >
-            {hasSubNav ? (
+            {showHamburger ? (
               <button
                 type="button"
-                onClick={toggleSubNav}
-                className={`${navBtnBase} ${subNavOpen ? navBtnActive : navBtnIdle}`}
+                onClick={onMenuToggle}
+                className={`${navBtnBase} ${menuOpen ? navBtnActive : navBtnIdle}`}
                 style={{ order: 1 }}
-                title={subNavOpen ? t('shell.toggleSubnavHide') : t('shell.toggleSubnavShow')}
-                aria-label={
-                  subNavOpen ? t('shell.toggleSubnavHideAria') : t('shell.toggleSubnavShowAria')
+                title={
+                  stagesActive
+                    ? menuOpen
+                      ? t('shell.toggleStagesHide')
+                      : t('shell.toggleStagesShow')
+                    : menuOpen
+                      ? t('shell.toggleSubnavHide')
+                      : t('shell.toggleSubnavShow')
                 }
-                aria-expanded={subNavOpen}
-                aria-controls="module-subnav"
+                aria-label={
+                  stagesActive
+                    ? menuOpen
+                      ? t('shell.toggleStagesHideAria')
+                      : t('shell.toggleStagesShowAria')
+                    : menuOpen
+                      ? t('shell.toggleSubnavHideAria')
+                      : t('shell.toggleSubnavShowAria')
+                }
+                aria-expanded={menuOpen}
+                aria-controls={stagesActive ? 'project-stages-drawer' : 'module-subnav'}
               >
                 <HamburgerIcon />
               </button>
@@ -219,6 +242,10 @@ export default function AppHeader() {
             {section.subtitle ? (
               <p className="text-[11px] sm:text-xs text-[var(--erp-muted)] truncate mt-0.5">
                 {section.subtitle}
+              </p>
+            ) : stagesActive ? (
+              <p className="text-[11px] sm:text-xs text-[var(--erp-muted)] truncate mt-0.5 hidden sm:block">
+                {stagesOpen ? t('shell.stagesVisible') : t('shell.stagesHidden')}
               </p>
             ) : hasSubNav ? (
               <p className="text-[11px] sm:text-xs text-[var(--erp-muted)] truncate mt-0.5 hidden sm:block">

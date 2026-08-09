@@ -7,6 +7,7 @@ import AppHeader from '@/components/layout/AppHeader';
 import ActivityTracker from '@/components/layout/ActivityTracker';
 import LanguageSwitcher from '@/components/layout/LanguageSwitcher';
 import { ModuleSubNavProvider } from '@/components/layout/ModuleSubNavContext';
+import { ProjectStagesDrawerProvider } from '@/components/layout/ProjectStagesDrawerContext';
 import SupabaseConfigBanner from '@/components/ui/SupabaseConfigBanner';
 import { onDocumentPreviewMountRequest } from '@/lib/print/document-preview';
 import { useAuth } from '@/lib/auth/AuthProvider';
@@ -142,17 +143,19 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
 
   return (
     <ModuleSubNavProvider>
-      <div className="flex-1 flex flex-col min-w-0 w-full h-full overflow-hidden">
-        <Suspense fallback={<div className="h-[57px] border-b bg-white shrink-0" />}>
-          <AppHeader />
-        </Suspense>
-        <SupabaseConfigBanner />
-        <ActivityTracker />
-        <main className="flex-1 p-3 sm:p-5 md:p-6 overflow-y-auto overflow-x-hidden w-full max-w-none">
-          {children}
-        </main>
-        {previewMounted ? <DocumentPreviewSheet /> : null}
-      </div>
+      <ProjectStagesDrawerProvider>
+        <div className="flex-1 flex flex-col min-w-0 w-full h-full overflow-hidden">
+          <Suspense fallback={<div className="h-[57px] border-b bg-white shrink-0" />}>
+            <AppHeader />
+          </Suspense>
+          <SupabaseConfigBanner />
+          <ActivityTracker />
+          <main className="flex-1 p-3 sm:p-5 md:p-6 overflow-y-auto overflow-x-hidden w-full max-w-none">
+            {children}
+          </main>
+          {previewMounted ? <DocumentPreviewSheet /> : null}
+        </div>
+      </ProjectStagesDrawerProvider>
     </ModuleSubNavProvider>
   );
 }
