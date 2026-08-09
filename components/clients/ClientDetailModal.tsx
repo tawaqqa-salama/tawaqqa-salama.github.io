@@ -190,11 +190,18 @@ export default function ClientDetailModal({
     setSuccessMessage(null);
     setQuotationServices(normalizeQuotationServices(hydrated.quotation_services));
     setQuotationDocuments(normalizeQuotationDocuments(hydrated.quotation_documents));
+    const hydratedLevels = ensureFloorLevels(
+      hydrated.floor_levels,
+      hydrated.floors_count,
+      hydrated.building_area
+    );
+    const areaForPricing =
+      Number(hydrated.building_area || 0) || calcBuildingArea(hydratedLevels);
     const existingAmount = Number(hydrated.quotation_amount || 0);
     if (existingAmount > 0) {
       setQuotationAmount(String(hydrated.quotation_amount));
-    } else if (pricePerM2 > 0 && Number(hydrated.building_area || 0) > 0) {
-      const auto = Math.round(Number(hydrated.building_area) * pricePerM2 * 100) / 100;
+    } else if (pricePerM2 > 0 && areaForPricing > 0) {
+      const auto = Math.round(areaForPricing * pricePerM2 * 100) / 100;
       setQuotationAmount(String(auto));
     } else {
       setQuotationAmount('');
@@ -411,18 +418,29 @@ export default function ClientDetailModal({
   };
 
   const applyAutoPriceFromArea = () => {
-    const area = Number(client.building_area || calcBuildingArea(floorLevels) || 0);
+    const area = Number(calcBuildingArea(floorLevels) || client.building_area || 0);
     if (pricePerM2 <= 0) {
       setErrorMessage('حدد سعر المتر المربع من الإعدادات ← إعدادات الشركة أولاً.');
       return;
     }
     if (area <= 0) {
-      setErrorMessage('أدخل مساحة المبنى في البيانات الأساسية لحساب السعر تلقائياً.');
+      setErrorMessage('أدخل مساحة المبنى أو مساحات الأدوار لحساب السعر تلقائياً.');
       return;
     }
     const auto = Math.round(area * pricePerM2 * 100) / 100;
     setQuotationAmount(String(auto));
     setSuccessMessage(`تم احتساب المبلغ: ${area} م² × ${formatCurrency(pricePerM2)} = ${formatCurrency(auto)}`);
+  };
+
+  const resolveQuotationSubtotal = (): number => {
+    if (subtotal > 0) return subtotal;
+    const area = Number(calcBuildingArea(floorLevels) || client.building_area || 0);
+    if (pricePerM2 > 0 && area > 0) {
+      const auto = Math.round(area * pricePerM2 * 100) / 100;
+      setQuotationAmount(String(auto));
+      return auto;
+    }
+    return 0;
   };
 
   const toggleQuotationService = (id: QuotationServiceId) => {
@@ -432,8 +450,13 @@ export default function ClientDetailModal({
   };
 
   const handleCreateQuotation = async () => {
-    if (subtotal <= 0) {
-      setErrorMessage('يرجى إدخال مبلغ عرض السعر الأساسي.');
+    const amount = resolveQuotationSubtotal();
+    if (amount <= 0) {
+      if (pricePerM2 <= 0) {
+        setErrorMessage('حدد سعر المتر المربع من الإعدادات ← إعدادات الشركة أولاً.');
+      } else {
+        setErrorMessage('يرجى إدخال مبلغ عرض السعر أو مساحة الأدوار لحسابه تلقائياً.');
+      }
       return;
     }
     if (quotationServices.length === 0) {
@@ -451,12 +474,14 @@ export default function ClientDetailModal({
       visitsCount
     );
     const quotationNumber = client.quotation_number || (await generateQuotationNumber());
+    const nextVat = calculateVatAmount(amount);
+    const nextTotal = calculateTotalAmount(amount);
     await saveUpdate(
       {
         quotation_number: quotationNumber,
-        quotation_amount: subtotal,
-        vat_amount: vatAmount,
-        total_amount: totalAmount,
+        quotation_amount: amount,
+        vat_amount: nextVat,
+        total_amount: nextTotal,
         quotation_status: quotationStatus,
         quotation_visits_count: visitsCount,
         quotation_services: quotationServices,
@@ -1155,7 +1180,7 @@ export default function ClientDetailModal({
                     <p className="text-xs text-emerald-800/80">
                       سعر المتر من الإعدادات: {pricePerM2 > 0 ? formatCurrency(pricePerM2) : 'غير محدد'}
                       {' · '}
-                      مساحة المبنى: {client.building_area || computedBuildingArea || '—'} م²
+                      مساحة المبنى: {computedBuildingArea || client.building_area || '—'} م²
                     </p>
                   </div>
                   <button

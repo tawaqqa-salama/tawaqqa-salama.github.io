@@ -6,10 +6,12 @@ import {
   parseBuildingPermitText,
 } from '@/lib/projects/building-permit-ocr';
 import {
+  classifyFloorName,
   mapPermitUsageToActivityType,
   resolveFloorLevelsFromPermit,
 } from '@/lib/projects/permit-floors-activity';
-import { calcBuildingArea, calcFloorsCount } from '@/lib/business/floors';
+import { calcBuildingArea, calcFloorsCount, labelForFloorKind } from '@/lib/business/floors';
+import { FLOOR_KIND_OPTIONS } from '@/lib/constants/clients';
 
 describe('permit floors + activity OCR', () => {
   it('maps usage labels to activity_type', () => {
@@ -17,6 +19,14 @@ describe('permit floors + activity OCR', () => {
     expect(mapPermitUsageToActivityType('إصدار رخصة بناء صناعية')).toBe('factory');
     expect(mapPermitUsageToActivityType('مطعم ومقهى')).toBe('restaurant');
     expect(mapPermitUsageToActivityType('عمائر سكنية')).toBe('residential_building');
+  });
+
+  it('includes دور الروف among floor kind options and OCR labels', () => {
+    expect(FLOOR_KIND_OPTIONS.some((o) => o.kind === 'roof' && o.label === 'دور الروف')).toBe(true);
+    expect(labelForFloorKind('roof')).toBe('دور الروف');
+    expect(classifyFloorName('دور الروف')).toEqual({ kind: 'roof', label: 'دور الروف' });
+    expect(classifyFloorName('روف')).toEqual({ kind: 'roof', label: 'دور الروف' });
+    expect(classifyFloorName('سطح')).toEqual({ kind: 'roof', label: 'دور الروف' });
   });
 
   it('extracts floors count, usage, and per-floor areas from clean permit text', () => {

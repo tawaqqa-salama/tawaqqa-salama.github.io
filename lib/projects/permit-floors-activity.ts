@@ -67,7 +67,7 @@ export function activityLabelForType(activityType: string | null | undefined): s
 const FLOOR_NAME_PATTERNS: { re: RegExp; kind: FloorLevelKind; label: string }[] = [
   { re: /بدروم|قبو|سرداب/, kind: 'basement', label: 'بدروم' },
   { re: /أرض[يى]|ارضي|الدور\s*الأرض[يى]/, kind: 'ground', label: 'أرضي' },
-  { re: /سطح|ملحق\s*سطح/, kind: 'roof', label: 'سطح' },
+  { re: /روف|سطح|ملحق\s*سطح|دور\s*الروف/, kind: 'roof', label: 'دور الروف' },
   { re: /متكرر/, kind: 'typical', label: 'متكرر' },
   { re: /الأول|الاول|أول|اول/, kind: 'custom', label: 'أول' },
   { re: /الثاني|الثانى|ثاني/, kind: 'custom', label: 'ثاني' },
