@@ -268,6 +268,7 @@ export async function syncKnowledgeLinksToDesignCenter(
   const prev = data.design_center?.knowledge_links;
   const links: DesignKnowledgeLinks = {
     applicable_codes: ctx.applicable_codes,
+    project_references: ctx.applicable_codes,
     sales_services: ctx.services,
     linked_document_ids: matched.map((d) => d.id),
     linked_document_titles: matched.map((d) => d.title),
@@ -301,6 +302,7 @@ export function syncKnowledgeLinksToDesignCenterSync(
       ...data.design_center,
       knowledge_links: {
         applicable_codes: ctx.applicable_codes,
+        project_references: ctx.applicable_codes,
         sales_services: ctx.services,
         linked_document_ids: matched.map((d) => d.id),
         linked_document_titles: matched.map((d) => d.title),

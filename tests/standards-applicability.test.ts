@@ -41,6 +41,24 @@ function data(partial?: Partial<ProjectEngineeringData>): ProjectEngineeringData
       occupancy_classification: 'تجاري',
       fire_alarm_system: 'نعم',
       sprinkler_system: 'نعم',
+      floors_description: 'Lobby · Offices · Storage',
+      stairs_count: '2',
+      exits_count: '3',
+      building_height_m: '15',
+      total_site_area_m2: '2000',
+    },
+    plan_attachments: {
+      engineering_drawings: [
+        {
+          id: 'd1',
+          fileName: 'plan.pdf',
+          format: 'pdf',
+          sizeBytes: 10,
+          uploadedAt: '2026-01-01',
+          kind: 'engineering_drawing',
+        },
+      ],
+      hydraulic_calculations: [],
     },
     ...partial,
   };

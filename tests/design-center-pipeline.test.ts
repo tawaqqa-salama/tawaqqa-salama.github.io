@@ -66,10 +66,14 @@ describe('designs stage pipeline', () => {
     expect(resolveActiveStage(c, data)).toBe('contract');
   });
 
-  it('requires occupancy + drawings to approve designs', () => {
+  it('requires occupancy + drawings + Design Readiness before approving designs', async () => {
     const c = client({
       quotation_status: 'معتمد',
       financial_status: 'معتمد مالياً',
+      activity_type: 'office',
+      building_area: 2500,
+      floors_count: 3,
+      quotation_services: ['alarm_plans'],
     });
     const data = baseData({
       contract_onboarding: {
@@ -81,11 +85,16 @@ describe('designs stage pipeline', () => {
     expect(canUnlockStage('designs', c, data)).toBe(true);
     expect(stageApprovalBlockers('designs', c, data).length).toBeGreaterThan(0);
 
-    const withOcc = {
+    const withOcc: ProjectEngineeringData = {
       ...data,
       building_plan: {
         ...data.building_plan,
         occupancy_classification: 'Mercantile',
+        floors_description: 'Retail · Storage',
+        stairs_count: '2',
+        exits_count: '3',
+        building_height_m: '12',
+        fire_alarm_system: 'نعم' as const,
       },
     };
     expect(stageApprovalBlockers('designs', c, withOcc).some((b) => /مخطط/.test(b))).toBe(true);
@@ -98,7 +107,35 @@ describe('designs stage pipeline', () => {
       uploadedAt: new Date().toISOString(),
       kind: 'engineering_drawing',
     });
-    const ready = { ...withOcc, design_center: withFile };
+    const withDrawing = { ...withOcc, design_center: withFile };
+    // Drawing + occupancy alone is not enough — need READY_FOR_ENGINEER_REVIEW
+    expect(
+      stageApprovalBlockers('designs', c, withDrawing).some((b) => /جاهزية|READY/.test(b))
+    ).toBe(true);
+
+    const { runPlanAnalysis } = await import('@/lib/projects/design-center/engine');
+    const { runKnowledgeBackedSystemDesign } = await import(
+      '@/lib/projects/design-center/knowledge-engine'
+    );
+    const analysis = await runPlanAnalysis({
+      projectId: c.id,
+      context: { client: c, data: withDrawing },
+    });
+    const system = await runKnowledgeBackedSystemDesign({
+      projectId: c.id,
+      kind: 'fire_alarm',
+      context: { client: c, data: withDrawing },
+    });
+    const ready = {
+      ...withDrawing,
+      design_center: {
+        ...withDrawing.design_center,
+        analysis,
+        systems: withDrawing.design_center.systems.map((s) =>
+          s.kind === 'fire_alarm' ? system : s
+        ),
+      },
+    };
     expect(stageApprovalBlockers('designs', c, ready)).toEqual([]);
 
     const approved = approveWorkflowStage({ stageId: 'designs', client: c, data: ready });
@@ -175,13 +212,14 @@ describe('design center engine boundary', () => {
         data: { ...data, design_center: withFile },
       },
     });
-    expect(job.status).toBe('completed');
+    expect(['completed', 'needs_engineer_review']).toContain(job.status);
     expect(job.progress).toBeGreaterThan(0);
     expect(job.result?.occupancy).toBeTruthy();
     expect(job.result?.rooms).toEqual([]);
     expect(job.result?.walls).toEqual([]);
     expect(job.steps.find((s) => s.id === 'occupancy_type')?.status).toBe('completed');
-    expect(job.steps.find((s) => s.id === 'detect_rooms')?.status).toBe('unavailable');
+    expect(job.steps.find((s) => s.id === 'detect_rooms')?.status).toBe('not_available');
+    expect(job.steps.find((s) => s.id === 'analyze_plan')?.status).toBe('not_available');
     expect((job.result?.raw as { source?: string })?.source).toBe('project_knowledge_bridge');
   });
 

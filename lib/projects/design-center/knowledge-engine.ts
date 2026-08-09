@@ -21,6 +21,7 @@ import {
   snapshotToArtifactRefs,
   toSystemStandardsSnapshot,
 } from '@/lib/projects/design-center/standards';
+import { systemDesignInputGate } from '@/lib/projects/design-center/readiness';
 import type {
   DesignAnalysisJob,
   DesignAnalysisStep,
@@ -89,28 +90,41 @@ export async function runKnowledgeBackedPlanAnalysis(params: {
     byId.set(id, { ...prev, status });
   };
 
-  set('analyze_plan', hasDrawing ? 'completed' : 'failed');
-  set('detect_rooms', 'unavailable'); // needs CAD/vision engine
-  set('detect_walls', 'unavailable');
+  // CAD/PDF vision engine is not available — never mark CAD steps completed without a real engine result
+  set('analyze_plan', 'not_available');
+  set('detect_rooms', 'not_available');
+  set('detect_walls', 'not_available');
   set(
     'extract_dimensions',
-    plan.building_height_m || plan.underground_depth_m ? 'completed' : 'unavailable'
+    plan.building_height_m || plan.underground_depth_m ? 'completed' : 'needs_engineer_review'
   );
   set(
     'extract_areas',
-    client.building_area || plan.total_site_area_m2 ? 'completed' : 'unavailable'
+    client.building_area || plan.total_site_area_m2 ? 'completed' : 'needs_engineer_review'
   );
   set(
     'occupancy_type',
-    ctx.occupancy || ctx.activityType ? 'completed' : 'failed'
+    ctx.occupancy || ctx.activityType ? 'completed' : 'needs_engineer_review'
   );
-  set('detect_stairs', plan.stairs_count ? 'completed' : 'unavailable');
-  set('detect_exits', plan.exits_count || plan.emergency_exits_doors ? 'completed' : 'unavailable');
+  set('detect_stairs', plan.stairs_count ? 'completed' : 'needs_engineer_review');
+  set(
+    'detect_exits',
+    plan.exits_count || plan.emergency_exits_doors ? 'completed' : 'needs_engineer_review'
+  );
   set(
     'read_space_names',
-    plan.floors_description ? 'completed' : 'unavailable'
+    plan.floors_description ? 'completed' : 'needs_engineer_review'
   );
-  set('build_digital_model', 'completed');
+  set('ceiling_analysis', 'not_available');
+  set('mep_coordination', 'not_available');
+  const digitalReady =
+    Boolean(ctx.occupancy || ctx.activityType) &&
+    Boolean(client.building_area || plan.total_site_area_m2) &&
+    hasDrawing;
+  set(
+    'build_digital_model',
+    digitalReady ? 'needs_engineer_review' : 'pending'
+  );
 
   const steps = Array.from(byId.values());
   const done = steps.filter((s) => s.status === 'completed').length;
@@ -123,8 +137,8 @@ export async function runKnowledgeBackedPlanAnalysis(params: {
     observations_en.push(en);
   };
   note(
-    'كشف الغرف والجدران من ملفات CAD/BIM يحتاج محرك رؤية منفصل — غير مفعّل حالياً.',
-    'CAD/BIM room and wall detection needs a separate vision engine — not configured yet.'
+    'محرك تحليل CAD غير متاح حاليًا — لن تُحاكى الغرف/الجدران/الأسقف/MEP.',
+    'CAD analysis engine is not available — rooms/walls/ceiling/MEP will not be simulated.'
   );
   if (!(plan.building_height_m || plan.underground_depth_m)) {
     note(
@@ -218,13 +232,17 @@ export async function runKnowledgeBackedPlanAnalysis(params: {
       })),
       rag_confidence: rag.confidence,
       rag_reliable: rag.reliable,
-      cad_vision: 'not_configured',
+      cad_vision: 'not_available',
+      project_references: ctx.applicable_codes,
+      knowledge_docs_available: matched.length,
+      // Never claim KB docs are "applicable standards"
+      applicable_standards_count: null,
       observations_ar,
       observations_en,
       note_ar:
-        'التحليل مبني على بيانات المشروع الفعلية + قاعدة المعرفة المفهرسة. كشف الغرف/الجدران من CAD يحتاج محرك رؤية منفصل.',
+        'التحليل مبني على حقول المشروع الفعلية + مراجع متاحة في قاعدة المعرفة. محرك تحليل CAD غير متاح حاليًا.',
       note_en:
-        'Analysis uses real project fields + indexed knowledge base. CAD room/wall detection needs a separate vision engine.',
+        'Analysis uses real project fields + references available in the knowledge base. CAD analysis engine is not available.',
     },
   };
 
@@ -250,17 +268,26 @@ export async function runKnowledgeBackedPlanAnalysis(params: {
     });
   }
 
+  const jobStatus =
+    done === 0
+      ? 'failed'
+      : steps.some((s) => s.status === 'needs_engineer_review')
+        ? 'needs_engineer_review'
+        : 'completed';
+
   return createEmptyAnalysisJob({
     id: params.previous?.id || createEmptyAnalysisJob().id,
-    status: 'completed',
+    status: jobStatus,
     progress,
     steps,
     sourceSheetId: params.sheetId ?? sheets[0]?.id ?? null,
     sourceVersionId: params.versionId ?? null,
     startedAt: new Date().toISOString(),
     finishedAt: new Date().toISOString(),
-    error: null,
-    error_code: null,
+    error: hasDrawing
+      ? null
+      : 'محرك تحليل CAD غير متاح حاليًا — ارفع/حدّث المخطط من تبويب إدارة المخططات.',
+    error_code: hasDrawing ? null : 'CAD_ENGINE_NOT_AVAILABLE',
     result: model,
   });
 }
@@ -280,6 +307,22 @@ export async function runKnowledgeBackedSystemDesign(params: {
       designId: null,
       error: 'مطلوب سياق المشروع لتحديد المراجع المنطبقة — لا تُعرض أكواد ثابتة بدون سياق.',
       error_code: 'PROJECT_CONTEXT_REQUIRED',
+      artifactRefs: [],
+      standards: null,
+    };
+  }
+
+  const gate = systemDesignInputGate(params.kind, params.context.client, params.context.data);
+  if (!gate.ok) {
+    const missingAr = gate.missing.map((m) => m.label_ar).join(' · ');
+    const missingEn = gate.missing.map((m) => m.label_en).join(' · ');
+    return {
+      kind: params.kind,
+      status: 'failed',
+      generatedAt: new Date().toISOString(),
+      designId: null,
+      error: `لا يمكن إنشاء/تحديد تصميم ${params.kind} — بيانات ناقصة: ${missingAr} / Missing: ${missingEn}`,
+      error_code: 'SYSTEM_INPUTS_INCOMPLETE',
       artifactRefs: [],
       standards: null,
     };

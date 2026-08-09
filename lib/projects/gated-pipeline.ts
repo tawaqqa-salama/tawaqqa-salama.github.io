@@ -13,6 +13,10 @@ import type {
 } from '@/lib/types/project-reports';
 import { EMPTY_PROJECT_ENGINEERING_DATA } from '@/lib/types/project-reports';
 import { hasDesignCenterDrawings } from '@/lib/projects/design-center/state';
+import {
+  computeDesignReadiness,
+  readinessAllowsStageApproval,
+} from '@/lib/projects/design-center/readiness';
 import { seedBuildingPlanFromClient } from '@/lib/projects/building-plan';
 import { seedCdCoverLetter } from '@/lib/projects/cd-cover-letter';
 import { seedEngineeringDelivery } from '@/lib/projects/safety-delivery-letter';
@@ -279,14 +283,22 @@ export function stageApprovalBlockers(
         blockers.push('اسم المشروع مطلوب');
       }
       break;
-    case 'designs':
+    case 'designs': {
       if (!String(data.building_plan.occupancy_classification || '').trim()) {
         blockers.push('تصنيف الإشغال (SBC/NFPA) مطلوب');
       }
       if (!hasAnyBlueprint(data)) {
         blockers.push('ارفع المخططات الهندسية في مركز التصاميم و/أو الحسابات الهيدروليكية');
       }
+      // Design required projects cannot leave this stage before engineer-review readiness
+      const readiness = computeDesignReadiness(client, data);
+      if (!readinessAllowsStageApproval(readiness.level)) {
+        blockers.push(
+          `جاهزية التصميم: ${readiness.label_ar} — يلزم READY FOR ENGINEER REVIEW قبل اعتماد المرحلة`
+        );
+      }
       break;
+    }
     case 'boq_schedule':
       if (!(data.boq.items || []).length) blockers.push('أضف بنود جدول الكميات');
       if (!data.timeline.project_start || !data.timeline.project_end) {
