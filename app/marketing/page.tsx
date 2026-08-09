@@ -14,6 +14,8 @@ import WhatsAppCampaignsPanel from '@/components/whatsapp/WhatsAppCampaignsPanel
 import SocialMediaHub from '@/components/social/SocialMediaHub';
 import WebsiteHub from '@/components/website/WebsiteHub';
 import MarketingCrmFunnel from '@/components/marketing/MarketingCrmFunnel';
+import CustomerSocialTimeline from '@/components/marketing/CustomerSocialTimeline';
+import WhatsAppCustomerActivity from '@/components/whatsapp/WhatsAppCustomerActivity';
 import ResponsiveTable from '@/components/ui/ResponsiveTable';
 import ModuleSubNavSlot from '@/components/layout/ModuleSubNavSlot';
 import ModuleTabBar from '@/components/layout/ModuleTabBar';
@@ -78,6 +80,7 @@ function MarketingPageInner() {
   const [loading, setLoading] = useState(true);
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [followUpClient, setFollowUpClient] = useState<ClientRecord | null>(null);
+  const [activityClient, setActivityClient] = useState<ClientRecord | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [sourceFilter, setSourceFilter] = useState<(typeof SOURCE_FILTERS)[number]>('الكل');
@@ -328,6 +331,24 @@ function MarketingPageInner() {
               </button>
             ))}
           </div>
+          {activityClient ? (
+            <div className="space-y-3 rounded-xl border bg-white p-4 shadow-sm">
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <p className="text-sm font-bold text-gray-900">
+                  نشاط العميل: {activityClient.owner_name || activityClient.name || activityClient.business_name}
+                </p>
+                <button
+                  type="button"
+                  onClick={() => setActivityClient(null)}
+                  className="text-xs px-3 py-1.5 rounded-lg border bg-gray-50 hover:bg-gray-100"
+                >
+                  إغلاق
+                </button>
+              </div>
+              <WhatsAppCustomerActivity customerId={activityClient.id} />
+              <CustomerSocialTimeline customerId={activityClient.id} />
+            </div>
+          ) : null}
           <ResponsiveTable className="bg-white rounded-xl border shadow-sm">
             <table className="w-full text-right text-sm table-as-cards">
               <thead className="bg-gray-50 border-b text-gray-600">
@@ -354,6 +375,17 @@ function MarketingPageInner() {
                       <td className="p-4" data-label={t('marketing.col.interest')}>{lead.lead_status || 'مهتم'}</td>
                       <td className="p-4 text-gray-500 isolate-ltr" data-label={t('marketing.col.lastContact')}>{lead.last_contact_date || '—'}</td>
                       <td className="p-4 flex flex-wrap gap-2" data-label={t('marketing.col.action')}>
+                        <button
+                          type="button"
+                          onClick={() => setActivityClient(lead)}
+                          className={`touch-target px-3 rounded-lg text-xs ${
+                            activityClient?.id === lead.id
+                              ? 'bg-purple-600 text-white'
+                              : 'bg-purple-50 text-purple-800'
+                          }`}
+                        >
+                          النشاط
+                        </button>
                         <button onClick={() => setFollowUpClient(lead)} className="touch-target px-3 bg-gray-100 rounded-lg text-xs">{t('marketing.followUp')}</button>
                         <button onClick={() => convertToSales(lead)} className="touch-target px-3 bg-blue-600 text-white rounded-lg text-xs">{t('marketing.convertSales')}</button>
                       </td>
