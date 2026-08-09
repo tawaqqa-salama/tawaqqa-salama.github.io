@@ -1,5 +1,9 @@
 import type { CompanyProfile } from '@/lib/company-profile';
-import type { EngineeringStudyDocument, EngineeringStudySection } from '@/lib/projects/engineering-report-engine/types';
+import type {
+  EngineeringStudyDocument,
+  EngineeringStudyImage,
+  EngineeringStudySection,
+} from '@/lib/projects/engineering-report-engine/types';
 
 function esc(value: string | null | undefined) {
   return String(value || '')
@@ -13,6 +17,23 @@ function sectionTitle(doc: EngineeringStudyDocument, s: EngineeringStudySection)
   return doc.locale === 'ar' ? s.title_ar : s.title_en;
 }
 
+function renderImages(
+  doc: EngineeringStudyDocument,
+  images: EngineeringStudyImage[] | undefined,
+  className = 'photo-block'
+): string {
+  if (!images?.length) return '';
+  return `<div class="photos ${className}">${images
+    .map((img) => {
+      const caption = doc.locale === 'ar' ? img.caption_ar : img.caption_en;
+      return `<figure class="photo">
+        <img src="${esc(img.src)}" alt="${esc(caption)}" />
+        ${caption ? `<figcaption class="cap">${esc(caption)}</figcaption>` : ''}
+      </figure>`;
+    })
+    .join('')}</div>`;
+}
+
 function renderSectionBody(doc: EngineeringStudyDocument, s: EngineeringStudySection): string {
   const paras = s.paragraphs
     .map((para) => {
@@ -23,6 +44,8 @@ function renderSectionBody(doc: EngineeringStudyDocument, s: EngineeringStudySec
       return `<p class="${cls}">${esc(para.text)}</p>${cites}`;
     })
     .join('');
+
+  const images = renderImages(doc, s.images, s.id === 'site_information' ? 'photo-map' : 'photo-block');
 
   const tables = (s.tables || [])
     .map((t) => {
@@ -41,7 +64,11 @@ function renderSectionBody(doc: EngineeringStudyDocument, s: EngineeringStudySec
     })
     .join('');
 
-  return `${paras}${tables}`;
+  // للصفحة 5 (بيانات الموقع): الصورة أولاً ثم النص والجدول
+  if (s.id === 'site_information') {
+    return `${images}${paras}${tables}`;
+  }
+  return `${paras}${images}${tables}`;
 }
 
 /** A4 printable HTML — cover, TOC, headers/footers, company branding, CSS page counters. */
@@ -156,25 +183,53 @@ export function buildEngineeringStudyHtml(params: {
       padding: 16mm 10mm;
       box-sizing: border-box;
     }
-    .cover-brand { display: flex; flex-direction: column; align-items: center; gap: 10px; margin-top: 10mm; }
-    .cover-brand img { width: 108px; height: 108px; object-fit: contain; }
+    .cover-brand { display: flex; flex-direction: column; align-items: center; gap: 8px; margin-top: 4mm; }
+    .cover-brand img.logo { width: 72px; height: 72px; object-fit: contain; }
     .cover-brand-fallback {
-      width: 108px; height: 108px; border: 2px solid #1f4d3a; border-radius: 50%;
+      width: 72px; height: 72px; border: 2px solid #1f4d3a; border-radius: 50%;
       display: flex; align-items: center; justify-content: center;
-      color: #1f4d3a; font-weight: 700; font-size: 12px; padding: 8px;
+      color: #1f4d3a; font-weight: 700; font-size: 11px; padding: 6px;
     }
-    .cover-office { font-size: 14px; font-weight: 700; color: #1f4d3a; }
+    .cover-office { font-size: 13px; font-weight: 700; color: #1f4d3a; }
+    .cover-facade {
+      width: 100%; max-width: 165mm; margin: 6mm 0 4mm;
+      border: 1px solid #cbd5e1; border-radius: 6px; overflow: hidden; background: #f8fafc;
+    }
+    .cover-facade img {
+      display: block; width: 100%; max-height: 95mm; object-fit: cover; object-position: center;
+    }
+    .cover-facade .cap {
+      font-size: 11px; font-weight: 700; color: #1f4d3a; padding: 6px 10px; text-align: center;
+      border-top: 1px solid #e2e8f0; background: #fff;
+    }
+    .cover-facade-missing {
+      width: 100%; max-width: 165mm; min-height: 70mm; margin: 6mm 0 4mm;
+      border: 1.5px dashed #94a3b8; border-radius: 6px;
+      display: flex; align-items: center; justify-content: center; text-align: center;
+      color: #64748b; font-size: 12px; font-weight: 650; padding: 16px; background: #f8fafc;
+    }
     .cover-title {
-      margin: 0; max-width: 170mm; color: #b91c1c; font-size: 22px; font-weight: 800; line-height: 1.45;
+      margin: 0; max-width: 170mm; color: #b91c1c; font-size: 20px; font-weight: 800; line-height: 1.45;
     }
-    .cover-project { font-size: 16px; font-weight: 700; color: #111827; max-width: 170mm; }
-    .cover-meta { width: 100%; max-width: 150mm; font-size: 13px; margin-bottom: 6mm; }
+    .cover-project { font-size: 15px; font-weight: 700; color: #111827; max-width: 170mm; }
+    .cover-meta { width: 100%; max-width: 150mm; font-size: 12.5px; margin-bottom: 4mm; }
     .cover-meta .row {
       display: flex; justify-content: space-between; gap: 10px;
-      border-bottom: 1px solid #e2e8f0; padding: 7px 2px;
+      border-bottom: 1px solid #e2e8f0; padding: 6px 2px;
     }
     .cover-meta .label { color: #64748b; font-weight: 600; }
     .cover-meta .value { font-weight: 700; }
+    .photos { display: flex; flex-direction: column; gap: 10px; margin: 10px 0 14px; }
+    .photo {
+      margin: 0; border: 1px solid #cbd5e1; border-radius: 6px; overflow: hidden; background: #fff;
+      page-break-inside: avoid; break-inside: avoid;
+    }
+    .photo img { display: block; width: 100%; max-height: 140mm; object-fit: contain; background: #f8fafc; }
+    .photo-map .photo img { max-height: 120mm; object-fit: cover; object-position: center; }
+    .photo .cap {
+      font-size: 11px; font-weight: 700; color: #1f4d3a; padding: 6px 10px;
+      border-top: 1px solid #e2e8f0; text-align: center;
+    }
     .gate {
       margin-top: 8px; font-size: 11px; font-weight: 700;
       color: ${doc.rules_gate_ok ? '#166534' : '#9f1239'};
@@ -249,12 +304,28 @@ export function buildEngineeringStudyHtml(params: {
       <div class="cover-brand">
         ${
           company.logo_url
-            ? `<img src="${esc(company.logo_url)}" alt="logo" />`
+            ? `<img class="logo" src="${esc(company.logo_url)}" alt="logo" />`
             : `<div class="cover-brand-fallback">${esc(company.name || 'Logo')}</div>`
         }
         <div class="cover-office">${esc(company.legal_name || company.name)}</div>
         <div style="font-size:10px;color:#64748b;max-width:160mm">${esc(company.tagline)}</div>
       </div>
+      ${
+        doc.cover_image?.src
+          ? `<figure class="cover-facade">
+              <img src="${esc(doc.cover_image.src)}" alt="${esc(
+                lang === 'ar' ? doc.cover_image.caption_ar : doc.cover_image.caption_en
+              )}" />
+              <figcaption class="cap">${esc(
+                lang === 'ar' ? doc.cover_image.caption_ar : doc.cover_image.caption_en
+              )}</figcaption>
+            </figure>`
+          : `<div class="cover-facade-missing">${
+              lang === 'ar'
+                ? 'يلزم إرفاق صورة واجهة المشروع لتظهر في صفحة الغلاف'
+                : 'Attach the project facade photo to show it on the cover page'
+            }</div>`
+      }
       <h1 class="cover-title">${esc(title)}</h1>
       <div class="cover-project">${esc(doc.project_name)}</div>
       <div class="cover-meta">

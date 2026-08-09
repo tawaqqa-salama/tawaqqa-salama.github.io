@@ -42,12 +42,20 @@ export type EngineeringStudyParagraph = {
   incomplete?: boolean;
 };
 
+export type EngineeringStudyImage = {
+  src: string;
+  caption_ar: string;
+  caption_en: string;
+};
+
 export type EngineeringStudySection = {
   id: EngineeringStudySectionId;
   number: number;
   title_ar: string;
   title_en: string;
   paragraphs: EngineeringStudyParagraph[];
+  /** Embedded photos (facade / map / site) — rendered in print HTML */
+  images?: EngineeringStudyImage[];
   /** Tables rendered as HTML rows (optional) */
   tables?: {
     caption_ar: string;
@@ -67,6 +75,8 @@ export type EngineeringStudyDocument = {
   report_date: string;
   project_name: string;
   client_code: string;
+  /** Cover / page-1 project facade */
+  cover_image?: EngineeringStudyImage | null;
   sections: EngineeringStudySection[];
   rules_gate_ok: boolean;
   rules_summary_ar: string;
