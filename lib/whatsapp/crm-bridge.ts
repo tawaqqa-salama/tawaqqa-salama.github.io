@@ -5,6 +5,7 @@
 
 import { nextLeadCode } from '@/lib/business/document-numbers';
 import { isDemoMode, isSupabaseConfigured, supabase } from '@/lib/supabase';
+import { insertClientSafe } from '@/lib/supabase/safe-client-write';
 import type { ClientRecord } from '@/lib/types/client';
 import { digitsOnly, normalizeWhatsAppPhone } from '@/lib/whatsapp/phone';
 import { memoryStore, type WaCrmClient } from '@/lib/whatsapp/store/memory';
@@ -155,28 +156,12 @@ async function createLeadInSupabase(input: {
     final_report_status: 'قيد الإعداد',
   };
 
-  const { data, error } = await supabase.from('clients').insert([payload]).select('*').single();
-
-  if (error) {
-    // Column may be missing if 031 not applied — retry without WA-only columns
-    const msg = error.message || '';
-    if (/lead_source|source_channel|first_contact_at|whatsapp_profile_name|email/i.test(msg)) {
-      const fallback = { ...payload };
-      delete fallback.lead_source;
-      delete fallback.source_channel;
-      delete fallback.first_contact_at;
-      delete fallback.whatsapp_profile_name;
-      delete fallback.email;
-      const retry = await supabase.from('clients').insert([fallback]).select('*').single();
-      if (retry.error || !retry.data) {
-        throw new Error(retry.error?.message || error.message);
-      }
-      return mapClient(retry.data as ClientRecord);
-    }
-    throw new Error(error.message);
+  const { data, error } = await insertClientSafe(payload);
+  if (error || !data) {
+    throw new Error(error || 'تعذر إنشاء عميل واتساب');
   }
 
-  const client = mapClient(data as ClientRecord);
+  const client = mapClient(data as unknown as ClientRecord);
 
   // Link WhatsApp contact row (031) — ignore if table missing
   await supabase.from('customer_whatsapp_contacts').upsert(
