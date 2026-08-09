@@ -11,6 +11,7 @@ import {
   type AttributionTouch,
 } from '@/lib/marketing/attribution';
 import { isDemoMode, isSupabaseConfigured, supabase } from '@/lib/supabase';
+import { insertClientSafe } from '@/lib/supabase/safe-client-write';
 import type { ClientRecord } from '@/lib/types/client';
 import { phoneLookupCandidates } from '@/lib/whatsapp/crm-bridge';
 import { normalizeWhatsAppPhone } from '@/lib/whatsapp/phone';
@@ -260,25 +261,13 @@ export async function resolveCrmClientFromChannel(
     return mapRow(created as ClientRecord & Record<string, unknown>, true);
   }
 
-  const { data, error } = await supabase.from('clients').insert([row]).select('*').single();
-  if (error) {
-    // Retry without attribution columns if migration not applied yet
-    const fallback = { ...row } as Record<string, unknown>;
-    for (const k of Object.keys(fallback)) {
-      if (/first_touch|last_touch|utm_|landing_page|referrer|attribution/i.test(k)) delete fallback[k];
-    }
-    const retry = await supabase.from('clients').insert([fallback]).select('*').single();
-    if (retry.error || !retry.data) throw new Error(retry.error?.message || error.message);
-    if (input.platform && input.platformUserId) {
-      await linkSocialIdentity(retry.data.id, input.platform, input.platformUserId, {
-        displayName: input.displayName,
-      });
-    }
-    return mapRow(retry.data as ClientRecord & Record<string, unknown>, true);
+  const { data, error } = await insertClientSafe(row as Record<string, unknown>);
+  if (error || !data?.id) {
+    throw new Error(error || 'تعذر إنشاء العميل');
   }
 
   if (input.platform && input.platformUserId) {
-    await linkSocialIdentity(data.id, input.platform, input.platformUserId, {
+    await linkSocialIdentity(String(data.id), input.platform, input.platformUserId, {
       displayName: input.displayName,
     });
   }

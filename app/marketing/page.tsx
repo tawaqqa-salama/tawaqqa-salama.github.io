@@ -5,6 +5,7 @@ import { useSearchParams } from 'next/navigation';
 import { supabase } from '@/lib/supabase';
 import { nextLeadCode } from '@/lib/business/document-numbers';
 import { shouldShowInMarketing } from '@/lib/business/pipeline';
+import { insertClientSafe } from '@/lib/supabase/safe-client-write';
 import AddLeadModal from '@/components/marketing/AddLeadModal';
 import FollowUpModal from '@/components/marketing/FollowUpModal';
 import PipelineStatusBoard from '@/components/marketing/PipelineStatusBoard';
@@ -147,30 +148,28 @@ function MarketingPageInner() {
     setErrorMessage(null);
     const leadCode = await nextLeadCode();
     const channel = form.lead_source === 'WhatsApp' ? 'whatsapp' : form.lead_source.toLowerCase();
-    const { error } = await supabase.from('clients').insert([
-      {
-        client_code: leadCode,
-        name: form.business_name || form.owner_name,
-        owner_name: form.owner_name,
-        phone: form.phone,
-        business_name: form.business_name || form.owner_name,
-        pipeline_stage: 'marketing',
-        lead_status: form.lead_status,
-        lead_notes: form.lead_notes || null,
-        lead_source: form.lead_source,
-        source_channel: channel,
-        first_contact_at: new Date().toISOString(),
-        last_contact_date: new Date().toISOString().slice(0, 10),
-        financial_status: 'بانتظار الدفعة',
-        engineering_status: 'جديد',
-        quotation_status: 'مسودة',
-        visit_status: 'لم تُجدول',
-        final_report_status: 'قيد الإعداد',
-      },
-    ]);
+    const { error } = await insertClientSafe({
+      client_code: leadCode,
+      name: form.business_name || form.owner_name,
+      owner_name: form.owner_name,
+      phone: form.phone,
+      business_name: form.business_name || form.owner_name,
+      pipeline_stage: 'marketing',
+      lead_status: form.lead_status,
+      lead_notes: form.lead_notes || null,
+      lead_source: form.lead_source,
+      source_channel: channel,
+      first_contact_at: new Date().toISOString(),
+      last_contact_date: new Date().toISOString().slice(0, 10),
+      financial_status: 'بانتظار الدفعة',
+      engineering_status: 'جديد',
+      quotation_status: 'مسودة',
+      visit_status: 'لم تُجدول',
+      final_report_status: 'قيد الإعداد',
+    });
     setIsSubmitting(false);
     if (error) {
-      setErrorMessage(error.message);
+      setErrorMessage(error);
       return;
     }
     setIsModalOpen(false);
