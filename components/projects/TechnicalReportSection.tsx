@@ -219,13 +219,29 @@ export default function TechnicalReportSection({
               <span className="text-gray-600 mb-1 block">وصف الموقع</span>
               <textarea value={report.location_description || ''} onChange={(e) => patch({ location_description: e.target.value })} className="w-full border rounded-xl px-3 py-2.5 min-h-20 text-sm" />
             </label>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+              <Field
+                label="خط العرض (Latitude)"
+                value={report.gps_lat || ''}
+                onChange={(v) => patch({ gps_lat: v })}
+              />
+              <Field
+                label="خط الطول (Longitude)"
+                value={report.gps_lng || ''}
+                onChange={(v) => patch({ gps_lng: v })}
+              />
+            </div>
+            <p className="text-xs text-gray-500">
+              صورة الواجهة تظهر في صفحة الغلاف، وصورة Google Earth مع الإحداثيات في صفحة بيانات الموقع
+              (الصفحة 5 من التقرير المطبوع).
+            </p>
           </section>
 
           <section className="bg-white border rounded-xl p-4 space-y-3">
             <h4 className="font-bold text-gray-800">صور الزيارة / الموقع</h4>
             <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
-              <PhotoBox title="صورة Google Earth" photo={report.earth_photo} onUpload={(file) => void uploadPhoto(file, (photo) => patch({ earth_photo: photo }))} onClear={() => patch({ earth_photo: null })} />
-              <PhotoBox title="صورة واجهة المشروع" photo={report.facade_photo} onUpload={(file) => void uploadPhoto(file, (photo) => patch({ facade_photo: photo }))} onClear={() => patch({ facade_photo: null })} />
+              <PhotoBox title="صورة واجهة المشروع (الغلاف)" photo={report.facade_photo} onUpload={(file) => void uploadPhoto(file, (photo) => patch({ facade_photo: photo }))} onClear={() => patch({ facade_photo: null })} />
+              <PhotoBox title="صورة الموقع من الخريطة (Google Earth)" photo={report.earth_photo} onUpload={(file) => void uploadPhoto(file, (photo) => patch({ earth_photo: photo }))} onClear={() => patch({ earth_photo: null })} />
               <PhotoBox title="صورة عامة من الموقع" photo={report.site_photo} onUpload={(file) => void uploadPhoto(file, (photo) => patch({ site_photo: photo }))} onClear={() => patch({ site_photo: null })} />
             </div>
           </section>

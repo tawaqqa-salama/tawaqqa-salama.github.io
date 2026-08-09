@@ -7,6 +7,7 @@ import {
 } from '@/lib/projects/engineering-report-engine/context';
 import type {
   EngineeringStudyDocument,
+  EngineeringStudyImage,
   EngineeringStudyParagraph,
   EngineeringStudySection,
   EngineeringStudySectionId,
@@ -149,12 +150,82 @@ const generators: Partial<Record<EngineeringStudySectionId, Gen>> = {
   site_information: (ctx) => {
     const { locale, facility, report } = ctx;
     const loc = report.location_description || facility.location_summary;
-    if (!loc && !facility.city) return { paragraphs: [missing(locale)] };
+    const lat = (report.gps_lat || '').trim();
+    const lng = (report.gps_lng || '').trim();
+    const coords =
+      lat && lng
+        ? locale === 'ar'
+          ? `${lat} ، ${lng}`
+          : `${lat}, ${lng}`
+        : locale === 'ar'
+          ? 'غير محددة'
+          : 'not specified';
+
+    if (!loc && !facility.city && !lat && !lng && !report.earth_photo?.dataUrl) {
+      return { paragraphs: [missing(locale)] };
+    }
+
     const text =
       locale === 'ar'
-        ? `الموقع الجغرافي للمنشأة: ${loc || '—'}. المدينة: ${facility.city || '—'}؛ الحي: ${facility.district || '—'}؛ المنطقة: ${facility.region || '—'}. رقم القطعة: ${facility.plot_number || '—'}. العنوان الوطني: ${facility.national_address || '—'}. تُستخدم هذه البيانات لإعداد مسارات وصول آليات الإطفاء ومتطلبات الدفاع المدني للموقع.`
-        : `Facility location: ${loc || '—'}. City: ${facility.city || '—'}; district: ${facility.district || '—'}; region: ${facility.region || '—'}. Plot: ${facility.plot_number || '—'}. National address: ${facility.national_address || '—'}. These data support fire-appliance access routing and Civil Defense site requirements.`;
-    return { paragraphs: [p(text, ['Civil Defense', 'SBC 801'], ctx.allowedCitations)] };
+        ? `الموقع الجغرافي للمنشأة: ${loc || '—'}. تُعرض أدناه صورة الموقع من الخريطة (Google Earth / صورة القمر الصناعي إن وُجدت) مع بيانات العنوان والإحداثيات لاستخدامها في مسارات وصول آليات الإطفاء ومتطلبات الدفاع المدني.`
+        : `Facility location: ${loc || '—'}. The site map / satellite image (when attached) and address/coordinates below support fire-appliance access routing and Civil Defense site requirements.`;
+
+    const images: EngineeringStudyImage[] = [];
+    if (report.earth_photo?.dataUrl) {
+      images.push({
+        src: report.earth_photo.dataUrl,
+        caption_ar: report.earth_photo.caption || 'صورة الموقع من الخريطة (Google Earth)',
+        caption_en: report.earth_photo.caption || 'Site map / Google Earth image',
+      });
+    }
+    if (report.site_photo?.dataUrl) {
+      images.push({
+        src: report.site_photo.dataUrl,
+        caption_ar: report.site_photo.caption || 'صورة عامة من الموقع',
+        caption_en: report.site_photo.caption || 'General site photograph',
+      });
+    }
+
+    const missingMapNote =
+      !report.earth_photo?.dataUrl
+        ? [
+            p(
+              locale === 'ar'
+                ? 'تنبيه: لم تُرفق صورة الموقع من الخريطة في ملف التقرير — يُستكمل الرفع من قسم «صور الزيارة / الموقع» قبل الإصدار النهائي.'
+                : 'Note: No site map image is attached on the technical report — upload it under Visit / Site Photos before final issue.',
+              [],
+              ctx.allowedCitations
+            ),
+          ]
+        : [];
+
+    return {
+      paragraphs: [
+        p(text, ['Civil Defense', 'SBC 801'], ctx.allowedCitations),
+        ...missingMapNote,
+      ],
+      images,
+      tables: [
+        {
+          caption_ar: 'بيانات الموقع والإحداثيات',
+          caption_en: 'Site location & coordinates',
+          headers_ar: ['البند', 'القيمة'],
+          headers_en: ['Item', 'Value'],
+          rows: [
+            [locale === 'ar' ? 'وصف الموقع' : 'Location description', loc || '—'],
+            [locale === 'ar' ? 'المدينة' : 'City', facility.city || '—'],
+            [locale === 'ar' ? 'الحي' : 'District', facility.district || '—'],
+            [locale === 'ar' ? 'المنطقة' : 'Region', facility.region || '—'],
+            [locale === 'ar' ? 'الشارع' : 'Street', facility.street || '—'],
+            [locale === 'ar' ? 'رقم القطعة' : 'Plot number', facility.plot_number || '—'],
+            [locale === 'ar' ? 'العنوان الوطني' : 'National address', facility.national_address || '—'],
+            [locale === 'ar' ? 'خط العرض (Latitude)' : 'Latitude', lat || (locale === 'ar' ? '—' : '—')],
+            [locale === 'ar' ? 'خط الطول (Longitude)' : 'Longitude', lng || (locale === 'ar' ? '—' : '—')],
+            [locale === 'ar' ? 'الإحداثيات' : 'Coordinates', coords],
+          ],
+        },
+      ],
+    };
   },
 
   applicable_codes: (ctx) => {
@@ -642,8 +713,18 @@ export function generateEngineeringStudy(params: {
       title_en: meta.title_en,
       paragraphs: body.paragraphs,
       tables: body.tables,
+      images: body.images,
     };
   });
+
+  const facadeSrc = params.report.facade_photo?.dataUrl || '';
+  const cover_image: EngineeringStudyImage | null = facadeSrc
+    ? {
+        src: facadeSrc,
+        caption_ar: params.report.facade_photo?.caption || 'صورة واجهة المشروع',
+        caption_en: params.report.facade_photo?.caption || 'Project facade photograph',
+      }
+    : null;
 
   return {
     locale,
@@ -654,6 +735,7 @@ export function generateEngineeringStudy(params: {
     report_date: params.report.report_date || new Date().toISOString().slice(0, 10),
     project_name: ctx.facility.business_name || params.client.name || '—',
     client_code: params.client.client_code || '',
+    cover_image,
     sections,
     rules_gate_ok: ctx.rulesGateOk,
     rules_summary_ar: ctx.rulesSummaryAr,

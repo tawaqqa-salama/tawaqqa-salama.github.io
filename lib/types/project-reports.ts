@@ -406,6 +406,9 @@ export interface TechnicalReport extends ReportMeta {
   risk_class?: string;
   overview_text?: string;
   location_description?: string;
+  /** إحداثيات الموقع (اختياري) — تُطبع في صفحة بيانات الموقع */
+  gps_lat?: string;
+  gps_lng?: string;
   floors_description?: string;
   earth_photo?: TechnicalReportPhoto | null;
   facade_photo?: TechnicalReportPhoto | null;

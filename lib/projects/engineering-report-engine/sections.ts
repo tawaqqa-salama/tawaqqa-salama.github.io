@@ -13,9 +13,10 @@ export const ENGINEERING_STUDY_SECTIONS: {
   { id: 'toc', number: 2, title_ar: 'فهرس المحتويات', title_en: 'Table of Contents', structural: true },
   { id: 'introduction', number: 3, title_ar: 'المقدمة', title_en: 'Introduction' },
   { id: 'project_description', number: 4, title_ar: 'وصف المشروع', title_en: 'Project Description' },
-  { id: 'owner_information', number: 5, title_ar: 'بيانات المالك', title_en: 'Owner Information' },
-  { id: 'building_information', number: 6, title_ar: 'بيانات المبنى', title_en: 'Building Information' },
-  { id: 'site_information', number: 7, title_ar: 'بيانات الموقع', title_en: 'Site Information' },
+  /** الصفحة 5 مطبوعة: خريطة الموقع + بيانات/إحداثيات */
+  { id: 'site_information', number: 5, title_ar: 'بيانات الموقع', title_en: 'Site Information' },
+  { id: 'owner_information', number: 6, title_ar: 'بيانات المالك', title_en: 'Owner Information' },
+  { id: 'building_information', number: 7, title_ar: 'بيانات المبنى', title_en: 'Building Information' },
   { id: 'applicable_codes', number: 8, title_ar: 'الكودات والمراجع المعتمدة', title_en: 'Applicable Codes' },
   {
     id: 'occupancy_classification',
