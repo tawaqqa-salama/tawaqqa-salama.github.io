@@ -2,7 +2,10 @@
  * Recompute zone labels / egress after engineer manual overrides (local).
  */
 
+import { buildComplianceReport } from '@/lib/projects/design-center/vision/complianceReport';
+import { runCoverageAudit } from '@/lib/projects/design-center/vision/coverageAuditor';
 import { runEgressAnalysis } from '@/lib/projects/design-center/vision/egressEngine';
+import { runPreCalculations } from '@/lib/projects/design-center/vision/preCalculations';
 import {
   applyManualZoneOverride,
   collectZoneSystemRequirements,
@@ -10,8 +13,11 @@ import {
 import type { DesignAnalysisJob } from '@/lib/projects/design-center/types';
 import type {
   CADAnalysisResult,
+  ComplianceReport,
+  CoverageAuditResult,
   DetectedZone,
   EgressAnalysisSummary,
+  PreCalculationBundle,
   ScaleCalibration,
   ZoneManualOverride,
   ZoneSystemRequirement,
@@ -30,6 +36,9 @@ export function cadResultFromAnalysisJob(
           preview_data_url?: string | null;
           egress?: EgressAnalysisSummary | null;
           zone_system_requirements?: ZoneSystemRequirement[];
+          coverage?: CoverageAuditResult | null;
+          pre_calculations?: PreCalculationBundle | null;
+          compliance_report?: ComplianceReport | null;
           title_block?: CADAnalysisResult['title_block'];
           gross_floor_area_m2?: number | null;
           occupancy?: string | null;
@@ -93,6 +102,9 @@ export function cadResultFromAnalysisJob(
     preview_data_url: meta?.preview_data_url || null,
     egress: meta?.egress || null,
     zone_system_requirements: meta?.zone_system_requirements || [],
+    coverage: meta?.coverage || null,
+    pre_calculations: meta?.pre_calculations || null,
+    compliance_report: meta?.compliance_report || null,
     gross_floor_area_m2: meta?.gross_floor_area_m2 ?? null,
     exits_count: meta?.exits_count ?? null,
     doors_count: meta?.doors_count ?? null,
@@ -109,7 +121,7 @@ export function cadResultFromAnalysisJob(
 export function applyZoneOverridesToCadResult(
   result: CADAnalysisResult,
   overrides: ZoneManualOverride[],
-  opts?: { hasSprinkler?: boolean }
+  opts?: { hasSprinkler?: boolean; hasFireAlarm?: boolean }
 ): CADAnalysisResult {
   if (!result || !overrides.length) return result;
   let zones: DetectedZone[] = result.zones.map((z) => {
@@ -137,13 +149,40 @@ export function applyZoneOverridesToCadResult(
     };
   });
 
+  const zone_system_requirements = collectZoneSystemRequirements(zones);
+  const coverage = runCoverageAudit({
+    zones,
+    textAnchors: result.text_anchors || [],
+    metersPerPixel: result.scale.meters_per_pixel,
+    occupancy: result.occupancy || result.title_block.occupancy,
+  });
+  const pre_calculations = runPreCalculations({
+    zones,
+    hazard: coverage.hazard_class,
+    zoneRequirements: zone_system_requirements,
+    coverage,
+    hasSprinklerDeclared: Boolean(opts?.hasSprinkler),
+  });
+  const compliance_report = buildComplianceReport({
+    egress,
+    coverage,
+    zoneRequirements: zone_system_requirements,
+    preCalculations: pre_calculations,
+    hasSprinklerDeclared: Boolean(opts?.hasSprinkler),
+    hasFireAlarmDeclared: Boolean(opts?.hasFireAlarm),
+    scaleKnown: result.scale.meters_per_pixel != null,
+  });
+
   const zoneAreaSum = zones.reduce((s, z) => s + (z.area_m2 || 0), 0);
 
   return {
     ...result,
     zones,
     egress,
-    zone_system_requirements: collectZoneSystemRequirements(zones),
+    zone_system_requirements,
+    coverage,
+    pre_calculations,
+    compliance_report,
     gross_floor_area_m2:
       result.title_block.area_m2 != null && result.title_block.area_m2 > 0
         ? result.title_block.area_m2

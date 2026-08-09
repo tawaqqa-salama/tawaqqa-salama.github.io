@@ -3,12 +3,23 @@ export type {
   CadVisionAnalyzeOptions,
   CadVisionSourceKind,
   CadVisionStatus,
+  AlarmBatteryPreCalculation,
+  ComplianceChecklistItem,
+  ComplianceItemStatus,
+  ComplianceReport,
+  CoverageAuditResult,
+  CoverageIssue,
+  DetectedMepDevice,
   DetectedWallSegment,
   DetectedZone,
   EgressAnalysisSummary,
   EgressComplianceStatus,
   EgressZoneAssessment,
+  HazardClass,
+  HydraulicPreCalculation,
+  MepDeviceKind,
   Point2D,
+  PreCalculationBundle,
   ScaleCalibration,
   TextAnchor,
   TitleBlockMetadata,
@@ -64,3 +75,30 @@ export {
   applyZoneOverridesToCadResult,
   cadResultFromAnalysisJob,
 } from '@/lib/projects/design-center/vision/recompute';
+
+export {
+  runCoverageAudit,
+  detectDevicesFromAnchors,
+  sprinklerMaxSpacingM,
+  smokeMaxSpacingM,
+  inferHazardClass,
+} from '@/lib/projects/design-center/vision/coverageAuditor';
+
+export {
+  runPreCalculations,
+  estimateHydraulicDemand,
+  estimateAlarmBattery,
+  densityForHazard,
+  pickHydraulicallyRemoteZone,
+} from '@/lib/projects/design-center/vision/preCalculations';
+
+export {
+  buildComplianceReport,
+  complianceReportFromCad,
+} from '@/lib/projects/design-center/vision/complianceReport';
+
+export {
+  buildPreDesignAuditHtml,
+  downloadPreDesignAuditHtml,
+  openPreDesignAuditPrint,
+} from '@/lib/projects/design-center/vision/auditExport';

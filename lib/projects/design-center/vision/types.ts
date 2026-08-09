@@ -146,6 +146,106 @@ export type ZoneSystemRequirement = {
   sprinkler_density_hint: 'ESFR_OR_HIGH_DENSITY' | null;
 };
 
+export type MepDeviceKind = 'sprinkler' | 'smoke_detector' | 'manual_call_point';
+
+export type DetectedMepDevice = {
+  id: string;
+  kind: MepDeviceKind;
+  x: number;
+  y: number;
+  label: string | null;
+  source: 'text_anchor' | 'symbol_hint';
+  confidence: number;
+};
+
+export type HazardClass = 'light' | 'ordinary' | 'extra';
+
+export type CoverageIssueKind = 'over_spaced' | 'uncovered_zone' | 'no_devices' | 'scale_unknown';
+
+export type CoverageIssue = {
+  id: string;
+  kind: CoverageIssueKind;
+  device_kind: MepDeviceKind;
+  zone_id: string | null;
+  message_ar: string;
+  message_en: string;
+  /** Pixel points for overlay (device pairs or uncovered samples) */
+  points: Point2D[];
+  distance_m: number | null;
+  limit_m: number | null;
+};
+
+export type CoverageAuditResult = {
+  devices: DetectedMepDevice[];
+  hazard_class: HazardClass;
+  sprinkler_max_spacing_m: number;
+  smoke_max_spacing_m: number;
+  issues: CoverageIssue[];
+  uncovered_samples: Array<{ zone_id: string; x: number; y: number; device_kind: MepDeviceKind }>;
+  summary_ar: string;
+  summary_en: string;
+};
+
+export type HydraulicPreCalculation = {
+  remote_zone_id: string | null;
+  remote_zone_label: string | null;
+  remote_area_m2: number | null;
+  hazard_class: HazardClass;
+  density_gpm_per_ft2: number;
+  estimated_flow_gpm: number | null;
+  estimated_duration_min: number;
+  estimated_volume_gal: number | null;
+  note_ar: string;
+  note_en: string;
+  status: 'estimated' | 'needs_engineer_review' | 'not_available';
+};
+
+export type AlarmBatteryPreCalculation = {
+  smoke_count: number;
+  mcp_count: number;
+  other_notification_estimate: number;
+  standby_current_a: number | null;
+  alarm_current_a: number | null;
+  standby_hours: number;
+  alarm_hours: number;
+  estimated_ah: number | null;
+  note_ar: string;
+  note_en: string;
+  status: 'estimated' | 'needs_engineer_review' | 'not_available';
+};
+
+export type PreCalculationBundle = {
+  hydraulic: HydraulicPreCalculation;
+  alarm_battery: AlarmBatteryPreCalculation;
+};
+
+export type ComplianceItemStatus =
+  | 'COMPLIANT'
+  | 'NEEDS_ENGINEER_REVIEW'
+  | 'CRITICAL_NON_COMPLIANCE';
+
+export type ComplianceChecklistItem = {
+  id: string;
+  category: 'egress' | 'coverage' | 'special_suppression' | 'pre_calculation' | 'data';
+  title_ar: string;
+  title_en: string;
+  detail_ar: string;
+  detail_en: string;
+  status: ComplianceItemStatus;
+  code_refs: string[];
+};
+
+export type ComplianceReport = {
+  generated_at: string;
+  overall_status: ComplianceItemStatus;
+  items: ComplianceChecklistItem[];
+  counts: {
+    compliant: number;
+    needs_engineer_review: number;
+    critical: number;
+  };
+};
+
 export type CADAnalysisResult = {
   status: CadVisionStatus;
   engine: 'local_client';
@@ -164,6 +264,9 @@ export type CADAnalysisResult = {
   preview_data_url: string | null;
   egress: EgressAnalysisSummary | null;
   zone_system_requirements: ZoneSystemRequirement[];
+  coverage: CoverageAuditResult | null;
+  pre_calculations: PreCalculationBundle | null;
+  compliance_report: ComplianceReport | null;
   /** Sum of zone areas in m² when scale known */
   gross_floor_area_m2: number | null;
   /** Heuristic door/exit glyph or text hits — may be null */
@@ -191,6 +294,8 @@ export type CadVisionAnalyzeOptions = {
   enableOcr?: boolean;
   /** Declared sprinkler presence for SBC travel-distance limit selection */
   hasSprinkler?: boolean;
+  /** Declared fire alarm presence for compliance consistency checks */
+  hasFireAlarm?: boolean;
   onProgress?: (message_ar: string, message_en: string) => void;
 };
 

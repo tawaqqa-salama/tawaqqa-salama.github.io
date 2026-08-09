@@ -11,6 +11,7 @@ export type DesignCenterTabId =
   | 'ai_center'
   | 'smart_design'
   | 'calculations'
+  | 'audit'
   | 'review'
   | 'exports';
 
@@ -318,6 +319,11 @@ export const DESIGN_CENTER_TABS: {
   { id: 'ai_center', label_ar: 'مركز الذكاء التصميمي', label_en: 'AI Design Center' },
   { id: 'smart_design', label_ar: 'التصميم الذكي', label_en: 'Smart Design' },
   { id: 'calculations', label_ar: 'الحسابات الهندسية', label_en: 'Engineering Calculations' },
+  {
+    id: 'audit',
+    label_ar: 'تفريغ الحسابات والمطابقة',
+    label_en: 'Pre-Design Audit',
+  },
   { id: 'review', label_ar: 'مراجعة التصميم', label_en: 'Design Review' },
   { id: 'exports', label_ar: 'المخرجات', label_en: 'Outputs' },
 ];

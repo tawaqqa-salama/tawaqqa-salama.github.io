@@ -6,6 +6,7 @@
 
 import { useEffect, useMemo, useRef, useState } from 'react';
 import type {
+  CoverageAuditResult,
   DetectedZone,
   EgressAnalysisSummary,
   ZoneClassification,
@@ -35,6 +36,7 @@ type Props = {
   zones: DetectedZone[];
   egress: EgressAnalysisSummary | null;
   zoneRequirements: ZoneSystemRequirement[];
+  coverage?: CoverageAuditResult | null;
   onApplyOverride: (override: ZoneManualOverride) => void;
 };
 
@@ -47,6 +49,7 @@ export default function CadZoneOverlay({
   zones,
   egress,
   zoneRequirements,
+  coverage = null,
   onApplyOverride,
 }: Props) {
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
@@ -138,6 +141,38 @@ export default function CadZoneOverlay({
         }
         ctx.setLineDash([]);
       }
+
+      // MEP devices + coverage issues
+      if (coverage?.devices?.length) {
+        for (const d of coverage.devices) {
+          const color =
+            d.kind === 'sprinkler' ? '#2563eb' : d.kind === 'smoke_detector' ? '#7c3aed' : '#db2777';
+          ctx.beginPath();
+          ctx.fillStyle = color;
+          ctx.arc(d.x * sx, d.y * sy, 4, 0, Math.PI * 2);
+          ctx.fill();
+        }
+      }
+      if (coverage?.uncovered_samples?.length) {
+        ctx.fillStyle = 'rgba(220,38,38,0.55)';
+        for (const s of coverage.uncovered_samples.slice(0, 60)) {
+          ctx.fillRect(s.x * sx - 2, s.y * sy - 2, 4, 4);
+        }
+      }
+      if (coverage?.issues?.length) {
+        ctx.strokeStyle = '#dc2626';
+        ctx.lineWidth = 1.25;
+        for (const issue of coverage.issues) {
+          if (issue.kind === 'over_spaced' && issue.points.length >= 2) {
+            ctx.setLineDash([3, 3]);
+            ctx.beginPath();
+            ctx.moveTo(issue.points[0].x * sx, issue.points[0].y * sy);
+            ctx.lineTo(issue.points[1].x * sx, issue.points[1].y * sy);
+            ctx.stroke();
+            ctx.setLineDash([]);
+          }
+        }
+      }
     };
 
     if (previewDataUrl) {
@@ -151,7 +186,7 @@ export default function CadZoneOverlay({
     } else {
       draw();
     }
-  }, [previewDataUrl, zones, egress, widthPx, heightPx, selectedId, dark, preferAr]);
+  }, [previewDataUrl, zones, egress, coverage, widthPx, heightPx, selectedId, dark, preferAr]);
 
   const hitTest = (clientX: number, clientY: number) => {
     const canvas = canvasRef.current;
@@ -204,6 +239,11 @@ export default function CadZoneOverlay({
           {preferAr ? 'أقصى انتقال تقديري' : 'Max estimated travel'}:{' '}
           {egress.max_travel_m ?? (preferAr ? 'غير معروف' : 'Unknown')} ·{' '}
           {egress.overall_status}
+        </p>
+      ) : null}
+      {coverage ? (
+        <p className={`text-[11px] ${muted}`}>
+          {preferAr ? coverage.summary_ar : coverage.summary_en}
         </p>
       ) : null}
 
