@@ -43,45 +43,6 @@ export default function WorkflowStageRail({
           : `Sequential stage path: ${progressPercent}% · 🟢 done · 🔵 current · 🔒 locked`}
       </p>
 
-      <div className="flex gap-1.5 overflow-x-auto pb-1">
-        {WORKFLOW_STAGES.map((stage) => {
-          const ui = getStageUiState(stage.id, activeStage, client, data);
-          const unlocked = canUnlockStage(stage.id, client, data);
-          const isActive = activeStage === stage.id;
-          const label = ar
-            ? stage.short_ar
-            : `${stage.order}. ${stage.label_en.split('—')[0].trim()}`;
-          const base =
-            ui === 'completed'
-              ? 'bg-emerald-600 text-white border-emerald-700'
-              : isActive
-                ? stage.id === 'designs'
-                  ? 'bg-indigo-600 text-white border-indigo-700 ring-2 ring-indigo-300'
-                  : 'bg-sky-600 text-white border-sky-700'
-                : unlocked
-                  ? stage.id === 'designs'
-                    ? 'bg-indigo-50 text-indigo-900 border-indigo-300 hover:bg-indigo-100'
-                    : 'bg-white text-gray-700 border-gray-200 hover:bg-gray-50'
-                  : 'bg-gray-100 text-gray-400 border-gray-200 cursor-not-allowed opacity-80';
-
-          return (
-            <button
-              key={stage.id}
-              type="button"
-              title={unlocked ? (ar ? stage.label_ar : stage.label_en) : LOCK_TOOLTIP_AR}
-              disabled={!unlocked}
-              onClick={() => unlocked && onSelect(stage.id)}
-              className={`shrink-0 px-2.5 py-1.5 rounded-lg border text-[11px] font-semibold ${base}`}
-            >
-              <span className="ml-1">
-                {ui === 'completed' ? '🟢' : !unlocked ? '🔒' : isActive ? '🔵' : '○'}
-              </span>
-              {label}
-            </button>
-          );
-        })}
-      </div>
-
       <nav className="space-y-0.5">
         {WORKFLOW_STAGES.map((stage) => {
           const ui = getStageUiState(stage.id, activeStage, client, data);
