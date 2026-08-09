@@ -3,6 +3,8 @@
  * Results are produced entirely in-browser (Canvas / pdf.js / optional OCR).
  */
 
+import type { FireSystemKind } from '@/lib/projects/design-center/types';
+
 export type CadVisionSourceKind = 'pdf' | 'image' | 'unsupported';
 
 export type CadVisionStatus =
@@ -16,10 +18,31 @@ export type CadVisionStatus =
 
 export type Point2D = { x: number; y: number };
 
+export type ZoneClassification =
+  | 'electrical_room'
+  | 'server_room'
+  | 'kitchen'
+  | 'warehouse'
+  | 'stairwell'
+  | 'corridor'
+  | 'office'
+  | 'assembly'
+  | 'unknown'
+  | 'manual';
+
+export type TextAnchor = {
+  text: string;
+  x: number;
+  y: number;
+  w?: number;
+  h?: number;
+};
+
 /** Closed room / zone polygon detected from drawing contours */
 export type DetectedZone = {
   id: string;
   label: string | null;
+  label_ar?: string | null;
   /** Polygon in raster pixel coordinates */
   polygon: Point2D[];
   /** Area in square pixels */
@@ -28,6 +51,15 @@ export type DetectedZone = {
   area_m2: number | null;
   confidence: number;
   bounds: { x: number; y: number; w: number; h: number };
+  classification?: ZoneClassification;
+  label_source?: 'text_anchor' | 'manual' | 'unknown';
+  label_confidence?: number;
+  needs_engineer_label?: boolean;
+  nearby_text?: string | null;
+  manual_override?: boolean;
+  /** Populated by egress engine */
+  travel_distance_m?: number | null;
+  egress_status?: EgressComplianceStatus | null;
 };
 
 export type DetectedWallSegment = {
@@ -63,6 +95,57 @@ export type ScaleCalibration = {
   dpi: number;
 };
 
+export type EgressComplianceStatus =
+  | 'within_limit'
+  | 'exceeds_limit'
+  | 'scale_unknown'
+  | 'needs_engineer_review';
+
+export type TravelDistanceLimit = {
+  code: 'SBC-801';
+  max_m_without_sprinkler: number;
+  max_m_with_sprinkler: number;
+  applied_max_m: number;
+  has_sprinkler: boolean;
+  note_ar: string;
+  note_en: string;
+};
+
+export type EgressZoneAssessment = {
+  zone_id: string;
+  zone_label: string | null;
+  travel_distance_px: number;
+  travel_distance_m: number | null;
+  limit_m: number;
+  status: EgressComplianceStatus;
+  method: 'longest_diagonal' | 'centroid_to_exit' | 'longest_diagonal_vs_exit';
+  vector: { from: Point2D; to: Point2D };
+  diagonal: { from: Point2D; to: Point2D; length_px: number } | null;
+  nearest_exit: { x: number; y: number; dist_px: number } | null;
+  note_ar: string;
+  note_en: string;
+};
+
+export type EgressAnalysisSummary = {
+  limit: TravelDistanceLimit;
+  exits: Point2D[];
+  assessments: EgressZoneAssessment[];
+  max_travel_m: number | null;
+  overall_status: EgressComplianceStatus;
+};
+
+export type ZoneSystemRequirement = {
+  zone_id: string;
+  zone_label: string | null;
+  classification: ZoneClassification;
+  systems: FireSystemKind[];
+  primary_codes: string[];
+  related_codes: string[];
+  note_ar: string;
+  note_en: string;
+  sprinkler_density_hint: 'ESFR_OR_HIGH_DENSITY' | null;
+};
+
 export type CADAnalysisResult = {
   status: CadVisionStatus;
   engine: 'local_client';
@@ -76,6 +159,11 @@ export type CADAnalysisResult = {
   title_block: TitleBlockMetadata;
   zones: DetectedZone[];
   walls: DetectedWallSegment[];
+  text_anchors: TextAnchor[];
+  /** Downscaled JPEG data URL for overlay UI (local only) */
+  preview_data_url: string | null;
+  egress: EgressAnalysisSummary | null;
+  zone_system_requirements: ZoneSystemRequirement[];
   /** Sum of zone areas in m² when scale known */
   gross_floor_area_m2: number | null;
   /** Heuristic door/exit glyph or text hits — may be null */
@@ -101,5 +189,15 @@ export type CadVisionAnalyzeOptions = {
   manualMetersPerPixel?: number | null;
   /** Enable Tesseract OCR on title-block crop (browser only; slower) */
   enableOcr?: boolean;
+  /** Declared sprinkler presence for SBC travel-distance limit selection */
+  hasSprinkler?: boolean;
   onProgress?: (message_ar: string, message_en: string) => void;
+};
+
+export type ZoneManualOverride = {
+  zone_id: string;
+  label?: string | null;
+  classification?: ZoneClassification;
+  dimensionScale?: number;
+  area_m2?: number | null;
 };

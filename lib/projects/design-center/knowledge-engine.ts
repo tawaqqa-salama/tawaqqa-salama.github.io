@@ -340,6 +340,12 @@ export async function runKnowledgeBackedPlanAnalysis(params: {
             privacy: vision.privacy,
             warnings_ar: vision.warnings_ar,
             warnings_en: vision.warnings_en,
+            preview_data_url: vision.preview_data_url,
+            egress: vision.egress,
+            zone_system_requirements: vision.zone_system_requirements,
+            text_anchors_count: vision.text_anchors?.length || 0,
+            width_px: vision.width_px,
+            height_px: vision.height_px,
           }
         : vision
           ? {
