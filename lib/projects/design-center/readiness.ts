@@ -141,13 +141,20 @@ function isApprovedStatus(status: string | null | undefined): boolean {
 function analysisHonest(design: DesignCenterState | null | undefined): boolean {
   const job = design?.analysis;
   if (!job || job.status === 'idle' || job.status === 'queued' || job.status === 'running') return false;
-  // Must not claim CAD vision completed
-  const cadClaim = (job.steps || []).some(
-    (s) =>
-      (s.id === 'detect_rooms' || s.id === 'detect_walls' || s.id === 'ceiling_analysis' || s.id === 'mep_coordination') &&
-      s.status === 'completed'
-  );
-  if (cadClaim) return false;
+  const raw = job.result?.raw as { cad_vision?: string } | undefined;
+  const realLocalCad = raw?.cad_vision === 'local_client';
+  // Reject fabricated CAD completion (rooms/walls completed without local vision engine)
+  if (!realLocalCad) {
+    const cadClaim = (job.steps || []).some(
+      (s) =>
+        (s.id === 'detect_rooms' ||
+          s.id === 'detect_walls' ||
+          s.id === 'ceiling_analysis' ||
+          s.id === 'mep_coordination') &&
+        s.status === 'completed'
+    );
+    if (cadClaim) return false;
+  }
   return job.status === 'completed' || job.status === 'needs_engineer_review';
 }
 
