@@ -16,6 +16,12 @@ function num(v: string | number | null | undefined): number | null {
   return Number.isFinite(n) ? n : null;
 }
 
+/** Treat 0 / empty as missing so vision / inspection can fill gaps */
+function numPositive(v: string | number | null | undefined): number | null {
+  const n = num(v);
+  return n != null && n > 0 ? n : null;
+}
+
 function yes(v: string | null | undefined): boolean {
   return v === 'نعم' || v === 'yes' || v === 'Yes' || v === 'true';
 }
@@ -44,18 +50,52 @@ export function buildProjectDesignStandardsContext(
     .filter((s) => s.status === 'completed' || s.status === 'running' || s.status === 'queued')
     .map((s) => s.kind);
 
+  const height = num(plan.building_height_m);
+  const visionRaw = data.design_center?.analysis?.result?.raw as
+    | {
+        cad_vision?: string;
+        cad_vision_result?: {
+          occupancy?: string | null;
+          gross_floor_area_m2?: number | null;
+          drawing_inspection?: {
+            building?: {
+              floors_count?: number | null;
+              total_area_m2?: number | null;
+              occupancy?: string | null;
+            } | null;
+            drawing_type?: { type?: string } | null;
+          } | null;
+          zone_system_requirements?: Array<{
+            systems?: FireSystemKind[];
+            classification?: string;
+            sprinkler_density_hint?: string | null;
+          }> | null;
+        } | null;
+      }
+    | undefined;
+  const visionMeta =
+    visionRaw?.cad_vision === 'local_client' ? visionRaw.cad_vision_result : null;
+  const inspection = visionMeta?.drawing_inspection || null;
+  const drawingType = inspection?.drawing_type?.type || null;
+
   const hasSprinkler =
     yes(plan.sprinkler_system) ||
     selectedSystems.includes('sprinkler') ||
-    services.includes('firefighting_plans');
+    services.includes('firefighting_plans') ||
+    drawingType === 'fire_fighting';
 
   const hasFireAlarm =
     yes(plan.fire_alarm_system) ||
     selectedSystems.includes('fire_alarm') ||
-    services.includes('alarm_plans');
+    services.includes('alarm_plans') ||
+    drawingType === 'fire_alarm';
 
-  const height = num(plan.building_height_m);
-  const floors = num(client.floors_count);
+  const floors =
+    numPositive(client.floors_count) ??
+    (typeof inspection?.building?.floors_count === 'number' &&
+    inspection.building.floors_count > 0
+      ? inspection.building.floors_count
+      : null);
   const highRise =
     yes(plan.high_rise_building) ||
     (height != null && height >= 23) ||
@@ -73,23 +113,6 @@ export function buildProjectDesignStandardsContext(
 
   const hasUndergroundMain =
     yes(plan.underground_building) || Boolean(plan.underground_depth_m?.trim());
-
-  const visionRaw = data.design_center?.analysis?.result?.raw as
-    | {
-        cad_vision?: string;
-        cad_vision_result?: {
-          occupancy?: string | null;
-          gross_floor_area_m2?: number | null;
-          zone_system_requirements?: Array<{
-            systems?: FireSystemKind[];
-            classification?: string;
-            sprinkler_density_hint?: string | null;
-          }> | null;
-        } | null;
-      }
-    | undefined;
-  const visionMeta =
-    visionRaw?.cad_vision === 'local_client' ? visionRaw.cad_vision_result : null;
 
   const zoneReqs = visionMeta?.zone_system_requirements || [];
   const zoneKitchen = zoneReqs.some((r) => r.classification === 'kitchen');
@@ -124,6 +147,7 @@ export function buildProjectDesignStandardsContext(
     plan.occupancy_classification ||
     data.technical_report?.building_classification ||
     visionMeta?.occupancy ||
+    inspection?.building?.occupancy ||
     null;
 
   return {
@@ -133,13 +157,18 @@ export function buildProjectDesignStandardsContext(
     activityType: client.activity_type || null,
     buildingUse: occupancy || client.activity_type || null,
     buildingAreaM2:
-      num(client.building_area) ??
-      num(plan.total_site_area_m2) ??
-      (typeof visionMeta?.gross_floor_area_m2 === 'number'
+      numPositive(client.building_area) ??
+      numPositive(plan.total_site_area_m2) ??
+      (typeof inspection?.building?.total_area_m2 === 'number' &&
+      inspection.building.total_area_m2 > 0
+        ? inspection.building.total_area_m2
+        : null) ??
+      (typeof visionMeta?.gross_floor_area_m2 === 'number' &&
+      visionMeta.gross_floor_area_m2 > 0
         ? visionMeta.gross_floor_area_m2
         : null),
     floorsCount: floors,
-    buildingHeightM: height,
+    buildingHeightM: numPositive(height),
     hasFirePump,
     hasUndergroundMain,
     hasStandpipe,

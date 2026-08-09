@@ -102,3 +102,22 @@ export {
   downloadPreDesignAuditHtml,
   openPreDesignAuditPrint,
 } from '@/lib/projects/design-center/vision/auditExport';
+
+export type {
+  BuildingMetricsInspection,
+  DetectedFloorLevel,
+  DrawingFloorKind,
+  DrawingInspectionReport,
+  DrawingTypeId,
+  DrawingTypeInspection,
+  ZoneDetailInspection,
+} from '@/lib/projects/design-center/vision/drawingInspector';
+
+export {
+  buildingPlanPatchFromInspection,
+  clientFieldHintsFromInspection,
+  detectDrawingType,
+  extractBuildingMetrics,
+  extractZoneDetails,
+  inspectDrawing,
+} from '@/lib/projects/design-center/vision/drawingInspector';

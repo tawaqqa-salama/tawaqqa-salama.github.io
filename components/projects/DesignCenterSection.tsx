@@ -31,11 +31,14 @@ import {
   buildPreDesignAuditHtml,
   downloadPreDesignAuditHtml,
   openPreDesignAuditPrint,
+  inspectDrawing,
+  buildingPlanPatchFromInspection,
   type CADAnalysisResult,
   type DesignCenterState,
   type DesignCenterTabId,
   type DesignDrawingFormat,
   type DesignDrawingSheet,
+  type DrawingInspectionReport,
   type ZoneManualOverride,
 } from '@/lib/projects/design-center';
 import { syncKnowledgeLinksToDesignCenterSync } from '@/lib/design-intelligence/project-knowledge-bridge';
@@ -47,6 +50,7 @@ import BuildingPlanReportSection from '@/components/projects/BuildingPlanReportS
 import PlanAttachmentsUpload from '@/components/projects/PlanAttachmentsUpload';
 import SafetyBlueprintsUpload from '@/components/projects/SafetyBlueprintsUpload';
 import CadZoneOverlay from '@/components/projects/CadZoneOverlay';
+import DrawingInspectionCard from '@/components/projects/DrawingInspectionCard';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { EMPTY_PLAN_ATTACHMENTS, EMPTY_SAFETY_BLUEPRINTS } from '@/lib/types/project-reports';
 import type { ClientRecord } from '@/lib/types/client';
@@ -795,16 +799,58 @@ export default function DesignCenterSection({
             height_px?: number;
             egress?: CADAnalysisResult['egress'];
             zone_system_requirements?: CADAnalysisResult['zone_system_requirements'];
+            drawing_inspection?: DrawingInspectionReport | null;
           } | null;
         }
       | undefined;
+    const snapshot = cadResultFromAnalysisJob(design.analysis);
+    const persisted = raw?.cad_vision_result?.drawing_inspection || null;
+    const inspection =
+      persisted ||
+      (snapshot
+        ? inspectDrawing({
+            ...snapshot,
+            // Prefer title-block corpus when full PDF text was not persisted
+            extracted_text: snapshot.extracted_text || snapshot.title_block?.raw_text || '',
+          })
+        : null);
     return {
       active: raw?.cad_vision === 'local_client',
       result: raw?.cad_vision_result || null,
       status: raw?.cad_vision || 'not_run',
-      snapshot: cadResultFromAnalysisJob(design.analysis),
+      snapshot,
+      inspection,
     };
   }, [design.analysis]);
+
+  const feedInspectionToAnalysis = () => {
+    const report = cadVisionMeta.inspection;
+    if (!report) {
+      setHint(
+        ar
+          ? 'لا توجد بيانات فحص بعد — شغّل التحليل المحلي أولاً.'
+          : 'No inspection data yet — run local analysis first.'
+      );
+      setHintTone('warn');
+      return;
+    }
+    const nextPlan = {
+      ...data.building_plan,
+      ...buildingPlanPatchFromInspection(report),
+    } as BuildingPlanReport;
+    onSaveBuildingPlan(
+      nextPlan,
+      ar
+        ? 'تم تغذية بيانات المخطط المستخرجة لحقول المشروع ومحرك القابلية للتطبيق.'
+        : 'Fed extracted drawing metadata into project fields for the Applicability Engine.'
+    );
+    setHint(
+      ar
+        ? 'تم تحديث مخطط المبنى من فحص الرسم — أعد تشغيل تحليل النظام لتحديث المعايير المنطبقة.'
+        : 'Building plan updated from drawing inspection — re-run system analysis to refresh applicable standards.'
+    );
+    setHintTone('ok');
+  };
 
   return (
     <div className={`${shell} overflow-hidden`} data-design-center data-theme={dark ? 'dark' : 'light'}>
@@ -1166,6 +1212,14 @@ export default function DesignCenterSection({
 
         {tab === 'ai_center' && (
           <div className="space-y-5">
+            <DrawingInspectionCard
+              report={cadVisionMeta.inspection}
+              preferAr={ar}
+              dark={dark}
+              busy={saving}
+              onFeedToAnalysis={cadVisionMeta.inspection ? feedInspectionToAnalysis : undefined}
+            />
+
             {cadVisionMeta.active ? (
               <div
                 className={`rounded-xl px-4 py-3 text-sm border ${
