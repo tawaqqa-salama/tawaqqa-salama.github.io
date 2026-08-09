@@ -19,6 +19,7 @@ import SupervisionReportSection from '@/components/projects/SupervisionReportSec
 import ContractOnboardingSection from '@/components/projects/ContractOnboardingSection';
 import DesignCenterSection from '@/components/projects/DesignCenterSection';
 import WorkflowStageRail from '@/components/projects/WorkflowStageRail';
+import { useProjectStagesDrawer } from '@/components/layout/ProjectStagesDrawerContext';
 import InvoicePromptModal from '@/components/invoices/InvoicePromptModal';
 import {
   downloadTaxInvoice,
@@ -75,10 +76,34 @@ export default function ProjectReportModal({
     'engineering_delivery' | 'final_inspection' | 'completion' | 'manual' | null
   >(null);
   const [boqItem, setBoqItem] = useState('');
+  const {
+    open: stagesOpen,
+    register: registerStagesDrawer,
+    unregister: unregisterStagesDrawer,
+    closeDrawer: closeStagesDrawer,
+  } = useProjectStagesDrawer();
 
   useEffect(() => {
     void loadCompanyProfile().then(setCompany);
   }, []);
+
+  useEffect(() => {
+    if (!client) {
+      unregisterStagesDrawer();
+      return;
+    }
+    registerStagesDrawer();
+    return () => unregisterStagesDrawer();
+  }, [client, registerStagesDrawer, unregisterStagesDrawer]);
+
+  useEffect(() => {
+    if (!stagesOpen) return;
+    const onKey = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') closeStagesDrawer();
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [stagesOpen, closeStagesDrawer]);
 
   useEffect(() => {
     if (!client) return;
@@ -297,28 +322,48 @@ export default function ProjectReportModal({
             </div>
           </div>
 
-          <div className="flex flex-1 min-h-0">
-            <aside className="w-56 shrink-0 border-l bg-gray-50 overflow-y-auto p-3 hidden md:block">
-              <WorkflowStageRail
-                client={client}
-                data={data}
-                activeStage={activeStage}
-                progressPercent={progress}
-                onSelect={selectStage}
-              />
-            </aside>
+          <div className="relative flex flex-1 min-h-0">
+            {stagesOpen ? (
+              <>
+                <button
+                  type="button"
+                  aria-label="إخفاء أقسام المشروع"
+                  className="absolute inset-0 z-20 bg-black/35"
+                  onClick={closeStagesDrawer}
+                />
+                <aside
+                  id="project-stages-drawer"
+                  className="absolute inset-y-0 end-0 z-30 w-[min(18rem,88vw)] border-s border-gray-200 bg-gray-50 shadow-xl overflow-y-auto p-3"
+                  role="dialog"
+                  aria-modal="true"
+                  aria-label="أقسام المشروع"
+                >
+                  <div className="flex items-center justify-between gap-2 mb-3">
+                    <p className="text-sm font-bold text-gray-900">أقسام المشروع</p>
+                    <button
+                      type="button"
+                      onClick={closeStagesDrawer}
+                      className="touch-target h-9 w-9 rounded-lg border border-gray-200 bg-white text-gray-500 hover:bg-gray-100"
+                      aria-label="إغلاق"
+                    >
+                      ×
+                    </button>
+                  </div>
+                  <WorkflowStageRail
+                    client={client}
+                    data={data}
+                    activeStage={activeStage}
+                    progressPercent={progress}
+                    onSelect={(stageId) => {
+                      selectStage(stageId);
+                      closeStagesDrawer();
+                    }}
+                  />
+                </aside>
+              </>
+            ) : null}
 
             <div className="flex-1 p-5 overflow-y-auto space-y-4">
-              <div className="md:hidden">
-                <WorkflowStageRail
-                  client={client}
-                  data={data}
-                  activeStage={activeStage}
-                  progressPercent={progress}
-                  onSelect={selectStage}
-                />
-              </div>
-
               {message ? (
                 <div
                   className={`p-3 rounded-xl text-sm ${
