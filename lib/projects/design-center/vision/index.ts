@@ -5,9 +5,17 @@ export type {
   CadVisionStatus,
   DetectedWallSegment,
   DetectedZone,
+  EgressAnalysisSummary,
+  EgressComplianceStatus,
+  EgressZoneAssessment,
   Point2D,
   ScaleCalibration,
+  TextAnchor,
   TitleBlockMetadata,
+  TravelDistanceLimit,
+  ZoneClassification,
+  ZoneManualOverride,
+  ZoneSystemRequirement,
 } from '@/lib/projects/design-center/vision/types';
 
 export {
@@ -30,3 +38,29 @@ export {
   convexHull,
   simplifyPolygon,
 } from '@/lib/projects/design-center/vision/drawingSanitizer';
+
+export {
+  classifyLabelText,
+  enrichZonesWithLabels,
+  partitionDistinctZones,
+  bindZoneToSystems,
+  collectZoneSystemRequirements,
+  applyManualZoneOverride,
+  zoneAreaM2,
+  polygonAreaPx,
+  zonesImplyKitchen,
+  zonesImplySpecialSuppression,
+} from '@/lib/projects/design-center/vision/zoneAnalyzer';
+
+export {
+  longestDiagonal,
+  sbc801TravelDistanceLimit,
+  assessZoneTravelDistance,
+  runEgressAnalysis,
+  extractExitPoints,
+} from '@/lib/projects/design-center/vision/egressEngine';
+
+export {
+  applyZoneOverridesToCadResult,
+  cadResultFromAnalysisJob,
+} from '@/lib/projects/design-center/vision/recompute';

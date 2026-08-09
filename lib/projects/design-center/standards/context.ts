@@ -74,26 +74,51 @@ export function buildProjectDesignStandardsContext(
   const hasUndergroundMain =
     yes(plan.underground_building) || Boolean(plan.underground_depth_m?.trim());
 
-  const kitchenActivity = isKitchenActivity({
-    activityType: client.activity_type,
-    activityLabel: client.activity_type,
-  });
-
-  const specialSuppression = SPECIAL.filter(
-    (k) => selectedSystems.includes(k) || (k === 'kitchen_hood' && kitchenActivity)
-  );
-
   const visionRaw = data.design_center?.analysis?.result?.raw as
     | {
         cad_vision?: string;
         cad_vision_result?: {
           occupancy?: string | null;
           gross_floor_area_m2?: number | null;
+          zone_system_requirements?: Array<{
+            systems?: FireSystemKind[];
+            classification?: string;
+            sprinkler_density_hint?: string | null;
+          }> | null;
         } | null;
       }
     | undefined;
   const visionMeta =
     visionRaw?.cad_vision === 'local_client' ? visionRaw.cad_vision_result : null;
+
+  const zoneReqs = visionMeta?.zone_system_requirements || [];
+  const zoneKitchen = zoneReqs.some((r) => r.classification === 'kitchen');
+  const zoneSpecial = new Set<FireSystemKind>();
+  for (const r of zoneReqs) {
+    for (const s of r.systems || []) {
+      if (SPECIAL.includes(s)) zoneSpecial.add(s);
+    }
+  }
+
+  const kitchenActivity =
+    isKitchenActivity({
+      activityType: client.activity_type,
+      activityLabel: client.activity_type,
+    }) || zoneKitchen;
+
+  const specialSuppression = Array.from(
+    new Set([
+      ...SPECIAL.filter(
+        (k) => selectedSystems.includes(k) || (k === 'kitchen_hood' && kitchenActivity)
+      ),
+      ...zoneSpecial,
+    ])
+  );
+
+  // Zone-detected specialty systems should participate in applicability selection
+  const selectedSystemsWithZones = Array.from(
+    new Set([...selectedSystems, ...zoneSpecial])
+  );
 
   const occupancy =
     plan.occupancy_classification ||
@@ -123,7 +148,7 @@ export function buildProjectDesignStandardsContext(
     highRise,
     kitchenActivity,
     specialSuppression,
-    selectedSystems,
+    selectedSystems: selectedSystemsWithZones,
     saudiCodesApplied: ['SBC-801'],
     quotationServices: services,
   };

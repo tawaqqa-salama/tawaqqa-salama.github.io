@@ -15,10 +15,16 @@ import {
   thresholdBinary,
   toGrayscale,
 } from '@/lib/projects/design-center/vision/drawingSanitizer';
+import { runEgressAnalysis } from '@/lib/projects/design-center/vision/egressEngine';
+import {
+  collectZoneSystemRequirements,
+  enrichZonesWithLabels,
+} from '@/lib/projects/design-center/vision/zoneAnalyzer';
 import type {
   CADAnalysisResult,
   CadVisionAnalyzeOptions,
   CadVisionSourceKind,
+  TextAnchor,
   TitleBlockMetadata,
 } from '@/lib/projects/design-center/vision/types';
 
@@ -55,6 +61,10 @@ function emptyResult(
     },
     zones: [],
     walls: [],
+    text_anchors: [],
+    preview_data_url: null,
+    egress: null,
+    zone_system_requirements: [],
     gross_floor_area_m2: null,
     exits_count: null,
     doors_count: null,
@@ -95,6 +105,34 @@ async function loadImageBitmap(blob: Blob): Promise<ImageBitmap> {
   return createImageBitmap(blob);
 }
 
+async function makePreviewDataUrl(imageData: ImageData, maxEdge = 1200): Promise<string | null> {
+  try {
+    const scale = Math.min(1, maxEdge / Math.max(imageData.width, imageData.height));
+    const w = Math.max(1, Math.floor(imageData.width * scale));
+    const h = Math.max(1, Math.floor(imageData.height * scale));
+    const src = document.createElement('canvas');
+    src.width = imageData.width;
+    src.height = imageData.height;
+    const sctx = src.getContext('2d');
+    if (!sctx) return null;
+    sctx.putImageData(imageData, 0, 0);
+    const dst = document.createElement('canvas');
+    dst.width = w;
+    dst.height = h;
+    const dctx = dst.getContext('2d');
+    if (!dctx) return null;
+    dctx.drawImage(src, 0, 0, w, h);
+    const url = dst.toDataURL('image/jpeg', 0.72);
+    src.width = 0;
+    src.height = 0;
+    dst.width = 0;
+    dst.height = 0;
+    return url;
+  } catch {
+    return null;
+  }
+}
+
 async function rasterizePdf(
   data: ArrayBuffer,
   dpi: number,
@@ -103,6 +141,7 @@ async function rasterizePdf(
 ): Promise<{
   imageData: ImageData;
   text: string;
+  anchors: TextAnchor[];
   width: number;
   height: number;
   effectiveDpi: number;
@@ -118,7 +157,6 @@ async function rasterizePdf(
 
   const doc = await pdfjs.getDocument({ data: new Uint8Array(data) }).promise;
   const page = await doc.getPage(1);
-  const base = page.getViewport({ scale: 1 });
   // PDF user units ≈ 72 DPI
   let scale = dpi / 72;
   let viewport = page.getViewport({ scale });
@@ -145,12 +183,29 @@ async function rasterizePdf(
   ).promise;
 
   let text = '';
+  const anchors: TextAnchor[] = [];
   try {
     const content = await page.getTextContent();
-    text = (content.items || [])
-      .map((it) => ('str' in it ? String((it as { str?: string }).str || '') : ''))
-      .filter(Boolean)
-      .join('\n');
+    const lines: string[] = [];
+    for (const it of content.items || []) {
+      if (!it || typeof it !== 'object' || !('str' in it)) continue;
+      const str = String((it as { str?: string }).str || '').trim();
+      if (!str) continue;
+      lines.push(str);
+      const tr = (it as { transform?: number[] }).transform;
+      if (Array.isArray(tr) && tr.length >= 6) {
+        // PDF text transform → viewport scale already applied via scale factor on e,f? 
+        // transform is in unscaled PDF space; multiply by viewport scale
+        anchors.push({
+          text: str,
+          x: tr[4] * scale,
+          y: canvas.height - tr[5] * scale,
+          w: Number((it as { width?: number }).width || 0) * scale,
+          h: Math.abs(tr[3] || 0) * scale || 10,
+        });
+      }
+    }
+    text = lines.join('\n');
   } catch {
     text = '';
   }
@@ -163,6 +218,7 @@ async function rasterizePdf(
   return {
     imageData,
     text,
+    anchors,
     width: imageData.width,
     height: imageData.height,
     effectiveDpi,
@@ -318,6 +374,7 @@ export async function analyzeCadDrawing(
     onProgress?.('بدء التحليل المحلي للمخطط...', 'Starting local drawing analysis...');
     let imageData: ImageData;
     let pdfText = '';
+    let textAnchors: TextAnchor[] = [];
     let width = 0;
     let height = 0;
     let effectiveDpi = dpi;
@@ -328,6 +385,7 @@ export async function analyzeCadDrawing(
         const raster = await rasterizePdf(buf, dpi, maxEdge, onProgress);
         imageData = raster.imageData;
         pdfText = raster.text;
+        textAnchors = raster.anchors;
         width = raster.width;
         height = raster.height;
         effectiveDpi = raster.effectiveDpi;
@@ -381,14 +439,42 @@ export async function analyzeCadDrawing(
     }
 
     onProgress?.(
-      'كشف الغرف والجدران (معالجة Canvas محلية)...',
-      'Detecting rooms & walls (local Canvas)...'
+      'تقسيم الفراغات وتصنيف الغرف...',
+      'Segmenting zones & classifying rooms...'
     );
     const gray = toGrayscale(imageData);
     const ink = dilateBinary(thresholdBinary(gray), width, height, 1);
-    const zones = detectRoomZones(ink, width, height, scale.meters_per_pixel);
+    const rawZones = detectRoomZones(ink, width, height, scale.meters_per_pixel);
     const walls = detectWallSegments(ink, width, height, scale.meters_per_pixel);
-    const egress = countEgressMentions(combinedText);
+    const egressMentions = countEgressMentions(combinedText);
+
+    let zones = enrichZonesWithLabels(rawZones, textAnchors, scale.meters_per_pixel);
+
+    onProgress?.(
+      'حساب مسافات الإخلاء (SBC 801)...',
+      'Computing egress travel distances (SBC 801)...'
+    );
+    const egress = runEgressAnalysis({
+      zones,
+      textAnchors,
+      width_px: width,
+      height_px: height,
+      metersPerPixel: scale.meters_per_pixel,
+      hasSprinkler: Boolean(options.hasSprinkler),
+      occupancy: title_block.occupancy,
+    });
+
+    zones = zones.map((z) => {
+      const a = egress.assessments.find((x) => x.zone_id === z.id);
+      return {
+        ...z,
+        travel_distance_m: a?.travel_distance_m ?? null,
+        egress_status: a?.status ?? null,
+      };
+    });
+
+    const zone_system_requirements = collectZoneSystemRequirements(zones);
+    const preview_data_url = await makePreviewDataUrl(imageData);
 
     const zoneAreaSum = zones.reduce((s, z) => s + (z.area_m2 || 0), 0);
     const gross_floor_area_m2 =
@@ -420,6 +506,27 @@ export async function analyzeCadDrawing(
       warnings_ar.push('تصنيف الإشغال غير مستخرج من كتلة العنوان — Needs Engineer Input');
       warnings_en.push('Occupancy not extracted from title block — Needs Engineer Input');
     }
+    const unlabeled = zones.filter((z) => z.needs_engineer_label).length;
+    if (unlabeled) {
+      warnings_ar.push(
+        `${unlabeled} فراغ بدون تسمية واضحة — انقر على الفراغ لتعيين التسمية يدويًا`
+      );
+      warnings_en.push(
+        `${unlabeled} zone(s) lack clear labels — click a zone to assign a label manually`
+      );
+    }
+    if (egress.overall_status === 'exceeds_limit') {
+      warnings_ar.push(
+        `مسافة انتقال تقديرية تتجاوز حد SBC 801 (${egress.limit.applied_max_m} م) — مراجعة المهندس`
+      );
+      warnings_en.push(
+        `Estimated travel distance exceeds SBC 801 cap (${egress.limit.applied_max_m} m) — engineer review`
+      );
+    }
+    for (const req of zone_system_requirements) {
+      warnings_ar.push(req.note_ar);
+      warnings_en.push(req.note_en);
+    }
 
     const hasGeometry = zones.length > 0 || walls.length > 0;
     const status =
@@ -428,9 +535,6 @@ export async function analyzeCadDrawing(
           ? 'completed'
           : 'partial'
         : 'partial';
-
-    // Release large buffers
-    // (imageData will be GC'd; gray/ink are local)
 
     return {
       status,
@@ -445,9 +549,13 @@ export async function analyzeCadDrawing(
       title_block,
       zones,
       walls,
+      text_anchors: textAnchors.slice(0, 400),
+      preview_data_url,
+      egress,
+      zone_system_requirements,
       gross_floor_area_m2,
-      exits_count: egress.exits_count,
-      doors_count: egress.doors_count,
+      exits_count: egressMentions.exits_count ?? (egress.exits.length || null),
+      doors_count: egressMentions.doors_count,
       occupancy,
       extracted_text: combinedText.slice(0, 8000),
       warnings_ar,

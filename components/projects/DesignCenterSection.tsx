@@ -26,11 +26,14 @@ import {
   formatUnknownValue,
   analyzeCadDrawing,
   resolveDrawingBlobForVision,
+  applyZoneOverridesToCadResult,
+  cadResultFromAnalysisJob,
   type CADAnalysisResult,
   type DesignCenterState,
   type DesignCenterTabId,
   type DesignDrawingFormat,
   type DesignDrawingSheet,
+  type ZoneManualOverride,
 } from '@/lib/projects/design-center';
 import { syncKnowledgeLinksToDesignCenterSync } from '@/lib/design-intelligence/project-knowledge-bridge';
 import { useLanguage } from '@/lib/i18n/LanguageProvider';
@@ -40,6 +43,7 @@ import { humanizeFetchError } from '@/lib/api/safe-json';
 import BuildingPlanReportSection from '@/components/projects/BuildingPlanReportSection';
 import PlanAttachmentsUpload from '@/components/projects/PlanAttachmentsUpload';
 import SafetyBlueprintsUpload from '@/components/projects/SafetyBlueprintsUpload';
+import CadZoneOverlay from '@/components/projects/CadZoneOverlay';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { EMPTY_PLAN_ATTACHMENTS, EMPTY_SAFETY_BLUEPRINTS } from '@/lib/types/project-reports';
 import type { ClientRecord } from '@/lib/types/client';
@@ -200,9 +204,13 @@ export default function DesignCenterSection({
             ? 'جاري التحليل المحلي للمخطط بعد الرفع...'
             : 'Running local drawing analysis after upload...'
         );
+        const hasSprinkler =
+          data.building_plan?.sprinkler_system === 'نعم' ||
+          /sprinkler|مرش|firefighting/i.test(String(client.quotation_services || ''));
         const cadVision = await analyzeCadDrawing(visionFile, {
           dpi: 300,
           enableOcr: true,
+          hasSprinkler,
           onProgress: (message_ar, message_en) => {
             setHint(ar ? message_ar : message_en);
           },
@@ -340,6 +348,10 @@ export default function DesignCenterSection({
         },
         zones: [],
         walls: [],
+        text_anchors: [],
+        preview_data_url: null,
+        egress: null,
+        zone_system_requirements: [],
         gross_floor_area_m2: null,
         exits_count: null,
         doors_count: null,
@@ -353,9 +365,14 @@ export default function DesignCenterSection({
       };
     }
 
+    const hasSprinkler =
+      data.building_plan?.sprinkler_system === 'نعم' ||
+      /sprinkler|مرش/i.test(String(client.quotation_services || ''));
+
     return analyzeCadDrawing(resolved.blob, {
       dpi: 300,
       enableOcr: true,
+      hasSprinkler,
       onProgress: (message_ar, message_en) => {
         setHintTone('warn');
         setHint(ar ? message_ar : message_en);
@@ -364,6 +381,67 @@ export default function DesignCenterSection({
       ...result,
       file_name: result.file_name || resolved.fileName,
     }));
+  };
+
+  const onZoneOverride = (override: ZoneManualOverride) => {
+    const base = cadResultFromAnalysisJob(design.analysis);
+    if (!base || !design.analysis) return;
+    const hasSprinkler =
+      data.building_plan?.sprinkler_system === 'نعم' ||
+      /sprinkler|مرش|firefighting/i.test(String(client.quotation_services || ''));
+    const nextCad = applyZoneOverridesToCadResult(base, [override], { hasSprinkler });
+    const prevRaw = (design.analysis.result?.raw || {}) as Record<string, unknown>;
+    const prevMeta = (prevRaw.cad_vision_result || {}) as Record<string, unknown>;
+    const analysis = {
+      ...design.analysis,
+      result: {
+        ...design.analysis.result,
+        rooms: nextCad.zones,
+        occupancy: nextCad.occupancy || design.analysis.result?.occupancy,
+        areas: {
+          ...((design.analysis.result?.areas as object) || {}),
+          vision_gross_floor_area_m2: nextCad.gross_floor_area_m2,
+        },
+        raw: {
+          ...prevRaw,
+          cad_vision: 'local_client',
+          cad_vision_result: {
+            ...prevMeta,
+            zones_count: nextCad.zones.length,
+            gross_floor_area_m2: nextCad.gross_floor_area_m2,
+            occupancy: nextCad.occupancy,
+            egress: nextCad.egress,
+            zone_system_requirements: nextCad.zone_system_requirements,
+            preview_data_url: nextCad.preview_data_url,
+            width_px: nextCad.width_px,
+            height_px: nextCad.height_px,
+            scale: nextCad.scale,
+          },
+        },
+      },
+    };
+    const readiness = computeDesignReadiness(client, {
+      ...data,
+      design_center: { ...design, analysis },
+    });
+    const nextDesign = {
+      ...design,
+      analysis,
+      readiness: {
+        level: readiness.level,
+        updatedAt: new Date().toISOString(),
+        reasons_ar: readiness.reasons_ar,
+        reasons_en: readiness.reasons_en,
+      },
+    };
+    setDesign(nextDesign);
+    void onPersistDesignCenter(nextDesign);
+    setHintTone('ok');
+    setHint(
+      ar
+        ? 'تم تحديث تسمية/أبعاد الفراغ وإعادة حساب مسافة الإخلاء محليًا'
+        : 'Zone label/dimensions updated and travel distance recomputed locally'
+    );
   };
 
   const onAnalyze = async () => {
@@ -689,6 +767,11 @@ export default function DesignCenterSection({
             warnings_en?: string[];
             error?: string | null;
             error_code?: string | null;
+            preview_data_url?: string | null;
+            width_px?: number;
+            height_px?: number;
+            egress?: CADAnalysisResult['egress'];
+            zone_system_requirements?: CADAnalysisResult['zone_system_requirements'];
           } | null;
         }
       | undefined;
@@ -696,8 +779,9 @@ export default function DesignCenterSection({
       active: raw?.cad_vision === 'local_client',
       result: raw?.cad_vision_result || null,
       status: raw?.cad_vision || 'not_run',
+      snapshot: cadResultFromAnalysisJob(design.analysis),
     };
-  }, [design.analysis?.result?.raw]);
+  }, [design.analysis]);
 
   return (
     <div className={`${shell} overflow-hidden`} data-design-center data-theme={dark ? 'dark' : 'light'}>
@@ -1117,6 +1201,23 @@ export default function DesignCenterSection({
                 </button>
               </div>
             )}
+
+            {cadVisionMeta.snapshot && cadVisionMeta.snapshot.zones.length ? (
+              <section className={`${card} p-4`}>
+                <CadZoneOverlay
+                  preferAr={ar}
+                  dark={dark}
+                  widthPx={cadVisionMeta.snapshot.width_px}
+                  heightPx={cadVisionMeta.snapshot.height_px}
+                  previewDataUrl={cadVisionMeta.snapshot.preview_data_url}
+                  zones={cadVisionMeta.snapshot.zones}
+                  egress={cadVisionMeta.snapshot.egress}
+                  zoneRequirements={cadVisionMeta.snapshot.zone_system_requirements}
+                  onApplyOverride={onZoneOverride}
+                />
+              </section>
+            ) : null}
+
             <div className={`${card} p-6 text-center space-y-4`}>
               <p className={`text-sm ${muted}`}>
                 {ar
@@ -1294,12 +1395,23 @@ export default function DesignCenterSection({
               const std = row?.standards;
               const review = std?.requirementsSummary;
               const observations = std ? standardsObservationLines(std, ar) : [];
+              const zoneHints = (cadVisionMeta.result?.zone_system_requirements || []).filter(
+                (r) => r.systems?.includes(sys.kind)
+              );
               return (
                 <div key={sys.kind} className={`${card} p-4 space-y-3`}>
                   <div className="flex items-start justify-between gap-2">
                     <div>
                       <h3 className="text-sm font-bold">{ar ? sys.label_ar : sys.label_en}</h3>
                       <p className={`text-[11px] mt-1 ${muted}`}>{sys.kind}</p>
+                      {zoneHints.length ? (
+                        <p className="text-[10px] mt-1 text-amber-700 dark:text-amber-300">
+                          {ar ? 'متطلبات فراغات مكتشفة' : 'Detected zone requirements'}:{' '}
+                          {zoneHints
+                            .map((h) => `${h.zone_label || h.zone_id} → ${h.primary_codes.join('/')}`)
+                            .join(' · ')}
+                        </p>
+                      ) : null}
                     </div>
                     <span className={`text-[10px] px-2 py-1 rounded-full ${statusTone(row?.status, dark)}`}>
                       {row?.status || 'idle'}
