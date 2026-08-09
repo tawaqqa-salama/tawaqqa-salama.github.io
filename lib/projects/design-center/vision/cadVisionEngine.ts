@@ -15,7 +15,10 @@ import {
   thresholdBinary,
   toGrayscale,
 } from '@/lib/projects/design-center/vision/drawingSanitizer';
+import { buildComplianceReport } from '@/lib/projects/design-center/vision/complianceReport';
+import { runCoverageAudit } from '@/lib/projects/design-center/vision/coverageAuditor';
 import { runEgressAnalysis } from '@/lib/projects/design-center/vision/egressEngine';
+import { runPreCalculations } from '@/lib/projects/design-center/vision/preCalculations';
 import {
   collectZoneSystemRequirements,
   enrichZonesWithLabels,
@@ -65,6 +68,9 @@ function emptyResult(
     preview_data_url: null,
     egress: null,
     zone_system_requirements: [],
+    coverage: null,
+    pre_calculations: null,
+    compliance_report: null,
     gross_floor_area_m2: null,
     exits_count: null,
     doors_count: null,
@@ -474,6 +480,34 @@ export async function analyzeCadDrawing(
     });
 
     const zone_system_requirements = collectZoneSystemRequirements(zones);
+
+    onProgress?.(
+      'تدقيق تغطية الأجهزة والحسابات الأولية...',
+      'Auditing device coverage & pre-calculations...'
+    );
+    const coverage = runCoverageAudit({
+      zones,
+      textAnchors,
+      metersPerPixel: scale.meters_per_pixel,
+      occupancy: title_block.occupancy,
+    });
+    const pre_calculations = runPreCalculations({
+      zones,
+      hazard: coverage.hazard_class,
+      zoneRequirements: zone_system_requirements,
+      coverage,
+      hasSprinklerDeclared: Boolean(options.hasSprinkler),
+    });
+    const compliance_report = buildComplianceReport({
+      egress,
+      coverage,
+      zoneRequirements: zone_system_requirements,
+      preCalculations: pre_calculations,
+      hasSprinklerDeclared: Boolean(options.hasSprinkler),
+      hasFireAlarmDeclared: Boolean(options.hasFireAlarm),
+      scaleKnown: scale.meters_per_pixel != null,
+    });
+
     const preview_data_url = await makePreviewDataUrl(imageData);
 
     const zoneAreaSum = zones.reduce((s, z) => s + (z.area_m2 || 0), 0);
@@ -527,6 +561,14 @@ export async function analyzeCadDrawing(
       warnings_ar.push(req.note_ar);
       warnings_en.push(req.note_en);
     }
+    if (coverage.issues.length) {
+      warnings_ar.push(coverage.summary_ar);
+      warnings_en.push(coverage.summary_en);
+    }
+    if (compliance_report.overall_status === 'CRITICAL_NON_COMPLIANCE') {
+      warnings_ar.push('وُجدت حالات عدم مطابقة حرجة — راجع تبويب تفريغ الحسابات والمطابقة');
+      warnings_en.push('Critical non-compliance found — review Pre-Design Audit tab');
+    }
 
     const hasGeometry = zones.length > 0 || walls.length > 0;
     const status =
@@ -553,6 +595,9 @@ export async function analyzeCadDrawing(
       preview_data_url,
       egress,
       zone_system_requirements,
+      coverage,
+      pre_calculations,
+      compliance_report,
       gross_floor_area_m2,
       exits_count: egressMentions.exits_count ?? (egress.exits.length || null),
       doors_count: egressMentions.doors_count,

@@ -28,6 +28,9 @@ import {
   resolveDrawingBlobForVision,
   applyZoneOverridesToCadResult,
   cadResultFromAnalysisJob,
+  buildPreDesignAuditHtml,
+  downloadPreDesignAuditHtml,
+  openPreDesignAuditPrint,
   type CADAnalysisResult,
   type DesignCenterState,
   type DesignCenterTabId,
@@ -207,10 +210,14 @@ export default function DesignCenterSection({
         const hasSprinkler =
           data.building_plan?.sprinkler_system === 'نعم' ||
           /sprinkler|مرش|firefighting/i.test(String(client.quotation_services || ''));
+        const hasFireAlarm =
+          data.building_plan?.fire_alarm_system === 'نعم' ||
+          /alarm|إنذار/i.test(String(client.quotation_services || ''));
         const cadVision = await analyzeCadDrawing(visionFile, {
           dpi: 300,
           enableOcr: true,
           hasSprinkler,
+          hasFireAlarm,
           onProgress: (message_ar, message_en) => {
             setHint(ar ? message_ar : message_en);
           },
@@ -352,6 +359,9 @@ export default function DesignCenterSection({
         preview_data_url: null,
         egress: null,
         zone_system_requirements: [],
+        coverage: null,
+        pre_calculations: null,
+        compliance_report: null,
         gross_floor_area_m2: null,
         exits_count: null,
         doors_count: null,
@@ -367,12 +377,16 @@ export default function DesignCenterSection({
 
     const hasSprinkler =
       data.building_plan?.sprinkler_system === 'نعم' ||
-      /sprinkler|مرش/i.test(String(client.quotation_services || ''));
+      /sprinkler|مرش|firefighting/i.test(String(client.quotation_services || ''));
+    const hasFireAlarm =
+      data.building_plan?.fire_alarm_system === 'نعم' ||
+      /alarm|إنذار/i.test(String(client.quotation_services || ''));
 
     return analyzeCadDrawing(resolved.blob, {
       dpi: 300,
       enableOcr: true,
       hasSprinkler,
+      hasFireAlarm,
       onProgress: (message_ar, message_en) => {
         setHintTone('warn');
         setHint(ar ? message_ar : message_en);
@@ -389,7 +403,13 @@ export default function DesignCenterSection({
     const hasSprinkler =
       data.building_plan?.sprinkler_system === 'نعم' ||
       /sprinkler|مرش|firefighting/i.test(String(client.quotation_services || ''));
-    const nextCad = applyZoneOverridesToCadResult(base, [override], { hasSprinkler });
+    const hasFireAlarm =
+      data.building_plan?.fire_alarm_system === 'نعم' ||
+      /alarm|إنذار/i.test(String(client.quotation_services || ''));
+    const nextCad = applyZoneOverridesToCadResult(base, [override], {
+      hasSprinkler,
+      hasFireAlarm,
+    });
     const prevRaw = (design.analysis.result?.raw || {}) as Record<string, unknown>;
     const prevMeta = (prevRaw.cad_vision_result || {}) as Record<string, unknown>;
     const analysis = {
@@ -412,6 +432,9 @@ export default function DesignCenterSection({
             occupancy: nextCad.occupancy,
             egress: nextCad.egress,
             zone_system_requirements: nextCad.zone_system_requirements,
+            coverage: nextCad.coverage,
+            pre_calculations: nextCad.pre_calculations,
+            compliance_report: nextCad.compliance_report,
             preview_data_url: nextCad.preview_data_url,
             width_px: nextCad.width_px,
             height_px: nextCad.height_px,
@@ -1213,6 +1236,7 @@ export default function DesignCenterSection({
                   zones={cadVisionMeta.snapshot.zones}
                   egress={cadVisionMeta.snapshot.egress}
                   zoneRequirements={cadVisionMeta.snapshot.zone_system_requirements}
+                  coverage={cadVisionMeta.snapshot.coverage}
                   onApplyOverride={onZoneOverride}
                 />
               </section>
@@ -1762,6 +1786,179 @@ export default function DesignCenterSection({
                 </ul>
               </section>
             ) : null}
+          </div>
+        )}
+
+        {tab === 'audit' && (
+          <div className="space-y-4">
+            {!cadVisionMeta.snapshot ? (
+              <div className={`${card} p-5 text-sm ${muted}`}>
+                {ar
+                  ? 'شغّل التحليل المحلي للمخطط أولًا من مركز الذكاء التصميمي لتوليد تفريغ الحسابات والمطابقة.'
+                  : 'Run local drawing analysis from the AI Design Center first to generate the pre-design audit.'}
+              </div>
+            ) : (
+              <>
+                <div className={`${card} p-4 space-y-3`}>
+                  <div className="flex flex-wrap items-center justify-between gap-2">
+                    <div>
+                      <h3 className="text-sm font-bold">
+                        {ar ? 'تفريغ الحسابات والمطابقة' : 'Pre-Design Calculations & Compliance'}
+                      </h3>
+                      <p className={`text-xs mt-1 ${muted}`}>
+                        {ar ? 'الحالة العامة' : 'Overall'}:{' '}
+                        <span className="font-bold">
+                          {cadVisionMeta.snapshot.compliance_report?.overall_status ||
+                            'NEEDS_ENGINEER_REVIEW'}
+                        </span>
+                      </p>
+                    </div>
+                    <div className="flex flex-wrap gap-2">
+                      <button
+                        type="button"
+                        className="rounded-lg bg-sky-600 hover:bg-sky-500 text-white text-xs font-bold px-3 py-2"
+                        onClick={() => {
+                          const snap = cadVisionMeta.snapshot;
+                          if (!snap) return;
+                          const html = buildPreDesignAuditHtml(snap, {
+                            projectName: client.business_name || client.name || client.id,
+                            projectId: client.id,
+                            preferAr: ar,
+                          });
+                          downloadPreDesignAuditHtml(
+                            html,
+                            `pre-design-audit-${client.id.slice(0, 8)}.html`
+                          );
+                          setHintTone('ok');
+                          setHint(
+                            ar
+                              ? 'تم تنزيل تقرير التدقيق HTML — استخدم طباعة المتصفح لحفظ PDF'
+                              : 'Audit HTML downloaded — use browser Print to save PDF'
+                          );
+                        }}
+                      >
+                        {ar
+                          ? 'تصدير تدقيق ما قبل التصميم (PDF/HTML)'
+                          : 'Export Pre-Design Engineering Audit PDF'}
+                      </button>
+                      <button
+                        type="button"
+                        className={`rounded-lg border text-xs font-bold px-3 py-2 ${
+                          dark ? 'border-slate-600 hover:bg-slate-800' : 'border-slate-300 hover:bg-slate-100'
+                        }`}
+                        onClick={() => {
+                          const snap = cadVisionMeta.snapshot;
+                          if (!snap) return;
+                          openPreDesignAuditPrint(
+                            buildPreDesignAuditHtml(snap, {
+                              projectName: client.business_name || client.name || client.id,
+                              projectId: client.id,
+                              preferAr: ar,
+                            })
+                          );
+                        }}
+                      >
+                        {ar ? 'فتح للطباعة' : 'Open for print'}
+                      </button>
+                    </div>
+                  </div>
+                  <p className={`text-[11px] ${muted}`}>
+                    {ar
+                      ? cadVisionMeta.snapshot.coverage?.summary_ar
+                      : cadVisionMeta.snapshot.coverage?.summary_en}
+                  </p>
+                </div>
+
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  <div className={`${card} p-4 space-y-2`}>
+                    <h4 className="text-xs font-bold">
+                      {ar ? 'تقدير هيدروليكي أولي' : 'Hydraulic pre-estimate'}
+                    </h4>
+                    <p className={`text-[11px] ${muted}`}>
+                      {ar
+                        ? cadVisionMeta.snapshot.pre_calculations?.hydraulic.note_ar
+                        : cadVisionMeta.snapshot.pre_calculations?.hydraulic.note_en}
+                    </p>
+                    <p className="text-xs">
+                      GPM:{' '}
+                      {cadVisionMeta.snapshot.pre_calculations?.hydraulic.estimated_flow_gpm ??
+                        '—'}{' '}
+                      · min:{' '}
+                      {cadVisionMeta.snapshot.pre_calculations?.hydraulic.estimated_duration_min ??
+                        '—'}
+                    </p>
+                  </div>
+                  <div className={`${card} p-4 space-y-2`}>
+                    <h4 className="text-xs font-bold">
+                      {ar ? 'تقدير بطارية الإنذار' : 'Alarm battery pre-estimate'}
+                    </h4>
+                    <p className={`text-[11px] ${muted}`}>
+                      {ar
+                        ? cadVisionMeta.snapshot.pre_calculations?.alarm_battery.note_ar
+                        : cadVisionMeta.snapshot.pre_calculations?.alarm_battery.note_en}
+                    </p>
+                    <p className="text-xs">
+                      Ah:{' '}
+                      {cadVisionMeta.snapshot.pre_calculations?.alarm_battery.estimated_ah ?? '—'} ·
+                      SD:{' '}
+                      {cadVisionMeta.snapshot.pre_calculations?.alarm_battery.smoke_count ?? 0} ·
+                      MCP:{' '}
+                      {cadVisionMeta.snapshot.pre_calculations?.alarm_battery.mcp_count ?? 0}
+                    </p>
+                  </div>
+                </div>
+
+                <div className={`${card} p-4 space-y-2`}>
+                  <h4 className="text-xs font-bold">
+                    {ar ? 'قائمة المطابقة' : 'Compliance checklist'}
+                  </h4>
+                  <ul className="space-y-2">
+                    {(cadVisionMeta.snapshot.compliance_report?.items || []).map((it) => (
+                      <li
+                        key={it.id}
+                        className={`rounded-lg px-3 py-2 text-xs border ${
+                          it.status === 'CRITICAL_NON_COMPLIANCE'
+                            ? dark
+                              ? 'border-red-800 bg-red-950/40'
+                              : 'border-red-200 bg-red-50'
+                            : it.status === 'COMPLIANT'
+                              ? dark
+                                ? 'border-emerald-800 bg-emerald-950/30'
+                                : 'border-emerald-200 bg-emerald-50'
+                              : dark
+                                ? 'border-amber-800 bg-amber-950/30'
+                                : 'border-amber-200 bg-amber-50'
+                        }`}
+                      >
+                        <div className="flex flex-wrap justify-between gap-2">
+                          <span className="font-bold">{ar ? it.title_ar : it.title_en}</span>
+                          <span className="font-semibold">{it.status}</span>
+                        </div>
+                        <p className={`mt-1 ${muted}`}>{ar ? it.detail_ar : it.detail_en}</p>
+                        <p className={`mt-0.5 text-[10px] ${muted}`}>{it.code_refs.join(' · ')}</p>
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+
+                {cadVisionMeta.snapshot.zones.length ? (
+                  <section className={`${card} p-4`}>
+                    <CadZoneOverlay
+                      preferAr={ar}
+                      dark={dark}
+                      widthPx={cadVisionMeta.snapshot.width_px}
+                      heightPx={cadVisionMeta.snapshot.height_px}
+                      previewDataUrl={cadVisionMeta.snapshot.preview_data_url}
+                      zones={cadVisionMeta.snapshot.zones}
+                      egress={cadVisionMeta.snapshot.egress}
+                      zoneRequirements={cadVisionMeta.snapshot.zone_system_requirements}
+                      coverage={cadVisionMeta.snapshot.coverage}
+                      onApplyOverride={onZoneOverride}
+                    />
+                  </section>
+                ) : null}
+              </>
+            )}
           </div>
         )}
 
