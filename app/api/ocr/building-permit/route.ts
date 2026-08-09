@@ -45,7 +45,7 @@ Return ONLY valid JSON with these keys:
   "rawTextPreview": string|null
 }
 usageLabel = الاستعمال / الاستخدام (e.g. رخصة بناء مبنى تجاري, صناعي, سكني).
-floors = rows from محتويات المبنى / تفصيل الأدوار with Arabic floor names (أرضي، أول، ثاني، بدروم، سطح) and area in m².
+floors = rows from محتويات المبنى / تفصيل الأدوار with Arabic floor names (أرضي، أول، ثاني، بدروم، دور الروف، سطح) and area in m².
 floorsCount = عدد الأدوار. buildingAreaM2 = إجمالي مساحة البناء when present.
 Use Gregorian dates as YYYY-MM-DD when possible. Keep Arabic names as written.`;
 

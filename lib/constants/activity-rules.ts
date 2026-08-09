@@ -92,6 +92,6 @@ export const FLOOR_KIND_OPTIONS: { kind: 'ground' | 'typical' | 'basement' | 'ro
   { kind: 'ground', label: 'أرضي' },
   { kind: 'typical', label: 'متكرر' },
   { kind: 'basement', label: 'بدروم' },
-  { kind: 'roof', label: 'سطح' },
+  { kind: 'roof', label: 'دور الروف' },
   { kind: 'custom', label: 'مخصص' },
 ];
