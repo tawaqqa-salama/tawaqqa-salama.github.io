@@ -22,6 +22,7 @@ import {
   toSystemStandardsSnapshot,
 } from '@/lib/projects/design-center/standards';
 import { systemDesignInputGate } from '@/lib/projects/design-center/readiness';
+import { inspectDrawing } from '@/lib/projects/design-center/vision/drawingInspector';
 import type { CADAnalysisResult } from '@/lib/projects/design-center/vision/types';
 import type {
   DesignAnalysisJob,
@@ -349,6 +350,7 @@ export async function runKnowledgeBackedPlanAnalysis(params: {
             text_anchors_count: vision.text_anchors?.length || 0,
             width_px: vision.width_px,
             height_px: vision.height_px,
+            drawing_inspection: inspectDrawing(vision),
           }
         : vision
           ? {
