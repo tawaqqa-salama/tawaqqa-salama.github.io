@@ -1,7 +1,7 @@
 'use client';
 
 import { memo, useCallback, useEffect, useMemo, useState } from 'react';
-import dynamic from 'next/dynamic';
+import { useRouter } from 'next/navigation';
 import { ACTIVITY_RULES } from '@/lib/constants/clients';
 import {
   hasEngineeringWork,
@@ -10,18 +10,11 @@ import {
 } from '@/lib/business/pipeline';
 import { getProjectReportProgress, parseProjectEngineeringData } from '@/lib/business/project-reports';
 import ResponsiveTable from '@/components/ui/ResponsiveTable';
-import { useProjectsList, invalidateErpLists, invalidateClient } from '@/lib/data/hooks';
+import { useProjectsList } from '@/lib/data/hooks';
 import { PROJECTS_PAGE_SIZE } from '@/lib/data/query-config';
-import { fetchClientById } from '@/lib/data/fetchers';
 import { mergeLocalClientOverrides } from '@/lib/supabase/safe-client-write';
 import { useLanguage } from '@/lib/i18n/LanguageProvider';
 import type { ClientRecord } from '@/lib/types/client';
-import type { WorkflowStageId } from '@/lib/projects/gated-pipeline';
-
-const ProjectReportModal = dynamic(() => import('@/components/projects/ProjectReportModal'), {
-  ssr: false,
-  loading: () => null,
-});
 
 type StatusFilter = 'all' | 'in_study' | 'completed' | 'archive' | 'everything';
 
@@ -61,11 +54,9 @@ function matchesStatusFilter(project: ClientRecord, filter: StatusFilter): boole
 const ProjectRow = memo(function ProjectRow({
   project,
   onOpen,
-  onOpenDesigns,
 }: {
   project: ClientRecord;
   onOpen: (project: ClientRecord) => void;
-  onOpenDesigns: (project: ClientRecord) => void;
 }) {
   const { progress, planStatus } = useMemo(() => {
     try {
@@ -112,22 +103,13 @@ const ProjectRow = memo(function ProjectRow({
       </td>
       <td className="p-4">{project.assigned_engineer || '—'}</td>
       <td className="p-4">
-        <div className="flex flex-col gap-1.5 items-stretch min-w-[9rem]">
-          <button
-            type="button"
-            onClick={() => onOpenDesigns(project)}
-            className="touch-target px-3 py-1.5 bg-sky-600 text-white rounded-lg text-xs font-semibold"
-          >
-            مركز التصاميم
-          </button>
-          <button
-            type="button"
-            onClick={() => onOpen(project)}
-            className="touch-target px-3 py-1.5 bg-indigo-600 text-white rounded-lg text-xs font-semibold"
-          >
-            فتح ملف المشروع
-          </button>
-        </div>
+        <button
+          type="button"
+          onClick={() => onOpen(project)}
+          className="touch-target px-3 py-1.5 bg-indigo-600 text-white rounded-lg text-xs font-semibold"
+        >
+          فتح ملف المشروع
+        </button>
       </td>
     </tr>
   );
@@ -135,12 +117,10 @@ const ProjectRow = memo(function ProjectRow({
 
 export default function ProjectsPage() {
   const { t } = useLanguage();
+  const router = useRouter();
   const [limit, setLimit] = useState(PROJECTS_PAGE_SIZE);
   const { projects: rawProjects, loading, error, refresh } = useProjectsList(limit);
-  const [selected, setSelected] = useState<ClientRecord | null>(null);
-  const [preferredStage, setPreferredStage] = useState<WorkflowStageId | null>(null);
   const [statusFilter, setStatusFilter] = useState<StatusFilter>('all');
-  const [opening, setOpening] = useState(false);
 
   const hydrated = useMemo(() => {
     const list = Array.isArray(rawProjects) ? rawProjects : [];
@@ -174,32 +154,11 @@ export default function ProjectsPage() {
     };
   }, [hydrated]);
 
-  const handleUpdated = useCallback(async () => {
-    await invalidateErpLists();
-    if (selected?.id) await invalidateClient(selected.id);
-    await refresh();
-  }, [refresh, selected?.id]);
-
-  const openProject = useCallback(async (project: ClientRecord, stage: WorkflowStageId | null = null) => {
-    setOpening(true);
-    setPreferredStage(stage);
-    const withLocal = mergeLocalClientOverrides(project);
-    setSelected(withLocal);
-    try {
-      const full = await fetchClientById(project.id);
-      if (full) setSelected(mergeLocalClientOverrides(full));
-    } catch {
-      // أبقِ النسخة المحلية
-    } finally {
-      setOpening(false);
-    }
-  }, []);
-
-  const openDesigns = useCallback(
+  const openProject = useCallback(
     (project: ClientRecord) => {
-      void openProject(project, 'designs');
+      router.push(`/projects/file/?id=${encodeURIComponent(project.id)}`);
     },
-    [openProject]
+    [router]
   );
 
   return (
@@ -279,12 +238,7 @@ export default function ProjectsPage() {
               </tr>
             ) : (
               projects.map((project) => (
-                <ProjectRow
-                  key={project.id}
-                  project={project}
-                  onOpen={(p) => void openProject(p)}
-                  onOpenDesigns={openDesigns}
-                />
+                <ProjectRow key={project.id} project={project} onOpen={openProject} />
               ))
             )}
           </tbody>
@@ -300,26 +254,6 @@ export default function ProjectsPage() {
           تحميل المزيد
         </button>
       )}
-
-      {selected ? (
-        <ProjectReportModal
-          client={selected}
-          preferredStage={preferredStage}
-          onClose={() => {
-            setSelected(null);
-            setPreferredStage(null);
-          }}
-          onUpdated={() => void handleUpdated()}
-        />
-      ) : null}
-
-      {opening ? (
-        <div className="fixed bottom-4 inset-x-0 flex justify-center pointer-events-none z-[70]">
-          <span className="bg-[#1f4d3a] text-white text-xs px-3 py-1.5 rounded-full shadow">
-            جاري فتح ملف المشروع...
-          </span>
-        </div>
-      ) : null}
     </div>
   );
 }

@@ -341,7 +341,8 @@ const ar: Dict = {
   'hr.permissionsLink': 'الصلاحيات وتسجيل الدخول',
 
   'projects.title': 'إدارة المشاريع',
-  'projects.subtitle': 'التصاميم، المعاينة الهندسية، المخططات، والامتثال',
+  'projects.subtitle': 'قائمة المشاريع وملفاتها الهندسية',
+  'projects.backToList': 'رجوع لقائمة المشاريع',
   'projects.tab.list': 'المشاريع',
   'projects.tab.designs': 'التصاميم',
   'projects.tab.inspection': 'المعاينة الهندسية',
@@ -745,7 +746,8 @@ const en: Dict = {
   'hr.permissionsLink': 'Permissions & login',
 
   'projects.title': 'Project Management',
-  'projects.subtitle': 'Designs, engineering inspection, BIM & compliance',
+  'projects.subtitle': 'Project list and engineering files',
+  'projects.backToList': 'Back to projects list',
   'projects.tab.list': 'Projects',
   'projects.tab.designs': 'Designs',
   'projects.tab.inspection': 'Engineering inspection',
