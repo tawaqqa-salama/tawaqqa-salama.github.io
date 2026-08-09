@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect, useMemo, useState } from 'react';
+import Link from 'next/link';
 import { supabase } from '@/lib/supabase';
 import { seedBuildingPlanFromClient } from '@/lib/projects/building-plan';
 import {
@@ -54,6 +55,8 @@ interface ProjectReportModalProps {
   onUpdated: () => void;
   /** Prefer opening this stage when unlocked (e.g. designs / Design Center) */
   preferredStage?: WorkflowStageId | null;
+  /** صفحة كاملة داخل التطبيق بدل نافذة منبثقة */
+  variant?: 'modal' | 'page';
 }
 
 const REPORT_STATUSES = ['مسودة', 'قيد الإعداد', 'مكتمل', 'معتمد'] as const;
@@ -63,7 +66,9 @@ export default function ProjectReportModal({
   onClose,
   onUpdated,
   preferredStage = null,
+  variant = 'modal',
 }: ProjectReportModalProps) {
+  const isPage = variant === 'page';
   const [activeStage, setActiveStage] = useState<WorkflowStageId>('contract');
   const [data, setData] = useState<ProjectEngineeringData | null>(null);
   const [saving, setSaving] = useState(false);
@@ -217,7 +222,7 @@ export default function ProjectReportModal({
       }
       setPromptInvoice(null);
       setInvoicePromptOpen(true);
-    } else if (!options?.stayOpen && !successText.includes('اعتماد')) {
+    } else if (!isPage && !options?.stayOpen && !successText.includes('اعتماد')) {
       onClose();
     }
 
@@ -225,7 +230,7 @@ export default function ProjectReportModal({
       logActivity({
         actionType: 'UPDATE',
         module: 'projects',
-        pageUrl: '/projects',
+        pageUrl: isPage ? `/projects/file/?id=${client.id}` : '/projects',
         details: `تم تحديث تقرير هندسي للعميل ${client.business_name || client.name} — ${successText}`,
         metadata: { clientId: client.id, stage: activeStage },
       })
@@ -286,10 +291,14 @@ export default function ProjectReportModal({
 
   const blockers = stageApprovalBlockers(activeStage, client, data);
 
-  return (
-    <>
-      <div className="fixed inset-0 bg-black/50 flex items-end sm:items-center justify-center z-50 p-0 sm:p-4">
-        <div className="bg-white rounded-t-2xl sm:rounded-2xl shadow-xl w-full max-w-6xl max-h-[94vh] flex flex-col overflow-hidden">
+  const panel = (
+        <div
+          className={
+            isPage
+              ? 'bg-white rounded-2xl border border-gray-200 shadow-sm w-full min-h-[calc(100vh-7.5rem)] flex flex-col overflow-hidden'
+              : 'bg-white rounded-t-2xl sm:rounded-2xl shadow-xl w-full max-w-6xl max-h-[94vh] flex flex-col overflow-hidden'
+          }
+        >
           <div className="p-5 border-b">
             <div className="flex justify-between items-start gap-4">
               <div>
@@ -306,9 +315,19 @@ export default function ProjectReportModal({
                   </p>
                 ) : null}
               </div>
-              <button type="button" onClick={onClose} className="text-2xl text-gray-400 leading-none">
-                ×
-              </button>
+              {isPage ? (
+                <Link
+                  href="/projects/"
+                  onClick={onClose}
+                  className="touch-target shrink-0 rounded-xl border border-gray-200 bg-white px-3 py-2 text-sm font-semibold text-gray-700 hover:bg-gray-50"
+                >
+                  رجوع للمشاريع
+                </Link>
+              ) : (
+                <button type="button" onClick={onClose} className="text-2xl text-gray-400 leading-none">
+                  ×
+                </button>
+              )}
             </div>
           </div>
 
@@ -787,7 +806,17 @@ export default function ProjectReportModal({
             ) : null}
           </div>
         </div>
-      </div>
+  );
+
+  return (
+    <>
+      {isPage ? (
+        panel
+      ) : (
+        <div className="fixed inset-0 bg-black/50 flex items-end sm:items-center justify-center z-50 p-0 sm:p-4">
+          {panel}
+        </div>
+      )}
 
       <InvoicePromptModal
         open={invoicePromptOpen}
