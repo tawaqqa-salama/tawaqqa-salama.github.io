@@ -80,7 +80,6 @@ export default function ProjectReportModal({
     open: stagesOpen,
     register: registerStagesDrawer,
     unregister: unregisterStagesDrawer,
-    closeDrawer: closeStagesDrawer,
   } = useProjectStagesDrawer();
 
   useEffect(() => {
@@ -95,15 +94,6 @@ export default function ProjectReportModal({
     registerStagesDrawer();
     return () => unregisterStagesDrawer();
   }, [client, registerStagesDrawer, unregisterStagesDrawer]);
-
-  useEffect(() => {
-    if (!stagesOpen) return;
-    const onKey = (event: KeyboardEvent) => {
-      if (event.key === 'Escape') closeStagesDrawer();
-    };
-    window.addEventListener('keydown', onKey);
-    return () => window.removeEventListener('keydown', onKey);
-  }, [stagesOpen, closeStagesDrawer]);
 
   useEffect(() => {
     if (!client) return;
@@ -322,48 +312,8 @@ export default function ProjectReportModal({
             </div>
           </div>
 
-          <div className="relative flex flex-1 min-h-0">
-            {stagesOpen ? (
-              <>
-                <button
-                  type="button"
-                  aria-label="إخفاء أقسام المشروع"
-                  className="absolute inset-0 z-20 bg-black/35"
-                  onClick={closeStagesDrawer}
-                />
-                <aside
-                  id="project-stages-drawer"
-                  className="absolute inset-y-0 end-0 z-30 w-[min(18rem,88vw)] border-s border-gray-200 bg-gray-50 shadow-xl overflow-y-auto p-3"
-                  role="dialog"
-                  aria-modal="true"
-                  aria-label="أقسام المشروع"
-                >
-                  <div className="flex items-center justify-between gap-2 mb-3">
-                    <p className="text-sm font-bold text-gray-900">أقسام المشروع</p>
-                    <button
-                      type="button"
-                      onClick={closeStagesDrawer}
-                      className="touch-target h-9 w-9 rounded-lg border border-gray-200 bg-white text-gray-500 hover:bg-gray-100"
-                      aria-label="إغلاق"
-                    >
-                      ×
-                    </button>
-                  </div>
-                  <WorkflowStageRail
-                    client={client}
-                    data={data}
-                    activeStage={activeStage}
-                    progressPercent={progress}
-                    onSelect={(stageId) => {
-                      selectStage(stageId);
-                      closeStagesDrawer();
-                    }}
-                  />
-                </aside>
-              </>
-            ) : null}
-
-            <div className="flex-1 p-5 overflow-y-auto space-y-4">
+          <div className="flex flex-1 min-h-0">
+            <div className="flex-1 min-w-0 p-5 overflow-y-auto space-y-4 order-1 rtl:order-2">
               {message ? (
                 <div
                   className={`p-3 rounded-xl text-sm ${
@@ -818,6 +768,23 @@ export default function ProjectReportModal({
                 </div>
               </div>
             </div>
+
+            {stagesOpen ? (
+              <aside
+                id="project-stages-drawer"
+                className="w-56 shrink-0 order-2 rtl:order-1 border-s rtl:border-s-0 rtl:border-e border-gray-200 bg-gray-50 overflow-y-auto p-3"
+                aria-label="أقسام المشروع"
+              >
+                <p className="text-sm font-bold text-gray-900 mb-3">أقسام المشروع</p>
+                <WorkflowStageRail
+                  client={client}
+                  data={data}
+                  activeStage={activeStage}
+                  progressPercent={progress}
+                  onSelect={selectStage}
+                />
+              </aside>
+            ) : null}
           </div>
         </div>
       </div>
