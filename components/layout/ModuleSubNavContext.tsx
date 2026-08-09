@@ -21,7 +21,6 @@ const MODULES_WITH_SUBNAV = new Set([
   'procurement',
   'finance',
   'hr',
-  'projects',
   'settings',
 ]);
 
