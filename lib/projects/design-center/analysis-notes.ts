@@ -19,7 +19,12 @@ export type AnalysisNotesView = {
   drawingsCount: number;
 };
 
-const CAD_STEP_IDS = new Set(['detect_rooms', 'detect_walls']);
+const CAD_STEP_IDS = new Set([
+  'detect_rooms',
+  'detect_walls',
+  'ceiling_analysis',
+  'mep_coordination',
+]);
 
 type AnalysisRaw = {
   note_ar?: string;
@@ -33,6 +38,7 @@ type AnalysisRaw = {
     confidence?: number;
   }>;
   applicable_codes?: string[];
+  project_references?: string[];
   drawings_count?: number;
 };
 
@@ -48,22 +54,25 @@ function fallbackObservationsFromSteps(
 ): string[] {
   if (!steps?.length) return [];
   const lines: string[] = [];
-  const unavailable = steps.filter((s) => s.status === 'unavailable');
+  const unavailable = steps.filter(
+    (s) => s.status === 'unavailable' || s.status === 'not_available'
+  );
+  const needsInput = steps.filter((s) => s.status === 'needs_engineer_review');
   const cad = unavailable.filter((s) => CAD_STEP_IDS.has(s.id));
-  const dataGaps = unavailable.filter((s) => !CAD_STEP_IDS.has(s.id));
+  const dataGaps = [...unavailable.filter((s) => !CAD_STEP_IDS.has(s.id)), ...needsInput];
 
   if (cad.length) {
     lines.push(
       preferAr
-        ? 'كشف الغرف والجدران من CAD/BIM يحتاج محرك رؤية منفصل — غير مفعّل حالياً.'
-        : 'CAD/BIM room and wall detection needs a separate vision engine — not configured yet.'
+        ? 'محرك تحليل CAD غير متاح حاليًا — ارفع/حدّث المخطط يدوياً.'
+        : 'CAD analysis engine is not available — upload/update the drawing manually.'
     );
   }
   for (const s of dataGaps) {
     lines.push(
       preferAr
-        ? `${s.label_ar}: غير متاح — أكمل الحقل في بيانات/تقرير المخطط ثم أعد التحليل.`
-        : `${s.label_en}: unavailable — fill the field in project/plan data and re-run analysis.`
+        ? `${s.label_ar}: ${s.status === 'needs_engineer_review' ? 'يحتاج إدخال المهندس' : 'غير متاح'} — أكمل الحقل ثم أعد التحليل.`
+        : `${s.label_en}: ${s.status === 'needs_engineer_review' ? 'Needs Engineer Input' : 'Not Available'} — fill the field and re-run analysis.`
     );
   }
   return lines;
@@ -111,9 +120,11 @@ export function extractAnalysisNotes(
     summary,
     observations,
     citations,
-    applicableCodes: Array.isArray(raw.applicable_codes)
-      ? raw.applicable_codes.map((c) => String(c).trim()).filter(Boolean)
-      : [],
+    applicableCodes: Array.isArray(raw.project_references)
+      ? raw.project_references.map((c) => String(c).trim()).filter(Boolean)
+      : Array.isArray(raw.applicable_codes)
+        ? raw.applicable_codes.map((c) => String(c).trim()).filter(Boolean)
+        : [],
     spaceNames,
     drawingsCount: typeof raw.drawings_count === 'number' ? raw.drawings_count : 0,
   };
@@ -124,9 +135,14 @@ export function jobStatusLabel(status: string | undefined, preferAr: boolean): s
     case 'completed':
       return preferAr ? 'مكتمل' : 'completed';
     case 'unavailable':
-      return preferAr ? 'غير متاح' : 'unavailable';
+    case 'not_available':
+      return preferAr ? 'غير متاح' : 'not_available';
+    case 'needs_engineer_review':
+      return preferAr ? 'يحتاج مراجعة المهندس' : 'needs_engineer_review';
     case 'failed':
       return preferAr ? 'فشل' : 'failed';
+    case 'pending':
+      return preferAr ? 'معلّق' : 'pending';
     case 'running':
     case 'queued':
     case 'generating':

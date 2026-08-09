@@ -18,11 +18,14 @@ export type DesignDrawingFormat = 'pdf' | 'dwg' | 'dxf' | 'ifc' | 'rvt' | 'other
 
 export type DesignJobStatus =
   | 'idle'
+  | 'pending'
   | 'queued'
   | 'running'
   | 'completed'
   | 'failed'
-  | 'unavailable';
+  | 'unavailable'
+  | 'not_available'
+  | 'needs_engineer_review';
 
 /** Drawing file version — stored on the project record */
 export type DesignDrawingVersion = {
@@ -54,6 +57,8 @@ export type DesignAnalysisStepId =
   | 'detect_stairs'
   | 'detect_exits'
   | 'read_space_names'
+  | 'ceiling_analysis'
+  | 'mep_coordination'
   | 'build_digital_model';
 
 export type DesignAnalysisStep = {
@@ -165,13 +170,32 @@ export type DesignKnowledgeCitation = {
 
 /** Links company Design Intelligence KB + sales scope into the project Design Center */
 export type DesignKnowledgeLinks = {
+  /**
+   * Codes discovered from sales/KB linkage — Project References only.
+   * Never display these as "applicable standards" for a fire system.
+   */
   applicable_codes: string[];
+  /** Alias clarity for UI: same as applicable_codes (project-discovered refs) */
+  project_references?: string[];
   sales_services: string[];
   linked_document_ids: string[];
   linked_document_titles: string[];
   citations: DesignKnowledgeCitation[];
   last_synced_at?: string | null;
   source?: 'sales_projects_bridge' | 'manual' | string | null;
+};
+
+/** Persisted Design Readiness snapshot (recomputed on analyze / system resolve / approve) */
+export type DesignReadinessSnapshot = {
+  level:
+    | 'NOT_READY'
+    | 'READY_FOR_AI_ANALYSIS'
+    | 'READY_FOR_PRELIMINARY_DESIGN'
+    | 'READY_FOR_ENGINEER_REVIEW'
+    | 'APPROVED';
+  updatedAt: string;
+  reasons_ar: string[];
+  reasons_en: string[];
 };
 
 export type DesignComplianceState = {
@@ -222,20 +246,23 @@ export type DesignCenterState = ReportMeta & {
   compliance: DesignComplianceState;
   exports: DesignExportJob[];
   knowledge_links?: DesignKnowledgeLinks;
+  readiness?: DesignReadinessSnapshot | null;
   ui?: DesignCenterUiPrefs;
 };
 
 export const DESIGN_ANALYSIS_STEPS: Omit<DesignAnalysisStep, 'status'>[] = [
-  { id: 'analyze_plan', label_ar: 'تحليل المخطط', label_en: 'Analyze plan' },
-  { id: 'detect_rooms', label_ar: 'التعرف على الغرف', label_en: 'Detect rooms' },
-  { id: 'detect_walls', label_ar: 'التعرف على الجدران', label_en: 'Detect walls' },
-  { id: 'extract_dimensions', label_ar: 'استخراج الأبعاد', label_en: 'Extract dimensions' },
-  { id: 'extract_areas', label_ar: 'استخراج المساحات', label_en: 'Extract areas' },
-  { id: 'occupancy_type', label_ar: 'تحديد نوع الإشغال', label_en: 'Occupancy type' },
-  { id: 'detect_stairs', label_ar: 'اكتشاف السلالم', label_en: 'Detect stairs' },
-  { id: 'detect_exits', label_ar: 'اكتشاف المخارج', label_en: 'Detect exits' },
-  { id: 'read_space_names', label_ar: 'قراءة أسماء الفراغات', label_en: 'Read space names' },
-  { id: 'build_digital_model', label_ar: 'إنشاء نموذج رقمي للمبنى', label_en: 'Build digital model' },
+  { id: 'analyze_plan', label_ar: 'تحليل CAD/PDF', label_en: 'CAD/PDF analysis' },
+  { id: 'detect_rooms', label_ar: 'التعرف على الغرف', label_en: 'Room detection' },
+  { id: 'detect_walls', label_ar: 'التعرف على الجدران', label_en: 'Wall detection' },
+  { id: 'extract_dimensions', label_ar: 'استخراج الأبعاد', label_en: 'Dimension extraction' },
+  { id: 'extract_areas', label_ar: 'استخراج المساحات', label_en: 'Area extraction' },
+  { id: 'occupancy_type', label_ar: 'تصنيف الإشغال', label_en: 'Occupancy classification' },
+  { id: 'detect_stairs', label_ar: 'اكتشاف السلالم (Egress)', label_en: 'Egress — stairs' },
+  { id: 'detect_exits', label_ar: 'اكتشاف المخارج (Egress)', label_en: 'Egress — exits' },
+  { id: 'read_space_names', label_ar: 'أسماء الفراغات', label_en: 'Space names' },
+  { id: 'ceiling_analysis', label_ar: 'تحليل الأسقف', label_en: 'Ceiling analysis' },
+  { id: 'mep_coordination', label_ar: 'تنسيق MEP', label_en: 'MEP coordination' },
+  { id: 'build_digital_model', label_ar: 'نموذج رقمي للمبنى', label_en: 'Digital building model' },
 ];
 
 export const FIRE_SYSTEM_DEFS: {

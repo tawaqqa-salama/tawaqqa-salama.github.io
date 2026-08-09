@@ -55,14 +55,19 @@ describe('extractAnalysisNotes', () => {
         label_en: 'Detect stairs',
       },
     ]);
-    expect(notes.observations.some((o) => /محرك رؤية|vision/i.test(o))).toBe(true);
+    expect(notes.observations.some((o) => /محرك تحليل CAD|CAD analysis engine/i.test(o))).toBe(true);
     expect(notes.observations.some((o) => o.includes('السلالم'))).toBe(true);
   });
 });
 
 describe('jobStatusLabel', () => {
-  it('localizes unavailable', () => {
+  it('localizes statuses including not_available and needs_engineer_review', () => {
     expect(jobStatusLabel('unavailable', true)).toBe('غير متاح');
+    expect(jobStatusLabel('not_available', true)).toBe('غير متاح');
+    expect(jobStatusLabel('not_available', false)).toBe('not_available');
+    expect(jobStatusLabel('needs_engineer_review', false)).toBe('needs_engineer_review');
+    expect(jobStatusLabel('pending', false)).toBe('pending');
     expect(jobStatusLabel('completed', true)).toBe('مكتمل');
+    expect(jobStatusLabel('failed', false)).toBe('failed');
   });
 });

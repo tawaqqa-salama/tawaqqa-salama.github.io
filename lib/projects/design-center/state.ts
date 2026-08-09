@@ -103,6 +103,7 @@ export const EMPTY_DESIGN_CENTER: DesignCenterState = {
   exports: emptyExports(),
   knowledge_links: {
     applicable_codes: [],
+    project_references: [],
     sales_services: [],
     linked_document_ids: [],
     linked_document_titles: [],
@@ -110,6 +111,7 @@ export const EMPTY_DESIGN_CENTER: DesignCenterState = {
     last_synced_at: null,
     source: null,
   },
+  readiness: null,
   ui: {
     dark_mode: false,
     active_tab: 'drawings',
@@ -188,6 +190,11 @@ export function mergeDesignCenterDefaults(
       applicable_codes: Array.isArray(base.knowledge_links?.applicable_codes)
         ? base.knowledge_links!.applicable_codes
         : [],
+      project_references: Array.isArray(base.knowledge_links?.project_references)
+        ? base.knowledge_links!.project_references
+        : Array.isArray(base.knowledge_links?.applicable_codes)
+          ? base.knowledge_links!.applicable_codes
+          : [],
       sales_services: Array.isArray(base.knowledge_links?.sales_services)
         ? base.knowledge_links!.sales_services
         : [],
@@ -201,6 +208,7 @@ export function mergeDesignCenterDefaults(
         ? base.knowledge_links!.citations
         : [],
     },
+    readiness: base.readiness ?? null,
     ui: { ...EMPTY_DESIGN_CENTER.ui, ...(base.ui || {}) },
   };
 }

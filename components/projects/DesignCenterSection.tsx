@@ -19,6 +19,11 @@ import {
   jobStatusLabel,
   reviewStatusLabel,
   standardsObservationLines,
+  computeDesignReadiness,
+  knowledgeAvailabilityLabel,
+  canCreateSystemDesign,
+  systemDesignInputGate,
+  formatUnknownValue,
   type DesignCenterState,
   type DesignCenterTabId,
   type DesignDrawingFormat,
@@ -263,22 +268,57 @@ export default function DesignCenterSection({
         finishedAt: new Date().toISOString(),
         result: null,
       } as DesignCenterState['analysis']);
-    setDesign({ ...design, analysis });
-    if (result.ok && analysis?.status === 'completed') {
-      const kb = (analysis.result?.raw as { knowledge_citations?: unknown[] } | undefined)
-        ?.knowledge_citations;
+    const readiness = computeDesignReadiness(client, {
+      ...data,
+      design_center: { ...design, analysis },
+    });
+    setDesign({
+      ...design,
+      analysis,
+      readiness: {
+        level: readiness.level,
+        updatedAt: new Date().toISOString(),
+        reasons_ar: readiness.reasons_ar,
+        reasons_en: readiness.reasons_en,
+      },
+    });
+    if (
+      result.ok &&
+      (analysis?.status === 'completed' || analysis?.status === 'needs_engineer_review')
+    ) {
+      const raw = analysis.result?.raw as
+        | { knowledge_docs_available?: number; knowledge_citations?: unknown[] }
+        | undefined;
+      const kbCount =
+        typeof raw?.knowledge_docs_available === 'number'
+          ? raw.knowledge_docs_available
+          : Array.isArray(raw?.knowledge_citations)
+            ? raw.knowledge_citations.length
+            : 0;
+      setHintTone('ok');
       setHint(
         ar
-          ? `اكتمل تحليل المشروع من البيانات الحقيقية وقاعدة المعرفة (${Array.isArray(kb) ? kb.length : 0} مرجع). كشف CAD للغرف يحتاج محرك رؤية منفصل.`
-          : `Project analysis completed from real data + knowledge base (${Array.isArray(kb) ? kb.length : 0} citations). CAD room detection needs a vision engine.`
+          ? `تحليل من بيانات المشروع الفعلية. ${knowledgeAvailabilityLabel(kbCount, true)}. محرك تحليل CAD غير متاح حاليًا.`
+          : `Analysis from real project fields. ${knowledgeAvailabilityLabel(kbCount, false)}. CAD analysis engine is not available.`
       );
     } else {
+      setHintTone('error');
       setHint(apiFailMessage(result, ar));
     }
     setBusy(null);
   };
 
   const onGenerateSystem = async (kind: (typeof FIRE_SYSTEM_DEFS)[number]['kind']) => {
+    const gate = systemDesignInputGate(kind, client, data);
+    if (!gate.ok) {
+      setHint(
+        ar
+          ? `لا يمكن إنشاء التصميم لـ ${kind} — بيانات ناقصة: ${gate.missing.map((m) => m.label_ar).join(' · ')}`
+          : `Cannot create design for ${kind} — missing: ${gate.missing.map((m) => m.label_en).join(' · ')}`
+      );
+      setHintTone('error');
+      return;
+    }
     setBusy(`sys-${kind}`);
     const result = await generateFireSystemDesign({
       projectId: client.id,
@@ -288,25 +328,36 @@ export default function DesignCenterSection({
       data,
     });
     const system = result.data?.system;
+    const nextSystems = design.systems.map((s) =>
+      s.kind === kind
+        ? system || {
+            ...s,
+            status: 'unavailable' as const,
+            error: apiFailMessage(result, true),
+            error_code: apiFailCode(result),
+            generatedAt: new Date().toISOString(),
+          }
+        : s
+    );
+    const nextDesign = { ...design, systems: nextSystems };
+    const readiness = computeDesignReadiness(client, {
+      ...data,
+      design_center: nextDesign,
+    });
     setDesign({
-      ...design,
-      systems: design.systems.map((s) =>
-        s.kind === kind
-          ? system || {
-              ...s,
-              status: 'unavailable',
-              error: apiFailMessage(result, true),
-              error_code: apiFailCode(result),
-              generatedAt: new Date().toISOString(),
-            }
-          : s
-      ),
+      ...nextDesign,
+      readiness: {
+        level: readiness.level,
+        updatedAt: new Date().toISOString(),
+        reasons_ar: readiness.reasons_ar,
+        reasons_en: readiness.reasons_en,
+      },
     });
     setHint(
       result.ok
         ? ar
-          ? `حُددت المراجع المنطبقة لـ ${kind} (Primary/SBC/Related/Conditional) — بدون دمج أكواد أنظمة أخرى`
-          : `Applicable standards resolved for ${kind} (Primary/SBC/Related/Conditional) — no cross-system dump`
+          ? `System Applicable Standards لـ ${kind} (Primary / Conditional / Engineer-Verified) — ليست قائمة كل الأنظمة`
+          : `System Applicable Standards for ${kind} (Primary / Conditional / Engineer-Verified) — not an all-systems dump`
         : apiFailMessage(result, ar)
     );
     setBusy(null);
@@ -448,6 +499,14 @@ export default function DesignCenterSection({
   );
 
   const analysisProgress = design.analysis?.progress ?? 0;
+  const readinessLive = useMemo(
+    () => computeDesignReadiness(client, { ...data, design_center: design }),
+    [client, data, design]
+  );
+  const projectRefs = knowledge?.project_references?.length
+    ? knowledge.project_references
+    : knowledge?.applicable_codes || [];
+  const kbDocCount = knowledge?.linked_document_ids?.length || 0;
 
   return (
     <div className={`${shell} overflow-hidden`} data-design-center data-theme={dark ? 'dark' : 'light'}>
@@ -465,19 +524,43 @@ export default function DesignCenterSection({
                 ? `مرتبط بالمشروع · Project ID: ${client.id}`
                 : `Bound to project · Project ID: ${client.id}`}
             </p>
-            {knowledge?.linked_document_ids?.length ? (
+            <p className="text-xs mt-2 font-bold text-sky-700 dark:text-sky-300">
+              Design Readiness:{' '}
+              {ar ? readinessLive.label_ar : readinessLive.label_en}{' '}
+              <span className={`font-semibold ${muted}`}>({readinessLive.level})</span>
+            </p>
+            {kbDocCount > 0 ? (
               <p className="text-xs text-emerald-600 mt-1 font-semibold">
-                {ar
-                  ? `مرتبط بقاعدة المعرفة: ${knowledge.linked_document_ids.length} مستند · أكواد: ${(knowledge.applicable_codes || []).join(', ')}`
-                  : `Linked KB: ${knowledge.linked_document_ids.length} docs · codes: ${(knowledge.applicable_codes || []).join(', ')}`}
+                {knowledgeAvailabilityLabel(kbDocCount, ar)}
               </p>
             ) : (
               <p className={`text-xs mt-1 ${muted}`}>
                 {ar
-                  ? 'ارفع لوائح الدفاع المدني في /design ثم اختر بنود العرض في المبيعات للربط التلقائي.'
-                  : 'Upload Civil Defense docs in /design and select sales quotation services to auto-link.'}
+                  ? 'ارفع لوائح الدفاع المدني في /design لربط مراجع متاحة في قاعدة المعرفة (ليست معايير منطبقة تلقائياً).'
+                  : 'Upload Civil Defense docs in /design to link knowledge-base references (not auto-applicable standards).'}
               </p>
             )}
+            {projectRefs.length ? (
+              <p className={`text-xs mt-1 ${muted}`}>
+                <span className="font-semibold text-sky-700 dark:text-sky-300">
+                  {ar ? 'مراجع المشروع المكتشفة' : 'Project References'}
+                </span>
+                {': '}
+                {projectRefs.slice(0, 8).join(', ')}
+                {projectRefs.length > 8 ? '…' : ''}
+              </p>
+            ) : (
+              <p className={`text-xs mt-1 ${muted}`}>
+                {ar
+                  ? 'اختر بنود العرض في المبيعات لاكتشاف مراجع المشروع (Project References).'
+                  : 'Select sales quote services to discover Project References.'}
+              </p>
+            )}
+            {readinessLive.reasons_ar.length ? (
+              <p className={`text-[11px] mt-1 ${muted}`}>
+                {(ar ? readinessLive.reasons_ar : readinessLive.reasons_en).slice(0, 2).join(' · ')}
+              </p>
+            ) : null}
           </div>
           <div className="flex flex-wrap items-center gap-2">
             <span className={`text-xs px-2.5 py-1 rounded-full font-medium ${statusTone(design.status, dark)}`}>
@@ -785,11 +868,34 @@ export default function DesignCenterSection({
 
         {tab === 'ai_center' && (
           <div className="space-y-5">
+            <div
+              className={`rounded-xl px-4 py-3 text-sm border ${
+                dark
+                  ? 'bg-amber-950/40 border-amber-800 text-amber-100'
+                  : 'bg-amber-50 border-amber-200 text-amber-950'
+              }`}
+            >
+              <p className="font-bold">
+                {ar ? 'محرك تحليل CAD غير متاح حاليًا' : 'CAD analysis engine is not available'}
+              </p>
+              <p className={`text-xs mt-1 ${muted}`}>
+                {ar
+                  ? 'لن تُحاكى الغرف/الجدران/الأسقف/MEP. ارفع أو حدّث المخطط ثم أكمل الحقول الهندسية يدوياً.'
+                  : 'Rooms/walls/ceiling/MEP will not be simulated. Upload or update the drawing, then complete engineering fields manually.'}
+              </p>
+              <button
+                type="button"
+                onClick={() => setTab('drawings')}
+                className="mt-3 rounded-lg bg-amber-600 hover:bg-amber-500 text-white text-xs font-bold px-4 py-2"
+              >
+                {ar ? 'رفع/تحديث المخطط' : 'Upload / update drawing'}
+              </button>
+            </div>
             <div className={`${card} p-6 text-center space-y-4`}>
               <p className={`text-sm ${muted}`}>
                 {ar
-                  ? 'يحلل بيانات المشروع الفعلية (الإشغال، المساحات، المخططات المرفوعة) ويربطها بقاعدة المعرفة المفهرسة (SBC/NFPA). كشف الغرف من CAD يحتاج محرك رؤية إضافي.'
-                  : 'Analyzes real project fields (occupancy, areas, uploaded drawings) and links the indexed knowledge base (SBC/NFPA). CAD room detection needs an extra vision engine.'}
+                  ? 'يحلل الحقول الفعلية فقط (إشغال، مساحات، أبعاد، مخارج…). مراجع قاعدة المعرفة تُعرض كـ «متاحة» وليس «منطبقة» حتى يعمل Applicability Engine داخل بطاقة النظام.'
+                  : 'Analyzes real fields only (occupancy, areas, dimensions, egress…). Knowledge-base refs are “available”, not “applicable”, until the Applicability Engine runs inside a system card.'}
               </p>
               <button
                 type="button"
@@ -797,7 +903,7 @@ export default function DesignCenterSection({
                 onClick={() => void onAnalyze()}
                 className="inline-flex items-center justify-center gap-2 rounded-xl bg-sky-600 hover:bg-sky-500 text-white font-bold px-6 py-3 text-sm shadow-lg shadow-sky-600/20 disabled:opacity-60"
               >
-                ✨ {ar ? 'تحليل المشروع وقاعدة المعرفة' : 'Analyze project + knowledge base'}
+                ✨ {ar ? 'تحليل بيانات المشروع' : 'Analyze project data'}
               </button>
             </div>
 
@@ -836,7 +942,9 @@ export default function DesignCenterSection({
               {design.analysis?.error ? (
                 <p className="text-xs text-amber-600">{design.analysis.error}</p>
               ) : null}
-              {design.analysis?.status === 'completed' && design.analysis.result
+              {(design.analysis?.status === 'completed' ||
+                design.analysis?.status === 'needs_engineer_review') &&
+              design.analysis.result
                 ? (() => {
                     const notes = extractAnalysisNotes(
                       design.analysis.result,
@@ -860,18 +968,23 @@ export default function DesignCenterSection({
                           </p>
                           <p>
                             {ar ? 'الإشغال' : 'Occupancy'}:{' '}
-                            {String(design.analysis.result.occupancy || '—')}
+                            {formatUnknownValue(
+                              design.analysis.result.occupancy,
+                              ar,
+                              'needs_engineer_input'
+                            )}
                           </p>
                           <p>
                             {ar ? 'المساحة' : 'Area'}:{' '}
-                            {String(areas?.building_area_m2 ?? '—')} m²
+                            {formatUnknownValue(areas?.building_area_m2, ar, 'needs_engineer_input')}{' '}
+                            m²
                           </p>
                           <p>
                             {ar ? 'مخططات مرفوعة' : 'Drawings'}: {notes.drawingsCount}
                           </p>
                           {notes.applicableCodes.length ? (
                             <p>
-                              {ar ? 'أكواد منطبقة' : 'Applicable codes'}:{' '}
+                              {ar ? 'مراجع المشروع المكتشفة' : 'Project References'}:{' '}
                               {notes.applicableCodes.join(' · ')}
                             </p>
                           ) : null}
@@ -969,9 +1082,13 @@ export default function DesignCenterSection({
 
                   {std ? (
                     <div className={`text-[11px] space-y-2 rounded-lg px-2.5 py-2 ${dark ? 'bg-slate-950/60 border border-slate-800' : 'bg-slate-50 border border-slate-100'}`}>
-                      <p className="font-bold">{ar ? 'المراجع المطبقة' : 'Applicable standards'}</p>
+                      <p className="font-bold">
+                        {ar ? 'System Applicable Standards' : 'System Applicable Standards'}
+                      </p>
                       <div>
-                        <p className="font-semibold text-sky-700 dark:text-sky-300">Primary</p>
+                        <p className="font-semibold text-sky-700 dark:text-sky-300">
+                          {ar ? 'أساسية (Primary)' : 'Primary'}
+                        </p>
                         {std.primary.length ? (
                           std.primary.map((r) => (
                             <p key={`p-${sys.kind}-${r.code}`} className={muted}>
@@ -1009,16 +1126,26 @@ export default function DesignCenterSection({
                         )}
                       </div>
                       <div>
-                        <p className="font-semibold text-amber-700 dark:text-amber-300">Conditional</p>
+                        <p className="font-semibold text-amber-700 dark:text-amber-300">
+                          Conditional Standards
+                        </p>
                         <p className={muted}>
                           {std.conditional.length
                             ? std.conditional.map((r) => r.code).join(', ')
                             : ar
                               ? 'لا يوجد'
                               : 'None'}
-                          {std.conditional.length > 1
-                            ? ` (${std.conditional.length} ${ar ? 'مراجع' : 'standards'})`
-                            : ''}
+                        </p>
+                      </div>
+                      <div>
+                        <p className="font-semibold text-violet-700 dark:text-violet-300">
+                          Engineer-Verified Standards
+                        </p>
+                        <p className={muted}>
+                          {[...std.primary, ...std.saudiCode, ...std.related, ...std.conditional]
+                            .filter((r) => r.status === 'verified')
+                            .map((r) => r.code)
+                            .join(', ') || (ar ? 'لا يوجد بعد — بانتظار تحقق المهندس' : 'None yet — awaiting engineer verification')}
                         </p>
                       </div>
                       <div>
@@ -1063,19 +1190,30 @@ export default function DesignCenterSection({
                     </div>
                   ) : null}
 
+                  {!canCreateSystemDesign(sys.kind, client, data) ? (
+                    <p className={`text-[10px] ${muted}`}>
+                      {ar
+                        ? `مدخلات ناقصة: ${systemDesignInputGate(sys.kind, client, data)
+                            .missing.map((m) => m.label_ar)
+                            .join(' · ')}`
+                        : `Missing inputs: ${systemDesignInputGate(sys.kind, client, data)
+                            .missing.map((m) => m.label_en)
+                            .join(' · ')}`}
+                    </p>
+                  ) : null}
                   <button
                     type="button"
-                    disabled={!!busy}
+                    disabled={!!busy || !canCreateSystemDesign(sys.kind, client, data)}
                     onClick={() => void onGenerateSystem(sys.kind)}
                     className="w-full rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-bold py-2.5 disabled:opacity-60"
                   >
                     {std
                       ? ar
-                        ? 'تحديث المراجع والمتطلبات'
-                        : 'Refresh standards & requirements'
+                        ? 'تحديث المراجع المنطبقة للنظام'
+                        : 'Refresh system applicable standards'
                       : ar
-                        ? 'تحديد المراجع المنطبقة'
-                        : 'Resolve applicable standards'}
+                        ? 'تشغيل Applicability Engine'
+                        : 'Run Applicability Engine'}
                   </button>
                   {row?.error ? <p className="text-[11px] text-amber-600">{row.error}</p> : null}
                 </div>
@@ -1177,10 +1315,18 @@ export default function DesignCenterSection({
           <div className="space-y-4">
             <div className={`${card} p-4 space-y-2`}>
               <h3 className="text-sm font-bold">
-                {ar ? 'اشتراطات مرتبطة من المبيعات وقاعدة المعرفة' : 'Linked sales & knowledge requirements'}
+                {ar ? 'مراجع المشروع المكتشفة (Project References)' : 'Project References (discovered)'}
               </h3>
+              <p className={`text-[11px] ${muted}`}>
+                {ar
+                  ? 'من نطاق العرض/المبيعات — ليست System Applicable Standards'
+                  : 'From sales/quote scope — not System Applicable Standards'}
+              </p>
               <p className={`text-xs ${muted}`}>
-                {(knowledge?.applicable_codes || []).join(' · ') || '—'}
+                {(knowledge?.project_references?.length
+                  ? knowledge.project_references
+                  : knowledge?.applicable_codes || []
+                ).join(' · ') || '—'}
               </p>
               {(knowledge?.linked_document_titles || []).length ? (
                 <ul className="text-xs space-y-1 list-disc ps-5">
