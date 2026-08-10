@@ -53,7 +53,7 @@ describe('engineering study print images', () => {
     const html = buildEngineeringStudyHtml({ document: doc, company });
     expect(html).toContain(facade);
     expect(html).toContain(earth);
-    expect(html).toContain('cover-facade');
+    expect(html).toContain('cover-photo');
     expect(html).toContain('بيانات الموقع والإحداثيات');
   });
 
