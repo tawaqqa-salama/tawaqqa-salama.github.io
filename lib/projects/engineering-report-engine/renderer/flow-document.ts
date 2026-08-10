@@ -36,10 +36,10 @@ export type FlowBlock =
   | { kind: 'unit'; blocks: FlowBlock[] };
 
 const SYSTEM_JARGON_RE =
-  /محرك\s*(?:القواعد|القرار)|قاعدة\s*المعرفة|Decision\s*Engine|Knowledge\s*Base|Rules?\s*Engine|قابل\s*للتعديل|القيم\s*المقفلة|الخيارات\s*غير\s*المسموحة|بوابة\s*(?:محرك\s*)?القرار|حالة\s*البوابة|موقوف\s*:|حقل\s*إلزامي|مخالفات\s*القواعد|Incomplete|Company\s*Standards|Base\s*Code|CODE-BASE|مقفل\s*بقاعدة[^.]*|مقفَل\s*بقاعدة[^.]*|rules?\s*engine|UUID|pipeline\s*status|draft\s*status/gi;
+  /محرك\s*(?:القواعد|القرار)(?:\s*الهندسي(?:ة)?)?|قاعدة\s*المعرفة|Decision\s*Engine|Knowledge\s*Base|Rules?\s*Engine|Rule\s*Engine|قابل\s*للتعديل|القيم\s*المقفلة|الخيارات\s*غير\s*المسموحة|بوابة\s*(?:محرك\s*)?القرار|حالة\s*البوابة|بوابة\s*مغلقة|موقوف\s*:|حقل\s*إلزامي(?:\s*ناقص)?|عدد\s*مخالفات(?:\s*القواعد)?|مخالفات\s*القواعد|Incomplete|Company\s*Standards|Base\s*Code|CODE-BASE|مقفل\s*بقاعدة[^.]*|مقفَل\s*بقاعدة[^.]*|rules?\s*engine|UUID|Database\s*ID|Internal\s*ID|Internal\s*URL|Pipeline\s*Status|pipeline\s*status|draft\s*status/gi;
 
 const GENERIC_BRIDGE_RE =
-  /تُراجع المتطلبات الهندسية ذات الصلة وفق بيانات المشروع والكودات المعتمدة، مع توثيق الحالة القائمة عند توفر الصور المرفقة|Regarding “[^”]+”, the related engineering requirements are reviewed against project data and adopted codes/i;
+  /تُ?راجع المتطلبات الهندسية ذات الصلة[\s\S]{0,120}الكودات المعتمدة[\s\S]{0,80}الصور المرفقة|فيما يتعلق بـ?[«"'][^»"']+[»"']،?\s*(?:تُ?راجع|تم)|Regarding “[^”]+”, the related engineering requirements are reviewed|تُراجع متطلبات هذا البند وفق طبيعة الإشغال وخصائص المبنى والكودات المعتمدة، مع توثيق الحالة القائمة/i;
 
 function normalizeCodeSpacing(text: string): string {
   return String(text || '')
@@ -72,10 +72,10 @@ export function sanitizeClientFacingText(text: string, locale: 'ar' | 'en'): str
       : 'Required project data for this item is not yet complete; undocumented engineering values are not assumed.';
   }
 
-  if (/مراجعة الامتثال عبر|Decision gate|حالة البوابة|عدد مخالفات/i.test(t)) {
+  if (/مراجعة الامتثال عبر|Decision gate|حالة البوابة|عدد مخالفات|بوابة مغلقة|حقل إلزامي/i.test(t)) {
     return locale === 'ar'
-      ? 'أظهرت المراجعة الحالية أن بعض البيانات المطلوبة لاستكمال التحقق النهائي من الامتثال غير مكتملة بعد. وعليه، لا يُعدّ هذا الجزء اعتمادًا نهائيًا إلى حين استكمال البيانات المطلوبة، دون افتراض نتائج غير موثّقة.'
-      : 'The current review shows that some data required to complete final compliance verification are still incomplete. This section is therefore not a final approval until the required data are provided; undocumented conclusions are not assumed.';
+      ? 'أظهرت المراجعة الحالية عدم اكتمال بعض البيانات المطلوبة لاستكمال التحقق النهائي من هذا البند، ولذلك لا يمكن اعتماد النتيجة النهائية قبل استكمال البيانات المطلوبة.'
+      : 'The current review shows that some data required to complete final verification of this item are incomplete; the final result cannot be approved until the required data are provided.';
   }
 
   const unspecifiedHits = (t.match(/غير محدد/g) || []).length;
