@@ -81,33 +81,32 @@ export function openDocumentPreview(payload: DocumentPreviewPayload) {
       }
       if (pending !== payload) return;
       pending = null;
-      // Last-resort preview without popup: write into a temporary iframe and print
+      // Last-resort preview without popup: blob URL avoids stamping the project page URL into print chrome
       try {
+        const blob = new Blob([payload.html], { type: 'text/html;charset=utf-8' });
+        const blobUrl = URL.createObjectURL(blob);
         const iframe = document.createElement('iframe');
         iframe.style.cssText =
           'position:fixed;inset:0;width:100%;height:100%;border:0;z-index:99999;background:#fff';
         document.body.appendChild(iframe);
-        const idoc = iframe.contentDocument;
-        const iwin = iframe.contentWindow;
-        if (!idoc || !iwin) {
-          document.body.removeChild(iframe);
-          return;
-        }
-        idoc.open();
-        idoc.write(payload.html);
-        idoc.close();
-        const closeBtn = idoc.createElement('button');
-        closeBtn.textContent = 'إغلاق';
-        closeBtn.style.cssText =
-          'position:fixed;top:12px;left:12px;z-index:10;padding:8px 14px;font:14px sans-serif;cursor:pointer';
-        closeBtn.onclick = () => {
-          try {
-            document.body.removeChild(iframe);
-          } catch {
-            /* ignore */
-          }
+        iframe.onload = () => {
+          const idoc = iframe.contentDocument;
+          if (!idoc) return;
+          const closeBtn = idoc.createElement('button');
+          closeBtn.textContent = 'إغلاق';
+          closeBtn.style.cssText =
+            'position:fixed;top:12px;left:12px;z-index:10;padding:8px 14px;font:14px sans-serif;cursor:pointer';
+          closeBtn.onclick = () => {
+            try {
+              URL.revokeObjectURL(blobUrl);
+              document.body.removeChild(iframe);
+            } catch {
+              /* ignore */
+            }
+          };
+          idoc.body.appendChild(closeBtn);
         };
-        idoc.body.appendChild(closeBtn);
+        iframe.src = blobUrl;
       } catch {
         /* ignore */
       }
