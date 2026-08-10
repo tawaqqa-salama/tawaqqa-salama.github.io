@@ -1,6 +1,8 @@
 import type { DesignCenterState } from '@/lib/projects/design-center/types';
+import type { FireProtectionDesign } from '@/lib/types/fire-protection-design';
 
 export type { DesignCenterState };
+export type { FireProtectionDesign };
 
 export interface ReportMeta {
   status: 'مسودة' | 'قيد الإعداد' | 'مكتمل' | 'معتمد';
@@ -549,6 +551,11 @@ export interface ProjectEngineeringData {
   final_inspection: FinalInspectionReport;
   completion_certificate: CompletionCertificateReport;
   supervision_report: SupervisionReport;
+  /**
+   * مدخلات التصميم الهيدروليكي / مضخة الحريق / الخزان
+   * مصدر بيانات قالب «التقرير الفني — مبنى إداري تحت الإنشاء»
+   */
+  fire_protection_design?: FireProtectionDesign;
   workflow?: ProjectWorkflowState;
 }
 
@@ -668,5 +675,6 @@ export const EMPTY_PROJECT_ENGINEERING_DATA: ProjectEngineeringData = {
   final_inspection: { status: 'مسودة' },
   completion_certificate: { status: 'مسودة' },
   supervision_report: { ...EMPTY_SUPERVISION_REPORT },
+  fire_protection_design: undefined,
   workflow: {},
 };

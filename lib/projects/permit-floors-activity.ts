@@ -22,7 +22,8 @@ const USAGE_ACTIVITY_PATTERNS: { re: RegExp; activity: string }[] = [
   // Serviced apartments / hospitality before generic "شقق" and before "مكتب هندسي" noise
   { re: /شقق\s*مخدوم|شقق\s*مفروطة|فندق|إيواء|ايواء/, activity: 'hotel' },
   { re: /سكن[يى]|عمائر|شقق|فيلا/, activity: 'residential_building' },
-  { re: /مكتب|إدار[يى]|ادار[يى]/, activity: 'office' },
+  { re: /مبنى\s*إدار|إدار[يى]|ادار[يى]/, activity: 'administrative' },
+  { re: /مكتب/, activity: 'office' },
   { re: /مدرس[ةه]|تعليم|جامع[ةه]|روضة/, activity: 'school' },
   { re: /مواقف|موقف\s*سيارات/, activity: 'parking' },
   { re: /مجمع\s*تجار|مول|سوق|تجار[يى]ة?|تجارى/, activity: 'commercial_complex' },

@@ -22,6 +22,8 @@ import { mergeSafetyScope, seedEngineeringDelivery } from '@/lib/projects/safety
 import { seedCdCoverLetter } from '@/lib/projects/cd-cover-letter';
 import { seedFinalInspectionReport } from '@/lib/projects/final-safety-report';
 import { ensureTaskMonths } from '@/lib/projects/supervision-report';
+import { mergeFireProtectionDesign } from '@/lib/projects/admin-uc-report/design';
+import { EMPTY_FIRE_PROTECTION_DESIGN } from '@/lib/types/fire-protection-design';
 
 export function parseProjectEngineeringData(raw: ClientRecord['project_engineering_data']): ProjectEngineeringData {
   if (!raw || typeof raw !== 'object') {
@@ -104,6 +106,9 @@ export function parseProjectEngineeringData(raw: ClientRecord['project_engineeri
       months,
       tasks,
     },
+    fire_protection_design: data.fire_protection_design
+      ? mergeFireProtectionDesign(data.fire_protection_design)
+      : { ...EMPTY_FIRE_PROTECTION_DESIGN },
     workflow: { ...(data.workflow || {}) },
   };
 }
