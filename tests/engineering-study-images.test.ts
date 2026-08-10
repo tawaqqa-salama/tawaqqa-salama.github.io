@@ -56,4 +56,89 @@ describe('engineering study print images', () => {
     expect(html).toContain('cover-facade');
     expect(html).toContain('بيانات الموقع والإحداثيات');
   });
+
+  it('embeds system and subsection item photos into matching study sections', () => {
+    const pumpPhoto = 'data:image/jpeg;base64,/9j/pump';
+    const panelPhoto = 'data:image/jpeg;base64,/9j/panel';
+    const pipePhoto = 'data:image/jpeg;base64,/9j/pipe';
+    const zoneProof = 'data:image/jpeg;base64,/9j/zoneproof';
+    const occProof = 'data:image/jpeg;base64,/9j/occ';
+
+    const report = {
+      ...EMPTY_TECHNICAL_REPORT,
+      outgoing_number: 'OUT-2',
+      report_date: '2026-08-10',
+      firefighting_items: [
+        {
+          id: 'ff_pumps',
+          enabled: true,
+          notes: 'مضخة رئيسية',
+          selectedOptions: ['مضخة رئيسية: قدرة وضغط وفق الحساب الهيدروليكي'],
+          photos: [{ id: 'p1', caption: 'غرفة المضخات', dataUrl: pumpPhoto }],
+        },
+        {
+          id: 'ff_piping',
+          enabled: true,
+          notes: 'شبكة رش',
+          selectedOptions: [],
+          photos: [{ id: 'p2', caption: 'شبكة الأنابيب', dataUrl: pipePhoto }],
+        },
+      ],
+      alarm_items: [
+        {
+          id: 'al_panel',
+          enabled: true,
+          notes: 'لوحة إنذار',
+          selectedOptions: [],
+          photos: [{ id: 'a1', caption: 'لوحة التحكم', dataUrl: panelPhoto }],
+        },
+      ],
+      code_proofs_by_key: {
+        'occ-class': [{ id: 'c1', caption: 'مقطع الإشغال', dataUrl: occProof }],
+      },
+      floor_uses: [
+        {
+          id: 'fl1',
+          floor_name: 'أرضي',
+          floor_area_m2: '400',
+          structure: 'خرسانة',
+          classification: 'TYPE I A',
+          zones: [
+            {
+              id: 'z1',
+              use_code: 'storage',
+              label: 'مستودع',
+              area_m2: '200',
+              code_proof_photo: {
+                id: 'zp1',
+                caption: 'إثبات المستودع',
+                dataUrl: zoneProof,
+              },
+            },
+          ],
+        },
+      ],
+    };
+
+    const doc = generateEngineeringStudy({ client, report, locale: 'ar' });
+    const pumps = doc.sections.find((s) => s.id === 'fire_pump_analysis');
+    const alarm = doc.sections.find((s) => s.id === 'fire_alarm_study');
+    const sprinkler = doc.sections.find((s) => s.id === 'sprinkler_system');
+    const occupancy = doc.sections.find((s) => s.id === 'occupancy_classification');
+
+    expect(pumps?.images?.some((img) => img.src === pumpPhoto)).toBe(true);
+    expect(alarm?.images?.some((img) => img.src === panelPhoto)).toBe(true);
+    expect(sprinkler?.images?.some((img) => img.src === pipePhoto)).toBe(true);
+    expect(sprinkler?.images?.some((img) => img.src === zoneProof)).toBe(true);
+    expect(occupancy?.images?.some((img) => img.src === occProof)).toBe(true);
+
+    const html = buildEngineeringStudyHtml({ document: doc, company });
+    expect(html).toContain(pumpPhoto);
+    expect(html).toContain(panelPhoto);
+    expect(html).toContain(pipePhoto);
+    expect(html).toContain(zoneProof);
+    expect(html).toContain(occProof);
+    expect(html).toContain('غرفة المضخات');
+    expect(html).toContain('لوحة التحكم');
+  });
 });

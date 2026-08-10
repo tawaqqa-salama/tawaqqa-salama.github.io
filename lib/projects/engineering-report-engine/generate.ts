@@ -1,6 +1,7 @@
 import { ENGINEERING_STUDY_SECTIONS } from '@/lib/projects/engineering-report-engine/sections';
 import {
   type EngineeringReportContext,
+  collectSectionPhotos,
   getItemNarrative,
   lockedRuleValue,
   ruleReason,
@@ -706,6 +707,13 @@ export function generateEngineeringStudy(params: {
     }
     const gen = generators[meta.id];
     const body = gen ? gen(ctx) : { paragraphs: [missing(locale)] };
+    const fromItems = collectSectionPhotos(params.report, meta.id);
+    const existing = body.images || [];
+    const seen = new Set(existing.map((img) => img.src));
+    const mergedImages = [
+      ...existing,
+      ...fromItems.filter((img) => img.src && !seen.has(img.src)),
+    ];
     return {
       id: meta.id,
       number: meta.number,
@@ -713,7 +721,7 @@ export function generateEngineeringStudy(params: {
       title_en: meta.title_en,
       paragraphs: body.paragraphs,
       tables: body.tables,
-      images: body.images,
+      images: mergedImages.length ? mergedImages : undefined,
     };
   });
 
