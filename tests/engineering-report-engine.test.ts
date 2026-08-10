@@ -113,9 +113,9 @@ describe('Engineering Report Generation Engine', () => {
     expect(doc.project_name).toBe('قاعة نسائم');
     const html = buildEngineeringStudyHtml({ document: doc, company: DEFAULT_COMPANY_PROFILE });
     expect(html).toContain('@page');
-    expect(html).toContain('فهرس المحتويات');
+    expect(html).toContain('المحتويات');
     expect(html).toContain('قاعة نسائم');
-    expect(html).toContain('class="rh"');
+    expect(html).toContain('class="ph"');
     expect(html).toContain('SBC');
     const sprinkler = doc.sections.find((s) => s.id === 'sprinkler_system');
     expect(sprinkler?.paragraphs[0]?.incomplete).not.toBe(true);

@@ -1,8 +1,8 @@
 import { describe, expect, it } from 'vitest';
 import { generateEngineeringStudy } from '@/lib/projects/engineering-report-engine';
 import {
-  buildDynamicTocPages,
   buildNasaimReportHtml,
+  documentToFlowBlocks,
   placeSectionImages,
   sanitizeCaption,
 } from '@/lib/projects/engineering-report-engine/renderer';
@@ -15,11 +15,11 @@ const client = {
   client_code: 'NSAIM-01',
   name: 'قاعة اختبار',
   business_name: 'قاعة اختبار الشرق',
+  owner_name: 'مالك الاختبار',
   city: 'جدة',
   district: 'الشاطئ',
   region: 'مكة',
   activity_type: 'assembly',
-  owner_name: 'مالك الاختبار',
 } as unknown as ClientRecord;
 
 const company = {
@@ -33,13 +33,13 @@ const company = {
   stamp_text: 'توقع سلامة',
 } as CompanyProfile;
 
-describe('Nasaim report renderer', () => {
+describe('Nasaim flow document renderer', () => {
   it('sanitizes technical file-name captions', () => {
-    expect(sanitizeCaption('IMG_6436.jpeg', 'صورة رقم (1)')).toBe('صورة رقم (1)');
+    expect(sanitizeCaption('IMG_6436.jpeg', 'شكل بديل')).toBe('شكل بديل');
     expect(sanitizeCaption('غرفة المضخات', 'fallback')).toBe('غرفة المضخات');
   });
 
-  it('orders section images by image_order and pairs doubles', () => {
+  it('orders section images by image_order', () => {
     const section = {
       id: 'fire_pump_analysis' as const,
       number: 14,
@@ -65,10 +65,9 @@ describe('Nasaim report renderer', () => {
     expect(placed[0].caption_ar).toBe('غرفة المضخات');
     expect(placed[1].caption_ar).toMatch(/صورة رقم \(2\)/);
     expect(placed[0].image_order).toBe(1);
-    expect(placed[1].image_order).toBe(2);
   });
 
-  it('builds Nasaim HTML with cover, dynamic TOC, headers/footers, and section galleries', () => {
+  it('builds a continuous flow study (no section cards / no image gallery header)', () => {
     const facade = 'data:image/jpeg;base64,/9j/facade';
     const earth = 'data:image/jpeg;base64,/9j/earth';
     const pump = 'data:image/jpeg;base64,/9j/pump';
@@ -83,7 +82,7 @@ describe('Nasaim report renderer', () => {
       gps_lng: '39.1',
       facade_photo: { id: 'f1', caption: 'IMG_1000.jpeg', dataUrl: facade },
       earth_photo: { id: 'e1', caption: 'موقع عام', dataUrl: earth },
-      overview_text: 'اختبار دراسة هندسية بأسلوب نسائم.',
+      overview_text: 'اختبار دراسة هندسية بأسلوب نسائم المتصل.',
       firefighting_items: [
         {
           id: 'ff_pumps',
@@ -96,33 +95,45 @@ describe('Nasaim report renderer', () => {
           ],
         },
       ],
+      alarm_items: [
+        {
+          id: 'al_panel',
+          enabled: true,
+          notes: 'لوحة إنذار',
+          selectedOptions: [],
+          photos: [{ id: 'a1', caption: 'لوحة التحكم', dataUrl: panel }],
+        },
+      ],
     };
 
     const doc = generateEngineeringStudy({ client, report, locale: 'ar' });
-    expect(doc.cover_image?.caption_ar).toBe('صورة واجهة المشروع');
+    expect(doc.owner_name).toBe('مالك الاختبار');
 
-    const content = doc.sections.filter((s) => s.id !== 'cover' && s.id !== 'toc');
-    const toc = buildDynamicTocPages(content);
-    expect(toc[0].page).toBe(3);
-    expect(toc.find((t) => t.sectionId === 'site_information')?.page).toBeGreaterThanOrEqual(3);
+    const { blocks, chapters } = documentToFlowBlocks(doc);
+    expect(chapters.length).toBeGreaterThan(5);
+    expect(blocks.some((b) => b.kind === 'chapter')).toBe(true);
+    expect(blocks.some((b) => b.kind === 'figure')).toBe(true);
+    // Figures appear after chapter/paragraph context — not as a trailing gallery-only dump without captions
+    const fig = blocks.find((b) => b.kind === 'figure');
+    expect(fig && fig.kind === 'figure' && fig.caption.startsWith('شكل (')).toBe(true);
 
     const html = buildNasaimReportHtml({ document: doc, company });
-    expect(html).toContain('sheet-cover');
-    expect(html).toContain('فهرس المحتويات');
-    expect(html).toContain('cover-photo');
+    expect(html).toContain('class="doc"');
+    expect(html).toContain('المحتويات');
+    expect(html).toContain('cover-box');
     expect(html).toContain(facade);
     expect(html).toContain(earth);
     expect(html).toContain(pump);
     expect(html).not.toContain('IMG_1000.jpeg');
     expect(html).not.toContain('IMG_6448.jpeg');
-    expect(html).toContain('صفحة');
-    expect(html).toContain('page-cur');
-    expect(html).toContain('page-total');
-    expect(html).toContain('gallery-title');
-    expect(html).toContain('الصور والوثائق المرفقة للقسم');
-    expect(html).toContain('id="sec-fire_pump_analysis"');
-    expect(html).toContain('بيانات الموقع والإحداثيات');
-    // No platform UI / project file URL in body
+    expect(html).not.toContain('الصور والوثائق المرفقة للقسم');
+    expect(html).not.toContain('gallery-title');
+    expect(html).not.toContain('sheet-section');
     expect(html).not.toContain('/projects/file/?id=');
+    // Flow headings, not card badges
+    expect(html).toContain('class="ch"');
+    expect(html).toContain('شكل (');
+    // Only cover + TOC use forced page wrappers; study body is continuous .doc
+    expect((html.match(/class="page /g) || []).length).toBe(2);
   });
 });
