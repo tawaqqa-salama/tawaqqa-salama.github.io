@@ -54,7 +54,7 @@ export type EngineeringStudySection = {
   title_ar: string;
   title_en: string;
   paragraphs: EngineeringStudyParagraph[];
-  /** Embedded photos (facade / map / site) — rendered in print HTML */
+  /** Embedded photos (site / system items / subsection proofs) — rendered in print HTML */
   images?: EngineeringStudyImage[];
   /** Tables rendered as HTML rows (optional) */
   tables?: {

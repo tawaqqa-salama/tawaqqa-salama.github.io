@@ -1,4 +1,5 @@
 import { ACTIVITY_RULES } from '@/lib/constants/clients';
+import { TECH_REPORT_ITEMS } from '@/lib/constants/technical-report';
 import { EKB_TOPICS } from '@/lib/compliance/ekb-catalog';
 import {
   assertEngineeringDecision,
@@ -12,8 +13,14 @@ import type {
   BuildingPlanReport,
   ProjectEngineeringData,
   TechnicalReport,
+  TechnicalReportPhoto,
+  TechnicalReportSectionItem,
 } from '@/lib/types/project-reports';
-import type { ReportLocale } from '@/lib/projects/engineering-report-engine/types';
+import type {
+  EngineeringStudyImage,
+  EngineeringStudySectionId,
+  ReportLocale,
+} from '@/lib/projects/engineering-report-engine/types';
 
 export type ReportSystemsSnapshot = {
   sprinkler: boolean;
@@ -57,27 +64,186 @@ export type EngineeringReportContext = {
   allowedCitations: Set<string>;
 };
 
-function itemEnabled(report: TechnicalReport, id: string): boolean {
-  const all = [
+function allSectionItems(report: TechnicalReport): TechnicalReportSectionItem[] {
+  return [
     ...(report.firefighting_items || []),
     ...(report.ventilation_items || []),
     ...(report.alarm_items || []),
     ...(report.exits_items || []),
   ];
-  const row = all.find((i) => i.id === id);
+}
+
+function itemEnabled(report: TechnicalReport, id: string): boolean {
+  const row = allSectionItems(report).find((i) => i.id === id);
   return !!row?.enabled;
 }
 
 function itemNotes(report: TechnicalReport, id: string): string {
-  const all = [
-    ...(report.firefighting_items || []),
-    ...(report.ventilation_items || []),
-    ...(report.alarm_items || []),
-    ...(report.exits_items || []),
-  ];
-  const row = all.find((i) => i.id === id);
+  const row = allSectionItems(report).find((i) => i.id === id);
   if (!row) return '';
   return [row.selectedOptions?.join('؛ '), row.notes].filter(Boolean).join(' — ');
+}
+
+function itemTitle(itemId: string): string {
+  return TECH_REPORT_ITEMS.find((i) => i.id === itemId)?.title || itemId;
+}
+
+/** Convert stored report photos to print-ready study images (data URLs only). */
+export function photosToStudyImages(
+  photos: TechnicalReportPhoto[] | null | undefined,
+  fallbackCaptionAr: string,
+  fallbackCaptionEn?: string
+): EngineeringStudyImage[] {
+  if (!photos?.length) return [];
+  const out: EngineeringStudyImage[] = [];
+  for (const photo of photos) {
+    const src = String(photo?.dataUrl || '').trim();
+    if (!src) continue;
+    const caption = String(photo.caption || '').trim();
+    out.push({
+      src,
+      caption_ar: caption || fallbackCaptionAr,
+      caption_en: caption || fallbackCaptionEn || fallbackCaptionAr,
+    });
+  }
+  return out;
+}
+
+/** Photos attached to a technical-report system / subsection item. */
+export function getItemPhotos(
+  report: TechnicalReport,
+  itemId: string
+): EngineeringStudyImage[] {
+  const row = allSectionItems(report).find((i) => i.id === itemId);
+  const title = itemTitle(itemId);
+  return photosToStudyImages(row?.photos, `صورة — ${title}`, `Photo — ${title}`);
+}
+
+/** Code-snippet proof photos keyed in the report (occ-class, risk-class, spr-*, …). */
+export function getProofPhotos(
+  report: TechnicalReport,
+  key: string,
+  captionAr: string,
+  captionEn?: string
+): EngineeringStudyImage[] {
+  const photos = report.code_proofs_by_key?.[key] || [];
+  return photosToStudyImages(photos, captionAr, captionEn);
+}
+
+/** Zone-level code proof photos from floor_uses. */
+export function getZoneProofPhotos(report: TechnicalReport): EngineeringStudyImage[] {
+  const out: EngineeringStudyImage[] = [];
+  for (const floor of report.floor_uses || []) {
+    for (const zone of floor.zones || []) {
+      const src = String(zone.code_proof_photo?.dataUrl || '').trim();
+      if (!src) continue;
+      const label = zone.label || zone.use_code || 'منطقة';
+      const caption =
+        zone.code_proof_photo?.caption ||
+        `${floor.floor_name || 'دور'} — ${label}`;
+      out.push({
+        src,
+        caption_ar: caption,
+        caption_en: caption,
+      });
+    }
+  }
+  return out;
+}
+
+/**
+ * Map study sections → technical-report item IDs / proof keys whose photos
+ * should appear in print/preview.
+ */
+export const SECTION_PHOTO_SOURCES: Partial<
+  Record<
+    EngineeringStudySectionId,
+    { items?: string[]; proofKeys?: Array<{ key: string; caption_ar: string; caption_en: string }>; includeZoneProofs?: boolean }
+  >
+> = {
+  occupancy_classification: {
+    proofKeys: [
+      {
+        key: 'occ-class',
+        caption_ar: 'إثبات تصنيف الإشغال',
+        caption_en: 'Occupancy classification proof',
+      },
+    ],
+  },
+  hazard_classification: {
+    proofKeys: [
+      {
+        key: 'risk-class',
+        caption_ar: 'إثبات تصنيف الخطورة',
+        caption_en: 'Hazard classification proof',
+      },
+    ],
+  },
+  means_of_egress: { items: ['ex_routes'] },
+  fire_truck_access: { items: ['ff_cd_parking'] },
+  fire_water_supply: { items: ['ff_water'] },
+  fire_pump_analysis: { items: ['ff_pumps'] },
+  water_tank_analysis: { items: ['ff_water'] },
+  sprinkler_system: {
+    items: ['ff_piping'],
+    includeZoneProofs: true,
+  },
+  hose_reel_study: { items: ['ff_cabinets'] },
+  portable_extinguishers: { items: ['ff_extinguishers'] },
+  fire_alarm_study: {
+    items: ['al_panel', 'al_detectors', 'al_breakglass', 'al_bells'],
+  },
+  emergency_lighting: { items: ['al_emergency_lights'] },
+  exit_signs: { items: ['al_signs'] },
+  mechanical_ventilation: { items: ['vent_main'] },
+  electrical_safety: { items: ['ff_special'] },
+  civil_defense_requirements: { items: ['ff_cd_connections', 'ff_cd_parking'] },
+};
+
+/** Collect all photos that belong to a study section (items + proofs + zones). */
+export function collectSectionPhotos(
+  report: TechnicalReport,
+  sectionId: EngineeringStudySectionId
+): EngineeringStudyImage[] {
+  const cfg = SECTION_PHOTO_SOURCES[sectionId];
+  if (!cfg) return [];
+  const images: EngineeringStudyImage[] = [];
+  const seen = new Set<string>();
+  const push = (list: EngineeringStudyImage[]) => {
+    for (const img of list) {
+      if (!img.src || seen.has(img.src)) continue;
+      seen.add(img.src);
+      images.push(img);
+    }
+  };
+  for (const itemId of cfg.items || []) {
+    push(getItemPhotos(report, itemId));
+  }
+  for (const proof of cfg.proofKeys || []) {
+    push(getProofPhotos(report, proof.key, proof.caption_ar, proof.caption_en));
+  }
+  if (cfg.includeZoneProofs) {
+    push(getZoneProofPhotos(report));
+  }
+  // Also attach spr-* / sup-* proof cards when present on sprinkler / special sections
+  if (sectionId === 'sprinkler_system' || sectionId === 'electrical_safety') {
+    for (const [key, photos] of Object.entries(report.code_proofs_by_key || {})) {
+      if (sectionId === 'sprinkler_system' && !/^spr-/i.test(key)) continue;
+      if (sectionId === 'electrical_safety' && !/^sup-/i.test(key)) continue;
+      push(
+        photosToStudyImages(
+          photos,
+          sectionId === 'sprinkler_system'
+            ? 'إثبات تغطية الرش'
+            : 'إثبات نظام إطفاء خاص',
+          sectionId === 'sprinkler_system'
+            ? 'Sprinkler coverage proof'
+            : 'Special suppression proof'
+        )
+      );
+    }
+  }
+  return images;
 }
 
 function yes(v: string | undefined | null): boolean {
