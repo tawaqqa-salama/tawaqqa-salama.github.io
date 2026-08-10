@@ -21,4 +21,6 @@ export {
   buildNasaimReportHtml,
   placeSectionImages,
   buildDynamicTocPages,
+  documentToFlowBlocks,
+  estimateFlowTocPages,
 } from '@/lib/projects/engineering-report-engine/renderer';

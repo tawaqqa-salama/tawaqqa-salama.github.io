@@ -6,6 +6,11 @@ import {
   placeSectionImages,
   sanitizeCaption,
 } from '@/lib/projects/engineering-report-engine/renderer';
+import {
+  sanitizeClientFacingText,
+  type FlowBlock,
+} from '@/lib/projects/engineering-report-engine/renderer/flow-document';
+import { formatReportTextHtml } from '@/lib/projects/engineering-report-engine/renderer/html-utils';
 import { EMPTY_TECHNICAL_REPORT } from '@/lib/types/project-reports';
 import type { ClientRecord } from '@/lib/types/client';
 import type { CompanyProfile } from '@/lib/company-profile';
@@ -32,6 +37,15 @@ const company = {
   phone: '920000000',
   stamp_text: 'توقع سلامة',
 } as CompanyProfile;
+
+function flattenBlocks(blocks: FlowBlock[]): FlowBlock[] {
+  const out: FlowBlock[] = [];
+  for (const b of blocks) {
+    out.push(b);
+    if (b.kind === 'unit') out.push(...flattenBlocks(b.blocks));
+  }
+  return out;
+}
 
 describe('Nasaim flow document renderer', () => {
   it('sanitizes technical file-name captions', () => {
@@ -65,6 +79,25 @@ describe('Nasaim flow document renderer', () => {
     expect(placed[0].caption_ar).toBe('غرفة المضخات');
     expect(placed[1].caption_ar).toMatch(/صورة رقم \(2\)/);
     expect(placed[0].image_order).toBe(1);
+  });
+
+  it('does not use Unicode isolates that corrupt Arabic PDF text', () => {
+    const html = formatReportTextHtml('موقع المبنى وفق NFPA72 وSBC801');
+    expect(html).toContain('NFPA 72');
+    expect(html).toContain('SBC 801');
+    expect(html).toContain('class="ltr"');
+    expect(html).not.toContain('\u2066');
+    expect(html).not.toContain('\u2069');
+    expect(html).toContain('موقع المبنى');
+  });
+
+  it('sanitizes system jargon into client-facing consultancy wording', () => {
+    const out = sanitizeClientFacingText(
+      'مراجعة الامتثال عبر محرك القرار الهندسي: موقوف: 0 مخالفة، و2 حقل إلزامي ناقص. حالة البوابة: مغلقة.',
+      'ar'
+    );
+    expect(out).toMatch(/البيانات المطلوبة|التحقق النهائي/);
+    expect(out).not.toMatch(/محرك|البوابة|حقل إلزامي|موقوف/);
   });
 
   it('builds a continuous flow study (no section cards / no image gallery header)', () => {
@@ -112,10 +145,22 @@ describe('Nasaim flow document renderer', () => {
     const { blocks, chapters } = documentToFlowBlocks(doc);
     expect(chapters.length).toBeGreaterThan(5);
     expect(blocks.some((b) => b.kind === 'chapter')).toBe(true);
-    expect(blocks.some((b) => b.kind === 'figure')).toBe(true);
-    // Figures appear after chapter/paragraph context — not as a trailing gallery-only dump without captions
-    const fig = blocks.find((b) => b.kind === 'figure');
+
+    const flat = flattenBlocks(blocks);
+    expect(flat.some((b) => b.kind === 'figure')).toBe(true);
+    expect(flat.some((b) => b.kind === 'unit')).toBe(true);
+    const fig = flat.find((b) => b.kind === 'figure');
     expect(fig && fig.kind === 'figure' && fig.caption.startsWith('شكل (')).toBe(true);
+
+    // Atomic figure unit: subsection/paragraph context kept with image+caption
+    const unit = blocks.find((b) => b.kind === 'unit');
+    expect(unit && unit.kind === 'unit').toBe(true);
+    if (unit && unit.kind === 'unit') {
+      expect(unit.blocks.some((b) => b.kind === 'figure')).toBe(true);
+      expect(unit.blocks.some((b) => b.kind === 'paragraph' || b.kind === 'subsection')).toBe(
+        true
+      );
+    }
 
     const html = buildNasaimReportHtml({ document: doc, company });
     expect(html).toContain('class="doc"');
@@ -130,9 +175,12 @@ describe('Nasaim flow document renderer', () => {
     expect(html).not.toContain('gallery-title');
     expect(html).not.toContain('sheet-section');
     expect(html).not.toContain('/projects/file/?id=');
-    // Flow headings, not card badges
-    expect(html).toContain('class="ch"');
+    expect(html).not.toContain('unicode-bidi: plaintext');
+    expect(html).not.toContain('\u2066');
+    expect(html).toContain('class="ch');
+    expect(html).toContain('class="unit keep"');
     expect(html).toContain('شكل (');
+    expect(html).toContain('الاعتماد والتوقيعات');
     // Only cover + TOC use forced page wrappers; study body is continuous .doc
     expect((html.match(/class="page /g) || []).length).toBe(2);
   });
