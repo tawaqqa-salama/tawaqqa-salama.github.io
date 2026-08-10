@@ -56,6 +56,13 @@ import {
   saveFieldVisitAsPdfAttachment,
   saveSupervisionAsPdfAttachment,
 } from '@/lib/projects/save-report-pdf';
+import {
+  isLastTechReportChapter,
+  isTechReportChapterId,
+  nextTechReportChapter,
+  techReportChapterTitle,
+} from '@/lib/projects/technical-report-chapters';
+import type { TechReportChapterId } from '@/lib/constants/technical-report';
 import type { ClientRecord } from '@/lib/types/client';
 import type { ProjectEngineeringData } from '@/lib/types/project-reports';
 import type { TaxInvoice } from '@/lib/types/tax-invoice';
@@ -81,6 +88,7 @@ export default function ProjectReportModal({
 }: ProjectReportModalProps) {
   const isPage = variant === 'page';
   const [activeStage, setActiveStage] = useState<WorkflowStageId>('contract');
+  const [techReportChapter, setTechReportChapter] = useState<TechReportChapterId>('facility');
   const [data, setData] = useState<ProjectEngineeringData | null>(null);
   const [saving, setSaving] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
@@ -132,6 +140,8 @@ export default function ProjectReportModal({
     };
     const synced = syncProjectVisitsFromQuotation(withSupervision, visitsCount);
     setData(synced);
+    const savedChapter = synced.workflow?.tech_report_chapter;
+    setTechReportChapter(isTechReportChapterId(savedChapter) ? savedChapter : 'facility');
     const resolved = resolveActiveStage(client, synced, preferredStage);
     setActiveStage(resolved);
     if (
@@ -275,7 +285,47 @@ export default function ProjectReportModal({
     setMessage(null);
   };
 
+  const setTechReportChapterAndPersist = (chapter: TechReportChapterId) => {
+    setTechReportChapter(chapter);
+    if (!data) return;
+    setData({
+      ...data,
+      workflow: { ...(data.workflow || {}), tech_report_chapter: chapter },
+    });
+  };
+
   const handleApproveAndProceed = async () => {
+    // Inside technical report: advance chapters first
+    // facility → firefighting → ventilation → alarm → exits → recommendations
+    // then leave to workflow stage 5 (inspections / field visits)
+    if (activeStage === 'technical_report') {
+      const nextChapter = nextTechReportChapter(techReportChapter);
+      if (nextChapter) {
+        const nextData: ProjectEngineeringData = {
+          ...data,
+          workflow: {
+            ...(data.workflow || {}),
+            tech_report_chapter: nextChapter,
+            active_stage: 'technical_report',
+          },
+        };
+        setTechReportChapter(nextChapter);
+        setData(nextData);
+        await save(
+          nextData,
+          `تم اعتماد «${techReportChapterTitle(techReportChapter)}» والانتقال إلى: ${techReportChapterTitle(nextChapter)}`,
+          { stayOpen: true }
+        );
+        requestAnimationFrame(() => {
+          document.getElementById('technical-report-chapters')?.scrollIntoView({
+            behavior: 'smooth',
+            block: 'start',
+          });
+        });
+        return;
+      }
+    }
+
     const result = approveWorkflowStage({
       stageId: activeStage,
       client,
@@ -286,11 +336,25 @@ export default function ProjectReportModal({
       setMessage(result.blockers.join(' — ') || 'تعذّر اعتماد المرحلة');
       return;
     }
-    setData(result.data);
+    const withChapterReset: ProjectEngineeringData = {
+      ...result.data,
+      workflow: {
+        ...(result.data.workflow || {}),
+        tech_report_chapter: 'facility',
+      },
+    };
+    setData(withChapterReset);
     setActiveStage(result.nextStage);
-    await save(result.data, `تم اعتماد المرحلة والانتقال إلى: ${
-      WORKFLOW_STAGES.find((s) => s.id === result.nextStage)?.label_ar || result.nextStage
-    }`, { stayOpen: true });
+    if (result.nextStage === 'inspections') {
+      setTechReportChapter('facility');
+    }
+    await save(
+      withChapterReset,
+      `تم اعتماد المرحلة والانتقال إلى: ${
+        WORKFLOW_STAGES.find((s) => s.id === result.nextStage)?.label_ar || result.nextStage
+      }`,
+      { stayOpen: true }
+    );
   };
 
   const handlePrintTechnical = async () => {
@@ -314,7 +378,18 @@ export default function ProjectReportModal({
     });
   };
 
-  const blockers = stageApprovalBlockers(activeStage, client, data);
+  const nextTechChapter =
+    activeStage === 'technical_report' ? nextTechReportChapter(techReportChapter) : null;
+  const advancingTechChapter = activeStage === 'technical_report' && nextTechChapter != null;
+  // Chapter hops inside the technical report are not gated by full stage blockers
+  const blockers = advancingTechChapter
+    ? []
+    : stageApprovalBlockers(activeStage, client, data);
+  const approveButtonLabel = advancingTechChapter
+    ? `اعتماد والانتقال إلى: ${techReportChapterTitle(nextTechChapter)}`
+    : activeStage === 'technical_report' && isLastTechReportChapter(techReportChapter)
+      ? 'اعتماد والانتقال إلى الزيارات الميدانية'
+      : 'اعتماد وانتقال للمرحلة التالية';
 
   const panel = (
         <div
@@ -543,6 +618,8 @@ export default function ProjectReportModal({
                     client={client}
                     report={data.technical_report}
                     saving={saving}
+                    chapter={techReportChapter}
+                    onChapterChange={setTechReportChapterAndPersist}
                     onChange={(technical_report) => patch({ technical_report })}
                     onSave={() =>
                       save({ ...data }, 'تم حفظ التقرير الفني.', {
@@ -975,6 +1052,15 @@ export default function ProjectReportModal({
               <div className="sticky bottom-0 bg-white/95 border-t pt-3 mt-6 space-y-2">
                 {blockers.length ? (
                   <p className="text-xs text-amber-800">لاعتماد المرحلة: {blockers.join(' · ')}</p>
+                ) : advancingTechChapter ? (
+                  <p className="text-xs text-emerald-800">
+                    الباب الحالي: {techReportChapterTitle(techReportChapter)} — التالي:{' '}
+                    {techReportChapterTitle(nextTechChapter)}
+                  </p>
+                ) : activeStage === 'technical_report' ? (
+                  <p className="text-xs text-emerald-800">
+                    اكتملت أبواب التقرير الفني — الاعتماد ينقل إلى القسم 5: الزيارات الميدانية.
+                  </p>
                 ) : (
                   <p className="text-xs text-emerald-800">المرحلة جاهزة للاعتماد والانتقال.</p>
                 )}
@@ -1022,7 +1108,7 @@ export default function ProjectReportModal({
                     onClick={() => void handleApproveAndProceed()}
                     className="px-4 py-2.5 rounded-xl bg-[#1f4d3a] text-white text-sm font-bold disabled:opacity-50"
                   >
-                    اعتماد وانتقال للمرحلة التالية
+                    {saving ? 'جاري الحفظ...' : approveButtonLabel}
                   </button>
                 </div>
               </div>

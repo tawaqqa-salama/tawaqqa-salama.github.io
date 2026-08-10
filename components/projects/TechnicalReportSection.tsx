@@ -6,6 +6,7 @@ import {
   TECH_REPORT_CHAPTERS,
   TECH_REPORT_GENERAL_RECOMMENDATIONS,
   TECH_REPORT_ITEMS,
+  type TechReportChapterId,
 } from '@/lib/constants/technical-report';
 import { getTechnicalReportFacilitySnapshot } from '@/lib/projects/technical-report';
 import {
@@ -32,6 +33,9 @@ type Props = {
   onSave: () => void;
   onPrint: () => void;
   saving: boolean;
+  /** Controlled chapter — when set, parent drives navigation (اعتماد وانتقال) */
+  chapter?: TechReportChapterId;
+  onChapterChange?: (chapter: TechReportChapterId) => void;
 };
 
 function newPhotoId() {
@@ -54,8 +58,15 @@ export default function TechnicalReportSection({
   onSave,
   onPrint,
   saving,
+  chapter: chapterProp,
+  onChapterChange,
 }: Props) {
-  const [chapter, setChapter] = useState<(typeof TECH_REPORT_CHAPTERS)[number]['id']>('facility');
+  const [internalChapter, setInternalChapter] = useState<TechReportChapterId>('facility');
+  const chapter = chapterProp ?? internalChapter;
+  const setChapter = (next: TechReportChapterId) => {
+    if (onChapterChange) onChapterChange(next);
+    else setInternalChapter(next);
+  };
   const facility = useMemo(() => getTechnicalReportFacilitySnapshot(client), [client]);
   const proofCards = useMemo(() => buildCodeProofCards(report, client), [report, client]);
   const zoneNeeds = useMemo(() => buildZoneSystemNeeds(report.floor_uses || []), [report.floor_uses]);
@@ -151,8 +162,8 @@ export default function TechnicalReportSection({
         </div>
       </div>
 
-      <div className="flex flex-wrap gap-2">
-        {TECH_REPORT_CHAPTERS.map((item) => (
+      <div className="flex flex-wrap gap-2" id="technical-report-chapters">
+        {TECH_REPORT_CHAPTERS.map((item, index) => (
           <button
             key={item.id}
             type="button"
@@ -161,7 +172,7 @@ export default function TechnicalReportSection({
               chapter === item.id ? 'bg-[#1f4d3a] text-white border-[#1f4d3a]' : 'bg-white text-gray-700'
             }`}
           >
-            {item.title}
+            {index + 1}. {item.title}
           </button>
         ))}
       </div>

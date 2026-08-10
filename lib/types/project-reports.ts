@@ -538,6 +538,8 @@ export type ProjectWorkflowState = {
   last_approved_stage?: string;
   approved_at?: Record<string, string>;
   inherited_at?: string;
+  /** الباب الحالي داخل التقرير الفني (facility → … → recommendations) */
+  tech_report_chapter?: string;
 };
 
 export interface ProjectEngineeringData {
