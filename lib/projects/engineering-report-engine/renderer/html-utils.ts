@@ -6,9 +6,14 @@ export function esc(value: string | null | undefined) {
     .replace(/"/g, '&quot;');
 }
 
+/** Strip bidi isolates / marks that corrupt Arabic PDF text extraction. */
+export function stripBidiControls(text: string): string {
+  return String(text || '').replace(/[\u200E\u200F\u202A-\u202E\u2066-\u2069]/g, '');
+}
+
 /** Normalize NFPA13 → NFPA 13 before embedding in HTML. */
 export function normalizeCodeSpacing(text: string): string {
-  return String(text || '')
+  return stripBidiControls(text)
     .replace(/\bNFPA\s*(\d+[A-Z]?)/gi, 'NFPA $1')
     .replace(/\bSBC\s*-?\s*(\d+)/gi, 'SBC $1');
 }
@@ -16,7 +21,7 @@ export function normalizeCodeSpacing(text: string): string {
 /**
  * Escape text then wrap code tokens in LTR spans.
  * Do NOT use Unicode isolates (U+2066/U+2069) — they corrupt Arabic
- * PDF text extraction / copy-paste (ا;وقع، اZنذار، …).
+ * PDF text extraction / copy-paste (ا;وقع، اZنذار، ا5تطلبات …).
  */
 export function formatReportTextHtml(text: string): string {
   const normalized = normalizeCodeSpacing(text);

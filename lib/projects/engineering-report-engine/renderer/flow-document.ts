@@ -1,15 +1,16 @@
 /**
- * Flow document engine — consultancy report blocks (not page cards).
- * Fixes: image+caption atomic units, subsection keep-with-next,
- * client-facing prose (no system jargon / citation spam).
+ * Document Flow Engine — consultancy report blocks (not page cards).
+ * Pipeline: document → content blocks (sorted) → HTML flow → print PDF.
  */
 
 import type {
   EngineeringStudyDocument,
+  EngineeringStudyImage,
   EngineeringStudySection,
   EngineeringStudySectionId,
 } from '@/lib/projects/engineering-report-engine/types';
 import { placeSectionImages, sanitizeCaption } from '@/lib/projects/engineering-report-engine/renderer/image-placement';
+import { getItemProse } from '@/lib/projects/engineering-report-engine/renderer/subsection-prose';
 
 export type FlowBlock =
   | { kind: 'chapter'; id: string; number: number; title: string }
@@ -31,11 +32,14 @@ export type FlowBlock =
       layout: 'single' | 'double' | 'full_width';
       imageId?: string;
     }
-  /** Atomic keep-together group (e.g. subsection + paragraph + figure) */
+  /** Atomic keep-together group (subsection + first para, or image+caption) */
   | { kind: 'unit'; blocks: FlowBlock[] };
 
 const SYSTEM_JARGON_RE =
-  /محرك\s*(?:القواعد|القرار)|قاعدة\s*المعرفة|Decision\s*Engine|Knowledge\s*Base|Rules?\s*Engine|قابل\s*للتعديل|القيم\s*المقفلة|الخيارات\s*غير\s*المسموحة|بوابة\s*(?:محرك\s*)?القرار|حالة\s*البوابة|موقوف\s*:|حقل\s*إلزامي|مخالفات\s*القواعد|Incomplete|Company\s*Standards|Base\s*Code|rules?\s*engine/gi;
+  /محرك\s*(?:القواعد|القرار)|قاعدة\s*المعرفة|Decision\s*Engine|Knowledge\s*Base|Rules?\s*Engine|قابل\s*للتعديل|القيم\s*المقفلة|الخيارات\s*غير\s*المسموحة|بوابة\s*(?:محرك\s*)?القرار|حالة\s*البوابة|موقوف\s*:|حقل\s*إلزامي|مخالفات\s*القواعد|Incomplete|Company\s*Standards|Base\s*Code|CODE-BASE|مقفل\s*بقاعدة[^.]*|مقفَل\s*بقاعدة[^.]*|rules?\s*engine|UUID|pipeline\s*status|draft\s*status/gi;
+
+const GENERIC_BRIDGE_RE =
+  /تُراجع المتطلبات الهندسية ذات الصلة وفق بيانات المشروع والكودات المعتمدة، مع توثيق الحالة القائمة عند توفر الصور المرفقة|Regarding “[^”]+”, the related engineering requirements are reviewed against project data and adopted codes/i;
 
 function normalizeCodeSpacing(text: string): string {
   return String(text || '')
@@ -50,27 +54,30 @@ export function sanitizeClientFacingText(text: string, locale: 'ar' | 'en'): str
   let t = normalizeCodeSpacing(text);
   if (!t) return t;
 
-  // Drop internal platform phrasing
+  if (GENERIC_BRIDGE_RE.test(t)) {
+    return locale === 'ar'
+      ? 'البيانات المتاحة حاليًا لا تكفي لإجراء تحقق تفصيلي لهذا البند. ولا يتم افتراض أي قيمة أو تجهيز غير موثق في ملف المشروع.'
+      : 'Available data are insufficient for a detailed verification of this item. Undocumented values or equipment are not assumed.';
+  }
+
   t = t.replace(SYSTEM_JARGON_RE, '');
   t = t.replace(/قابل للتعديل\s*[—\-]\s*[^.]*\./g, '');
   t = t.replace(/مسوّغ القواعد:[^.]*\./g, '');
   t = t.replace(/وفق محرك القواعد[^.]*/gi, locale === 'ar' ? 'وفق الكودات المعتمدة' : 'per adopted codes');
+  t = t.replace(/فئة النظام وفق[^.]*\./gi, '');
 
-  // Soften incomplete / missing dump
   if (/يلزم استكمال معلومات هندسية إضافية|Additional engineering information is required/i.test(t)) {
     return locale === 'ar'
       ? 'لم تُستكمل بعد البيانات اللازمة لهذا البند ضمن ملف المشروع الحالي، ولا يتم افتراض قيم هندسية غير موثّقة.'
       : 'Required project data for this item is not yet complete; undocumented engineering values are not assumed.';
   }
 
-  // Compliance-style system logs → consultancy wording
   if (/مراجعة الامتثال عبر|Decision gate|حالة البوابة|عدد مخالفات/i.test(t)) {
     return locale === 'ar'
       ? 'أظهرت المراجعة الحالية أن بعض البيانات المطلوبة لاستكمال التحقق النهائي من الامتثال غير مكتملة بعد. وعليه، لا يُعدّ هذا الجزء اعتمادًا نهائيًا إلى حين استكمال البيانات المطلوبة، دون افتراض نتائج غير موثّقة.'
       : 'The current review shows that some data required to complete final compliance verification are still incomplete. This section is therefore not a final approval until the required data are provided; undocumented conclusions are not assumed.';
   }
 
-  // Collapse repeated "غير محدد"
   const unspecifiedHits = (t.match(/غير محدد/g) || []).length;
   if (unspecifiedHits >= 2) {
     t = t.replace(/غير محدد/g, '—');
@@ -82,14 +89,11 @@ export function sanitizeClientFacingText(text: string, locale: 'ar' | 'en'): str
     }
   }
 
-  // Remove trailing citation spam patterns already appended
   t = t.replace(/(?:\s*وذلك وفقًا لمتطلبات[^.]*\.)+/g, '');
   t = t.replace(/(?:\s*وفقًا لمتطلبات[^.]*\.)+/g, '');
   t = t.replace(/(?:\s*in accordance with[^.]*\.)+/gi, '');
-  // Collapse repeated mid-paragraph citation clauses to one trailing note later
   t = t.replace(/(?:،?\s*وذلك وفقًا لـ?[^.،]+){2,}/g, '');
 
-  // Clean punctuation leftovers from jargon stripping
   t = t.replace(/\s{2,}/g, ' ');
   t = t.replace(/\s+([،,.])/g, '$1');
   t = t.replace(/([.]){2,}/g, '.');
@@ -113,6 +117,35 @@ function uniqueParagraphs(
   return out;
 }
 
+/** ONE FACT = ONE BLOCK — drop intro text that repeats subsection options/notes. */
+function filterIntroAgainstFacts(
+  paragraphs: EngineeringStudySection['paragraphs'],
+  images: EngineeringStudyImage[],
+  locale: 'ar' | 'en'
+): EngineeringStudySection['paragraphs'] {
+  const factBlob = images
+    .flatMap((img) => [
+      ...(img.selected_options || []),
+      img.item_notes || '',
+      img.description_ar || '',
+      img.description_en || '',
+    ])
+    .join(' ')
+    .replace(/\s+/g, ' ');
+
+  return paragraphs.filter((p) => {
+    const t = sanitizeClientFacingText(p.text, locale);
+    if (!t) return false;
+    if (!factBlob) return true;
+    // Drop paragraph if it is largely a dump of the same selected options
+    const opts = images.flatMap((img) => img.selected_options || []);
+    if (opts.length >= 2 && opts.every((o) => t.includes(o.slice(0, Math.min(18, o.length))))) {
+      return false;
+    }
+    return true;
+  });
+}
+
 function collectRefs(
   paragraphs: EngineeringStudySection['paragraphs'],
   locale: 'ar' | 'en'
@@ -127,13 +160,14 @@ function collectRefs(
       set.add(n);
     }
   }
-  // Also harvest codes mentioned in text
   const blob = paragraphs.map((p) => p.text).join(' ');
   for (const m of blob.match(/\b(?:NFPA|SBC)\s*-?\s*\d+[A-Z]?\b/gi) || []) {
     set.add(normalizeCodeSpacing(m));
   }
   if (locale === 'ar' && /الدفاع المدني|Civil Defense/i.test(blob)) {
     set.add('متطلبات الدفاع المدني');
+  } else if (locale === 'en' && /Civil Defense|الدفاع المدني/i.test(blob)) {
+    set.add('Civil Defense requirements');
   }
   return [...set];
 }
@@ -148,13 +182,6 @@ function chapterTitle(section: EngineeringStudySection, locale: 'ar' | 'en', dis
   return `${displayNo}. ${cleaned}`;
 }
 
-function bridgeForSubsection(title: string, locale: 'ar' | 'en'): string {
-  if (locale === 'ar') {
-    return `فيما يتعلق بـ«${title}»، تُراجع المتطلبات الهندسية ذات الصلة وفق بيانات المشروع والكودات المعتمدة، مع توثيق الحالة القائمة عند توفر الصور المرفقة.`;
-  }
-  return `Regarding “${title}”, the related engineering requirements are reviewed against project data and adopted codes, documenting the as-built condition when photographs are available.`;
-}
-
 function figureCaption(
   locale: 'ar' | 'en',
   figNo: number,
@@ -164,13 +191,17 @@ function figureCaption(
   let base = sanitizeCaption(rawCaption, subsection || (locale === 'ar' ? 'توضيح' : 'Illustration'));
   base = base.replace(/^شكل\s*\(\d+\)\s*[:：-]?\s*/i, '').replace(/^Figure\s*\(\d+\)\s*[:：-]?\s*/i, '');
   base = base.replace(/^صورة\s*[—\-:]?\s*/i, '').trim();
-  if (locale === 'ar') {
-    if (!/الحالة الحالية|منظومة|غرفة|لوحة|كاشف|كاسر|جرس|موقع|مخطط/i.test(base) && subsection) {
-      base = `الحالة الحالية — ${subsection}`;
-    }
-    return `شكل (${figNo}): ${base}`;
+  base = base.replace(/^IMG_[A-Za-z0-9._-]+$/i, '').trim();
+  if (!base || /^IMG_/i.test(base) || /\.(jpe?g|png|webp)$/i.test(base)) {
+    base = subsection || (locale === 'ar' ? 'توثيق الحالة القائمة' : 'As-built documentation');
   }
-  return `Figure (${figNo}): ${base}`;
+  if (locale === 'ar') {
+    if (!/الحالة الحالية|منظومة|غرفة|لوحة|كاشف|كاسر|جرس|موقع|مخطط|واجهة/i.test(base)) {
+      base = subsection ? `الحالة الحالية لـ${subsection}` : `الحالة الحالية — ${base}`;
+    }
+    return `شكل (${figNo}): ${base}.`.replace(/\.\.$/, '.');
+  }
+  return `Figure (${figNo}): ${base}.`.replace(/\.\.$/, '.');
 }
 
 /** Parse dump-style summary into label/value rows without inventing data. */
@@ -186,7 +217,6 @@ function extractSummaryFacts(
     if (v && v !== '—' && !/^pending|غير|يلزم/i.test(v)) rows.push([label, v]);
   };
 
-  // Arabic dump: ملخص الدراسة: منشأة "X" — إشغال Y — ...
   const arFacility = working.match(/منشأة\s*[«"“]?([^»"”]+)[»"”]?/);
   if (arFacility) push('المنشأة', arFacility[1]);
   const arOcc = working.match(/إشغال\s*([^—\-.]+)/);
@@ -207,7 +237,6 @@ function extractSummaryFacts(
   const enHaz = working.match(/hazard\s*([^—\-.]+)/i);
   if (locale === 'en' && enHaz) push('Hazard', enHaz[1]);
 
-  // Strip leading "ملخص الدراسة:" noise from remainder
   working = working
     .replace(/^ملخص الدراسة\s*[:：]?\s*/i, '')
     .replace(/^Study summary\s*[:：]?\s*/i, '')
@@ -222,47 +251,148 @@ function extractSummaryFacts(
 function splitRecommendations(text: string, locale: 'ar' | 'en'): string[] {
   const cleaned = sanitizeClientFacingText(text, locale);
   const parts = cleaned
-    .split(/(?<=[.。])\s+|(?:\d+[\).\-]\s+)/)
+    .split(/(?<=[.。])\s+|(?:\d+[\).\-]\s+)|(?:؛\s*)/)
     .map((s) => s.replace(/^[\s•\-–—*]+/, '').trim())
     .filter((s) => s.length > 12);
   if (parts.length >= 2) return parts;
   return cleaned ? [cleaned] : [];
 }
 
-function buildFigureUnit(opts: {
-  locale: 'ar' | 'en';
-  subsectionTitle: string;
-  paragraphText?: string;
-  incomplete?: boolean;
-  src: string;
-  captionRaw: string;
-  figureNo: number;
-  layout: 'single' | 'double' | 'full_width';
-  imageId?: string;
-}): FlowBlock {
-  const inner: FlowBlock[] = [];
-  if (opts.subsectionTitle) {
-    inner.push({ kind: 'subsection', title: opts.subsectionTitle });
+function figureLayout(img: EngineeringStudyImage): 'single' | 'double' | 'full_width' {
+  if (img.layout_type === 'double') return 'double';
+  if (
+    img.layout_type === 'full_width' ||
+    img.image_type === 'site_map' ||
+    img.image_type === 'drawing'
+  ) {
+    return 'full_width';
   }
-  const para =
-    opts.paragraphText?.trim() ||
-    (opts.subsectionTitle ? bridgeForSubsection(opts.subsectionTitle, opts.locale) : '');
-  if (para) {
-    inner.push({
-      kind: 'paragraph',
-      text: sanitizeClientFacingText(para, opts.locale),
-      incomplete: opts.incomplete,
-    });
+  return 'single';
+}
+
+function buildFigureBlock(
+  locale: 'ar' | 'en',
+  img: EngineeringStudyImage,
+  figureNo: number,
+  subsectionTitle: string
+): FlowBlock {
+  return {
+    kind: 'unit',
+    blocks: [
+      {
+        kind: 'figure',
+        src: img.src,
+        caption: figureCaption(
+          locale,
+          figureNo,
+          locale === 'ar' ? img.caption_ar : img.caption_en,
+          subsectionTitle
+        ),
+        figureNo,
+        layout: figureLayout(img),
+        imageId: img.image_id,
+      },
+    ],
+  };
+}
+
+type SubGroup = {
+  key: string;
+  title: string;
+  itemId?: string;
+  subsectionOrder: number;
+  options: string[];
+  notes: string;
+  images: EngineeringStudyImage[];
+};
+
+function groupImagesBySubsection(
+  images: EngineeringStudyImage[],
+  locale: 'ar' | 'en'
+): SubGroup[] {
+  const map = new Map<string, SubGroup>();
+  for (const img of images) {
+    const title =
+      (locale === 'ar' ? img.subsection_ar : img.subsection_en) ||
+      sanitizeCaption(locale === 'ar' ? img.caption_ar : img.caption_en, '') ||
+      (locale === 'ar' ? 'توثيق مرئي' : 'Visual record');
+    const key = img.item_id || title;
+    let g = map.get(key);
+    if (!g) {
+      g = {
+        key,
+        title,
+        itemId: img.item_id,
+        subsectionOrder: img.subsection_order ?? 999,
+        options: [...(img.selected_options || [])],
+        notes: img.item_notes || '',
+        images: [],
+      };
+      map.set(key, g);
+    } else {
+      for (const o of img.selected_options || []) {
+        if (!g.options.includes(o)) g.options.push(o);
+      }
+      if (!g.notes && img.item_notes) g.notes = img.item_notes;
+    }
+    g.images.push(img);
   }
-  inner.push({
-    kind: 'figure',
-    src: opts.src,
-    caption: figureCaption(opts.locale, opts.figureNo, opts.captionRaw, opts.subsectionTitle),
-    figureNo: opts.figureNo,
-    layout: opts.layout,
-    imageId: opts.imageId,
-  });
-  return { kind: 'unit', blocks: inner };
+  return [...map.values()].sort(
+    (a, b) =>
+      a.subsectionOrder - b.subsectionOrder ||
+      (a.images[0]?.image_order ?? 0) - (b.images[0]?.image_order ?? 0)
+  );
+}
+
+/** Build engineering prose for a subsection — never the generic bridge filler. */
+function subsectionContentBlocks(
+  group: SubGroup,
+  locale: 'ar' | 'en'
+): FlowBlock[] {
+  const blocks: FlowBlock[] = [];
+  const prose = getItemProse(group.itemId);
+  const scope = locale === 'ar' ? prose.scope_ar : prose.scope_en;
+  const missing = locale === 'ar' ? prose.missing_ar : prose.missing_en;
+  const options = group.options.map((o) => sanitizeClientFacingText(o, locale)).filter(Boolean);
+  const notes = sanitizeClientFacingText(group.notes, locale);
+  // Prefer explicit description carried on the image when present
+  const descFromImages = group.images
+    .map((img) => (locale === 'ar' ? img.description_ar : img.description_en) || '')
+    .find((d) => d.trim());
+  const description = sanitizeClientFacingText(descFromImages || '', locale);
+
+  const head: FlowBlock[] = [{ kind: 'subsection', title: group.title }];
+
+  // Always lead with topic engineering scope for known items (not options dump)
+  if (scope) {
+    head.push({ kind: 'paragraph', text: sanitizeClientFacingText(scope, locale) });
+  } else if (description) {
+    head.push({ kind: 'paragraph', text: description });
+  }
+
+  blocks.push({ kind: 'unit', blocks: head });
+
+  if (options.length) {
+    blocks.push({ kind: 'bullet_list', items: options });
+  }
+
+  if (notes) {
+    const dup = options.some((o) => notes.includes(o) || o.includes(notes));
+    if (!dup) {
+      blocks.push({ kind: 'paragraph', text: notes });
+    }
+  } else if (description && scope && description !== sanitizeClientFacingText(scope, locale)) {
+    blocks.push({ kind: 'paragraph', text: description });
+  }
+
+  if (!scope && !description && !options.length && !notes) {
+    blocks.push({ kind: 'paragraph', text: missing, incomplete: true });
+  } else if (scope && !options.length && !notes && !description && group.itemId) {
+    // Known topic with photo but no project facts — state the data gap clearly
+    blocks.push({ kind: 'paragraph', text: missing, incomplete: true });
+  }
+
+  return blocks;
 }
 
 export function sectionToFlowBlocks(
@@ -273,8 +403,8 @@ export function sectionToFlowBlocks(
 ): FlowBlock[] {
   const locale = doc.locale;
   const blocks: FlowBlock[] = [];
-  const paras = uniqueParagraphs(section.paragraphs);
   const images = placeSectionImages(section);
+  const paras = filterIntroAgainstFacts(uniqueParagraphs(section.paragraphs), images, locale);
   const tables = section.tables || [];
   const refs = collectRefs(section.paragraphs, locale);
 
@@ -285,7 +415,6 @@ export function sectionToFlowBlocks(
     title: chapterTitle(section, locale, displayNo),
   });
 
-  // Special presentation for recommendations — numbered list, not glued prose
   if (section.id === 'engineering_recommendations') {
     const items: string[] = [];
     for (const p of paras) {
@@ -312,7 +441,6 @@ export function sectionToFlowBlocks(
     return blocks;
   }
 
-  // Summary — consultancy narrative + compact facts table (no invented values)
   if (section.id === 'summary') {
     const raw = sanitizeClientFacingText(paras.map((p) => p.text).join(' '), locale);
     blocks.push({
@@ -328,13 +456,10 @@ export function sectionToFlowBlocks(
         blocks.push({
           kind: 'table',
           caption: locale === 'ar' ? 'ملخص بيانات المشروع المعتمدة' : 'Approved project data summary',
-          headers:
-            locale === 'ar' ? ['البند', 'القيمة'] : ['Item', 'Value'],
+          headers: locale === 'ar' ? ['البند', 'القيمة'] : ['Item', 'Value'],
           rows: facts.rows,
         });
-        if (facts.remainder) {
-          blocks.push({ kind: 'paragraph', text: facts.remainder });
-        }
+        if (facts.remainder) blocks.push({ kind: 'paragraph', text: facts.remainder });
       } else {
         blocks.push({ kind: 'paragraph', text: raw });
       }
@@ -343,14 +468,24 @@ export function sectionToFlowBlocks(
     return blocks;
   }
 
-  // Intro paragraph(s)
-  const introCount = images.length ? Math.min(1, paras.length) : Math.min(paras.length, 2);
-  for (let i = 0; i < introCount; i++) {
-    const p = paras[i];
+  if (section.id === 'conclusion') {
+    for (const p of paras) {
+      blocks.push({
+        kind: 'paragraph',
+        text: sanitizeClientFacingText(p.text, locale),
+        incomplete: p.incomplete,
+      });
+    }
+    if (refs.length) blocks.push({ kind: 'reference_note', refs });
+    return blocks;
+  }
+
+  // Chapter intro — one engineering overview paragraph (not per-image filler)
+  if (paras.length) {
     blocks.push({
       kind: 'paragraph',
-      text: sanitizeClientFacingText(p.text, locale),
-      incomplete: p.incomplete,
+      text: sanitizeClientFacingText(paras[0].text, locale),
+      incomplete: paras[0].incomplete,
     });
   }
 
@@ -363,64 +498,36 @@ export function sectionToFlowBlocks(
     });
   }
 
-  const restParas = paras.slice(introCount);
-  let paraIdx = 0;
-  let lastSub = '';
+  const groups = groupImagesBySubsection(images, locale);
 
-  for (const img of images) {
-    const sub =
-      (locale === 'ar' ? img.subsection_ar : img.subsection_en) ||
-      sanitizeCaption(locale === 'ar' ? img.caption_ar : img.caption_en, '');
-
-    let paraText: string | undefined;
-    let incomplete: boolean | undefined;
-    const isNewSub = Boolean(sub && sub !== lastSub);
-
-    if (isNewSub) {
-      lastSub = sub;
-      if (paraIdx < restParas.length) {
-        paraText = restParas[paraIdx].text;
-        incomplete = restParas[paraIdx].incomplete;
-        paraIdx += 1;
+  if (groups.length) {
+    for (const group of groups) {
+      blocks.push(...subsectionContentBlocks(group, locale));
+      for (const img of group.images) {
+        figureCounter.n += 1;
+        blocks.push(buildFigureBlock(locale, img, figureCounter.n, group.title));
       }
-    } else if (!sub && paraIdx < restParas.length) {
-      paraText = restParas[paraIdx].text;
-      incomplete = restParas[paraIdx].incomplete;
-      paraIdx += 1;
     }
-
-    figureCounter.n += 1;
-    const layout =
-      img.layout_type === 'double'
-        ? 'double'
-        : img.layout_type === 'full_width' ||
-            img.image_type === 'site_map' ||
-            img.image_type === 'drawing'
-          ? 'full_width'
-          : 'single';
-
-    blocks.push(
-      buildFigureUnit({
-        locale,
-        subsectionTitle: isNewSub ? sub : '',
-        paragraphText: paraText,
-        incomplete,
-        src: img.src,
-        captionRaw: locale === 'ar' ? img.caption_ar : img.caption_en,
-        figureNo: figureCounter.n,
-        layout,
-        imageId: img.image_id,
-      })
-    );
-  }
-
-  while (paraIdx < restParas.length) {
-    const p = restParas[paraIdx++];
-    blocks.push({
-      kind: 'paragraph',
-      text: sanitizeClientFacingText(p.text, locale),
-      incomplete: p.incomplete,
-    });
+    // Remaining section paragraphs after intro (rare) — append once, no duplication of facts
+    for (let i = 1; i < paras.length; i++) {
+      const text = sanitizeClientFacingText(paras[i].text, locale);
+      if (!text) continue;
+      const already = blocks.some(
+        (b) => b.kind === 'paragraph' && b.text === text
+      );
+      if (!already) {
+        blocks.push({ kind: 'paragraph', text, incomplete: paras[i].incomplete });
+      }
+    }
+  } else {
+    // No images — remaining paragraphs flow naturally
+    for (let i = 1; i < paras.length; i++) {
+      blocks.push({
+        kind: 'paragraph',
+        text: sanitizeClientFacingText(paras[i].text, locale),
+        incomplete: paras[i].incomplete,
+      });
+    }
   }
 
   if (refs.length) {
@@ -441,7 +548,6 @@ export function documentToFlowBlocks(doc: EngineeringStudyDocument): {
       paras.some((p) => !p.incomplete) ||
       (s.images && s.images.length > 0) ||
       (s.tables && s.tables.length > 0);
-    // Keep compliance/summary/conclusion/recommendations if they have any text
     const always =
       s.id === 'summary' ||
       s.id === 'engineering_recommendations' ||
@@ -470,25 +576,25 @@ export function documentToFlowBlocks(doc: EngineeringStudyDocument): {
 export function estimateBlockHeightMm(block: FlowBlock): number {
   switch (block.kind) {
     case 'chapter':
-      return 11;
+      return 10;
     case 'subsection':
       return 7;
     case 'paragraph': {
       const lines = Math.ceil((block.text?.length || 0) / 95);
-      return Math.max(5, lines * 5);
+      return Math.max(5, lines * 4.8);
     }
     case 'bullet_list':
-      return 6 + (block.items?.length || 0) * 5;
+      return 5 + (block.items?.length || 0) * 4.5;
     case 'reference_note':
-      return 8;
+      return 7;
     case 'table':
-      return 10 + (block.rows?.length || 0) * 5.5;
+      return 9 + (block.rows?.length || 0) * 5;
     case 'figure':
-      return block.layout === 'full_width' ? 88 : 62;
+      return block.layout === 'full_width' ? 80 : 58;
     case 'unit':
-      return (block.blocks || []).reduce((n, b) => n + estimateBlockHeightMm(b), 2);
+      return (block.blocks || []).reduce((n, b) => n + estimateBlockHeightMm(b), 1);
     default:
-      return 6;
+      return 5;
   }
 }
 
@@ -496,7 +602,7 @@ export function estimateFlowTocPages(
   chapters: { id: string }[],
   blocks: FlowBlock[]
 ): Record<string, number> {
-  const usable = 245;
+  const usable = 250;
   let used = 0;
   let page = 3;
   const map: Record<string, number> = {};

@@ -47,6 +47,18 @@ function p(
   return { text, citations: valid };
 }
 
+/** Strip internal platform phrasing from rule-reason strings before client-facing prose. */
+function sanitizeReason(reason: string): string {
+  return String(reason || '')
+    .replace(/محرك\s*(?:القواعد|القرار)|قاعدة\s*المعرفة|Rules?\s*Engine|Knowledge\s*Base|Decision\s*Engine|مسوّغ القواعد\s*:\s*/gi, '')
+    .replace(/مقفل\s*بقاعدة[^.]*/gi, '')
+    .replace(/مقفَل\s*بقاعدة[^.]*/gi, '')
+    .replace(/CODE-BASE[^.]*/gi, '')
+    .replace(/Base\s*Code[^.]*/gi, '')
+    .replace(/\s{2,}/g, ' ')
+    .trim();
+}
+
 function fmtArea(n: number | null, locale: ReportLocale): string {
   if (n == null) return locale === 'ar' ? 'غير محددة' : 'not specified';
   return locale === 'ar' ? `${n} م²` : `${n} m²`;
@@ -71,8 +83,8 @@ const generators: Partial<Record<EngineeringStudySectionId, Gen>> = {
     if (!facility.business_name) return { paragraphs: [missing(locale)] };
     const text =
       locale === 'ar'
-        ? `أُعدّت هذه الدراسة الهندسية بوصفها تقريراً فنياً استشارياً لأنظمة السلامة والوقاية من الحريق لمنشأة «${facility.business_name}» ذات النشاط (${activityLabel || 'غير مصنّف'}). تهدف الدراسة إلى توثيق خصائص المشروع، وتصنيف الإشغال والخطورة، ومراجعة أنظمة الحماية النشطة والسلبية، وربط الاستنتاجات بمراجع كود البناء السعودي (SBC) وكود الحريق السعودي ومتطلبات الدفاع المدني والمعايير ذات الصلة من سلسلة NFPA، وذلك بعد التحقق عبر محرك القواعد الهندسية دون افتراض قيم غير موثّقة.`
-        : `This engineering study is prepared as a formal consultancy technical report on fire protection and life-safety systems for the facility “${facility.business_name}” (activity: ${activityLabel || 'unclassified'}). It documents project characteristics, occupancy and hazard classification, active and passive protection systems, and conclusions referenced to the Saudi Building Code (SBC), Saudi Fire Code, Civil Defense requirements, and applicable NFPA standards — only after validation through the Engineering Rules Engine, without inventing undocumented values.`;
+        ? `أُعدّت هذه الدراسة الهندسية بوصفها تقريراً فنياً استشارياً لأنظمة السلامة والوقاية من الحريق لمنشأة «${facility.business_name}» ذات النشاط (${activityLabel || 'غير مصنّف'}). تهدف الدراسة إلى توثيق خصائص المشروع، وتصنيف الإشغال والخطورة، ومراجعة أنظمة الحماية النشطة والسلبية، وربط الاستنتاجات بمراجع كود البناء السعودي (SBC) وكود الحريق السعودي ومتطلبات الدفاع المدني والمعايير ذات الصلة من سلسلة NFPA، استناداً إلى البيانات المعتمدة في ملف المشروع دون افتراض قيم غير موثّقة.`
+        : `This engineering study is prepared as a formal consultancy technical report on fire protection and life-safety systems for the facility “${facility.business_name}” (activity: ${activityLabel || 'unclassified'}). It documents project characteristics, occupancy and hazard classification, active and passive protection systems, and conclusions referenced to the Saudi Building Code (SBC), Saudi Fire Code, Civil Defense requirements, and applicable NFPA standards — based on approved project-file data, without inventing undocumented values.`;
     const areaNote =
       areaM2 || floors
         ? locale === 'ar'
@@ -181,6 +193,14 @@ const generators: Partial<Record<EngineeringStudySectionId, Gen>> = {
         caption_en: !cap || fileLike ? 'Site map / Google Earth image' : cap,
         image_id: report.earth_photo.id || 'site-map',
         section_id: 'site_information',
+        item_id: 'site_map',
+        subsection_ar: 'صورة الموقع من الخريطة',
+        subsection_en: 'Site map image',
+        subsection_order: 1,
+        description_ar:
+          'تُعرض صورة الموقع من الخريطة لتوثيق الموضع الجغرافي ودعم مسارات وصول آليات الإطفاء ومتطلبات الدفاع المدني.',
+        description_en:
+          'The site map image documents geographic position and supports fire-appliance access routing and Civil Defense site requirements.',
         image_order: 1,
         image_type: 'site_map',
         layout_type: 'full_width',
@@ -195,6 +215,12 @@ const generators: Partial<Record<EngineeringStudySectionId, Gen>> = {
         caption_en: !cap || fileLike ? 'General site photograph' : cap,
         image_id: report.site_photo.id || 'site-photo',
         section_id: 'site_information',
+        item_id: 'site_photo',
+        subsection_ar: 'صورة عامة من الموقع',
+        subsection_en: 'General site photograph',
+        subsection_order: 2,
+        description_ar: 'توثيق مرئي للحالة القائمة للموقع من واقع الزيارة الميدانية.',
+        description_en: 'As-built site condition documented from the field visit.',
         image_order: 2,
         image_type: 'site',
         layout_type: 'single',
@@ -252,11 +278,13 @@ const generators: Partial<Record<EngineeringStudySectionId, Gen>> = {
     if (!list || list === (locale === 'ar' ? 'غير محدد' : 'not specified')) {
       return { paragraphs: [missing(locale)] };
     }
-    const reason = ruleReason(ctx, 'applicable_codes');
+    const reason = sanitizeReason(ruleReason(ctx, 'applicable_codes'));
+    const reasonSafe =
+      reason && !/CODE|قاعدة|Engine|Knowledge|مقفل|مقفَل/i.test(reason) ? reason : '';
     const text =
       locale === 'ar'
-        ? `المراجع الكودية المعتمدة لهذه الدراسة — وفق محرك القواعد الهندسية وقاعدة المعرفة — تشمل: ${list}. لا تُدرَج أي مرجع غير متاح في قاعدة المعرفة أو غير ناتج عن القواعد. ${reason ? `مسوّغ القواعد: ${reason}` : ''} يُعامل كود البناء السعودي وكود الحريق السعودي ومتطلبات الدفاع المدني كإطار إلزامي محلي، مع الاسترشاد بمعايير NFPA ذات الصلة (مثل NFPA 13 وNFPA 72 وNFPA 20 وNFPA 101) عند انطباقها على الأنظمة المحددة.`
-        : `Code references adopted for this study — per the Engineering Rules Engine and Knowledge Base — include: ${list}. No reference outside the Knowledge Base or rules cascade is introduced. ${reason ? `Rules rationale: ${reason}` : ''} The Saudi Building Code, Saudi Fire Code, and Civil Defense requirements form the mandatory local framework, with applicable NFPA standards (e.g. NFPA 13, NFPA 72, NFPA 20, NFPA 101) cited only where they apply to the selected systems.`;
+        ? `المراجع الكودية المعتمدة لهذه الدراسة تشمل: ${list}. يُعامل كود البناء السعودي وكود الحريق السعودي ومتطلبات الدفاع المدني كإطار إلزامي محلي، مع الاسترشاد بمعايير NFPA ذات الصلة (مثل NFPA 13 وNFPA 72 وNFPA 20 وNFPA 101) عند انطباقها على الأنظمة المحددة.${reasonSafe ? ` ${reasonSafe}` : ''}`
+        : `Code references adopted for this study include: ${list}. The Saudi Building Code, Saudi Fire Code, and Civil Defense requirements form the mandatory local framework, with applicable NFPA standards (e.g. NFPA 13, NFPA 72, NFPA 20, NFPA 101) cited only where they apply to the selected systems.${reasonSafe ? ` ${reasonSafe}` : ''}`;
     const citations = applicableCodes.filter((c) =>
       [...ctx.allowedCitations].some((a) => c.includes(a) || a.includes(c))
     );
@@ -274,10 +302,11 @@ const generators: Partial<Record<EngineeringStudySectionId, Gen>> = {
     const text =
       locale === 'ar'
         ? `تصنيف الإشغال المعتمد للدراسة: ${displayVal(occ, locale)}. النشاط التشغيلي المرتبط: ${activityLabel || '—'}. ${
-            reason || 'يُشتق التصنيف من نوع المبنى والنشاط وفق SBC 801 دون اجتهاد خارج محرك القواعد.'
+            sanitizeReason(reason) || 'يُشتق التصنيف من نوع المبنى والنشاط وفق SBC 801 دون افتراض تصنيف غير موثّق.'
           } أي تغيير في النشاط التشغيلي يستوجب إعادة تقييم التصنيف وجميع الأنظمة التابعة.`
         : `Occupancy classification adopted for this study: ${displayVal(occ, locale)}. Linked activity: ${activityLabel || '—'}. ${
-            reason || 'Classification is derived from building type and activity per SBC 801 via the Rules Engine only.'
+            sanitizeReason(reason) ||
+            'Classification is derived from building type and activity per SBC 801 without assuming an undocumented occupancy.'
           } Any change in operational use requires re-evaluation of occupancy and all dependent systems.`;
     return { paragraphs: [p(text, ['SBC 801', 'SBC Occupancy', 'occupancy'], ctx.allowedCitations)] };
   },
@@ -351,8 +380,8 @@ const generators: Partial<Record<EngineeringStudySectionId, Gen>> = {
     if (!systems.water && !tank && !notes) return { paragraphs: [missing(locale)] };
     const text =
       locale === 'ar'
-        ? `إمداد مياه الإطفاء يُحدَّد من محرك القواعد والحسابات الهيدروليكية المعتمدة للمشروع، وليس من تقديرات حرة. سعة الخزان وفق القواعد: ${displayVal(tank, locale)}. الطلب المائي المسجّل: ${displayVal(demand, locale)}. ${notes || ''} في حال غياب ورقة الحساب الهيدروليكي المعتمدة، يُشار إلى Incomplete ولا تُختلق قيم L/min أو m³.`
-        : `Fire water supply is taken from the Rules Engine and approved hydraulic calculations only — not free estimates. Rule-locked tank size: ${displayVal(tank, locale)}. Recorded water demand: ${displayVal(demand, locale)}. ${notes || ''} Where an approved hydraulic sheet is absent, the section is marked incomplete; L/min or m³ values are not invented.`;
+        ? `يُراجع إمداد مياه الإطفاء وفق الحسابات الهيدروليكية المعتمدة للمشروع والبيانات المسجّلة في الملف، وليس من تقديرات حرة. سعة الخزان المسجّلة: ${displayVal(tank, locale)}. الطلب المائي المسجّل: ${displayVal(demand, locale)}. في حال غياب ورقة الحساب الهيدروليكي المعتمدة لا تُختلق قيم L/min أو m³.`
+        : `Fire-water supply is reviewed from approved hydraulic calculations and values recorded in the project file — not free estimates. Recorded tank size: ${displayVal(tank, locale)}. Recorded water demand: ${displayVal(demand, locale)}. Where an approved hydraulic sheet is absent, L/min or m³ values are not invented.`;
     const incomplete = !tank && !demand;
     return {
       paragraphs: [
@@ -369,11 +398,11 @@ const generators: Partial<Record<EngineeringStudySectionId, Gen>> = {
     const capacity = lockedRuleValue(ctx, 'pump_capacity');
     const notes = getItemNarrative(ctx, 'ff_pumps');
     if (!systems.pumps && !pump && !notes) return { paragraphs: [missing(locale)] };
-    const reason = ruleReason(ctx, 'pump_requirement');
+    const reason = sanitizeReason(ruleReason(ctx, 'pump_requirement'));
     const text =
       locale === 'ar'
-        ? `تحليل مضخات الحريق يستند إلى القيم المقفلة/المعتمدة في محرك القواعد (NFPA 20 / SBC). متطلب المضخة: ${displayVal(pump, locale)}. السعة المسجّلة: ${displayVal(capacity, locale)}. ${reason} ${notes || 'يُستكمل جدول المضخة الرئيسية والجوكي وربطها بلوحة الإنذار عند اعتماد الحساب الهيدروليكي.'}`
-        : `Fire pump analysis uses rule-locked values under NFPA 20 / SBC. Pump requirement: ${displayVal(pump, locale)}. Recorded capacity: ${displayVal(capacity, locale)}. ${reason} ${notes || 'Main/jockey pump schedule and alarm interface shall be completed once hydraulics are approved.'}`;
+        ? `يُراجع تحليل مضخات الحريق وفق المتطلبات المعتمدة (NFPA 20 / SBC) والبيانات المسجّلة في الملف. متطلب المضخة: ${displayVal(pump, locale)}. السعة المسجّلة: ${displayVal(capacity, locale)}. ${reason} تُستكمل تفاصيل المضخة الرئيسية والجوكي وربطها بلوحة الإنذار عند اعتماد الحساب الهيدروليكي.`
+        : `Fire-pump analysis is reviewed under NFPA 20 / SBC using values recorded in the project file. Pump requirement: ${displayVal(pump, locale)}. Recorded capacity: ${displayVal(capacity, locale)}. ${reason} Main/jockey pump details and alarm interface shall be completed once hydraulics are approved.`;
     return {
       paragraphs: [
         !pump && !notes ? missing(locale) : p(text, ['NFPA 20', 'SBC 801', 'Civil Defense'], ctx.allowedCitations),
@@ -455,12 +484,11 @@ const generators: Partial<Record<EngineeringStudySectionId, Gen>> = {
   fire_alarm_study: (ctx) => {
     const { locale, systems } = ctx;
     const alarm = lockedRuleValue(ctx, 'alarm_category');
-    const notes = getItemNarrative(ctx, 'al_panel') || getItemNarrative(ctx, 'al_detectors');
-    if (!systems.alarm && !alarm && !notes) return { paragraphs: [missing(locale)] };
+    if (!systems.alarm && !alarm) return { paragraphs: [missing(locale)] };
     const text =
       locale === 'ar'
-        ? `دراسة نظام الإنذار والكشف: فئة النظام وفق محرك القواعد ${displayVal(alarm, locale)}. ${ruleReason(ctx, 'alarm_category')} ${notes || ''} يُربط النظام بمتطلبات SBC 801 وNFPA 72 دون إضافة أجهزة غير واردة في القواعد أو المخططات.`
-        : `Fire alarm and detection study: rule-selected category ${displayVal(alarm, locale)}. ${ruleReason(ctx, 'alarm_category')} ${notes || ''} Devices follow SBC 801 and NFPA 72; equipment outside rules or drawings is not added.`;
+        ? `تمت مراجعة نظام الإنذار والكشف المبكر بالمبنى وفق فئة النظام المعتمدة في بيانات المشروع (${displayVal(alarm, locale)}). تُوثَّق مكونات النظام (لوحة التحكم، كواشف الدخان والحرارة، الكواسر الزجاجية، وأجراس الإنذار) في البنود التالية وفق الحالة القائمة في الملف، وبما يتوافق مع متطلبات SBC 801 وNFPA 72 دون إضافة أجهزة غير واردة في المخططات المعتمدة.`
+        : `The building fire-alarm and early-detection system was reviewed against the category recorded in the project file (${displayVal(alarm, locale)}). System components (control panel, smoke/heat detectors, break-glass stations, and alarm bells) are documented in the following subsections from the as-built file condition, consistent with SBC 801 and NFPA 72; equipment outside approved drawings is not added.`;
     return { paragraphs: [p(text, ['NFPA 72', 'SBC 801', 'alarm'], ctx.allowedCitations)] };
   },
 
@@ -618,8 +646,8 @@ const generators: Partial<Record<EngineeringStudySectionId, Gen>> = {
             .join(', ');
     const text =
       locale === 'ar'
-        ? `ملخص الدراسة: منشأة «${facility.business_name}» — إشغال ${occupancyLabel || 'قيد الاستكمال'} — خطورة ${hazardLabel || 'قيد الاستكمال'} — مساحة ${fmtArea(areaM2, locale)} — أدوار ${fmtNum(floors, locale, '', '')}. الأنظمة الموثّقة ضمن الملف: ${sysList || 'يلزم استكمال توثيق الأنظمة'}. أُعدّ الملخص من البيانات المعتمدة ومحرك القواعد فقط.`
-        : `Study summary: facility “${facility.business_name}” — occupancy ${occupancyLabel || 'pending'} — hazard ${hazardLabel || 'pending'} — area ${fmtArea(areaM2, locale)} — floors ${fmtNum(floors, locale, '', '')}. Systems documented in the file: ${sysList || 'system documentation incomplete'}. Summary uses approved data and the Rules Engine only.`;
+        ? `ملخص الدراسة: منشأة «${facility.business_name}» — إشغال ${occupancyLabel || 'قيد الاستكمال'} — خطورة ${hazardLabel || 'قيد الاستكمال'} — مساحة ${fmtArea(areaM2, locale)} — أدوار ${fmtNum(floors, locale, '', '')}. الأنظمة الموثّقة ضمن الملف: ${sysList || 'يلزم استكمال توثيق الأنظمة'}.`
+        : `Study summary: facility “${facility.business_name}” — occupancy ${occupancyLabel || 'pending'} — hazard ${hazardLabel || 'pending'} — area ${fmtArea(areaM2, locale)} — floors ${fmtNum(floors, locale, '', '')}. Systems documented in the file: ${sysList || 'system documentation incomplete'}.`;
     return { paragraphs: [p(text, ['SBC 801', 'NFPA', 'Civil Defense'], ctx.allowedCitations)] };
   },
 
@@ -677,21 +705,21 @@ const generators: Partial<Record<EngineeringStudySectionId, Gen>> = {
   },
 
   conclusion: (ctx) => {
-    const { locale, facility, rulesGateOk } = ctx;
+    const { locale, facility, rulesGateOk, missingInputs } = ctx;
     if (!facility.business_name) return { paragraphs: [missing(locale)] };
     const text =
       locale === 'ar'
-        ? `ختاماً، قُدّمت هذه الدراسة الهندسية لمنشأة «${facility.business_name}» بصيغة تقرير استشاري جاهز للمراجعة والتقديم، مع اعتماد محرك القواعد الهندسية وقاعدة المعرفة كمصدر وحيد للقيم والاستنتاجات الكودية. ${
-            rulesGateOk
-              ? 'التسلسل الهندسي حالياً متوافق مع بوابة القرار؛ يبقى التحقق الميداني والاختبارات شرطاً للاعتماد النهائي.'
-              : 'لا تزال بعض المدخلات/المخالفات مفتوحة؛ لا يُعدّ هذا المستند اعتماداً نهائياً حتى استكمالها.'
-          } والله ولي التوفيق.`
-        : `In conclusion, this engineering study for “${facility.business_name}” is issued as a consultancy report suitable for review and submission, with the Engineering Rules Engine and Knowledge Base as the sole sources of coded values and conclusions. ${
-            rulesGateOk
-              ? 'The engineering cascade currently passes the decision gate; field verification and testing remain prerequisites for final approval.'
-              : 'Some inputs/violations remain open; this document is not a final approval until they are resolved.'
+        ? `ختاماً، قُدّمت هذه الدراسة الهندسية لمنشأة «${facility.business_name}» كنطاق مراجعة استشارية لمتطلبات السلامة والوقاية من الحريق، استناداً إلى البيانات المعتمدة في ملف المشروع والكودات المنطبقة، ودون افتراض قيم غير موثّقة. ${
+            rulesGateOk && !(missingInputs || []).length
+              ? 'يبقى التحقق الميداني والاختبارات والاعتماد الرسمي شرطاً لصلاحية النتائج النهائية.'
+              : 'تظل بعض البيانات المطلوبة غير مكتملة؛ وعليه لا يُعدّ هذا المستند اعتماداً نهائياً حتى استكمالها.'
+          }`
+        : `In conclusion, this engineering study for “${facility.business_name}” is issued as a consultancy review of fire-safety requirements based on approved project-file data and applicable codes, without inventing undocumented values. ${
+            rulesGateOk && !(missingInputs || []).length
+              ? 'Field verification, testing, and formal approval remain prerequisites for final validity.'
+              : 'Some required data remain incomplete; this document is not a final approval until they are resolved.'
           }`;
-    return { paragraphs: [p(text, ['SBC 801', 'Civil Defense', 'NFPA', 'Company Standards'], ctx.allowedCitations)] };
+    return { paragraphs: [p(text, ['SBC 801', 'Civil Defense', 'NFPA'], ctx.allowedCitations)] };
   },
 };
 

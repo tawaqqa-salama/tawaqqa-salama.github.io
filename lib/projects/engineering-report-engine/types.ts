@@ -61,13 +61,24 @@ export type EngineeringStudyImage = {
   image_id?: string;
   /** Owning study section */
   section_id?: EngineeringStudySectionId;
-  /** Sort key within section (1-based) */
+  /** Technical-report item id (e.g. al_detectors) — binds image to subsection */
+  item_id?: string;
+  /** Sort key within section (1-based, global figure order source) */
   image_order?: number;
+  /** Order of the subsection inside the parent section (1-based) */
+  subsection_order?: number;
   image_type?: ImageType;
   layout_type?: ImageLayoutType;
   /** Sub-topic under the section (e.g. لوحة التحكم) — for in-flow placement */
   subsection_ar?: string;
   subsection_en?: string;
+  /** Engineering description for this subsection (from options/notes — not a filename) */
+  description_ar?: string;
+  description_en?: string;
+  /** Selected requirement phrases from the technical report item */
+  selected_options?: string[];
+  /** Free-text engineer notes for the item */
+  item_notes?: string;
 };
 
 export type EngineeringStudySection = {

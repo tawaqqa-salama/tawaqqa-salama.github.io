@@ -6,6 +6,7 @@
 import type { CompanyProfile } from '@/lib/company-profile';
 import type { EngineeringStudyDocument } from '@/lib/projects/engineering-report-engine/types';
 import { esc, formatReportTextHtml } from '@/lib/projects/engineering-report-engine/renderer/html-utils';
+import { getEmbeddedArabicFontCss } from '@/lib/projects/engineering-report-engine/renderer/embedded-fonts';
 import {
   documentToFlowBlocks,
   estimateFlowTocPages,
@@ -47,7 +48,7 @@ function renderBlock(block: FlowBlock, locale: 'ar' | 'en'): string {
       </div>`;
     case 'figure':
       return `<figure class="fig fig-${esc(block.layout)} keep" data-fig="${block.figureNo}">
-        <div class="fig-box"><img src="${esc(block.src)}" alt="${esc(block.caption)}" /></div>
+        <div class="fig-box"><img src="${esc(block.src)}" alt="" /></div>
         <figcaption class="fig-cap">${tx(block.caption)}</figcaption>
       </figure>`;
     case 'unit':
@@ -166,17 +167,22 @@ function renderApprovals(doc: EngineeringStudyDocument, company: CompanyProfile)
 }
 
 function flowCss(doc: EngineeringStudyDocument, company: CompanyProfile): string {
-  const brand = company.legal_name || company.name || 'منصة توقع سلامة';
+  const footerBrand = (company.name || 'منصة توقع سلامة').replace(/"/g, '\\"');
   // Footer: brand + page X of Y only — never project URL
   return `
+    ${getEmbeddedArabicFontCss()}
+
     @page {
       size: A4 portrait;
-      margin: 16mm 15mm 16mm 15mm;
+      margin: 16mm 15mm 18mm 15mm;
       @bottom-center {
-        content: "${esc(brand).replace(/"/g, '\\"')}    ${
-          doc.locale === 'ar' ? 'صفحة' : 'Page'
-        } " counter(page) " ${doc.locale === 'ar' ? 'من' : 'of'} " counter(pages);
-        font-size: 8.5pt;
+        content: "${footerBrand} — ${
+          doc.locale === 'ar' ? 'للاستشارات الهندسية والسلامة' : 'Engineering & fire-safety consultancy'
+        }    ${doc.locale === 'ar' ? 'صفحة' : 'Page'} " counter(page) " ${
+          doc.locale === 'ar' ? 'من' : 'of'
+        } " counter(pages);
+        font-family: "Noto Naskh Arabic", Tahoma, sans-serif;
+        font-size: 8pt;
         color: #334155;
       }
     }
@@ -191,14 +197,19 @@ function flowCss(doc: EngineeringStudyDocument, company: CompanyProfile): string
       background: #fff;
     }
     body {
-      font-family: "Traditional Arabic","Tahoma","Segoe UI","Noto Naskh Arabic",Arial,sans-serif;
+      font-family: "Noto Naskh Arabic", "IBM Plex Sans Arabic", Tahoma, Arial, sans-serif;
       color: #111827;
       font-size: 11.5px;
       line-height: 1.7;
       -webkit-print-color-adjust: exact;
       print-color-adjust: exact;
+      /* Disable Arabic ligatures so PDF ToUnicode maps 1:1 (fixes ا5/لام-ألف corruption on copy) */
+      font-variant-ligatures: none;
+      font-feature-settings: "liga" 0, "clig" 0, "calt" 0, "dlig" 0;
+      text-rendering: optimizeSpeed;
     }
-    .ltr { direction: ltr; unicode-bidi: embed; display: inline; white-space: nowrap; }
+    /* dir=ltr on the element is enough — avoid unicode-bidi tricks that break PDF text extract */
+    .ltr { direction: ltr; display: inline; unicode-bidi: normal; }
 
     .page {
       box-sizing: border-box;

@@ -62,13 +62,17 @@ export function placeSectionImages(
   if (!raw.length) return [];
 
   const sorted = [...raw].sort(
-    (a, b) => (a.image_order ?? 999) - (b.image_order ?? 999)
+    (a, b) =>
+      (a.subsection_order ?? 999) - (b.subsection_order ?? 999) ||
+      (a.image_order ?? 999) - (b.image_order ?? 999)
   );
 
   return sorted.map((img, idx) => {
     const order = idx + 1;
-    const fallbackAr = `صورة رقم (${order}) — ${section.title_ar}`;
-    const fallbackEn = `Figure (${order}) — ${section.title_en}`;
+    const fallbackAr =
+      img.subsection_ar || `صورة رقم (${order}) — ${section.title_ar}`;
+    const fallbackEn =
+      img.subsection_en || `Figure (${order}) — ${section.title_en}`;
     const caption_ar = sanitizeCaption(img.caption_ar, fallbackAr);
     const caption_en = sanitizeCaption(img.caption_en, fallbackEn);
     const image_type = img.image_type || inferImageType(section.id, caption_ar);

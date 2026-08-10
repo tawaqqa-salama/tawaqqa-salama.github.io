@@ -88,6 +88,26 @@ function itemTitle(itemId: string): string {
   return TECH_REPORT_ITEMS.find((i) => i.id === itemId)?.title || itemId;
 }
 
+function itemDetail(report: TechnicalReport, itemId: string) {
+  const row = allSectionItems(report).find((i) => i.id === itemId);
+  const title = itemTitle(itemId);
+  const selected_options = (row?.selectedOptions || []).map((s) => String(s).trim()).filter(Boolean);
+  const item_notes = String(row?.notes || '').trim();
+  // description = free notes only (options rendered separately as bullets — ONE FACT)
+  const notesDistinct =
+    item_notes && !selected_options.some((o) => item_notes.includes(o) || o.includes(item_notes))
+      ? item_notes
+      : '';
+  return {
+    title,
+    enabled: !!row?.enabled,
+    selected_options,
+    item_notes,
+    description_ar: notesDistinct,
+    description_en: notesDistinct,
+  };
+}
+
 /** Convert stored report photos to print-ready study images (data URLs only). */
 export function photosToStudyImages(
   photos: TechnicalReportPhoto[] | null | undefined,
@@ -126,16 +146,27 @@ export function getItemPhotos(
   itemId: string
 ): EngineeringStudyImage[] {
   const row = allSectionItems(report).find((i) => i.id === itemId);
-  const title = itemTitle(itemId);
-  return photosToStudyImages(row?.photos, title, title, {
+  const detail = itemDetail(report, itemId);
+  return photosToStudyImages(row?.photos, detail.title, detail.title, {
     imageType: 'system',
   }).map((img, idx) => ({
     ...img,
-    subsection_ar: title,
-    subsection_en: title,
+    item_id: itemId,
+    subsection_ar: detail.title,
+    subsection_en: detail.title,
+    description_ar: detail.description_ar,
+    description_en: detail.description_en,
+    selected_options: detail.selected_options,
+    item_notes: detail.item_notes,
     image_order: idx + 1,
-    caption_ar: img.caption_ar === title || /^صورة/.test(img.caption_ar) ? title : img.caption_ar,
-    caption_en: img.caption_en === title || /^Photo/.test(img.caption_en) ? title : img.caption_en,
+    caption_ar:
+      img.caption_ar === detail.title || /^صورة/.test(img.caption_ar) || /^IMG_/i.test(img.caption_ar)
+        ? detail.title
+        : img.caption_ar,
+    caption_en:
+      img.caption_en === detail.title || /^Photo/.test(img.caption_en) || /^IMG_/i.test(img.caption_en)
+        ? detail.title
+        : img.caption_en,
   }));
 }
 
@@ -237,11 +268,14 @@ export function collectSectionPhotos(
     }
   };
   for (const itemId of cfg.items || []) {
+    const itemIndex = (cfg.items || []).indexOf(itemId);
     push(
       getItemPhotos(report, itemId).map((img, idx) => ({
         ...img,
         section_id: sectionId,
+        item_id: itemId,
         image_type: img.image_type || 'system',
+        subsection_order: itemIndex + 1,
         image_order: img.image_order ?? idx + 1,
       }))
     );
@@ -286,7 +320,13 @@ export function collectSectionPhotos(
       );
     }
   }
-  return images;
+  // Stable engineering order: subsection_order → image_order, then renumber globally
+  images.sort(
+    (a, b) =>
+      (a.subsection_order ?? 999) - (b.subsection_order ?? 999) ||
+      (a.image_order ?? 999) - (b.image_order ?? 999)
+  );
+  return images.map((img, idx) => ({ ...img, image_order: idx + 1 }));
 }
 
 function yes(v: string | undefined | null): boolean {
