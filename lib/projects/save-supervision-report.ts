@@ -170,22 +170,42 @@ async function persistEngineeringJsonb(
     }
   }
 
+  // Slim bloated inline images server-side, then retry lean/full RPC
+  if (mode === 'supervision-merge') {
+    await supabase.rpc('slim_project_engineering_data_urls', { p_client_id: clientId });
+    const { error: patchRetry } = await supabase.rpc('merge_project_engineering_patch', {
+      p_client_id: clientId,
+      p_patch: {
+        supervision_report: trimSupervisionTextFields(data.supervision_report),
+        field_visits: data.field_visits || [],
+        report_pdf_archive: data.report_pdf_archive || [],
+      },
+      p_pipeline_stage: pipelineStage,
+    });
+    if (!patchRetry) return null;
+  }
+
+  const slimmed = sanitizeEngineeringDataForPersist(data, { aggressive: true });
   const { error: rpcError } = await supabase.rpc('save_project_engineering_data', {
     p_client_id: clientId,
-    p_data: data,
+    p_data: slimmed,
     p_pipeline_stage: pipelineStage,
   });
   if (!rpcError) return null;
-  if (!isMissingRelation(rpcError.message) && !/function|Could not find/i.test(rpcError.message)) {
-    if (isTimeout(rpcError.message)) {
-      // Final attempt: direct update (may still timeout; caller keeps local backup)
-    } else {
-      // try direct update as fallback
-    }
+  if (isTimeout(rpcError.message)) {
+    return rpcError.message;
+  }
+  if (isMissingRelation(rpcError.message) || /function|Could not find/i.test(rpcError.message)) {
+    return (
+      'دوال الحفظ (save_project_engineering_data / merge_*) غير موجودة. ' +
+      'نفّذ سكربتات 035 و 036 و 037 في Supabase. ' +
+      'تم تجنّب UPDATE الكامل لأنه يسبب statement timeout على الملفات الكبيرة.'
+    );
   }
 
+  // Last resort — only for non-timeout errors when RPC exists but rejected payload shape
   const payload: Record<string, unknown> = {
-    project_engineering_data: data,
+    project_engineering_data: slimmed,
   };
   if (pipelineStage) payload.pipeline_stage = pipelineStage;
 
@@ -206,12 +226,15 @@ export async function saveReportData(
     supervisionFocus?: boolean;
   }
 ): Promise<UpsertProjectReportResult> {
-  const stamped = sanitizeEngineeringDataForPersist({
-    ...nextData,
-    supervision_report: nextData.supervision_report
-      ? trimSupervisionTextFields(nextData.supervision_report)
-      : nextData.supervision_report,
-  });
+  const stamped = sanitizeEngineeringDataForPersist(
+    {
+      ...nextData,
+      supervision_report: nextData.supervision_report
+        ? trimSupervisionTextFields(nextData.supervision_report)
+        : nextData.supervision_report,
+    },
+    { aggressive: Boolean(options?.supervisionFocus) }
+  );
 
   // Optimistic local persistence BEFORE network — UI retry keeps user input
   backupEngineeringDataLocally(clientId, stamped);

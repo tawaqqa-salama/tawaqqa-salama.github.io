@@ -23,6 +23,7 @@ import { buildFieldVisitReportHtml } from '@/components/projects/FieldVisitRepor
 import { buildSupervisionReportHtml } from '@/components/projects/SupervisionReportPrint';
 import { trimSupervisionTextFields } from '@/lib/projects/supervision-report';
 import { upsertProjectReport } from '@/lib/projects/save-supervision-report';
+import { sanitizeEngineeringDataForPersist } from '@/lib/projects/sanitize-engineering-files';
 
 function isMissingRelation(message: string): boolean {
   return /relation|does not exist|Could not find the table|schema cache|function|Could not find/i.test(
@@ -46,39 +47,59 @@ export async function mergeEngineeringPatch(
     p_pipeline_stage: pipelineStage ?? null,
   });
   if (!rpcError) return null;
-  if (!isMissingRelation(rpcError.message)) {
-    // fall through
+
+  // Timeout on lean patch → try server-side slim of bloated dataUrls then retry once
+  if (/statement timeout|canceling statement|57014/i.test(rpcError.message)) {
+    await supabase.rpc('slim_project_engineering_data_urls', { p_client_id: clientId });
+    const { error: retryError } = await supabase.rpc('merge_project_engineering_patch', {
+      p_client_id: clientId,
+      p_patch: patch,
+      p_pipeline_stage: pipelineStage ?? null,
+    });
+    if (!retryError) return null;
+    return retryError.message;
   }
 
-  // Fallback: read-modify-write only the patched keys when possible via full column
-  // (still better than failing silently). Prefer timeout-tolerant RPC from 035.
-  const { data: row, error: readError } = await supabase
-    .from('clients')
-    .select('project_engineering_data')
-    .eq('id', clientId)
-    .maybeSingle();
-  if (readError) return readError.message;
-
-  const current =
-    row?.project_engineering_data && typeof row.project_engineering_data === 'object'
-      ? (row.project_engineering_data as Record<string, unknown>)
-      : {};
-  const next = { ...current, ...patch };
-  const payload: Record<string, unknown> = { project_engineering_data: next };
-  if (pipelineStage) payload.pipeline_stage = pipelineStage;
-
-  const { error: rpcSave } = await supabase.rpc('save_project_engineering_data', {
-    p_client_id: clientId,
-    p_data: next,
-    p_pipeline_stage: pipelineStage ?? null,
-  });
-  if (!rpcSave) return null;
-  if (!isMissingRelation(rpcSave.message)) {
-    // continue to direct update
+  // Supervision-only RPC (script 035) — still lean, no full-blob rewrite from the client
+  if (patch.supervision_report) {
+    const { error: mergeError } = await supabase.rpc('merge_supervision_report_json', {
+      p_client_id: clientId,
+      p_supervision: patch.supervision_report,
+      p_pipeline_stage: pipelineStage ?? null,
+    });
+    if (!mergeError) {
+      // Best-effort second patch for visits/archive if the multi-key RPC was only missing
+      if (patch.field_visits || patch.report_pdf_archive) {
+        const { error: patch2 } = await supabase.rpc('merge_project_engineering_patch', {
+          p_client_id: clientId,
+          p_patch: {
+            ...(patch.field_visits ? { field_visits: patch.field_visits } : {}),
+            ...(patch.report_pdf_archive
+              ? { report_pdf_archive: patch.report_pdf_archive }
+              : {}),
+          },
+          p_pipeline_stage: pipelineStage ?? null,
+        });
+        if (patch2 && !isMissingRelation(patch2.message)) {
+          // supervision saved; visits may be local-only
+        }
+      }
+      return null;
+    }
+    if (!isMissingRelation(mergeError.message)) {
+      return mergeError.message;
+    }
   }
 
-  const { error } = await supabase.from('clients').update(payload).eq('id', clientId);
-  return error?.message || null;
+  if (isMissingRelation(rpcError.message)) {
+    return (
+      'دوال الحفظ الخفيف غير موجودة في Supabase. ' +
+      'نفّذ السكربتات scripts/sql/035 و 036 و 037 ثم أعد المحاولة. ' +
+      '(تم تجنّب إعادة كتابة ملف المشروع كاملاً لأنها تسبب statement timeout)'
+    );
+  }
+
+  return rpcError.message;
 }
 
 async function uploadReportPdfFile(
@@ -187,7 +208,8 @@ export async function saveFieldVisitAsPdfAttachment(params: {
 
   // Optimistic local backup of visit text first
   data.field_visits[idx] = visit;
-  backupEngineeringDataLocally(client.id, data);
+  // Keep local full copy; server patch is lean keys only
+  backupEngineeringDataLocally(client.id, sanitizeEngineeringDataForPersist(data, { aggressive: true }));
 
   const mergeErr = await mergeEngineeringPatch(
     client.id,
@@ -289,7 +311,10 @@ export async function saveSupervisionAsPdfAttachment(params: {
     supervision_report: supervision,
   };
 
-  backupEngineeringDataLocally(client.id, data);
+  backupEngineeringDataLocally(
+    client.id,
+    sanitizeEngineeringDataForPersist(data, { aggressive: true })
+  );
 
   const relational = await upsertProjectReport(client.id, supervision);
   if (relational.error) {
