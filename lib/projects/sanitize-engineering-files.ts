@@ -30,41 +30,59 @@ function slimSafetyFile(file: SafetyBlueprintFile | null): SafetyBlueprintFile |
   return file;
 }
 
+function dropDataUrl<T extends { dataUrl?: string | null }>(file: T): T {
+  return { ...file, dataUrl: null };
+}
+
+/**
+ * @param aggressive Drop ALL inline dataUrls (keep storagePath only).
+ * Use for supervision/visit lean saves to avoid Postgres statement timeout.
+ */
 export function sanitizeEngineeringDataForPersist(
-  data: ProjectEngineeringData
+  data: ProjectEngineeringData,
+  opts?: { aggressive?: boolean }
 ): ProjectEngineeringData {
+  const aggressive = Boolean(opts?.aggressive);
+  const slimPlan = aggressive
+    ? (f: PlanAttachmentFile) => dropDataUrl(slimPlanFile(f))
+    : slimPlanFile;
+  const slimSafety = aggressive
+    ? (f: SafetyBlueprintFile | null) => (f ? dropDataUrl(slimSafetyFile(f) || f) : null)
+    : slimSafetyFile;
+
   const design = data.design_center;
   const sheets = (design?.sheets || []).map((sheet) => ({
     ...sheet,
     versions: (sheet.versions || []).map((v) => ({
       ...v,
-      file: slimPlanFile(v.file),
+      file: slimPlan(v.file),
     })),
   }));
 
   const plan_attachments = {
-    engineering_drawings: (data.plan_attachments?.engineering_drawings || []).map(slimPlanFile),
-    hydraulic_calculations: (data.plan_attachments?.hydraulic_calculations || []).map(slimPlanFile),
+    engineering_drawings: (data.plan_attachments?.engineering_drawings || []).map(slimPlan),
+    hydraulic_calculations: (data.plan_attachments?.hydraulic_calculations || []).map(slimPlan),
   };
 
   const bp = data.safety_blueprints;
   const safety_blueprints = {
-    architectural_base: slimSafetyFile(bp?.architectural_base || null),
-    fire_fighting_file: slimSafetyFile(bp?.fire_fighting_file || null),
-    fire_alarm_file: slimSafetyFile(bp?.fire_alarm_file || null),
-    life_safety_file: slimSafetyFile(bp?.life_safety_file || null),
+    architectural_base: slimSafety(bp?.architectural_base || null),
+    fire_fighting_file: slimSafety(bp?.fire_fighting_file || null),
+    fire_alarm_file: slimSafety(bp?.fire_alarm_file || null),
+    life_safety_file: slimSafety(bp?.life_safety_file || null),
   };
 
   const building_plan = {
     ...data.building_plan,
     building_permit_file: data.building_plan.building_permit_file
-      ? slimPlanFile(data.building_plan.building_permit_file)
+      ? slimPlan(data.building_plan.building_permit_file)
       : data.building_plan.building_permit_file,
   };
 
   const slimSnap = <T extends { dataUrl?: string | null; storagePath?: string | null }>(
     snap: T
   ): T => {
+    if (aggressive) return { ...snap, dataUrl: null };
     if (snap.storagePath && snap.dataUrl && snap.dataUrl.length > 8_000) {
       return { ...snap, dataUrl: null };
     }
@@ -80,6 +98,43 @@ export function sanitizeEngineeringDataForPersist(
     pdf_snapshots: (v.pdf_snapshots || []).map(slimSnap),
     latest_pdf: v.latest_pdf ? slimSnap(v.latest_pdf) : v.latest_pdf,
   }));
+  const tech = data.technical_report;
+  const stripPhoto = <T extends { dataUrl?: string | null } | null | undefined>(p: T): T => {
+    if (!p || !aggressive) return p;
+    return { ...p, dataUrl: null };
+  };
+  const technical_report = aggressive
+    ? {
+        ...tech,
+        earth_photo: stripPhoto(tech.earth_photo),
+        facade_photo: stripPhoto(tech.facade_photo),
+        site_photo: stripPhoto(tech.site_photo),
+        code_proof_photos: (tech.code_proof_photos || []).map((p) => ({ ...p, dataUrl: null })),
+        code_proofs_by_key: Object.fromEntries(
+          Object.entries(tech.code_proofs_by_key || {}).map(([k, list]) => [
+            k,
+            (list || []).map((p) => ({ ...p, dataUrl: null })),
+          ])
+        ),
+        firefighting_items: (tech.firefighting_items || []).map((item) => ({
+          ...item,
+          photos: (item.photos || []).map((p) => ({ ...p, dataUrl: null })),
+        })),
+        ventilation_items: (tech.ventilation_items || []).map((item) => ({
+          ...item,
+          photos: (item.photos || []).map((p) => ({ ...p, dataUrl: null })),
+        })),
+        alarm_items: (tech.alarm_items || []).map((item) => ({
+          ...item,
+          photos: (item.photos || []).map((p) => ({ ...p, dataUrl: null })),
+        })),
+        exits_items: (tech.exits_items || []).map((item) => ({
+          ...item,
+          photos: (item.photos || []).map((p) => ({ ...p, dataUrl: null })),
+        })),
+      }
+    : tech;
+
   const supervision_report = data.supervision_report
     ? {
         ...data.supervision_report,
@@ -92,6 +147,7 @@ export function sanitizeEngineeringDataForPersist(
 
   return {
     ...data,
+    technical_report,
     building_plan,
     plan_attachments,
     safety_blueprints,

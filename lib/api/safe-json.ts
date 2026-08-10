@@ -12,11 +12,23 @@ export function isHtmlAsJsonError(message: string | null | undefined): boolean {
   return HTML_AS_JSON_ERROR_RE.test(message);
 }
 
+export function isStatementTimeoutError(message: string | null | undefined): boolean {
+  if (!message) return false;
+  return /statement timeout|canceling statement|57014/i.test(message);
+}
+
 export function humanizeFetchError(message: string): string {
   if (isHtmlAsJsonError(message)) {
     return (
       'واجهة البرمجة (/api) غير متاحة على هذا المضيف (مثل GitHub Pages). ' +
       'العمليات المحلية تعمل؛ للذكاء الاصطناعي وOCR والـ ZATCA انشر على استضافة Node/Vercel.'
+    );
+  }
+  if (isStatementTimeoutError(message)) {
+    return (
+      'انتهت مهلة قاعدة البيانات أثناء حفظ ملف المشروع (العمود project_engineering_data كبير جداً غالباً بسبب صور/مخططات مضمّنة). ' +
+      'نُفِّذت نسخة محلية. الحل: نفّذ في Supabase SQL Editor السكربتات 035 ثم 036 ثم 037، ' +
+      'ثم نفّذ: SELECT slim_project_engineering_data_urls(NULL); لتقليص الحجم، وأعد الحفظ.'
     );
   }
   return message;
