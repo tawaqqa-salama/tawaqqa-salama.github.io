@@ -99,38 +99,39 @@ export function sanitizeEngineeringDataForPersist(
     latest_pdf: v.latest_pdf ? slimSnap(v.latest_pdf) : v.latest_pdf,
   }));
   const tech = data.technical_report;
-  const stripPhoto = <T extends { dataUrl?: string | null } | null | undefined>(p: T): T => {
-    if (!p || !aggressive) return p;
-    return { ...p, dataUrl: null };
-  };
-  const technical_report = aggressive
+  /** TechnicalReportPhoto.dataUrl is `string | undefined` (not null). */
+  const stripTechPhoto = <T extends { dataUrl?: string }>(p: T): T => ({
+    ...p,
+    dataUrl: undefined,
+  });
+  const technical_report: ProjectEngineeringData['technical_report'] = aggressive
     ? {
         ...tech,
-        earth_photo: stripPhoto(tech.earth_photo),
-        facade_photo: stripPhoto(tech.facade_photo),
-        site_photo: stripPhoto(tech.site_photo),
-        code_proof_photos: (tech.code_proof_photos || []).map((p) => ({ ...p, dataUrl: null })),
+        earth_photo: tech.earth_photo ? stripTechPhoto(tech.earth_photo) : tech.earth_photo,
+        facade_photo: tech.facade_photo ? stripTechPhoto(tech.facade_photo) : tech.facade_photo,
+        site_photo: tech.site_photo ? stripTechPhoto(tech.site_photo) : tech.site_photo,
+        code_proof_photos: (tech.code_proof_photos || []).map(stripTechPhoto),
         code_proofs_by_key: Object.fromEntries(
           Object.entries(tech.code_proofs_by_key || {}).map(([k, list]) => [
             k,
-            (list || []).map((p) => ({ ...p, dataUrl: null })),
+            (list || []).map(stripTechPhoto),
           ])
         ),
         firefighting_items: (tech.firefighting_items || []).map((item) => ({
           ...item,
-          photos: (item.photos || []).map((p) => ({ ...p, dataUrl: null })),
+          photos: (item.photos || []).map(stripTechPhoto),
         })),
         ventilation_items: (tech.ventilation_items || []).map((item) => ({
           ...item,
-          photos: (item.photos || []).map((p) => ({ ...p, dataUrl: null })),
+          photos: (item.photos || []).map(stripTechPhoto),
         })),
         alarm_items: (tech.alarm_items || []).map((item) => ({
           ...item,
-          photos: (item.photos || []).map((p) => ({ ...p, dataUrl: null })),
+          photos: (item.photos || []).map(stripTechPhoto),
         })),
         exits_items: (tech.exits_items || []).map((item) => ({
           ...item,
-          photos: (item.photos || []).map((p) => ({ ...p, dataUrl: null })),
+          photos: (item.photos || []).map(stripTechPhoto),
         })),
       }
     : tech;
