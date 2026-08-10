@@ -65,6 +65,9 @@ export type EngineeringStudyImage = {
   image_order?: number;
   image_type?: ImageType;
   layout_type?: ImageLayoutType;
+  /** Sub-topic under the section (e.g. لوحة التحكم) — for in-flow placement */
+  subsection_ar?: string;
+  subsection_en?: string;
 };
 
 export type EngineeringStudySection = {
@@ -94,6 +97,8 @@ export type EngineeringStudyDocument = {
   report_date: string;
   project_name: string;
   client_code: string;
+  /** Owner / client display name for cover */
+  owner_name?: string;
   /** Cover / page-1 project facade */
   cover_image?: EngineeringStudyImage | null;
   sections: EngineeringStudySection[];

@@ -127,7 +127,16 @@ export function getItemPhotos(
 ): EngineeringStudyImage[] {
   const row = allSectionItems(report).find((i) => i.id === itemId);
   const title = itemTitle(itemId);
-  return photosToStudyImages(row?.photos, `صورة — ${title}`, `Photo — ${title}`);
+  return photosToStudyImages(row?.photos, title, title, {
+    imageType: 'system',
+  }).map((img, idx) => ({
+    ...img,
+    subsection_ar: title,
+    subsection_en: title,
+    image_order: idx + 1,
+    caption_ar: img.caption_ar === title || /^صورة/.test(img.caption_ar) ? title : img.caption_ar,
+    caption_en: img.caption_en === title || /^Photo/.test(img.caption_en) ? title : img.caption_en,
+  }));
 }
 
 /** Code-snippet proof photos keyed in the report (occ-class, risk-class, spr-*, …). */

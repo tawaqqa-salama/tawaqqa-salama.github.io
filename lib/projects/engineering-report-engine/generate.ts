@@ -768,6 +768,7 @@ export function generateEngineeringStudy(params: {
     report_number: params.report.outgoing_number || '—',
     report_date: params.report.report_date || new Date().toISOString().slice(0, 10),
     project_name: ctx.facility.business_name || params.client.name || '—',
+    owner_name: ctx.facility.owner_name || params.client.owner_name || params.client.name || '',
     client_code: params.client.client_code || '',
     cover_image,
     sections,

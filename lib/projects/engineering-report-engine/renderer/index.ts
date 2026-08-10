@@ -7,3 +7,8 @@ export {
   estimateSectionPages,
   sanitizeCaption,
 } from '@/lib/projects/engineering-report-engine/renderer/image-placement';
+export {
+  documentToFlowBlocks,
+  sectionToFlowBlocks,
+  estimateFlowTocPages,
+} from '@/lib/projects/engineering-report-engine/renderer/flow-document';
