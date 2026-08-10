@@ -11,9 +11,32 @@ import type {
 import { EMPTY_SUPERVISION_REPORT } from '@/lib/types/project-reports';
 import { getClientIdentitySnapshot } from '@/lib/projects/client-identity';
 
+/**
+ * Prefer an existing string (including mid-typing spaces). Do NOT trim here —
+ * trimming on every seed/onChange keystroke eats trailing spaces (e.g. "شركة " → "شركة").
+ * Apply trim only on blur / persist via trimSupervisionTextFields.
+ */
 function pick(existing: string | undefined | null, fallback: string): string {
-  const text = String(existing ?? '').trim();
-  return text || fallback;
+  if (existing === undefined || existing === null) return fallback;
+  // Empty string = unset (refresh clears fields to '' to re-pull fallbacks)
+  if (existing === '') return fallback;
+  return String(existing);
+}
+
+/** Trim free-text fields once — on save / blur — never during live typing. */
+export function trimSupervisionTextFields(report: SupervisionReport): SupervisionReport {
+  const trim = (v: string | undefined | null) => (v == null ? v : String(v).trim());
+  return {
+    ...report,
+    contractor_name: trim(report.contractor_name) || '',
+    branch_manager_name: trim(report.branch_manager_name) || '',
+    supervising_office: trim(report.supervising_office) || '',
+    safety_engineer_name: trim(report.safety_engineer_name) || '',
+    inspection_form_number: trim(report.inspection_form_number) || '',
+    study_number: trim(report.study_number) || '',
+    total_duration: trim(report.total_duration) || '',
+    notes: trim(report.notes) || '',
+  };
 }
 
 function emptyCell(): SupervisionProgressCell {

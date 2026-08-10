@@ -2,7 +2,6 @@
 
 import { useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
-import { supabase } from '@/lib/supabase';
 import { seedBuildingPlanFromClient } from '@/lib/projects/building-plan';
 import {
   parseProjectEngineeringData,
@@ -32,9 +31,9 @@ import {
   generateTaxInvoiceFromMilestone,
 } from '@/lib/invoices/tax-invoice-service';
 import { loadCompanyProfile, loadLocalCompanyProfile, type CompanyProfile } from '@/lib/company-profile';
-import { seedSupervisionReport } from '@/lib/projects/supervision-report';
+import { seedSupervisionReport, trimSupervisionTextFields } from '@/lib/projects/supervision-report';
 import { ensureCertificateNumber, ensureOutgoingNumber } from '@/lib/business/document-numbers';
-import { backupEngineeringDataLocally, updateClientSafe } from '@/lib/supabase/safe-client-write';
+import { backupEngineeringDataLocally } from '@/lib/supabase/safe-client-write';
 import { humanizeFetchError } from '@/lib/api/safe-json';
 import {
   WORKFLOW_STAGES,
@@ -45,6 +44,7 @@ import {
   type WorkflowStageId,
 } from '@/lib/projects/gated-pipeline';
 import { sanitizeEngineeringDataForPersist } from '@/lib/projects/sanitize-engineering-files';
+import { saveReportData } from '@/lib/projects/save-supervision-report';
 import type { ClientRecord } from '@/lib/types/client';
 import type { ProjectEngineeringData } from '@/lib/types/project-reports';
 import type { TaxInvoice } from '@/lib/types/tax-invoice';
@@ -155,7 +155,13 @@ export default function ProjectReportModal({
   const save = async (
     nextData: ProjectEngineeringData,
     successText: string,
-    options?: { issueOutgoing?: boolean; issueCertificate?: boolean; stayOpen?: boolean }
+    options?: {
+      issueOutgoing?: boolean;
+      issueCertificate?: boolean;
+      stayOpen?: boolean;
+      /** Batch-upsert supervision items + lean JSONB merge (avoids statement timeout) */
+      supervisionFocus?: boolean;
+    }
   ): Promise<boolean> => {
     setSaving(true);
     setMessage(null);
@@ -180,24 +186,31 @@ export default function ProjectReportModal({
         ...nextData.completion_certificate,
         ...(certificateNumber ? { certificate_number: certificateNumber } : {}),
       },
+      supervision_report: nextData.supervision_report
+        ? trimSupervisionTextFields(nextData.supervision_report)
+        : nextData.supervision_report,
     };
     // Drop bulky inline dataUrls when storagePath exists so JSONB stays lean and syncs across devices
     const stamped = sanitizeEngineeringDataForPersist(stampedRaw);
-    const { error } = await supabase
-      .from('clients')
-      .update({
-        project_engineering_data: stamped,
-        pipeline_stage: client.pipeline_stage === 'completed' ? 'completed' : 'projects',
-      })
-      .eq('id', client.id);
+    const pipelineStage = client.pipeline_stage === 'completed' ? 'completed' : 'projects';
 
+    // Optimistic UI: keep user input visible even if the server call times out / retries
     backupEngineeringDataLocally(client.id, stamped);
-    setSaving(false);
     setData(stamped);
 
-    if (error) {
+    const supervisionFocus =
+      options?.supervisionFocus === true || activeStage === 'inspections';
+
+    const result = await saveReportData(client.id, stamped, {
+      pipelineStage,
+      supervisionFocus,
+    });
+
+    setSaving(false);
+
+    if (result.error) {
       setMessage(
-        `تعذّر الحفظ على السيرفر — تم حفظ نسخة محلية: ${humanizeFetchError(error.message)}`
+        `تعذّر الحفظ على السيرفر — تم حفظ نسخة محلية: ${humanizeFetchError(result.error)}`
       );
       return false;
     }
@@ -572,8 +585,12 @@ export default function ProjectReportModal({
                     company={company}
                     saving={saving}
                     onChange={(supervision_report) => patch({ supervision_report })}
-                    onSave={() => save(data, 'تم حفظ تقرير الإشراف.', { stayOpen: true })}
-                  />
+                    onSave={() =>
+                      save(data, 'تم حفظ تقرير الإشراف.', {
+                        stayOpen: true,
+                        supervisionFocus: true,
+                      })
+                    }                  />
                 </div>
               )}
 
