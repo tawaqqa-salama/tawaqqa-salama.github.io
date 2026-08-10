@@ -10,7 +10,13 @@ import {
   seedProjectEngineeringFromClient,
 } from '@/lib/business/project-reports';
 import TechnicalReportSection from '@/components/projects/TechnicalReportSection';
+import FireProtectionDesignSection from '@/components/projects/FireProtectionDesignSection';
 import { printTechnicalReport } from '@/components/projects/TechnicalReportPrint';
+import {
+  mergeFireProtectionDesign,
+  shouldUseAdminUcReport,
+} from '@/lib/projects/admin-uc-report';
+import { EMPTY_FIRE_PROTECTION_DESIGN } from '@/lib/types/fire-protection-design';
 import EngineeringDeliverySection from '@/components/projects/EngineeringDeliverySection';
 import CdCoverLetterSection from '@/components/projects/CdCoverLetterSection';
 import FinalInspectionSection from '@/components/projects/FinalInspectionSection';
@@ -503,16 +509,44 @@ export default function ProjectReportModal({
               )}
 
               {activeStage === 'technical_report' && (
-                <TechnicalReportSection
-                  client={client}
-                  report={data.technical_report}
-                  saving={saving}
-                  onChange={(technical_report) => patch({ technical_report })}
-                  onSave={() =>
-                    save({ ...data }, 'تم حفظ التقرير الفني.', { issueOutgoing: true, stayOpen: true })
-                  }
-                  onPrint={() => void handlePrintTechnical()}
-                />
+                <div className="space-y-4">
+                  {shouldUseAdminUcReport({
+                    client,
+                    report: data.technical_report,
+                    engineeringData: data,
+                  }) ? (
+                    <div className="rounded-xl border border-emerald-200 bg-emerald-50 px-3 py-2 text-xs text-emerald-950 leading-relaxed">
+                      قالب التقرير النشط:{' '}
+                      <strong>التقرير الفني — مبنى إداري تحت الإنشاء</strong>
+                      . التقرير الأساسي ≈ 11 صفحة؛ المرفقات قسم منفصل. قيم المضخة والخزان أدناه
+                      تُحدَّث تلقائياً عند إعادة إصدار التقرير.
+                    </div>
+                  ) : null}
+                  <FireProtectionDesignSection
+                    design={mergeFireProtectionDesign(
+                      data.fire_protection_design || EMPTY_FIRE_PROTECTION_DESIGN
+                    )}
+                    highlighted={shouldUseAdminUcReport({
+                      client,
+                      report: data.technical_report,
+                      engineeringData: data,
+                    })}
+                    onChange={(fire_protection_design) => patch({ fire_protection_design })}
+                  />
+                  <TechnicalReportSection
+                    client={client}
+                    report={data.technical_report}
+                    saving={saving}
+                    onChange={(technical_report) => patch({ technical_report })}
+                    onSave={() =>
+                      save({ ...data }, 'تم حفظ التقرير الفني.', {
+                        issueOutgoing: true,
+                        stayOpen: true,
+                      })
+                    }
+                    onPrint={() => void handlePrintTechnical()}
+                  />
+                </div>
               )}
 
               {activeStage === 'inspections' && (

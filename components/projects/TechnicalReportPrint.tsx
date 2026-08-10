@@ -6,11 +6,15 @@ import {
   printEngineeringStudy,
   type ReportLocale,
 } from '@/lib/projects/engineering-report-engine';
+import {
+  printAdminUcTechnicalReport,
+  shouldUseAdminUcReport,
+} from '@/lib/projects/admin-uc-report';
 
 /**
- * Technical report print — now emits the full Engineering Study
- * (consultancy structure: cover, TOC, 29 content chapters + approvals).
- * Form UI / project list are unchanged.
+ * Technical report print router:
+ * - Administrative + under construction → independent Admin UC template
+ * - Otherwise → Nasaim-style engineering study
  */
 export function printTechnicalReport(params: {
   client: ClientRecord;
@@ -19,6 +23,22 @@ export function printTechnicalReport(params: {
   engineeringData?: ProjectEngineeringData | null;
   locale?: ReportLocale;
 }) {
+  if (
+    shouldUseAdminUcReport({
+      client: params.client,
+      report: params.report,
+      engineeringData: params.engineeringData,
+    })
+  ) {
+    printAdminUcTechnicalReport({
+      client: params.client,
+      report: params.report,
+      company: params.company,
+      engineeringData: params.engineeringData,
+    });
+    return;
+  }
+
   const document = generateEngineeringStudy({
     client: params.client,
     report: params.report,

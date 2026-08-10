@@ -49,6 +49,14 @@ export const ACTIVITY_RULES: Record<string, ActivityRule> = {
     occupancy: 'business',
     ekb_activity_code: 'ACT-COMM',
   },
+  /** Alias used by admin-UC technical report template */
+  administrative: {
+    minLandArea: 150,
+    maxFloors: 20,
+    label: 'مبنى إداري',
+    occupancy: 'business',
+    ekb_activity_code: 'ACT-COMM',
+  },
   school: {
     minLandArea: 400,
     maxFloors: 4,
