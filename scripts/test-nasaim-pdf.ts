@@ -245,7 +245,7 @@ const foundCodes = codeWords.filter((w) => all.includes(w) || html.includes(w));
 const corruptHits = all.match(corruptRe) || [];
 const forbiddenHits = forbidden.filter((f) => all.includes(f) || html.includes(f));
 const bridgeInHtml = html.includes('تُراجع المتطلبات الهندسية ذات الصلة');
-const detectorScope = html.includes('يتم توزيع كواشف الحريق');
+const detectorScope = html.includes('يتم توزيع كواشف الدخان والحرارة') || html.includes('يتم توزيع كواشف الحريق');
 const hasUnit = html.includes('class="unit keep"');
 const hasFooterUrl = /tawaqqa-salama\.github\.io\/projects\/file/.test(html);
 

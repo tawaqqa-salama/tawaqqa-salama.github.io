@@ -95,11 +95,14 @@ describe('Nasaim report pipeline rebuild', () => {
     expect(placed[1].image_order).toBe(2);
   });
 
-  it('does not use Unicode isolates that corrupt Arabic PDF text', () => {
-    const html = formatReportTextHtml('موقع المبنى وفق NFPA72 وSBC801');
+  it('does not inject dir=ltr / Unicode isolates that corrupt Arabic PDF text', () => {
+    const html = formatReportTextHtml('موقع المبنى وفق NFPA72 وSBC801 والمتطلبات والمراجع');
     expect(html).toContain('NFPA 72');
     expect(html).toContain('SBC 801');
-    expect(html).toContain('class="ltr"');
+    expect(html).toContain('المتطلبات');
+    expect(html).toContain('المراجع');
+    expect(html).not.toContain('dir="ltr"');
+    expect(html).not.toContain('class="ltr"');
     expect(html).not.toContain('\u2066');
     expect(html).not.toContain('\u2069');
     expect(html).toContain('موقع المبنى');
@@ -186,7 +189,8 @@ describe('Nasaim report pipeline rebuild', () => {
     const detectorScope = flat.some(
       (b) =>
         b.kind === 'paragraph' &&
-        b.text.includes('يتم توزيع كواشف الحريق في الفراغات')
+        (b.text.includes('يتم توزيع كواشف الدخان والحرارة') ||
+          b.text.includes('يتم توزيع كواشف الحريق'))
     );
     expect(detectorScope).toBe(true);
 
@@ -220,7 +224,9 @@ describe('Nasaim report pipeline rebuild', () => {
     expect(html).not.toContain('محرك القرار');
     expect(html).not.toContain('Decision Engine');
     expect(html).not.toContain('تُراجع المتطلبات الهندسية ذات الصلة');
-    expect(html).toContain('يتم توزيع كواشف الحريق');
+    expect(html).not.toContain('تُراجع متطلبات هذا البند وفق طبيعة الإشغال وخصائص المبنى');
+    expect(html).not.toContain('فيما يتعلق بـ');
+    expect(html).toMatch(/يتم توزيع كواشف (الدخان والحرارة|الحريق)/);
     expect(html).toContain('شكل (');
     expect(html).toContain('الاعتماد والتوقيعات');
     expect((html.match(/class="page /g) || []).length).toBe(2);

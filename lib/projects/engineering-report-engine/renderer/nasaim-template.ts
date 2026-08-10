@@ -208,8 +208,8 @@ function flowCss(doc: EngineeringStudyDocument, company: CompanyProfile): string
       font-feature-settings: "liga" 0, "clig" 0, "calt" 0, "dlig" 0;
       text-rendering: optimizeSpeed;
     }
-    /* dir=ltr on the element is enough — avoid unicode-bidi tricks that break PDF text extract */
-    .ltr { direction: ltr; display: inline; unicode-bidi: normal; }
+    /* Never use dir=ltr / unicode-bidi on mixed Arabic+Latin — Chrome PDF isolates corrupt extraction */
+    .ltr { direction: inherit; display: inline; unicode-bidi: normal; }
 
     .page {
       box-sizing: border-box;

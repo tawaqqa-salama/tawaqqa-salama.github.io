@@ -13,10 +13,8 @@ export type ItemProse = {
 };
 
 const DEFAULT_PROSE: ItemProse = {
-  scope_ar:
-    'تُراجع متطلبات هذا البند وفق طبيعة الإشغال وخصائص المبنى والكودات المعتمدة، مع توثيق الحالة القائمة من بيانات الملف دون افتراض تجهيزات غير موثّقة.',
-  scope_en:
-    'Requirements for this item are reviewed against occupancy, building attributes, and adopted codes, documenting the as-built condition from file data without assuming undocumented equipment.',
+  scope_ar: '',
+  scope_en: '',
   missing_ar:
     'البيانات المتاحة حاليًا لا تكفي لإجراء تحقق تفصيلي لهذا البند. ولا يتم افتراض أي قيمة أو تجهيز غير موثق في ملف المشروع.',
   missing_en:
@@ -126,9 +124,9 @@ export const ITEM_ENGINEERING_PROSE: Record<string, ItemProse> = {
   },
   al_detectors: {
     scope_ar:
-      'يتم توزيع كواشف الحريق في الفراغات وفق طبيعة الإشغال والخصائص الهندسية للمبنى ومتطلبات الكود المعتمد، مع مراعاة تغطية الفراغات ومسافات التوزيع وإمكانية الوصول للصيانة.',
+      'يتم توزيع كواشف الدخان والحرارة وفق طبيعة الإشغال ومتطلبات الكود المعتمد، مع مراعاة تغطية الفراغات ومسافات التوزيع وإمكانية الوصول لأعمال الصيانة.',
     scope_en:
-      'Fire detectors are distributed per occupancy, building geometry, and the adopted code, considering coverage, spacing, and maintainability.',
+      'Smoke and heat detectors are distributed per occupancy and the adopted code, considering coverage, spacing, and access for maintenance.',
     missing_ar:
       'لا تتوفر ضمن بيانات المشروع الحالية مخططات توزيع الكواشف أو بيانات المسافات اللازمة للتحقق التفصيلي من التغطية. ولا يتم افتراض هذه القيم.',
     missing_en:
