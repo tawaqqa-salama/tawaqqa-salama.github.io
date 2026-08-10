@@ -51,6 +51,11 @@ import {
 } from '@/lib/projects/gated-pipeline';
 import { sanitizeEngineeringDataForPersist } from '@/lib/projects/sanitize-engineering-files';
 import { saveReportData } from '@/lib/projects/save-supervision-report';
+import {
+  openReportPdfSnapshot,
+  saveFieldVisitAsPdfAttachment,
+  saveSupervisionAsPdfAttachment,
+} from '@/lib/projects/save-report-pdf';
 import type { ClientRecord } from '@/lib/types/client';
 import type { ProjectEngineeringData } from '@/lib/types/project-reports';
 import type { TaxInvoice } from '@/lib/types/tax-invoice';
@@ -204,8 +209,9 @@ export default function ProjectReportModal({
     backupEngineeringDataLocally(client.id, stamped);
     setData(stamped);
 
-    const supervisionFocus =
-      options?.supervisionFocus === true || activeStage === 'inspections';
+    // Do NOT treat the whole inspections stage as supervision-only merge —
+    // that previously dropped field_visits updates when lean RPC succeeded.
+    const supervisionFocus = options?.supervisionFocus === true;
 
     const result = await saveReportData(client.id, stamped, {
       pipelineStage,
@@ -551,6 +557,11 @@ export default function ProjectReportModal({
 
               {activeStage === 'inspections' && (
                 <div className="space-y-6">
+                  <div className="rounded-xl border border-sky-100 bg-sky-50 px-3 py-2 text-xs text-sky-950 leading-relaxed">
+                    كل زيارة تُحفظ كـ <strong>PDF ثابت مستقل</strong> في مرفقات المشروع. عدد
+                    الزيارات = عدد تقارير الزيارة. تقرير الإشراف يُصدَّر أيضاً كـ PDF عند الحفظ
+                    دون استبدال تقارير الزيارات السابقة.
+                  </div>
                   <div className="space-y-4">
                     <h3 className="text-sm font-bold">الزيارات الميدانية</h3>
                     {data.field_visits.map((visit) => (
@@ -610,6 +621,94 @@ export default function ProjectReportModal({
                           }}
                           className="w-full p-2.5 border rounded-xl text-sm mt-3"
                         />
+                        <div className="mt-3 flex flex-wrap gap-2">
+                          <button
+                            type="button"
+                            disabled={saving}
+                            onClick={() => {
+                              void (async () => {
+                                setSaving(true);
+                                setMessage(null);
+                                const pipelineStage =
+                                  client.pipeline_stage === 'completed' ? 'completed' : 'projects';
+                                const result = await saveFieldVisitAsPdfAttachment({
+                                  client,
+                                  data,
+                                  visitNumber: visit.visit_number,
+                                  company,
+                                  pipelineStage,
+                                });
+                                setData(result.data);
+                                setSaving(false);
+                                if (result.error) {
+                                  setMessage(
+                                    `تعذّر حفظ الزيارة — تم حفظ نسخة محلية: ${humanizeFetchError(result.error)}`
+                                  );
+                                  return;
+                                }
+                                const baseMsg = result.snapshot
+                                  ? `تم حفظ الزيارة #${visit.visit_number} وإصدار PDF كمرفق ثابت.`
+                                  : `تم حفظ الزيارة #${visit.visit_number}.`;
+                                setMessage(
+                                  result.warning ? `${baseMsg} ${result.warning}` : baseMsg
+                                );
+                                requestAnimationFrame(() => onUpdated());
+                              })();
+                            }}
+                            className="px-3 py-2 rounded-xl bg-[#1f4d3a] text-white text-sm font-semibold disabled:opacity-60"
+                          >
+                            {saving ? 'جاري الحفظ...' : 'حفظ الزيارة كـ PDF مرفق'}
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => {
+                              void import('@/components/projects/FieldVisitReportPrint').then(
+                                ({ printFieldVisitReport }) =>
+                                  printFieldVisitReport({
+                                    client,
+                                    visit,
+                                    company,
+                                    totalVisits: data.field_visits.length,
+                                  })
+                              );
+                            }}
+                            className="px-3 py-2 rounded-xl border border-gray-300 bg-white text-sm font-semibold"
+                          >
+                            معاينة / طباعة
+                          </button>
+                        </div>
+                        {(visit.pdf_snapshots || []).length > 0 ? (
+                          <div className="mt-3 rounded-xl border border-emerald-100 bg-white px-3 py-2">
+                            <p className="text-xs font-bold text-emerald-900 mb-1">
+                              مرفقات PDF لهذه الزيارة ({visit.pdf_snapshots!.length})
+                            </p>
+                            <ul className="space-y-1">
+                              {[...visit.pdf_snapshots!]
+                                .slice()
+                                .reverse()
+                                .map((snap) => (
+                                  <li key={snap.id} className="flex items-center justify-between gap-2 text-xs">
+                                    <span className="truncate text-gray-700">
+                                      {snap.fileName} · {new Date(snap.created_at).toLocaleString('ar-SA')}
+                                    </span>
+                                    <button
+                                      type="button"
+                                      className="shrink-0 text-[#1f4d3a] font-semibold"
+                                      onClick={() => {
+                                        void openReportPdfSnapshot(snap).catch((err) =>
+                                          setMessage(
+                                            err instanceof Error ? err.message : 'تعذر فتح المرفق'
+                                          )
+                                        );
+                                      }}
+                                    >
+                                      فتح
+                                    </button>
+                                  </li>
+                                ))}
+                            </ul>
+                          </div>
+                        ) : null}
                       </div>
                     ))}
                   </div>
@@ -619,12 +718,73 @@ export default function ProjectReportModal({
                     company={company}
                     saving={saving}
                     onChange={(supervision_report) => patch({ supervision_report })}
-                    onSave={() =>
-                      save(data, 'تم حفظ تقرير الإشراف.', {
-                        stayOpen: true,
-                        supervisionFocus: true,
-                      })
-                    }                  />
+                    onSave={() => {
+                      void (async () => {
+                        setSaving(true);
+                        setMessage(null);
+                        const pipelineStage =
+                          client.pipeline_stage === 'completed' ? 'completed' : 'projects';
+                        const result = await saveSupervisionAsPdfAttachment({
+                          client,
+                          data,
+                          company,
+                          pipelineStage,
+                        });
+                        setData(result.data);
+                        setSaving(false);
+                        if (result.error) {
+                          setMessage(
+                            `تعذّر حفظ تقرير الإشراف — تم حفظ نسخة محلية: ${humanizeFetchError(result.error)}`
+                          );
+                          return;
+                        }
+                        setMessage(
+                          result.snapshot
+                            ? 'تم حفظ تقرير الإشراف وإصدار PDF ثابت كمرفق (دون حذف تقارير الزيارات).'
+                            : `تم حفظ تقرير الإشراف.${result.warning ? ` ${result.warning}` : ''}`
+                        );
+                        requestAnimationFrame(() => onUpdated());
+                      })();
+                    }}
+                  />
+                  {(data.report_pdf_archive || []).length > 0 ? (
+                    <div className="rounded-xl border border-gray-200 bg-white p-4">
+                      <h4 className="text-sm font-bold text-gray-900 mb-2">
+                        أرشيف تقارير PDF للمشروع ({data.report_pdf_archive!.length})
+                      </h4>
+                      <ul className="space-y-1.5">
+                        {[...data.report_pdf_archive!]
+                          .slice()
+                          .reverse()
+                          .slice(0, 40)
+                          .map((snap) => (
+                            <li
+                              key={snap.id}
+                              className="flex items-center justify-between gap-2 text-xs border-b border-gray-50 pb-1"
+                            >
+                              <span className="truncate">
+                                <span className="font-semibold text-emerald-800">{snap.title_ar}</span>
+                                {' — '}
+                                {snap.fileName}
+                              </span>
+                              <button
+                                type="button"
+                                className="shrink-0 text-[#1f4d3a] font-semibold"
+                                onClick={() => {
+                                  void openReportPdfSnapshot(snap).catch((err) =>
+                                    setMessage(
+                                      err instanceof Error ? err.message : 'تعذر فتح المرفق'
+                                    )
+                                  );
+                                }}
+                              >
+                                فتح PDF
+                              </button>
+                            </li>
+                          ))}
+                      </ul>
+                    </div>
+                  ) : null}
                 </div>
               )}
 
@@ -822,7 +982,36 @@ export default function ProjectReportModal({
                   <button
                     type="button"
                     disabled={saving}
-                    onClick={() => void save(data, 'تم حفظ بيانات المرحلة.', { stayOpen: true })}
+                    onClick={() => {
+                      if (activeStage === 'inspections') {
+                        void (async () => {
+                          setSaving(true);
+                          setMessage(null);
+                          const pipelineStage =
+                            client.pipeline_stage === 'completed' ? 'completed' : 'projects';
+                          const result = await saveSupervisionAsPdfAttachment({
+                            client,
+                            data,
+                            company,
+                            pipelineStage,
+                          });
+                          setData(result.data);
+                          setSaving(false);
+                          if (result.error) {
+                            setMessage(
+                              `تعذّر الحفظ — تم حفظ نسخة محلية: ${humanizeFetchError(result.error)}`
+                            );
+                            return;
+                          }
+                          setMessage(
+                            'تم حفظ مرحلة الإشراف/الزيارات. استخدم «حفظ الزيارة كـ PDF» لكل زيارة لإصدار مرفقها.'
+                          );
+                          requestAnimationFrame(() => onUpdated());
+                        })();
+                        return;
+                      }
+                      void save(data, 'تم حفظ بيانات المرحلة.', { stayOpen: true });
+                    }}
                     className="px-4 py-2.5 rounded-xl border text-sm font-semibold disabled:opacity-50"
                   >
                     {saving ? 'جاري الحفظ...' : 'حفظ المرحلة'}

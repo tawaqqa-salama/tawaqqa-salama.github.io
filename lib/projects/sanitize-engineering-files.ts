@@ -62,6 +62,34 @@ export function sanitizeEngineeringDataForPersist(
       : data.building_plan.building_permit_file,
   };
 
+  const slimSnap = <T extends { dataUrl?: string | null; storagePath?: string | null }>(
+    snap: T
+  ): T => {
+    if (snap.storagePath && snap.dataUrl && snap.dataUrl.length > 8_000) {
+      return { ...snap, dataUrl: null };
+    }
+    if (snap.dataUrl && snap.dataUrl.length > MAX_PERSISTED_DATA_URL_CHARS) {
+      return { ...snap, dataUrl: null };
+    }
+    return snap;
+  };
+
+  const report_pdf_archive = (data.report_pdf_archive || []).map(slimSnap);
+  const field_visits = (data.field_visits || []).map((v) => ({
+    ...v,
+    pdf_snapshots: (v.pdf_snapshots || []).map(slimSnap),
+    latest_pdf: v.latest_pdf ? slimSnap(v.latest_pdf) : v.latest_pdf,
+  }));
+  const supervision_report = data.supervision_report
+    ? {
+        ...data.supervision_report,
+        pdf_snapshots: (data.supervision_report.pdf_snapshots || []).map(slimSnap),
+        latest_pdf: data.supervision_report.latest_pdf
+          ? slimSnap(data.supervision_report.latest_pdf)
+          : data.supervision_report.latest_pdf,
+      }
+    : data.supervision_report;
+
   return {
     ...data,
     building_plan,
@@ -71,6 +99,9 @@ export function sanitizeEngineeringDataForPersist(
       ...design,
       sheets,
     },
+    report_pdf_archive,
+    field_visits,
+    supervision_report,
   };
 }
 

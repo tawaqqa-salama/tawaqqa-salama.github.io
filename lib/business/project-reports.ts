@@ -75,7 +75,13 @@ export function parseProjectEngineeringData(raw: ClientRecord['project_engineeri
     },
     boq: { ...EMPTY_PROJECT_ENGINEERING_DATA.boq, items: data.boq?.items || [], ...data.boq },
     timeline: { ...EMPTY_PROJECT_ENGINEERING_DATA.timeline, milestones: data.timeline?.milestones || [], ...data.timeline },
-    field_visits: Array.isArray(data.field_visits) ? data.field_visits : [],
+    field_visits: Array.isArray(data.field_visits)
+      ? data.field_visits.map((v) => ({
+          ...v,
+          pdf_snapshots: Array.isArray(v.pdf_snapshots) ? v.pdf_snapshots : [],
+          latest_pdf: v.latest_pdf || null,
+        }))
+      : [],
     technical_notes: {
       ...EMPTY_PROJECT_ENGINEERING_DATA.technical_notes,
       deficiencies: data.technical_notes?.deficiencies || [],
@@ -105,10 +111,15 @@ export function parseProjectEngineeringData(raw: ClientRecord['project_engineeri
       ...data.supervision_report,
       months,
       tasks,
+      pdf_snapshots: Array.isArray(data.supervision_report?.pdf_snapshots)
+        ? data.supervision_report!.pdf_snapshots
+        : [],
+      latest_pdf: data.supervision_report?.latest_pdf || null,
     },
     fire_protection_design: data.fire_protection_design
       ? mergeFireProtectionDesign(data.fire_protection_design)
       : { ...EMPTY_FIRE_PROTECTION_DESIGN },
+    report_pdf_archive: Array.isArray(data.report_pdf_archive) ? data.report_pdf_archive : [],
     workflow: { ...(data.workflow || {}) },
   };
 }

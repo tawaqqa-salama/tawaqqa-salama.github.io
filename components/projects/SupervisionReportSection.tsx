@@ -528,16 +528,34 @@ export default function SupervisionReportSection({
           disabled={saving}
           className="px-4 py-2 bg-indigo-600 text-white rounded-xl text-sm disabled:opacity-50"
         >
-          {saving ? 'جاري الحفظ...' : 'حفظ تقرير الإشراف'}
+          {saving ? 'جاري الحفظ...' : 'حفظ تقرير الإشراف كـ PDF مرفق'}
         </button>
         <button
           type="button"
           onClick={handlePrint}
           className="px-4 py-2 rounded-xl border border-[#1f4d3a] text-[#1f4d3a] text-sm font-semibold"
         >
-          طباعة التقرير (PDF)
+          معاينة / طباعة
         </button>
       </div>
+      {(report.pdf_snapshots || []).length > 0 ? (
+        <div className="rounded-xl border border-indigo-100 bg-indigo-50/40 px-3 py-2">
+          <p className="text-xs font-bold text-indigo-950 mb-1">
+            إصدارات PDF المحفوظة لتقرير الإشراف ({report.pdf_snapshots!.length})
+          </p>
+          <ul className="space-y-1">
+            {[...report.pdf_snapshots!]
+              .slice()
+              .reverse()
+              .slice(0, 12)
+              .map((snap) => (
+                <li key={snap.id} className="text-xs text-gray-700 truncate">
+                  {snap.fileName} · {new Date(snap.created_at).toLocaleString('ar-SA')}
+                </li>
+              ))}
+          </ul>
+        </div>
+      ) : null}
     </div>
   );
 }
