@@ -173,17 +173,31 @@ const generators: Partial<Record<EngineeringStudySectionId, Gen>> = {
 
     const images: EngineeringStudyImage[] = [];
     if (report.earth_photo?.dataUrl) {
+      const cap = report.earth_photo.caption || '';
+      const fileLike = /\.(jpe?g|png|webp|gif|heic)$/i.test(cap) || /^IMG_/i.test(cap);
       images.push({
         src: report.earth_photo.dataUrl,
-        caption_ar: report.earth_photo.caption || 'صورة الموقع من الخريطة (Google Earth)',
-        caption_en: report.earth_photo.caption || 'Site map / Google Earth image',
+        caption_ar: !cap || fileLike ? 'صورة الموقع من الخريطة (Google Earth)' : cap,
+        caption_en: !cap || fileLike ? 'Site map / Google Earth image' : cap,
+        image_id: report.earth_photo.id || 'site-map',
+        section_id: 'site_information',
+        image_order: 1,
+        image_type: 'site_map',
+        layout_type: 'full_width',
       });
     }
     if (report.site_photo?.dataUrl) {
+      const cap = report.site_photo.caption || '';
+      const fileLike = /\.(jpe?g|png|webp|gif|heic)$/i.test(cap) || /^IMG_/i.test(cap);
       images.push({
         src: report.site_photo.dataUrl,
-        caption_ar: report.site_photo.caption || 'صورة عامة من الموقع',
-        caption_en: report.site_photo.caption || 'General site photograph',
+        caption_ar: !cap || fileLike ? 'صورة عامة من الموقع' : cap,
+        caption_en: !cap || fileLike ? 'General site photograph' : cap,
+        image_id: report.site_photo.id || 'site-photo',
+        section_id: 'site_information',
+        image_order: 2,
+        image_type: 'site',
+        layout_type: 'single',
       });
     }
 
@@ -713,7 +727,12 @@ export function generateEngineeringStudy(params: {
     const mergedImages = [
       ...existing,
       ...fromItems.filter((img) => img.src && !seen.has(img.src)),
-    ];
+    ].map((img, idx) => ({
+      ...img,
+      section_id: meta.id,
+      image_id: img.image_id || `${meta.id}-${idx + 1}`,
+      image_order: img.image_order ?? idx + 1,
+    }));
     return {
       id: meta.id,
       number: meta.number,
@@ -726,11 +745,18 @@ export function generateEngineeringStudy(params: {
   });
 
   const facadeSrc = params.report.facade_photo?.dataUrl || '';
+  const facadeCaptionRaw = params.report.facade_photo?.caption || '';
+  const facadeLooksFile = /\.(jpe?g|png|webp|gif|heic)$/i.test(facadeCaptionRaw) || /^IMG_/i.test(facadeCaptionRaw);
   const cover_image: EngineeringStudyImage | null = facadeSrc
     ? {
         src: facadeSrc,
-        caption_ar: params.report.facade_photo?.caption || 'صورة واجهة المشروع',
-        caption_en: params.report.facade_photo?.caption || 'Project facade photograph',
+        caption_ar: !facadeCaptionRaw || facadeLooksFile ? 'صورة واجهة المشروع' : facadeCaptionRaw,
+        caption_en:
+          !facadeCaptionRaw || facadeLooksFile ? 'Project facade photograph' : facadeCaptionRaw,
+        image_id: params.report.facade_photo?.id || 'cover-facade',
+        image_type: 'facade',
+        image_order: 1,
+        layout_type: 'full_width',
       }
     : null;
 

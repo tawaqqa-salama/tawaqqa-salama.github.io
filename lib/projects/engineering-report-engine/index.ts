@@ -16,3 +16,9 @@ export {
   buildEngineeringStudyHtml,
   printEngineeringStudy,
 } from '@/lib/projects/engineering-report-engine/print-html';
+export {
+  renderEngineeringReport,
+  buildNasaimReportHtml,
+  placeSectionImages,
+  buildDynamicTocPages,
+} from '@/lib/projects/engineering-report-engine/renderer';

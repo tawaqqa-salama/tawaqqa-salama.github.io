@@ -92,18 +92,29 @@ function itemTitle(itemId: string): string {
 export function photosToStudyImages(
   photos: TechnicalReportPhoto[] | null | undefined,
   fallbackCaptionAr: string,
-  fallbackCaptionEn?: string
+  fallbackCaptionEn?: string,
+  opts?: { sectionId?: EngineeringStudySectionId; imageType?: EngineeringStudyImage['image_type'] }
 ): EngineeringStudyImage[] {
   if (!photos?.length) return [];
   const out: EngineeringStudyImage[] = [];
+  let order = 0;
   for (const photo of photos) {
     const src = String(photo?.dataUrl || '').trim();
     if (!src) continue;
+    order += 1;
     const caption = String(photo.caption || '').trim();
+    const looksLikeFile = /\.(jpe?g|png|webp|gif|heic)$/i.test(caption) || /^IMG_/i.test(caption);
+    const caption_ar = !caption || looksLikeFile ? fallbackCaptionAr : caption;
+    const caption_en =
+      !caption || looksLikeFile ? fallbackCaptionEn || fallbackCaptionAr : caption;
     out.push({
       src,
-      caption_ar: caption || fallbackCaptionAr,
-      caption_en: caption || fallbackCaptionEn || fallbackCaptionAr,
+      caption_ar,
+      caption_en,
+      image_id: photo.id || `${opts?.sectionId || 'img'}-${order}`,
+      section_id: opts?.sectionId,
+      image_order: order,
+      image_type: opts?.imageType,
     });
   }
   return out;
@@ -217,13 +228,36 @@ export function collectSectionPhotos(
     }
   };
   for (const itemId of cfg.items || []) {
-    push(getItemPhotos(report, itemId));
+    push(
+      getItemPhotos(report, itemId).map((img, idx) => ({
+        ...img,
+        section_id: sectionId,
+        image_type: img.image_type || 'system',
+        image_order: img.image_order ?? idx + 1,
+      }))
+    );
   }
   for (const proof of cfg.proofKeys || []) {
-    push(getProofPhotos(report, proof.key, proof.caption_ar, proof.caption_en));
+    push(
+      getProofPhotos(report, proof.key, proof.caption_ar, proof.caption_en).map((img, idx) => ({
+        ...img,
+        section_id: sectionId,
+        image_type: 'code_proof' as const,
+        layout_type: 'full_width' as const,
+        image_order: img.image_order ?? idx + 1,
+      }))
+    );
   }
   if (cfg.includeZoneProofs) {
-    push(getZoneProofPhotos(report));
+    push(
+      getZoneProofPhotos(report).map((img, idx) => ({
+        ...img,
+        section_id: sectionId,
+        image_type: 'code_proof' as const,
+        layout_type: 'full_width' as const,
+        image_order: img.image_order ?? idx + 1,
+      }))
+    );
   }
   // Also attach spr-* / sup-* proof cards when present on sprinkler / special sections
   if (sectionId === 'sprinkler_system' || sectionId === 'electrical_safety') {

@@ -42,10 +42,29 @@ export type EngineeringStudyParagraph = {
   incomplete?: boolean;
 };
 
+export type ImageLayoutType = 'single' | 'double' | 'full_width' | 'gallery';
+
+export type ImageType =
+  | 'facade'
+  | 'site'
+  | 'site_map'
+  | 'system'
+  | 'code_proof'
+  | 'drawing'
+  | 'other';
+
 export type EngineeringStudyImage = {
   src: string;
   caption_ar: string;
   caption_en: string;
+  /** Stable id for placement engine */
+  image_id?: string;
+  /** Owning study section */
+  section_id?: EngineeringStudySectionId;
+  /** Sort key within section (1-based) */
+  image_order?: number;
+  image_type?: ImageType;
+  layout_type?: ImageLayoutType;
 };
 
 export type EngineeringStudySection = {
