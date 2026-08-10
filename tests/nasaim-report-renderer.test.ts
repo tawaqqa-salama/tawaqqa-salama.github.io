@@ -213,7 +213,8 @@ describe('Nasaim report pipeline rebuild', () => {
     expect(html).toContain('cover-box');
     expect(html).toContain('Noto Naskh Arabic');
     expect(html).not.toContain('Traditional Arabic');
-    expect(html).toContain('font-variant-ligatures: none');
+    expect(html).toContain('font-variant-ligatures: common-ligatures');
+    expect(html).not.toContain('font-variant-ligatures: none');
     expect(html).not.toContain('IMG_1000.jpeg');
     expect(html).not.toContain('IMG_999.jpeg');
     expect(html).not.toContain('/projects/file/?id=');

@@ -53,7 +53,9 @@ export default function DocumentPreviewSheet() {
 
   const printNow = () => {
     // Prefer a same-origin hidden iframe — browsers often block window.open() popups.
-    const runPrint = (doc: Document, win: Window) => {
+    // Use a blob: URL so Chrome print headers/footers do NOT stamp the project page
+    // (https://tawaqqa-salama.github.io/projects/file/?id=...).
+    const runPrint = (doc: Document, win: Window, cleanup?: () => void) => {
       try {
         doc.title = ' ';
       } catch {
@@ -66,6 +68,7 @@ export default function DocumentPreviewSheet() {
           /* ignore */
         }
         win.print();
+        cleanup?.();
       };
       if (doc.fonts?.ready) {
         void doc.fonts.ready.then(() => setTimeout(trigger, 120));
@@ -75,29 +78,39 @@ export default function DocumentPreviewSheet() {
     };
 
     try {
+      const blob = new Blob([payload.html], { type: 'text/html;charset=utf-8' });
+      const blobUrl = URL.createObjectURL(blob);
       const iframe = document.createElement('iframe');
       iframe.setAttribute('aria-hidden', 'true');
       iframe.style.cssText =
         'position:fixed;right:0;bottom:0;width:0;height:0;border:0;opacity:0;pointer-events:none;';
       document.body.appendChild(iframe);
-      const idoc = iframe.contentDocument;
-      const iwin = iframe.contentWindow;
-      if (!idoc || !iwin) {
-        document.body.removeChild(iframe);
-        throw new Error('iframe unavailable');
-      }
-      idoc.open();
-      idoc.write(payload.html);
-      idoc.close();
-      runPrint(idoc, iwin);
-      // Cleanup after print dialog interaction settles
-      setTimeout(() => {
+
+      const cleanup = () => {
         try {
-          document.body.removeChild(iframe);
+          URL.revokeObjectURL(blobUrl);
         } catch {
           /* ignore */
         }
-      }, 60_000);
+        setTimeout(() => {
+          try {
+            document.body.removeChild(iframe);
+          } catch {
+            /* ignore */
+          }
+        }, 60_000);
+      };
+
+      iframe.onload = () => {
+        const idoc = iframe.contentDocument;
+        const iwin = iframe.contentWindow;
+        if (!idoc || !iwin) {
+          cleanup();
+          return;
+        }
+        runPrint(idoc, iwin, cleanup);
+      };
+      iframe.src = blobUrl;
       return;
     } catch {
       // Fallback: popup window (may be blocked)

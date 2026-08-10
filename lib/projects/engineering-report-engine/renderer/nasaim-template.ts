@@ -203,12 +203,12 @@ function flowCss(doc: EngineeringStudyDocument, company: CompanyProfile): string
       line-height: 1.7;
       -webkit-print-color-adjust: exact;
       print-color-adjust: exact;
-      /* Disable Arabic ligatures so PDF ToUnicode maps 1:1 (fixes ا5/لام-ألف corruption on copy) */
-      font-variant-ligatures: none;
-      font-feature-settings: "liga" 0, "clig" 0, "calt" 0, "dlig" 0;
-      text-rendering: optimizeSpeed;
+      /* Full Arabic shaping via embedded Unicode font — do not disable ligatures */
+      font-variant-ligatures: common-ligatures;
+      font-feature-settings: "liga" 1, "calt" 1;
+      text-rendering: optimizeLegibility;
     }
-    /* Never use dir=ltr / unicode-bidi on mixed Arabic+Latin — Chrome PDF isolates corrupt extraction */
+    /* Avoid dir=ltr / unicode-bidi isolates in mixed runs (breaks PDF text extract) */
     .ltr { direction: inherit; display: inline; unicode-bidi: normal; }
 
     .page {
