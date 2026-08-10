@@ -225,6 +225,7 @@ export default function SupervisionReportSection({
             label="المؤسسة / الشركة القائمة بأعمال التنفيذ"
             value={report.contractor_name || ''}
             onChange={(v) => patch({ contractor_name: v })}
+            trimOnBlur
           />
         </div>
       </div>
@@ -253,6 +254,7 @@ export default function SupervisionReportSection({
             label="اسم مدير الفرع"
             value={report.branch_manager_name || ''}
             onChange={(v) => patch({ branch_manager_name: v })}
+            trimOnBlur
           />
           <Field
             label="مهندس السلامة"
@@ -556,6 +558,7 @@ function Field({
   type = 'text',
   placeholder,
   dir,
+  trimOnBlur = false,
 }: {
   label: string;
   value: string;
@@ -563,6 +566,8 @@ function Field({
   type?: string;
   placeholder?: string;
   dir?: 'ltr' | 'rtl';
+  /** Trim only after the user leaves the field — never on each keystroke */
+  trimOnBlur?: boolean;
 }) {
   return (
     <label className="text-sm block">
@@ -573,6 +578,14 @@ function Field({
         placeholder={placeholder}
         dir={dir}
         onChange={(e) => onChange(e.target.value)}
+        onBlur={
+          trimOnBlur
+            ? () => {
+                const next = value.trim();
+                if (next !== value) onChange(next);
+              }
+            : undefined
+        }
         className="w-full border rounded-xl px-3 py-2.5 text-sm"
       />
     </label>
