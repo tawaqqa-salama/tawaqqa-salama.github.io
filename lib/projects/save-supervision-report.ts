@@ -144,6 +144,18 @@ async function persistEngineeringJsonb(
 ): Promise<string | null> {
   if (mode === 'supervision-merge' && data.supervision_report) {
     const supervision = trimSupervisionTextFields(data.supervision_report);
+    // Prefer multi-key patch so field_visits are not dropped on lean supervision saves
+    const { error: patchError } = await supabase.rpc('merge_project_engineering_patch', {
+      p_client_id: clientId,
+      p_patch: {
+        supervision_report: supervision,
+        field_visits: data.field_visits || [],
+        report_pdf_archive: data.report_pdf_archive || [],
+      },
+      p_pipeline_stage: pipelineStage,
+    });
+    if (!patchError) return null;
+
     const { error: mergeError } = await supabase.rpc('merge_supervision_report_json', {
       p_client_id: clientId,
       p_supervision: supervision,

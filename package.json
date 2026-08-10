@@ -17,6 +17,8 @@
     "@noble/hashes": "^2.2.0",
     "@supabase/supabase-js": "^2.110.8",
     "dotenv": "^17.4.2",
+    "html2canvas": "^1.4.1",
+    "jspdf": "^4.2.1",
     "next": "16.2.11",
     "pdfjs-dist": "^4.10.38",
     "pg": "^8.22.0",

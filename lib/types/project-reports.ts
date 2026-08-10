@@ -1,8 +1,10 @@
 import type { DesignCenterState } from '@/lib/projects/design-center/types';
 import type { FireProtectionDesign } from '@/lib/types/fire-protection-design';
+import type { ReportPdfSnapshot } from '@/lib/types/report-pdf-snapshot';
 
 export type { DesignCenterState };
 export type { FireProtectionDesign };
+export type { ReportPdfSnapshot };
 
 export interface ReportMeta {
   status: 'مسودة' | 'قيد الإعداد' | 'مكتمل' | 'معتمد';
@@ -117,6 +119,10 @@ export interface FieldVisitReport extends ReportMeta {
   recommendations?: string;
   photos_note?: string;
   checklist?: { id: string; label: string; checked: boolean }[];
+  /** Historical fixed PDF snapshots for this visit (newest last) */
+  pdf_snapshots?: ReportPdfSnapshot[];
+  /** Latest PDF for quick access */
+  latest_pdf?: ReportPdfSnapshot | null;
 }
 
 export interface TechnicalNotesReport extends ReportMeta {
@@ -329,6 +335,9 @@ export interface SupervisionReport extends ReportMeta {
   months: SupervisionMonthColumn[];
   tasks: SupervisionTaskRow[];
   notes?: string;
+  /** Historical fixed PDF snapshots (one per save/issue) */
+  pdf_snapshots?: ReportPdfSnapshot[];
+  latest_pdf?: ReportPdfSnapshot | null;
 }
 
 /** صورة مرفقة داخل التقرير الفني */
@@ -556,6 +565,11 @@ export interface ProjectEngineeringData {
    * مصدر بيانات قالب «التقرير الفني — مبنى إداري تحت الإنشاء»
    */
   fire_protection_design?: FireProtectionDesign;
+  /**
+   * أرشيف PDF ثابت لتقارير الزيارات والإشراف (عدة تقارير لكل مشروع).
+   * الملف الثنائي في Storage؛ هنا بيانات وصفية فقط.
+   */
+  report_pdf_archive?: ReportPdfSnapshot[];
   workflow?: ProjectWorkflowState;
 }
 
@@ -676,5 +690,6 @@ export const EMPTY_PROJECT_ENGINEERING_DATA: ProjectEngineeringData = {
   completion_certificate: { status: 'مسودة' },
   supervision_report: { ...EMPTY_SUPERVISION_REPORT },
   fire_protection_design: undefined,
+  report_pdf_archive: [],
   workflow: {},
 };
