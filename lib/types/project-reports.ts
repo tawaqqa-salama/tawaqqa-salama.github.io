@@ -344,8 +344,13 @@ export interface SupervisionReport extends ReportMeta {
 export interface TechnicalReportPhoto {
   id: string;
   caption?: string;
-  /** Data URL مؤقت للمعاينة/الطباعة — لاحقاً يُستبدل بتخزين Supabase */
+  /** Inline preview / print src — may be stripped after Storage upload */
   dataUrl?: string;
+  /** Supabase Storage object path (cross-device source of truth) */
+  storagePath?: string | null;
+  storageBucket?: string | null;
+  mimeType?: string | null;
+  fileName?: string | null;
 }
 
 export interface TechnicalReportComponentRow {

@@ -28,7 +28,8 @@ function isMissing(message: string): boolean {
 
 function slimPhoto(photo: TechnicalReportPhoto | null | undefined): TechnicalReportPhoto | null {
   if (!photo) return null;
-  // Keep caption/id only — inline images bloat the live row (local backup still has them)
+  // Keep Storage path; drop inline bytes only
+  if (photo.storagePath) return { ...photo, dataUrl: undefined };
   return { ...photo, dataUrl: undefined };
 }
 

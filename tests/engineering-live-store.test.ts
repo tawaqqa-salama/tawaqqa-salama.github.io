@@ -4,9 +4,20 @@ const rpcMock = vi.fn();
 const fromMock = vi.fn();
 
 vi.mock('@/lib/supabase', () => ({
+  isDemoMode: false,
   supabase: {
     rpc: (...args: unknown[]) => rpcMock(...args),
     from: (...args: unknown[]) => fromMock(...args),
+    storage: {
+      from: () => ({
+        upload: vi.fn().mockResolvedValue({ error: null }),
+        createSignedUrl: vi.fn().mockResolvedValue({
+          data: { signedUrl: 'https://example.com/x.jpg' },
+          error: null,
+        }),
+        getPublicUrl: vi.fn().mockReturnValue({ data: { publicUrl: 'https://example.com/p.jpg' } }),
+      }),
+    },
   },
 }));
 
@@ -44,6 +55,7 @@ describe('engineering live store (all stages)', () => {
       expect.objectContaining({ p_client_id: 'c1', p_pipeline_stage: 'projects' })
     );
     const payload = rpcMock.mock.calls[0][1].p_payload;
+    expect(payload.technical_report.earth_photo?.storagePath).toBeTruthy();
     expect(payload.technical_report.earth_photo?.dataUrl).toBeUndefined();
     expect(fromMock).not.toHaveBeenCalled();
   });

@@ -100,10 +100,17 @@ export function sanitizeEngineeringDataForPersist(
   }));
   const tech = data.technical_report;
   /** TechnicalReportPhoto.dataUrl is `string | undefined` (not null). */
-  const stripTechPhoto = <T extends { dataUrl?: string }>(p: T): T => ({
-    ...p,
-    dataUrl: undefined,
-  });
+  const stripTechPhoto = <T extends { dataUrl?: string; storagePath?: string | null }>(
+    p: T
+  ): T => {
+    // Keep Storage-backed photos; only drop inline bytes
+    if (p.storagePath) return { ...p, dataUrl: undefined };
+    // No storage yet — keep a short dataUrl rather than blank the report
+    if (p.dataUrl && p.dataUrl.length > 400_000) {
+      return { ...p, dataUrl: undefined };
+    }
+    return p;
+  };
   const technical_report: ProjectEngineeringData['technical_report'] = aggressive
     ? {
         ...tech,
