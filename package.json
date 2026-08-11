@@ -10,6 +10,7 @@
     "lint": "eslint",
     "test": "vitest run",
     "test:watch": "vitest",
+    "test:live-rls": "node scripts/live-rls-jwt-security-tests.mjs",
     "db:apply-dds": "node scripts/apply-dds-schema.mjs"
   },
   "dependencies": {
