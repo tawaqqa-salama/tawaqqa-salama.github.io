@@ -263,7 +263,7 @@ export function buildComplianceContext(params: {
       stories,
       basement_floors: basement,
       high_rise: highRise,
-      mixed_occupancy: mixed || null,
+      mixed_occupancy: mixed,
       underground:
         ynFromYesNoValue(bp.underground_building) === 'yes'
           ? true

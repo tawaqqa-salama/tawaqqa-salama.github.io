@@ -139,8 +139,8 @@ function egressNotesEvidence(ctx: ComplianceRuleContext, label: string) {
   const note = ctx.egress.notes;
   const metric = ctx.egress.metrics.find((m) => m.label.toLowerCase().includes(label.toLowerCase()));
   if (hasNonEmpty(note)) return evidence('document', 'egress_notes', note, 'project');
-  if (metric) return evidence('measurement', metric.label, metric.value, 'egress.metrics');
-  return evidence('document', label, true, 'project');
+  if (metric && hasNonEmpty(metric.value)) return evidence('measurement', metric.label, metric.value, 'egress.metrics');
+  return null;
 }
 
 // ─── Occupancy & building classification ─────────────────────────────────────
@@ -339,14 +339,22 @@ const occupancyRules: ComplianceRule[] = [
     evaluate: (ctx) => {
       const inputs = { mixed: ctx.building.mixed_occupancy, zones: ctx.occupancyZones.length };
       if (!ctx.occupancyZones.length) return needsData('لا توجد مناطق إشغال للتقييم.', inputs, ['floor_uses.zones']);
+      if (ctx.building.mixed_occupancy == null) {
+        return needsData(
+          'حالة الإشغال المختلط غير محسومة من المناطق — لا PASS بافتراض غير مختلط.',
+          inputs,
+          ['mixed_occupancy'],
+          { code_reference: ref('OCC-07'), required_value_source: 'missing' }
+        );
+      }
       return passEval(
         ctx.building.mixed_occupancy ? 'إشغال مختلط موثّق من المناطق.' : 'إشغال غير مختلط وفق المناطق الحالية.',
         {
           inputs,
-          actual_value: ctx.building.mixed_occupancy ?? false,
+          actual_value: ctx.building.mixed_occupancy,
           required_value: 'documented',
           code_reference: ref('OCC-07'),
-        required_value_source: 'documentation_completeness',
+          required_value_source: 'documentation_completeness',
           occupancy: occLabel(ctx),
         }
       );
@@ -376,10 +384,23 @@ const occupancyRules: ComplianceRule[] = [
         ctx.building.atrium != null ||
         ctx.building.windowless != null;
       if (!anyKnown) return needsData('ظروف خاصة غير موثّقة (قبو/أتريوم/…).', inputs, ['special_conditions']);
-      return passEval('تم تسجيل حالة الظروف الخاصة المتاحة.', {
+      const missingFlags: string[] = [];
+      if (ctx.building.basement_floors == null) missingFlags.push('basement_floors');
+      if (ctx.building.underground == null) missingFlags.push('underground');
+      if (ctx.building.atrium == null) missingFlags.push('atrium');
+      if (ctx.building.windowless == null) missingFlags.push('windowless');
+      if (missingFlags.length) {
+        return needsData(
+          'ظروف خاصة موثّقة جزئيًا فقط — يلزم توثيق كل الأعلام (قبو/تحت الأرض/أتريوم/بدون نوافذ) بنعم/لا أو عدد.',
+          inputs,
+          missingFlags,
+          { code_reference: ref('OCC-08'), required_value_source: 'missing' }
+        );
+      }
+      return passEval('تم تسجيل حالة الظروف الخاصة بالكامل.', {
         inputs,
         actual_value: true,
-        required_value: 'documented',
+        required_value: 'all_special_flags_documented',
         code_reference: ref('OCC-08'),
         required_value_source: 'documentation_completeness',
         occupancy: occLabel(ctx),
@@ -440,8 +461,13 @@ const egressRules: ComplianceRule[] = [
         occupancy_group: occ.group,
         occupancy_classification: occ.classification,
       };
-      if (load == null) return needsData('لا يمكن تقييم عدد المخارج دون حمل شاغلين.', inputs, ['occupant_load']);
+      if (load == null || !(load > 0)) {
+        return needsData('لا يمكن تقييم عدد المخارج دون حمل شاغلين صالح (> 0).', inputs, ['occupant_load']);
+      }
       if (exits == null) return needsData('عدد المخارج الفعلي غير موثّق.', inputs, ['exits_count']);
+      if (!(exits >= 0) || !Number.isFinite(exits)) {
+        return needsData('عدد المخارج الفعلي غير صالح.', inputs, ['exits_count']);
+      }
 
       const resolved = requiredExitsFromOccupantLoad(load, occ);
       if (!resolved) {
@@ -494,8 +520,16 @@ const egressRules: ComplianceRule[] = [
       const load = ctx.egress.occupant_load_total;
       const inputs = { exit_capacity_persons: cap, occupant_load_total: load };
       const codeRef = ref('EGR-03');
-      if (cap == null) return needsData('سعة المخارج غير موثّقة.', inputs, ['exit_capacity_persons'], { code_reference: codeRef });
-      if (load == null) return needsData('حمل الشاغلين ناقص لمقارنة السعة.', inputs, ['occupant_load'], { code_reference: codeRef });
+      if (cap == null || !(cap > 0)) {
+        return needsData('سعة المخارج غير موثّقة بقيمة صالحة (> 0).', inputs, ['exit_capacity_persons'], {
+          code_reference: codeRef,
+        });
+      }
+      if (load == null || !(load > 0)) {
+        return needsData('حمل الشاغلين ناقص/غير صالح لمقارنة السعة.', inputs, ['occupant_load'], {
+          code_reference: codeRef,
+        });
+      }
       const base = {
         inputs,
         actual_value: cap,
@@ -529,19 +563,34 @@ const egressRules: ComplianceRule[] = [
       const inputs = { exit_access_ok: v, notes: ctx.egress.notes };
       const codeRef = ref('EGR-04');
       if (v == null) return needsData('مسار الوصول للمخرج غير موثّق.', inputs, ['exit_access'], { code_reference: codeRef });
+      if (v === false) {
+        return failEval('مسار الوصول غير مقبول وفق البيانات.', {
+          inputs,
+          actual_value: false,
+          required_value: true,
+          code_reference: codeRef,
+          occupancy: occLabel(ctx),
+          required_value_source: 'engineer_attested',
+        });
+      }
       const ev = egressNotesEvidence(ctx, 'exit access');
-      const base = {
+      if (!ev) {
+        return needsData(
+          'مسار الوصول مُعلَن كمقبول دون دليل داعم (ملاحظات/قياس) — لا PASS على خانة منطقية وحدها.',
+          inputs,
+          ['exit_access_evidence'],
+          { code_reference: codeRef, actual_value: true, required_value: true, required_value_source: 'missing' }
+        );
+      }
+      return passEval('مسار الوصول موثّق كمقبول مع دليل داعم.', {
         inputs,
-        actual_value: v,
+        actual_value: true,
         required_value: true,
         code_reference: codeRef,
         occupancy: occLabel(ctx),
-        required_value_source: 'engineer_attested' as const,
+        required_value_source: 'engineer_attested',
         evidence: [ev],
-      };
-      return v
-        ? passEval('مسار الوصول موثّق كمقبول (إقرار هندسي — ليس قياسًا آليًا).', base)
-        : failEval('مسار الوصول غير مقبول وفق البيانات.', base);
+      });
     },
   },
   {
@@ -787,17 +836,34 @@ const egressRules: ComplianceRule[] = [
       const inputs = { exit_discharge_ok: v, notes: ctx.egress.notes };
       const codeRef = ref('EGR-12');
       if (v == null) return needsData('تصريف الخروج النهائي غير موثّق.', inputs, ['exit_discharge'], { code_reference: codeRef });
+      if (v === false) {
+        return failEval('تصريف الخروج غير مقبول.', {
+          inputs,
+          actual_value: false,
+          required_value: true,
+          code_reference: codeRef,
+          occupancy: occLabel(ctx),
+          required_value_source: 'engineer_attested',
+        });
+      }
       const ev = egressNotesEvidence(ctx, 'discharge');
-      const base = {
+      if (!ev) {
+        return needsData(
+          'تصريف الخروج مُعلَن كمقبول دون دليل داعم (ملاحظات/قياس) — لا PASS على خانة منطقية وحدها.',
+          inputs,
+          ['exit_discharge_evidence'],
+          { code_reference: codeRef, actual_value: true, required_value: true, required_value_source: 'missing' }
+        );
+      }
+      return passEval('تصريف الخروج موثّق كمقبول مع دليل داعم.', {
         inputs,
-        actual_value: v,
+        actual_value: true,
         required_value: true,
         code_reference: codeRef,
         occupancy: occLabel(ctx),
-        required_value_source: 'engineer_attested' as const,
+        required_value_source: 'engineer_attested',
         evidence: [ev],
-      };
-      return v ? passEval('تصريف الخروج موثّق كمقبول (إقرار هندسي).', base) : failEval('تصريف الخروج غير مقبول.', base);
+      });
     },
   },
 ];
@@ -962,8 +1028,8 @@ const fireAccessRules: ComplianceRule[] = [
       if (yn === 'unknown' || !hasNonEmpty(ctx.fireAccess.fdc_present)) {
         return needsData('حالة FDC غير موثّقة كـ نعم/لا.', inputs, ['civil_defense_connection']);
       }
-      if (!hasNonEmpty(ctx.fireAccess.fdc_location)) {
-        return needsData('موقع FDC غير موثّق.', inputs, ['connection_location']);
+      if (!hasNonEmpty(ctx.fireAccess.fdc_location) || String(ctx.fireAccess.fdc_location).trim().length < 3) {
+        return needsData('موقع FDC غير موثّق بما يكفي.', inputs, ['connection_location']);
       }
       const base = {
         inputs,
@@ -1044,10 +1110,30 @@ const fireProtectionRules: ComplianceRule[] = [
           { ...base, actual_value: 'yes_unverified' }
         );
       }
-      return passEval('المرشات مطلوبة وتم توثيق التوفير والتحقق.', {
+      if (!hasNonEmpty(ctx.fireProtection.sprinkler_system_type)) {
+        return needsData(
+          'المرشات مُعلَن تحققها دون نوع النظام (sprinkler_system_type) — لا PASS مع نقص بيانات هندسية.',
+          inputs,
+          ['sprinkler_system_type'],
+          { ...base, actual_value: 'yes_untyped' }
+        );
+      }
+      if (ctx.fireProtection.sprinkler_demand_lpm == null || !(ctx.fireProtection.sprinkler_demand_lpm > 0)) {
+        return needsData(
+          'المرشات مُعلَن تحققها دون طلب تصميمي موثّق (sprinkler_demand_lpm) — لا PASS مع نقص بيانات.',
+          inputs,
+          ['sprinkler_demand_lpm'],
+          { ...base, actual_value: 'yes_no_demand' }
+        );
+      }
+      return passEval('المرشات مطلوبة وتم توثيق التوفير والتحقق والطلب التصميمي.', {
         ...base,
         actual_value: 'yes_verified',
-        evidence: [evidence('document', 'sprinkler_verified', true, 'fireProtection')],
+        required_value_source: 'explicit_code_condition',
+        evidence: [
+          evidence('document', 'sprinkler_verified', true, 'fireProtection'),
+          evidence('calculation', 'sprinkler_demand_lpm', ctx.fireProtection.sprinkler_demand_lpm, 'fireProtection'),
+        ],
       });
     },
   },
@@ -1151,13 +1237,22 @@ const fireProtectionRules: ComplianceRule[] = [
           { code_reference: ref('FP-04'), actual_value: pump ?? null }
         );
       }
+      if (!(demand > 0)) {
+        return needsData(
+          'طلب المرشات الموثّق غير صالح (يجب أن يكون > 0) — لا PASS على قيمة صفر/سالبة.',
+          inputs,
+          ['sprinkler_demand_lpm'],
+          { code_reference: ref('FP-04'), actual_value: demand }
+        );
+      }
       return passEval(`طلب المرشات الموثّق: ${demand} لتر/د`, {
         inputs,
         actual_value: demand,
-        required_value: 'documented',
+        required_value: '>0 (documented design demand ≠ pump flow)',
         unit: 'lpm',
         code_reference: ref('FP-04'),
         occupancy: occLabel(ctx),
+        required_value_source: 'documentation_completeness',
         evidence: [evidence('calculation', 'sprinkler_demand', demand)],
       });
     },
@@ -1226,20 +1321,31 @@ const fireProtectionRules: ComplianceRule[] = [
           code_reference: codeRef,
           condition: `height < ${SBC_STRUCTURE_RULES.standpipe_height_m}m`,
           occupancy: occLabel(ctx),
+          required_value_source: 'platform_code_table',
         });
       }
-      if (provided === 'yes' || explicit === 'yes') {
-        return passEval('Standpipe مطلوب وتم توثيقه.', {
+      if (provided == null || provided === 'unknown') {
+        return needsData('Standpipe مطلوب — يلزم توثيق التوفير (standpipe_provided) صراحةً.', inputs, ['standpipe_provided'], {
+          code_reference: codeRef,
+          required_value: true,
+        });
+      }
+      if (provided === 'no') {
+        return failEval('Standpipe مطلوب وغير متوفر وفق البيانات.', {
           inputs,
-          actual_value: provided ?? explicit,
+          actual_value: 'no',
           required_value: true,
           code_reference: codeRef,
           occupancy: occLabel(ctx),
         });
       }
-      return needsData('Standpipe مطلوب — يلزم توثيق التوفير.', inputs, ['standpipe'], {
-        code_reference: codeRef,
+      return passEval('Standpipe مطلوب وتم توثيق التوفير.', {
+        inputs,
+        actual_value: provided,
         required_value: true,
+        code_reference: codeRef,
+        occupancy: occLabel(ctx),
+        required_value_source: 'explicit_code_condition',
       });
     },
   },
@@ -1274,10 +1380,14 @@ const fireProtectionRules: ComplianceRule[] = [
           code_reference: codeRef,
         });
       }
-      if (pump == null) return needsData('تدفق المضخة غير موثّق.', inputs, ['pump.capacity'], { code_reference: codeRef });
-      if (demand == null) {
+      if (pump == null || !(pump > 0)) {
+        return needsData('تدفق المضخة غير موثّق بقيمة صالحة (> 0).', inputs, ['pump.capacity'], {
+          code_reference: codeRef,
+        });
+      }
+      if (demand == null || !(demand > 0)) {
         return needsData(
-          'لا يمكن مطابقة واجب المضخة دون طلب مرشات تصميمي مستقل (Pump Flow ≠ Demand).',
+          'لا يمكن مطابقة واجب المضخة دون طلب مرشات تصميمي مستقل صالح (> 0) — Pump Flow ≠ Demand.',
           inputs,
           ['sprinkler_demand_lpm'],
           { code_reference: codeRef, actual_value: pump }
@@ -1395,15 +1505,26 @@ const fireProtectionRules: ComplianceRule[] = [
         return needsData('متطلب/وجود FDC غير موثّق كـ نعم/لا.', inputs, ['FDC'], { code_reference: codeRef });
       }
       const base = {
-        inputs,
+        inputs: { ...inputs, location: ctx.fireAccess.fdc_location },
         actual_value: yn,
         required_value: true,
         code_reference: codeRef,
         occupancy: occLabel(ctx),
-        condition: 'system_needs_FDC → fdc_present===yes',
+        condition: 'system_needs_FDC → fdc_present===yes && fdc_location documented',
       };
       if (yn === 'no') return failEval('FDC مطلوب للنظام وغير موجود وفق البيانات.', base);
-      return passEval('FDC مطلوب وموجود وفق البيانات.', base);
+      if (!hasNonEmpty(ctx.fireAccess.fdc_location) || String(ctx.fireAccess.fdc_location).trim().length < 3) {
+        return needsData(
+          'FDC مُعلَن موجودًا دون موقع موثّق بما يكفي — لا PASS مع نقص بيانات هندسية.',
+          { ...inputs, location: ctx.fireAccess.fdc_location },
+          ['connection_location'],
+          { ...base, actual_value: 'yes_no_location', required_value_source: 'missing' }
+        );
+      }
+      return passEval('FDC مطلوب وموجود وموقعه موثّق وفق البيانات.', {
+        ...base,
+        required_value_source: 'explicit_code_condition',
+      });
     },
   },
   {
@@ -1486,7 +1607,12 @@ const hydraulicRules: ComplianceRule[] = [
       const missing: string[] = [];
       for (const f of HYDRAULIC_FIELDS) {
         const v = h[f.key];
-        if (v == null || (typeof v === 'number' && !Number.isFinite(v))) missing.push(f.label);
+        if (v == null || (typeof v === 'number' && !Number.isFinite(v))) {
+          missing.push(f.label);
+          continue;
+        }
+        // elevation may be 0; all other hydraulic magnitudes must be > 0
+        if (typeof v === 'number' && f.key !== 'elevation_m' && v <= 0) missing.push(f.label);
       }
 
       const codeRef = ref('HYD-01');
@@ -1526,7 +1652,9 @@ function evalAlarmField(
   if (!alarmRequired(ctx)) {
     return naEval(`${labelAr} غير منطبق.`, { inputs, code_reference: codeRef });
   }
-  if (!hasNonEmpty(value)) return needsData(`${labelAr} غير موثّق.`, inputs, [key], { code_reference: codeRef });
+  if (!hasNonEmpty(value) || String(value).trim().length < 3) {
+    return needsData(`${labelAr} غير موثّق بما يكفي.`, inputs, [key], { code_reference: codeRef });
+  }
   // Component text alone is not automated code PASS — require FA-01 verified system.
   if (!ctx.fireAlarm.verified) {
     return needsData(
@@ -1540,6 +1668,14 @@ function evalAlarmField(
         occupancy: occLabel(ctx),
         required_value_source: 'missing',
       }
+    );
+  }
+  if (!hasNonEmpty(ctx.fireAlarm.panel)) {
+    return needsData(
+      `${labelAr} مع verified دون لوحة تحكم موثّقة — لا PASS مع نقص بيانات النظام.`,
+      inputs,
+      ['fire_alarm.panel'],
+      { code_reference: codeRef, actual_value: value, required_value_source: 'missing' }
     );
   }
   return passEval(`${labelAr} موثّق مع تحقق النظام.`, {
@@ -1613,9 +1749,21 @@ const fireAlarmRules: ComplianceRule[] = [
           { ...base, actual_value: 'yes_unverified' }
         );
       }
+      const panelOk = hasNonEmpty(ctx.fireAlarm.panel) && String(ctx.fireAlarm.panel).trim().length >= 3;
+      const detectionOk =
+        hasNonEmpty(ctx.fireAlarm.detection) && String(ctx.fireAlarm.detection).trim().length >= 3;
+      if (!panelOk || !detectionOk) {
+        return needsData(
+          'نظام الإنذار مُعلَن تحققه دون لوحة/كشف موثّقين — لا PASS مع نقص بيانات هندسية.',
+          inputs,
+          ['fire_alarm.panel', 'fire_alarm.detection'],
+          { ...base, actual_value: 'yes_incomplete' }
+        );
+      }
       return passEval('نظام الإنذار إلزامي وتم توثيق التوفير والتحقق.', {
         ...base,
         actual_value: 'yes_verified',
+        required_value_source: 'explicit_code_condition',
         evidence: [evidence('document', 'alarm_verified', true, 'fireAlarm')],
       });
     },
@@ -1704,24 +1852,42 @@ const fireAlarmRules: ComplianceRule[] = [
           code_reference: codeRef,
         });
       }
+      const fieldOk = (v: string | null | undefined) => hasNonEmpty(v) && String(v).trim().length >= 3;
       const missing: string[] = [];
-      if (!hasNonEmpty(ctx.fireAlarm.coverage)) missing.push('coverage');
-      if (!hasNonEmpty(ctx.fireAlarm.interfaces)) missing.push('interfaces');
-      if (!hasNonEmpty(ctx.fireAlarm.cause_and_effect)) missing.push('cause_and_effect');
+      if (!fieldOk(ctx.fireAlarm.coverage)) missing.push('coverage');
+      if (!fieldOk(ctx.fireAlarm.interfaces)) missing.push('interfaces');
+      if (!fieldOk(ctx.fireAlarm.cause_and_effect)) missing.push('cause_and_effect');
       const inputs = {
         coverage: ctx.fireAlarm.coverage,
         interfaces: ctx.fireAlarm.interfaces,
         cause_and_effect: ctx.fireAlarm.cause_and_effect,
       };
       if (missing.length) {
-        return needsData('تغطية/ربط/سبب-أثر غير مكتملة.', inputs, missing, { code_reference: codeRef });
+        return needsData('تغطية/ربط/سبب-أثر غير مكتملة بما يكفي.', inputs, missing, { code_reference: codeRef });
       }
-      return passEval('توثيق التغطية والربط وسبب-أثر مكتمل.', {
+      if (!ctx.fireAlarm.verified) {
+        return needsData(
+          'تغطية/ربط/سبب-أثر مدخلة دون تحقق النظام (verified) — لا PASS مع نقص التحقق.',
+          { ...inputs, verified: ctx.fireAlarm.verified },
+          ['fire_alarm.verified'],
+          { code_reference: codeRef }
+        );
+      }
+      if (!fieldOk(ctx.fireAlarm.panel)) {
+        return needsData(
+          'تغطية/ربط/سبب-أثر مع verified دون لوحة تحكم موثّقة — لا PASS مع نقص بيانات النظام.',
+          { ...inputs, panel: ctx.fireAlarm.panel },
+          ['fire_alarm.panel'],
+          { code_reference: codeRef, required_value_source: 'missing' }
+        );
+      }
+      return passEval('توثيق التغطية والربط وسبب-أثر مكتمل مع تحقق النظام.', {
         inputs,
         actual_value: true,
-        required_value: 'documented',
+        required_value: 'documented_and_system_verified',
         code_reference: codeRef,
         occupancy: occLabel(ctx),
+        required_value_source: 'engineer_attested',
       });
     },
   },
@@ -1758,30 +1924,21 @@ const smokeRules: ComplianceRule[] = [
             actual_value: 'not_required',
             required_value: false,
             code_reference: codeRef,
+            required_value_source: 'explicit_code_condition',
           });
         }
-        if (status === 'unknown' && ctx.smokeControl.ventilation_only) {
-          return needsData(
-            'وجود تهوية فقط لا يعني PASS للتحكم بالدخان — يلزم تحديد المتطلب.',
-            inputs,
-            ['smoke_control'],
-            { code_reference: codeRef }
-          );
-        }
-        if (status === 'unknown') {
-          return needsData('متطلب التحكم بالدخان غير محدد.', inputs, ['smoke_control'], { code_reference: codeRef });
-        }
-        return passEval('حالة التحكم بالدخان موثّقة.', {
+        // Any other status without an explicit not_required determination is incomplete.
+        return needsData(
+          'متطلب التحكم بالدخان غير محسوم (يلزم status=not_required أو تحديد الإلزام) — لا PASS مع بيانات ناقصة.',
           inputs,
-          actual_value: status,
-          required_value: 'documented',
-          code_reference: codeRef,
-        });
+          ['smoke_control.status'],
+          { code_reference: codeRef, required_value_source: 'missing' }
+        );
       }
 
       if (status === 'required' || status === 'by_design') {
-        if (!hasNonEmpty(ctx.smokeControl.note) && status === 'required') {
-          return needsData('التحكم بالدخان مطلوب دون تفاصيل تصميم.', inputs, ['smoke_control.note'], {
+        if (!hasNonEmpty(ctx.smokeControl.note) || String(ctx.smokeControl.note).trim().length < 8) {
+          return needsData('التحكم بالدخان مطلوب/بالتصميم دون تفاصيل تصميم موثّقة (≥8).', inputs, ['smoke_control.note'], {
             code_reference: codeRef,
             required_value: true,
           });
@@ -1791,6 +1948,7 @@ const smokeRules: ComplianceRule[] = [
           actual_value: status,
           required_value: true,
           code_reference: codeRef,
+          required_value_source: 'documentation_completeness',
         });
       }
       if (ctx.smokeControl.ventilation_only) {

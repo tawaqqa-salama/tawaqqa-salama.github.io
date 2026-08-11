@@ -346,6 +346,21 @@ describe('Saudi Code Compliance Engine — final citation audit', () => {
             },
           })
         ).status
+      ).toBe('NEEDS_DATA');
+      expect(
+        evaluateRule(
+          rule,
+          emptyCtx({
+            building: { ...emptyCtx().building, primary_occupancy_code: 'residential', building_area_m2: 500 },
+            fireProtection: {
+              applicable_codes: [],
+              sprinkler_provided: 'yes',
+              sprinkler_verified: true,
+              sprinkler_system_type: 'wet',
+              sprinkler_demand_lpm: 1200,
+            },
+          })
+        ).status
       ).toBe('PASS');
     });
 
@@ -433,7 +448,7 @@ describe('Saudi Code Compliance Engine — final citation audit', () => {
       expect(r.required_value_source).toBe('project_design');
     });
 
-    it('FA-01 missing occupancy → not PASS; verified path PASS', () => {
+    it('FA-01 missing occupancy → not PASS; verified path PASS only with panel+detection', () => {
       const rule = getComplianceRuleById('FA-01')!;
       expect(
         evaluateRule(
@@ -451,6 +466,21 @@ describe('Saudi Code Compliance Engine — final citation audit', () => {
             building: { ...emptyCtx().building, primary_occupancy_code: 'residential' },
             egress: { metrics: [], occupant_load_total: 10 },
             fireAlarm: { provided: 'yes', verified: true },
+          })
+        ).status
+      ).toBe('NEEDS_DATA');
+      expect(
+        evaluateRule(
+          rule,
+          emptyCtx({
+            building: { ...emptyCtx().building, primary_occupancy_code: 'residential' },
+            egress: { metrics: [], occupant_load_total: 10 },
+            fireAlarm: {
+              provided: 'yes',
+              verified: true,
+              panel: 'addressable',
+              detection: 'smoke+heat',
+            },
           })
         ).status
       ).toBe('PASS');
@@ -760,6 +790,148 @@ describe('Saudi Code Compliance Engine — final citation audit', () => {
       expect(label.toLowerCase()).not.toContain('sbc compliant');
       expect(label).not.toMatch(/مطابق للدفاع/);
       expect(COMPLIANCE_ASSESSMENT_DISCLAIMER_AR).toMatch(/documented rules\/data|القواعد الكودية الموثقة/);
+    });
+
+    it('FP-06 does not PASS on standpipe_required=yes without provided', () => {
+      expect(
+        evaluateRule(
+          getComplianceRuleById('FP-06')!,
+          emptyCtx({
+            building: { ...emptyCtx().building, building_height_m: 12 },
+            fireProtection: { applicable_codes: [], standpipe_required: 'yes', standpipe_provided: null },
+          })
+        ).status
+      ).toBe('NEEDS_DATA');
+    });
+
+    it('EGR-04/12 boolean true without evidence → NEEDS_DATA', () => {
+      expect(
+        evaluateRule(
+          getComplianceRuleById('EGR-04')!,
+          emptyCtx({ egress: { metrics: [], exit_access_ok: true } })
+        ).status
+      ).toBe('NEEDS_DATA');
+      expect(
+        evaluateRule(
+          getComplianceRuleById('EGR-12')!,
+          emptyCtx({ egress: { metrics: [], exit_discharge_ok: true } })
+        ).status
+      ).toBe('NEEDS_DATA');
+    });
+
+    it('HYD-01 zero k_factor → NEEDS_DATA', () => {
+      expect(
+        evaluateRule(
+          getComplianceRuleById('HYD-01')!,
+          emptyCtx({
+            fireProtection: { applicable_codes: [], sprinkler_provided: 'yes' },
+            hydraulic: {
+              has_network_data: false,
+              attachment_count: 0,
+              k_factor: 0,
+              flow_lpm: 900,
+              pressure_bar: 4.5,
+              required_residual_pressure_bar: 1,
+              pipe_diameter_mm: 50,
+              pipe_length_m: 40,
+              elevation_m: 0,
+              friction_loss_bar: 0.4,
+              remote_area_m2: 140,
+              node_demand_lpm: 100,
+              pump_flow_lpm: 1200,
+              pump_pressure_bar: 8,
+              tank_volume_m3: 72,
+            },
+          })
+        ).status
+      ).toBe('NEEDS_DATA');
+    });
+
+    it('SMK-01 by_design without note → NEEDS_DATA', () => {
+      expect(
+        evaluateRule(
+          getComplianceRuleById('SMK-01')!,
+          emptyCtx({ smokeControl: { required: true, status: 'by_design', note: '' } })
+        ).status
+      ).toBe('NEEDS_DATA');
+    });
+
+    it('OCC-08 partial special flags → NEEDS_DATA', () => {
+      expect(
+        evaluateRule(
+          getComplianceRuleById('OCC-08')!,
+          emptyCtx({
+            building: { ...emptyCtx().building, basement_floors: 1, underground: null, atrium: null, windowless: null },
+          })
+        ).status
+      ).toBe('NEEDS_DATA');
+    });
+
+    it('FP-01 verified without demand → NEEDS_DATA', () => {
+      expect(
+        evaluateRule(
+          getComplianceRuleById('FP-01')!,
+          emptyCtx({
+            building: { ...emptyCtx().building, primary_occupancy_code: 'residential', building_area_m2: 500 },
+            fireProtection: {
+              applicable_codes: [],
+              sprinkler_provided: 'yes',
+              sprinkler_verified: true,
+              sprinkler_system_type: 'wet',
+            },
+          })
+        ).status
+      ).toBe('NEEDS_DATA');
+    });
+
+    it('FP-09 yes without location → NEEDS_DATA', () => {
+      expect(
+        evaluateRule(
+          getComplianceRuleById('FP-09')!,
+          emptyCtx({
+            fireProtection: { applicable_codes: [], sprinkler_provided: 'yes' },
+            fireAccess: { fdc_present: 'yes', fdc_location: null },
+          })
+        ).status
+      ).toBe('NEEDS_DATA');
+    });
+
+    it('EGR-03 zero capacity/load → NEEDS_DATA', () => {
+      expect(
+        evaluateRule(
+          getComplianceRuleById('EGR-03')!,
+          emptyCtx({ egress: { metrics: [], exit_capacity_persons: 0, occupant_load_total: 0 } })
+        ).status
+      ).toBe('NEEDS_DATA');
+    });
+
+    it('FP-07 zero demand → NEEDS_DATA', () => {
+      expect(
+        evaluateRule(
+          getComplianceRuleById('FP-07')!,
+          emptyCtx({
+            fireProtection: {
+              applicable_codes: [],
+              sprinkler_required: 'yes',
+              pump_exists: 'yes',
+              pump_flow_lpm: 1000,
+              sprinkler_demand_lpm: 0,
+            },
+          })
+        ).status
+      ).toBe('NEEDS_DATA');
+    });
+
+    it('OCC-07 null mixed flag → NEEDS_DATA', () => {
+      expect(
+        evaluateRule(
+          getComplianceRuleById('OCC-07')!,
+          emptyCtx({
+            building: { ...emptyCtx().building, mixed_occupancy: null },
+            occupancyZones: [{ floor_name: 'G', zone_label: 'A', occupancy_code: 'business' }],
+          })
+        ).status
+      ).toBe('NEEDS_DATA');
     });
   });
 
