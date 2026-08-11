@@ -43,6 +43,7 @@ export {
   runProjectCompliance,
   isFullyCompliant,
   complianceStatusLabelAr,
+  COMPLIANCE_ASSESSMENT_DISCLAIMER_AR,
 } from '@/lib/projects/compliance/engine';
 export { buildComplianceMatrixHtml } from '@/lib/projects/compliance/matrix-html';
 export { appendComplianceMatrixToReportHtml } from '@/lib/projects/compliance/pdf-appendix';

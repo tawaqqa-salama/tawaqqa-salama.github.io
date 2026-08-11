@@ -21,7 +21,7 @@ export function appendComplianceMatrixToReportHtml(params: {
     data: params.engineeringData,
   });
   const matrix = buildComplianceMatrixHtml(run, {
-    title: 'ملحق — مصفوفة المطابقة الكودية (SBC 201 / SBC 801)',
+    title: 'ملحق — مصفوفة تقييم المطابقة الكودية (SBC 201 / SBC 801)',
   });
   const wrapped = `<div style="page-break-before:always">${matrix}</div>`;
   if (params.html.includes('</body>')) {

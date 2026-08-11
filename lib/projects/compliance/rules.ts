@@ -11,6 +11,7 @@ import {
   hasNonEmpty,
   naEval,
   needsData,
+  parseYesNoUnknown,
   passEval,
 } from '@/lib/projects/compliance/evidence';
 import { SBC_OCCUPANCIES, SBC_STRUCTURE_RULES, type SbcOccupancyCode } from '@/lib/constants/sbc801';
@@ -795,16 +796,47 @@ const fireAccessRules: ComplianceRule[] = [
     evidenceRequired: ['drawing', 'document'],
     evaluate: (ctx) => {
       const a = ctx.fireAccess;
-      const inputs = { site_entrance: a.site_entrance, fire_road: a.fire_road, building_access: a.building_access };
-      if (!hasNonEmpty(a.site_entrance) && !hasNonEmpty(a.fire_road) && !hasNonEmpty(a.building_access)) {
+      const inputs = {
+        site_entrance: a.site_entrance,
+        fire_road: a.fire_road,
+        building_access: a.building_access,
+        road_width_m: a.road_width_m,
+        required_road_width_m: a.required_road_width_m,
+        required_road_width_code_ref: a.required_road_width_code_ref,
+      };
+      const hasNarrative =
+        hasNonEmpty(a.site_entrance) || hasNonEmpty(a.fire_road) || hasNonEmpty(a.building_access);
+      const threshold = resolveFireAccessMinWidthM(ctx);
+      // Narrative text / attachment alone never PASS — require measurable width vs documented threshold.
+      if (a.road_width_m == null && !hasNarrative) {
         return needsData('وصول آليات الإطفاء غير موثّق.', inputs, ['fire_apparatus_access']);
       }
-      return passEval('بيانات وصول الآليات موثّقة جزئيًا/كليًا.', {
-        inputs,
-        actual_value: true,
-        required_value: 'documented',
-        code_reference: 'SBC 801 / Fire Apparatus Access',
+      if (a.road_width_m == null) {
+        return needsData(
+          'وُجد وصف نصي لوصول الآليات، لكن لا PASS على النص وحده — يلزم قياس عرض الطريق ومقارنته بحد كودي موثّق (FAC-02).',
+          inputs,
+          ['road_width_m'],
+          { code_reference: 'SBC 801 / Fire Apparatus Access', occupancy: occLabel(ctx) }
+        );
+      }
+      if (!threshold) {
+        return needsData(
+          'عرض طريق الوصول مقاس لكن الحد الأدنى الكودي غير موثّق في المشروع — لا افتراض عتبة عامة.',
+          inputs,
+          ['required_road_width_m', 'required_road_width_code_ref'],
+          { code_reference: 'SBC 801 / Fire Apparatus Access', actual_value: a.road_width_m, occupancy: occLabel(ctx) }
+        );
+      }
+      return compareToThreshold({
+        actual: a.road_width_m,
+        threshold,
+        mode: 'gte',
         occupancy: occLabel(ctx),
+        missingActualLabel: 'road_width_m',
+        missingThresholdMessage: 'حد عرض وصول الآليات غير موثّق.',
+        passMessage: (act, req) => `وصول الآليات: العرض ${act} م ≥ المطلوب ${req} م.`,
+        failMessage: (act, req) => `وصول الآليات: العرض ${act} م < المطلوب ${req} م.`,
+        extraInputs: inputs,
       });
     },
   },
@@ -848,16 +880,21 @@ const fireAccessRules: ComplianceRule[] = [
     evidenceRequired: ['drawing'],
     evaluate: (ctx) => {
       const inputs = { staging_area: ctx.fireAccess.staging_area, notes: ctx.fireAccess.notes };
+      // Free-text notes alone never produce automated code PASS.
       if (!hasNonEmpty(ctx.fireAccess.staging_area) && !hasNonEmpty(ctx.fireAccess.notes)) {
         return needsData('خلو المسار/منطقة التمركز غير موثّقة.', inputs, ['staging_area']);
       }
-      return passEval('تم توثيق منطقة التمركز أو ملاحظات الوصول.', {
+      return needsData(
+        'وُجد وصف لمنطقة التمركز/الملاحظات، لكن لا يوجد حد كودي موثّق للمقارنة الآلية — NEEDS_DATA (ليس PASS على النص).',
         inputs,
-        actual_value: true,
-        required_value: 'documented',
-        code_reference: 'SBC 801 / Access Clearance',
-        occupancy: occLabel(ctx),
-      });
+        ['staging_clearance_required_m|engineer_verified_clearance'],
+        {
+          code_reference: 'SBC 801 / Access Clearance',
+          actual_value: ctx.fireAccess.staging_area || ctx.fireAccess.notes,
+          required_value: 'documented_clearance_threshold',
+          occupancy: occLabel(ctx),
+        }
+      );
     },
   },
   {
@@ -875,13 +912,17 @@ const fireAccessRules: ComplianceRule[] = [
       if (!hasNonEmpty(ctx.fireAccess.fire_road) && !hasNonEmpty(ctx.fireAccess.building_access)) {
         return needsData('ظروف الالتفاف/الوصول غير موثّقة.', inputs, ['turning_access']);
       }
-      return passEval('ظروف الوصول موثّقة.', {
+      return needsData(
+        'وُجد وصف لظروف الالتفاف/الوصول، لكن لا يوجد تحقق كودي آلي بحد موثّق — NEEDS_DATA (ليس PASS على النص).',
         inputs,
-        actual_value: true,
-        required_value: 'documented',
-        code_reference: 'SBC 801 / Turning Access',
-        occupancy: occLabel(ctx),
-      });
+        ['turning_radius_m|required_turning_radius_m'],
+        {
+          code_reference: 'SBC 801 / Turning Access',
+          actual_value: ctx.fireAccess.fire_road || ctx.fireAccess.building_access,
+          required_value: 'documented_turning_threshold',
+          occupancy: occLabel(ctx),
+        }
+      );
     },
   },
   {
@@ -896,19 +937,25 @@ const fireAccessRules: ComplianceRule[] = [
     evidenceRequired: ['drawing', 'photo'],
     evaluate: (ctx) => {
       const inputs = { fdc: ctx.fireAccess.fdc_present, location: ctx.fireAccess.fdc_location };
-      if (!hasNonEmpty(ctx.fireAccess.fdc_present)) {
-        return needsData('حالة FDC غير موثّقة.', inputs, ['civil_defense_connection']);
+      const yn = parseYesNoUnknown(ctx.fireAccess.fdc_present);
+      if (yn === 'unknown' || !hasNonEmpty(ctx.fireAccess.fdc_present)) {
+        return needsData('حالة FDC غير موثّقة كـ نعم/لا.', inputs, ['civil_defense_connection']);
       }
       if (!hasNonEmpty(ctx.fireAccess.fdc_location)) {
         return needsData('موقع FDC غير موثّق.', inputs, ['connection_location']);
       }
-      return passEval('FDC وموقعه موثّقان.', {
+      const base = {
         inputs,
-        actual_value: ctx.fireAccess.fdc_present,
-        required_value: 'documented + location',
+        actual_value: yn,
+        required_value: true,
         code_reference: 'SBC 801 / FDC Accessibility',
         occupancy: occLabel(ctx),
-      });
+        condition: 'fdc_present===yes && fdc_location documented',
+      };
+      if (yn === 'no') {
+        return failEval('FDC غير موجود مع توثيق الموقع فقط — الوصول غير متحقق.', base);
+      }
+      return passEval('FDC موجود وموقعه موثّق.', base);
     },
   },
 ];
@@ -997,12 +1044,25 @@ const fireProtectionRules: ComplianceRule[] = [
       const h = ctx.fireProtection.hazard_class;
       const inputs = { hazard_class: h };
       if (!hasNonEmpty(h)) return needsData('تصنيف الخطورة غير موثّق.', inputs, ['hazard_class']);
-      return passEval(`تصنيف الخطورة: ${h}`, {
+      const normalized = String(h).trim().toLowerCase().replace(/\s+/g, '_');
+      const known = /^(light|ordinary(_?[12])?|extra(_?[12])?|high|light_hazard|ordinary_hazard)/i.test(
+        normalized
+      ) || /خطورة|ordinary|light|extra/i.test(String(h));
+      if (!known) {
+        return needsData(
+          `تصنيف الخطورة «${h}» غير مُعرّف ضمن فئات الخطورة المعتمدة في المنصة — NEEDS_DATA.`,
+          inputs,
+          ['hazard_class'],
+          { actual_value: h, required_value: 'light|ordinary|extra (documented class)', occupancy: occLabel(ctx) }
+        );
+      }
+      return passEval(`تصنيف الخطورة موثّق ضمن فئات معتمدة: ${h}`, {
         inputs,
         actual_value: h,
-        required_value: 'documented',
-        code_reference: 'SBC 801 / Hazard Classification',
+        required_value: 'documented_hazard_class',
+        code_reference: 'SBC 801 / Hazard Classification (project hazard class)',
         occupancy: occLabel(ctx),
+        condition: 'hazard_class ∈ documented platform hazard categories',
       });
     },
   },
@@ -1033,14 +1093,17 @@ const fireProtectionRules: ComplianceRule[] = [
           code_reference: 'SBC-801-SPR',
         });
       }
-      return passEval('منطقة التصميم والكثافة موثّقتان.', {
+      return needsData(
+        'منطقة التصميم والكثافة موثّقتان، لكن لا يوجد حد كثافة كودي موثّق في المشروع للمقارنة — لا PASS على القيم المدخلة وحدها.',
         inputs,
-        actual_value: ctx.fireProtection.design_area_m2,
-        required_value: 'documented',
-        unit: 'm² / lpm/m²',
-        code_reference: 'SBC-801-SPR',
-        occupancy: occLabel(ctx),
-      });
+        ['required_density_lpm_m2|hazard_density_table'],
+        {
+          code_reference: 'SBC-801-SPR',
+          actual_value: `${ctx.fireProtection.design_area_m2} m² @ ${ctx.fireProtection.density_lpm_m2}`,
+          required_value: 'documented_density_threshold',
+          occupancy: occLabel(ctx),
+        }
+      );
     },
   },
   {
@@ -1095,14 +1158,18 @@ const fireProtectionRules: ComplianceRule[] = [
       if (ctx.fireProtection.hose_allowance_lpm == null) {
         return needsData('بدل الخراطيم غير موثّق.', inputs, ['hose_allowance'], { code_reference: 'SBC-801-SPR' });
       }
-      return passEval(`بدل الخراطيم: ${ctx.fireProtection.hose_allowance_lpm} لتر/د`, {
+      return needsData(
+        'بدل الخراطيم موثّق رقميًا، لكن لا يوجد بدل مطلوب كودي موثّق للمقارنة في المشروع — لا PASS على القيمة وحدها.',
         inputs,
-        actual_value: ctx.fireProtection.hose_allowance_lpm,
-        required_value: 'documented',
-        unit: 'lpm',
-        code_reference: 'SBC-801-SPR',
-        occupancy: occLabel(ctx),
-      });
+        ['required_hose_allowance_lpm'],
+        {
+          code_reference: 'SBC-801-SPR',
+          actual_value: ctx.fireProtection.hose_allowance_lpm,
+          required_value: 'documented_hose_threshold',
+          unit: 'lpm',
+          occupancy: occLabel(ctx),
+        }
+      );
     },
   },
   {
@@ -1243,30 +1310,34 @@ const fireProtectionRules: ComplianceRule[] = [
       if (ctx.fireProtection.tank_volume_m3 == null || ctx.fireProtection.tank_duration_min == null) {
         return needsData('سعة و/أو مدة الخزان غير موثّقة.', inputs, ['tank_volume', 'duration'], { code_reference: codeRef });
       }
-      if (
-        ctx.fireProtection.tank_required_m3 != null &&
-        ctx.fireProtection.tank_volume_m3 + 1e-6 < ctx.fireProtection.tank_required_m3
-      ) {
-        return failEval(
-          `سعة الخزان ${ctx.fireProtection.tank_volume_m3} م³ أقل من المحسوب ${ctx.fireProtection.tank_required_m3} م³.`,
+      if (ctx.fireProtection.tank_required_m3 == null) {
+        return needsData(
+          'سعة الخزان الفعلية موثّقة لكن الحجم المطلوب المحسوب غير موثّق للمقارنة — لا PASS على القيمة وحدها.',
+          inputs,
+          ['tank_required_m3'],
           {
-            inputs,
-            actual_value: ctx.fireProtection.tank_volume_m3,
-            required_value: ctx.fireProtection.tank_required_m3,
-            unit: 'm³',
             code_reference: codeRef,
+            actual_value: ctx.fireProtection.tank_volume_m3,
             occupancy: occLabel(ctx),
           }
         );
       }
-      return passEval('بيانات الخزان موثّقة.', {
+      const base = {
         inputs,
         actual_value: ctx.fireProtection.tank_volume_m3,
-        required_value: ctx.fireProtection.tank_required_m3 ?? 'documented',
+        required_value: ctx.fireProtection.tank_required_m3,
         unit: 'm³',
         code_reference: codeRef,
         occupancy: occLabel(ctx),
-      });
+        condition: 'tank_volume_m3 >= tank_required_m3',
+      };
+      if (ctx.fireProtection.tank_volume_m3 + 1e-6 < ctx.fireProtection.tank_required_m3) {
+        return failEval(
+          `سعة الخزان ${ctx.fireProtection.tank_volume_m3} م³ أقل من المحسوب ${ctx.fireProtection.tank_required_m3} م³.`,
+          base
+        );
+      }
+      return passEval('سعة الخزان ≥ المطلوب المحسوب الموثّق.', base);
     },
   },
   {
@@ -1287,16 +1358,20 @@ const fireProtectionRules: ComplianceRule[] = [
       const inputs = { fdc: ctx.fireAccess.fdc_present };
       const codeRef = 'SBC 801 / FDC Requirement';
       if (!systemNeeded) return naEval('FDC غير منطبق دون نظام مرشات/مواسير.', { inputs, code_reference: codeRef });
-      if (!hasNonEmpty(ctx.fireAccess.fdc_present)) {
-        return needsData('متطلب/وجود FDC غير موثّق.', inputs, ['FDC'], { code_reference: codeRef });
+      const yn = parseYesNoUnknown(ctx.fireAccess.fdc_present);
+      if (yn === 'unknown' || !hasNonEmpty(ctx.fireAccess.fdc_present)) {
+        return needsData('متطلب/وجود FDC غير موثّق كـ نعم/لا.', inputs, ['FDC'], { code_reference: codeRef });
       }
-      return passEval('FDC موثّق.', {
+      const base = {
         inputs,
-        actual_value: ctx.fireAccess.fdc_present,
-        required_value: 'documented',
+        actual_value: yn,
+        required_value: true,
         code_reference: codeRef,
         occupancy: occLabel(ctx),
-      });
+        condition: 'system_needs_FDC → fdc_present===yes',
+      };
+      if (yn === 'no') return failEval('FDC مطلوب للنظام وغير موجود وفق البيانات.', base);
+      return passEval('FDC مطلوب وموجود وفق البيانات.', base);
     },
   },
   {
@@ -1313,14 +1388,18 @@ const fireProtectionRules: ComplianceRule[] = [
       const n = ctx.fireProtection.extinguisher_count;
       const inputs = { extinguisher_count: n };
       if (n == null || n <= 0) return needsData('طفايات الحريق غير موثّقة.', inputs, ['extinguishers']);
-      return passEval(`عدد الطفايات الموثّق: ${n}`, {
+      return needsData(
+        'عدد الطفايات موثّق، لكن الحد الأدنى الكودي المطلوب غير موثّق للمقارنة — لا PASS على العدد وحده.',
         inputs,
-        actual_value: n,
-        required_value: '>0',
-        unit: 'count',
-        code_reference: 'SBC 801 / Portable Extinguishers',
-        occupancy: occLabel(ctx),
-      });
+        ['required_extinguisher_count'],
+        {
+          actual_value: n,
+          required_value: 'documented_min_count',
+          unit: 'count',
+          code_reference: 'SBC 801 / Portable Extinguishers',
+          occupancy: occLabel(ctx),
+        }
+      );
     },
   },
 ];
@@ -1408,18 +1487,33 @@ function evalAlarmField(
   value: string | null | undefined,
   labelAr: string
 ): ComplianceRuleEvaluation {
-  const inputs = { [key]: value };
+  const inputs = { [key]: value, alarm_verified: ctx.fireAlarm.verified };
   const codeRef = 'SBC-801-ALM';
   if (!alarmRequired(ctx)) {
     return naEval(`${labelAr} غير منطبق.`, { inputs, code_reference: codeRef });
   }
   if (!hasNonEmpty(value)) return needsData(`${labelAr} غير موثّق.`, inputs, [key], { code_reference: codeRef });
-  return passEval(`${labelAr} موثّق.`, {
+  // Component text alone is not automated code PASS — require FA-01 verified system.
+  if (!ctx.fireAlarm.verified) {
+    return needsData(
+      `${labelAr} مُدخل نصيًا دون تحقق هندسي للنظام (fire_alarm.verified) — لا PASS على الإدخال وحده.`,
+      inputs,
+      ['fire_alarm.verified'],
+      {
+        code_reference: codeRef,
+        actual_value: value,
+        required_value: 'documented_and_system_verified',
+        occupancy: occLabel(ctx),
+      }
+    );
+  }
+  return passEval(`${labelAr} موثّق مع تحقق النظام.`, {
     inputs,
     actual_value: value,
-    required_value: 'documented',
+    required_value: 'documented_and_system_verified',
     code_reference: codeRef,
     occupancy: occLabel(ctx),
+    condition: 'field_present && fire_alarm.verified===true',
   });
 }
 

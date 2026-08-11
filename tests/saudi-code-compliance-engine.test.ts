@@ -9,6 +9,7 @@ import {
   resolveTravelDistanceLimitM,
   resolveFireAccessMinWidthM,
   runProjectCompliance,
+  complianceStatusLabelAr,
   type ComplianceRuleContext,
 } from '@/lib/projects/compliance';
 import { evaluateRule, runComplianceRules } from '@/lib/projects/compliance/engine';
@@ -527,5 +528,289 @@ describe('Saudi Code Compliance Engine — hardened', () => {
       })
     );
     expect(result.status).toBe('NEEDS_DATA');
+  });
+
+  describe('Final Verification — boundary matrix for key rules', () => {
+    it('lists expected rule count domains (44 rules)', () => {
+      expect(COMPLIANCE_RULES.length).toBe(44);
+      expect(COMPLIANCE_RULES.map((r) => r.id).sort()).toEqual(
+        [
+          'OCC-01','OCC-02','OCC-03','OCC-04','OCC-05','OCC-06','OCC-07','OCC-08',
+          'EGR-01','EGR-02','EGR-03','EGR-04','EGR-05','EGR-06','EGR-07','EGR-08','EGR-09','EGR-10','EGR-11','EGR-12',
+          'FAC-01','FAC-02','FAC-03','FAC-04','FAC-05',
+          'FP-01','FP-02','FP-03','FP-04','FP-05','FP-06','FP-07','FP-08','FP-09','FP-10',
+          'HYD-01',
+          'FA-01','FA-02','FA-03','FA-04','FA-05','FA-06','FA-07',
+          'SMK-01',
+        ].sort()
+      );
+    });
+
+    function boundaryCompare(
+      ruleId: string,
+      makeCtx: (actual: number | null, required: number | null) => ComplianceRuleContext,
+      opts?: { missingRequiredAlsoNeedsCodeRef?: boolean }
+    ) {
+      const rule = getComplianceRuleById(ruleId)!;
+      expect(evaluateRule(rule, makeCtx(5, 6)).status).toBe('FAIL'); // actual < required (gte)
+      expect(evaluateRule(rule, makeCtx(6, 6)).status).toBe('PASS');
+      expect(evaluateRule(rule, makeCtx(7, 6)).status).toBe('PASS');
+      expect(evaluateRule(rule, makeCtx(null, 6)).status).toBe('NEEDS_DATA');
+      expect(evaluateRule(rule, makeCtx(6, null)).status).toBe('NEEDS_DATA');
+      void opts;
+    }
+
+    it('EGR-05: < = > missing actual, missing required, missing occupancy/sprinkler', () => {
+      const rule = getComplianceRuleById('EGR-05')!;
+      const base = {
+        building: { ...emptyCtx().building, occupancy_classification: 'GROUP B' },
+        fireProtection: { applicable_codes: [] as string[], sprinkler_provided: 'yes' as const },
+        egress: { metrics: [] as Array<{ label: string; value: string }>, occupant_load_total: 120 },
+      };
+      expect(
+        evaluateRule(rule, emptyCtx({ ...base, egress: { ...base.egress, exit_separation_m: 10, required_exit_separation_m: 20 } })).status
+      ).toBe('FAIL');
+      expect(
+        evaluateRule(rule, emptyCtx({ ...base, egress: { ...base.egress, exit_separation_m: 20, required_exit_separation_m: 20 } })).status
+      ).toBe('PASS');
+      expect(
+        evaluateRule(rule, emptyCtx({ ...base, egress: { ...base.egress, exit_separation_m: 25, required_exit_separation_m: 20 } })).status
+      ).toBe('PASS');
+      expect(
+        evaluateRule(rule, emptyCtx({ ...base, egress: { ...base.egress, exit_separation_m: null, required_exit_separation_m: 20 } })).status
+      ).toBe('NEEDS_DATA');
+      expect(
+        evaluateRule(rule, emptyCtx({ ...base, egress: { ...base.egress, exit_separation_m: 20, required_exit_separation_m: null } })).status
+      ).toBe('NEEDS_DATA');
+      // missing occupancy → threshold null
+      expect(
+        evaluateRule(
+          rule,
+          emptyCtx({
+            fireProtection: { applicable_codes: [], sprinkler_provided: 'yes' },
+            egress: { metrics: [], occupant_load_total: 120, exit_separation_m: 20, required_exit_separation_m: 20 },
+          })
+        ).status
+      ).toBe('NEEDS_DATA');
+    });
+
+    it('EGR-06: missing actual / missing occupancy / missing sprinkler → NEEDS_DATA; boundaries when documented', () => {
+      const rule = getComplianceRuleById('EGR-06')!;
+      expect(evaluateRule(rule, emptyCtx({ egress: { metrics: [] } })).status).toBe('NEEDS_DATA');
+      expect(
+        evaluateRule(
+          rule,
+          emptyCtx({
+            building: { ...emptyCtx().building, occupancy_classification: 'GROUP B', primary_occupancy_code: 'business' },
+            fireProtection: { applicable_codes: [], sprinkler_provided: 'yes' },
+            egress: { metrics: [] },
+          })
+        ).status
+      ).toBe('NEEDS_DATA'); // missing actual
+
+      const withOcc = emptyCtx({
+        building: {
+          ...emptyCtx().building,
+          occupancy_classification: 'GROUP B — مكاتب',
+          primary_occupancy_code: 'business',
+        },
+        fireProtection: { applicable_codes: [], sprinkler_provided: 'no' },
+      });
+      const limit = resolveTravelDistanceLimitM(withOcc)!.value;
+      expect(evaluateRule(rule, { ...withOcc, egress: { metrics: [], travel_distance_m: limit - 1 } }).status).toBe('PASS');
+      expect(evaluateRule(rule, { ...withOcc, egress: { metrics: [], travel_distance_m: limit } }).status).toBe('PASS');
+      expect(evaluateRule(rule, { ...withOcc, egress: { metrics: [], travel_distance_m: limit + 1 } }).status).toBe('FAIL');
+    });
+
+    it('EGR-09/10/11: no PASS on measurement alone; boundaries with required', () => {
+      for (const [id, actualKey, requiredKey] of [
+        ['EGR-09', 'corridor_width_m', 'required_corridor_width_m'],
+        ['EGR-10', 'door_width_m', 'required_door_width_m'],
+        ['EGR-11', 'stair_width_m', 'required_stair_width_m'],
+      ] as const) {
+        const rule = getComplianceRuleById(id)!;
+        const onlyActual = emptyCtx({
+          building: { ...emptyCtx().building, stories: 3 },
+          egress: {
+            metrics: [],
+            stairs_count: 2,
+            [actualKey]: 1.2,
+          },
+        });
+        expect(evaluateRule(rule, onlyActual).status).toBe('NEEDS_DATA');
+
+        const fail = emptyCtx({
+          building: { ...emptyCtx().building, stories: 3 },
+          egress: { metrics: [], stairs_count: 2, [actualKey]: 0.8, [requiredKey]: 1.1 },
+        });
+        expect(evaluateRule(rule, fail).status).toBe('FAIL');
+
+        const equal = emptyCtx({
+          building: { ...emptyCtx().building, stories: 3 },
+          egress: { metrics: [], stairs_count: 2, [actualKey]: 1.1, [requiredKey]: 1.1 },
+        });
+        expect(evaluateRule(rule, equal).status).toBe('PASS');
+
+        const over = emptyCtx({
+          building: { ...emptyCtx().building, stories: 3 },
+          egress: { metrics: [], stairs_count: 2, [actualKey]: 1.4, [requiredKey]: 1.1 },
+        });
+        expect(evaluateRule(rule, over).status).toBe('PASS');
+
+        const missingRequired = emptyCtx({
+          building: { ...emptyCtx().building, stories: 3 },
+          egress: { metrics: [], stairs_count: 2, [actualKey]: 1.2, [requiredKey]: null },
+        });
+        expect(evaluateRule(rule, missingRequired).status).toBe('NEEDS_DATA');
+      }
+    });
+
+    it('FAC-01/02: narrative alone never PASS; threshold comparison boundaries', () => {
+      const fac01 = getComplianceRuleById('FAC-01')!;
+      expect(
+        evaluateRule(fac01, emptyCtx({ fireAccess: { site_entrance: 'مدخل شمالي واسع' } })).status
+      ).toBe('NEEDS_DATA');
+      expect(
+        evaluateRule(fac01, emptyCtx({ fireAccess: { road_width_m: 7 } })).status
+      ).toBe('NEEDS_DATA');
+
+      boundaryCompare('FAC-02', (actual, required) =>
+        emptyCtx({
+          fireAccess: {
+            road_width_m: actual,
+            required_road_width_m: required ?? undefined,
+            required_road_width_code_ref: required != null ? 'SBC 801 project table' : undefined,
+          },
+        })
+      );
+
+      // missing code ref → NEEDS_DATA even with required number
+      const fac02 = getComplianceRuleById('FAC-02')!;
+      expect(
+        evaluateRule(
+          fac02,
+          emptyCtx({ fireAccess: { road_width_m: 7, required_road_width_m: 6, required_road_width_code_ref: '' } })
+        ).status
+      ).toBe('NEEDS_DATA');
+    });
+
+    it('FAC-03/04: text alone never PASS', () => {
+      expect(
+        evaluateRule(getComplianceRuleById('FAC-03')!, emptyCtx({ fireAccess: { notes: 'منطقة تمركز' } })).status
+      ).toBe('NEEDS_DATA');
+      expect(
+        evaluateRule(getComplianceRuleById('FAC-04')!, emptyCtx({ fireAccess: { fire_road: 'طريق التفاف' } })).status
+      ).toBe('NEEDS_DATA');
+    });
+
+    it('FP-01: missing occupancy → NEEDS_DATA; claim without verify → NEEDS_DATA', () => {
+      const rule = getComplianceRuleById('FP-01')!;
+      expect(
+        evaluateRule(
+          rule,
+          emptyCtx({
+            fireProtection: { applicable_codes: [], sprinkler_provided: 'yes', sprinkler_verified: true },
+          })
+        ).status
+      ).toBe('NEEDS_DATA');
+    });
+
+    it('FA-01: missing occupancy path → not PASS; verified path PASS', () => {
+      const rule = getComplianceRuleById('FA-01')!;
+      const missingOcc = evaluateRule(
+        rule,
+        emptyCtx({
+          egress: { metrics: [], occupant_load_total: 200 },
+          fireAlarm: { provided: 'yes', verified: true },
+        })
+      );
+      expect(missingOcc.status).not.toBe('PASS');
+
+      const pass = evaluateRule(
+        rule,
+        emptyCtx({
+          building: { ...emptyCtx().building, primary_occupancy_code: 'residential' },
+          egress: { metrics: [], occupant_load_total: 10 },
+          fireAlarm: { provided: 'yes', verified: true },
+        })
+      );
+      expect(pass.status).toBe('PASS');
+    });
+
+    it('HYD-01: missing hydraulic network → NEEDS_DATA; invalid when sprinkler not in scope → N/A', () => {
+      const rule = getComplianceRuleById('HYD-01')!;
+      expect(
+        evaluateRule(
+          rule,
+          emptyCtx({
+            fireProtection: { applicable_codes: [], sprinkler_provided: 'yes' },
+            hydraulic: { has_network_data: false, attachment_count: 0 },
+          })
+        ).status
+      ).toBe('NEEDS_DATA');
+
+      expect(
+        evaluateRule(
+          rule,
+          emptyCtx({
+            fireProtection: { applicable_codes: [], sprinkler_provided: 'no', sprinkler_required: 'no' },
+            hydraulic: { has_network_data: false, attachment_count: 0 },
+          })
+        ).status
+      ).toBe('N/A');
+    });
+
+    it('invalid construction type → OCC-03 NEEDS_DATA', () => {
+      const rule = getComplianceRuleById('OCC-03')!;
+      expect(
+        evaluateRule(
+          rule,
+          emptyCtx({
+            building: {
+              ...emptyCtx().building,
+              building_type_code: 'random-office',
+              construction_type: null,
+            },
+          })
+        ).status
+      ).toBe('NEEDS_DATA');
+    });
+
+    it('assessment labels never say absolute مطابق alone', () => {
+      const run = runProjectCompliance({
+        client: baseClient(),
+        data: { ...EMPTY_PROJECT_ENGINEERING_DATA },
+      });
+      const label = complianceStatusLabelAr(run);
+      expect(label).toMatch(/تقييم مطابقة/);
+      expect(label).not.toBe('مطابق');
+      expect(label).not.toBe('غير مطابق');
+    });
+
+    it('override stores reason + codeReference + identity + timestamp; status unchanged', () => {
+      const at = '2026-08-11T12:00:00.000Z';
+      const run = runComplianceRules(
+        emptyCtx({
+          overrides: [
+            {
+              ruleId: 'FAC-03',
+              reason: 'تم اعتماد خلوص المناورة في مخطط الموقع الموقع من الدفاع المدني',
+              codeReference: 'SBC 801 / project AHJ letter',
+              engineerName: 'م. سارة',
+              overriddenAt: at,
+              resultingStatus: 'PASS',
+            },
+          ],
+        }),
+        [getComplianceRuleById('FAC-03')!]
+      );
+      const row = run.results[0];
+      expect(row.status).toBe('NEEDS_DATA');
+      expect(row.effectiveStatus).toBe('PASS');
+      expect(row.override?.reason.length).toBeGreaterThanOrEqual(8);
+      expect(row.override?.codeReference).toMatch(/SBC/);
+      expect(row.override?.engineerName).toBe('م. سارة');
+      expect(row.override?.overriddenAt).toBe(at);
+    });
   });
 });

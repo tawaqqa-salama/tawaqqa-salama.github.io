@@ -7,6 +7,7 @@
 
 import { useMemo, useState } from 'react';
 import {
+  COMPLIANCE_ASSESSMENT_DISCLAIMER_AR,
   complianceStatusLabelAr,
   runProjectCompliance,
   type EngineerOverride,
@@ -68,7 +69,7 @@ export default function ComplianceMatrixPanel({ client, data, onChange }: Props)
       last_run_at: run.evaluatedAt,
       last_gate: run.gate,
     });
-    setMsg('تم تسجيل التجاوز (النتيجة الأصلية محفوظة في العمود Result)');
+    setMsg('تم تسجيل التجاوز — ليس تحققًا آليًا من الكود؛ النتيجة الأصلية محفوظة في عمود Result');
     setReason('');
     setCodeRef('');
   };
@@ -90,10 +91,13 @@ export default function ComplianceMatrixPanel({ client, data, onChange }: Props)
     >
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div>
-          <h3 className="font-bold text-[#1f4d3a] text-lg">مصفوفة المطابقة الكودية (SBC 201 / SBC 801)</h3>
+          <h3 className="font-bold text-[#1f4d3a] text-lg">مصفوفة تقييم المطابقة الكودية (SBC 201 / SBC 801)</h3>
           <p className="text-xs text-gray-600 mt-1 leading-relaxed max-w-3xl">
-            الحكم النهائي حتمي بالقواعد. لا يُعلن «مطابق» إلا باجتياز كل المتطلبات الإلزامية.
-            البيانات الناقصة = NEEDS_DATA وليست PASS. التجاوز يتطلب سببًا ومرجعًا كوديًا وهوية المهندس، ولا يخفي النتيجة الأصلية.
+            {COMPLIANCE_ASSESSMENT_DISCLAIMER_AR}
+          </p>
+          <p className="text-xs text-gray-600 mt-1 leading-relaxed max-w-3xl">
+            الحكم النهائي حتمي بالقواعد الموثّقة. البيانات الناقصة = NEEDS_DATA وليست PASS. عمود Result = النتيجة
+            الأصلية؛ عمود Status = effectiveStatus بعد التجاوز إن وُجد.
           </p>
         </div>
         <div className="text-left space-y-1">
@@ -178,6 +182,10 @@ export default function ComplianceMatrixPanel({ client, data, onChange }: Props)
 
       <div className="rounded-lg border border-dashed border-slate-300 bg-slate-50 p-3 space-y-2">
         <h4 className="text-sm font-bold text-slate-800">Engineer Override</h4>
+        <p className="text-[11px] text-amber-900 bg-amber-50 border border-amber-100 rounded-md px-2 py-1.5 leading-relaxed">
+          التجاوز قرار هندسي موثّق (سبب + مرجع كودي + هوية + وقت) — <strong>ليس</strong> نتيجة تحقق آلي من
+          الكود. يبقى عمود Result على النتيجة الأصلية؛ يتغيّر فقط Status (effectiveStatus).
+        </p>
         <div className="grid md:grid-cols-5 gap-2">
           <label className="text-xs block md:col-span-1">
             <span className="text-gray-600 mb-1 block">القاعدة</span>
@@ -230,7 +238,7 @@ export default function ComplianceMatrixPanel({ client, data, onChange }: Props)
             onClick={applyOverride}
             className="rounded-lg bg-[#1f4d3a] text-white text-xs font-semibold px-3 py-2"
           >
-            تسجيل التجاوز → PASS
+            تسجيل تجاوز هندسي → effective PASS
           </button>
           {overrides.map((o) => (
             <button

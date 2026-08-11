@@ -80,9 +80,18 @@ export function isFullyCompliant(run: ComplianceRunResult): boolean {
   return run.allMandatoryPass && run.gate === 'ALLOW';
 }
 
+/**
+ * Never claim absolute “SBC/Civil Defense compliant”.
+ * Labels describe assessment state based on documented rules/data only.
+ */
 export function complianceStatusLabelAr(run: ComplianceRunResult): string {
-  if (isFullyCompliant(run)) return 'مطابق';
-  if (run.mandatoryFail > 0) return 'غير مطابق';
-  if (run.mandatoryNeedsData > 0) return 'يحتاج بيانات';
-  return 'غير مكتمل';
+  if (isFullyCompliant(run)) {
+    return 'تقييم مطابقة وفق القواعد/البيانات الموثّقة — اجتياز المتطلبات الإلزامية';
+  }
+  if (run.mandatoryFail > 0) return 'تقييم مطابقة — عدم اجتياز متطلب إلزامي';
+  if (run.mandatoryNeedsData > 0) return 'تقييم مطابقة — يحتاج بيانات/مراجع موثّقة';
+  return 'تقييم مطابقة — غير مكتمل';
 }
+
+export const COMPLIANCE_ASSESSMENT_DISCLAIMER_AR =
+  'Compliance assessment based on documented rules/data — تقييم مطابقة وفق القواعد والبيانات الموثّقة فقط، وليس إعلانًا مطلقًا بمطابقة SBC أو الدفاع المدني حتى تُدخل المراجع الكودية المعتمدة بالكامل.';

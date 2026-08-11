@@ -633,8 +633,8 @@ const generators: Partial<Record<EngineeringStudySectionId, Gen>> = {
     const run = runProjectCompliance({ client: ctx.client, data });
     const sbcText =
       locale === 'ar'
-        ? `مصفوفة المطابقة الكودية (SBC 201/801): الحالة «${complianceStatusLabelAr(run)}» — البوابة ${run.gate}. إلزامي FAIL=${run.mandatoryFail}، NEEDS_DATA=${run.mandatoryNeedsData}. لا يُعلن مطابق إلا باجتياز كل الإلزاميات. الجدول التفصيلي مرفق في ملحق التقرير.`
-        : `Saudi Code Compliance Matrix (SBC 201/801): status “${complianceStatusLabelAr(run)}” — gate ${run.gate}. Mandatory FAIL=${run.mandatoryFail}, NEEDS_DATA=${run.mandatoryNeedsData}. “Compliant” is only claimed when all mandatory rules PASS. Detailed matrix is appended to this report.`;
+        ? `تقييم المطابقة الكودية (SBC 201/801) وفق القواعد/البيانات الموثّقة: «${complianceStatusLabelAr(run)}» — البوابة ${run.gate}. إلزامي FAIL=${run.mandatoryFail}، NEEDS_DATA=${run.mandatoryNeedsData}. ليس إعلانًا مطلقًا بمطابقة SBC/الدفاع المدني. الجدول التفصيلي مرفق في ملحق التقرير.`
+        : `Compliance assessment based on documented rules/data (SBC 201/801): «${complianceStatusLabelAr(run)}» — gate ${run.gate}. Mandatory FAIL=${run.mandatoryFail}, NEEDS_DATA=${run.mandatoryNeedsData}. Not an absolute SBC/Civil Defense compliance claim. Detailed matrix attached.`;
     paragraphs.push(p(sbcText, ['SBC 201', 'SBC 801'], ctx.allowedCitations));
 
     return { paragraphs };
