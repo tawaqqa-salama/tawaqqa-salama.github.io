@@ -47,13 +47,15 @@ function publicAccount(row: {
   };
 }
 
-export async function listSocialAccounts() {
+export async function listSocialAccounts(companyId?: string | null) {
   if (isMemoryStore()) return marketingMemory.accounts.list().map(publicAccount);
+  if (!companyId) return [];
   const { data } = await supabase
     .from('social_accounts')
     .select(
       'id, platform, account_name, account_id, profile_url, avatar_url, status, connection_status, token_expiry, last_sync_at, last_error, scopes, metadata'
     )
+    .eq('company_id', companyId)
     .order('created_at', { ascending: false });
   return (data || []).map((r) =>
     publicAccount({
@@ -158,11 +160,12 @@ export async function completeOAuth(
   };
 }
 
-export async function disconnectAccount(id: string) {
+export async function disconnectAccount(id: string, companyId?: string | null) {
   if (isMemoryStore()) {
     const a = marketingMemory.accounts.disconnect(id);
     return { ok: Boolean(a), account: a ? publicAccount(a) : null };
   }
+  if (!companyId) return { ok: false, account: null };
   const { data } = await supabase
     .from('social_accounts')
     .update({
@@ -173,6 +176,7 @@ export async function disconnectAccount(id: string) {
       updated_at: new Date().toISOString(),
     })
     .eq('id', id)
+    .eq('company_id', companyId)
     .select(
       'id, platform, account_name, account_id, profile_url, avatar_url, status, connection_status, token_expiry, last_sync_at, last_error, scopes'
     )
@@ -325,7 +329,7 @@ export async function ingestInboundSocialMessage(input: {
   return { client, conversationId: convId };
 }
 
-export async function listInbox() {
+export async function listInbox(companyId?: string | null) {
   if (isMemoryStore()) {
     const clients = marketingMemory.listClients();
     return marketingMemory.conversations.list().map((c) => {
@@ -344,11 +348,13 @@ export async function listInbox() {
       };
     });
   }
+  if (!companyId) return [];
   const { data } = await supabase
     .from('social_conversations')
     .select(
       '*, clients:customer_id(id, name, business_name, lead_source, pipeline_stage, lead_status, owner_name)'
     )
+    .eq('company_id', companyId)
     .order('last_message_at', { ascending: false })
     .limit(200);
   return (data || []).map((c) => {
@@ -368,16 +374,18 @@ export async function listInbox() {
   });
 }
 
-export async function getConversationDetail(id: string) {
+export async function getConversationDetail(id: string, companyId?: string | null) {
   if (isMemoryStore()) {
     const conv = marketingMemory.conversations.get(id);
     if (!conv) return null;
     return { conversation: conv, messages: marketingMemory.messages.list(id) };
   }
+  if (!companyId) return null;
   const { data: conversation } = await supabase
     .from('social_conversations')
     .select('*')
     .eq('id', id)
+    .eq('company_id', companyId)
     .maybeSingle();
   if (!conversation) return null;
   const { data: messages } = await supabase
@@ -390,6 +398,7 @@ export async function getConversationDetail(id: string) {
 
 export async function createOrUpdatePost(input: {
   id?: string;
+  companyId?: string | null;
   title?: string | null;
   content: string;
   media?: unknown[];
@@ -426,6 +435,8 @@ export async function createOrUpdatePost(input: {
     return marketingMemory.posts.save(post);
   }
 
+  if (!input.companyId) throw new Error('company_id_required');
+
   const payload = {
     title: input.title ?? null,
     content: input.content,
@@ -439,9 +450,20 @@ export async function createOrUpdatePost(input: {
   };
   let postId = input.id;
   if (postId) {
-    await supabase.from('social_posts').update(payload).eq('id', postId);
+    const { data: owned } = await supabase
+      .from('social_posts')
+      .select('id')
+      .eq('id', postId)
+      .eq('company_id', input.companyId)
+      .maybeSingle();
+    if (!owned) return null;
+    await supabase.from('social_posts').update(payload).eq('id', postId).eq('company_id', input.companyId);
   } else {
-    const { data } = await supabase.from('social_posts').insert(payload).select('id').single();
+    const { data } = await supabase
+      .from('social_posts')
+      .insert({ ...payload, company_id: input.companyId })
+      .select('id')
+      .single();
     postId = data?.id;
   }
   if (postId) {
@@ -457,26 +479,30 @@ export async function createOrUpdatePost(input: {
       .from('social_posts')
       .select('*, social_post_targets(*)')
       .eq('id', postId)
+      .eq('company_id', input.companyId)
       .single();
     return data;
   }
   return null;
 }
 
-export async function listPosts() {
+export async function listPosts(companyId?: string | null) {
   if (isMemoryStore()) return marketingMemory.posts.list();
+  if (!companyId) return [];
   const { data } = await supabase
     .from('social_posts')
     .select('*, social_post_targets(*)')
+    .eq('company_id', companyId)
     .order('publish_at', { ascending: true, nullsFirst: false });
   return data || [];
 }
 
-export async function duplicatePost(id: string) {
-  const posts = await listPosts();
+export async function duplicatePost(id: string, companyId?: string | null) {
+  const posts = await listPosts(companyId);
   const src = (posts as Array<Record<string, unknown>>).find((p) => p.id === id);
   if (!src) return null;
   return createOrUpdatePost({
+    companyId,
     title: `${src.title || 'منشور'} (نسخة)`,
     content: String(src.content || ''),
     media: (src.media as unknown[]) || [],
@@ -487,17 +513,25 @@ export async function duplicatePost(id: string) {
   });
 }
 
-export async function deletePost(id: string) {
+export async function deletePost(id: string, companyId?: string | null) {
   if (isMemoryStore()) {
     marketingMemory.posts.remove(id);
     return { ok: true };
   }
-  await supabase.from('social_posts').delete().eq('id', id);
+  if (!companyId) return { ok: false, error: 'company_id_required' };
+  const { data: owned } = await supabase
+    .from('social_posts')
+    .select('id')
+    .eq('id', id)
+    .eq('company_id', companyId)
+    .maybeSingle();
+  if (!owned) return { ok: false, error: 'not_found' };
+  await supabase.from('social_posts').delete().eq('id', id).eq('company_id', companyId);
   return { ok: true };
 }
 
-export async function publishPostNow(id: string) {
-  const posts = await listPosts();
+export async function publishPostNow(id: string, companyId?: string | null) {
+  const posts = await listPosts(companyId);
   const post = (posts as Array<Record<string, unknown>>).find((p) => p.id === id);
   if (!post) return { ok: false, error: 'المنشور غير موجود' };
 
@@ -618,7 +652,7 @@ export async function publishPostNow(id: string) {
   return { ok: anyPublished, results };
 }
 
-export async function getDashboardStats(range: string) {
+export async function getDashboardStats(range: string, companyId?: string | null) {
   const days =
     range === 'today' ? 1 : range === '7d' ? 7 : range === '90d' ? 90 : range === 'custom' ? 30 : 30;
   const since = Date.now() - days * 86400000;
@@ -671,11 +705,34 @@ export async function getDashboardStats(range: string) {
     };
   }
 
+  if (!companyId) {
+    return {
+      range,
+      totals: {
+        followers: null,
+        followers_growth: null,
+        posts: 0,
+        views: null,
+        reach: null,
+        engagement: null,
+        comments: null,
+        messages: 0,
+        leads: 0,
+        conversion_rate: 0,
+      },
+      by_platform: [],
+      funnel: { leads: 0, opportunities: 0, quotes: 0, won: 0, revenue: 0 },
+      leads_by_source: {},
+      provider_mode: process.env.SOCIAL_PROVIDER_MODE || 'live',
+    };
+  }
+
   const { data: clients } = await supabase
     .from('clients')
     .select(
       'id, lead_source, source_channel, pipeline_stage, quotation_number, total_amount, created_at, first_touch_source, last_touch_source'
     )
+    .eq('company_id', companyId)
     .gte('created_at', new Date(since).toISOString());
   const list = clients || [];
   const bySource: Record<string, number> = {};
@@ -683,14 +740,28 @@ export async function getDashboardStats(range: string) {
     const s = c.lead_source || c.last_touch_source || 'Other';
     bySource[s] = (bySource[s] || 0) + 1;
   }
-  const { data: accounts } = await supabase.from('social_accounts').select('platform, connection_status');
+  const { data: accounts } = await supabase
+    .from('social_accounts')
+    .select('platform, connection_status')
+    .eq('company_id', companyId);
   const { count: postsCount } = await supabase
     .from('social_posts')
-    .select('*', { count: 'exact', head: true });
-  const { count: msgCount } = await supabase
-    .from('social_messages')
     .select('*', { count: 'exact', head: true })
-    .gte('created_at', new Date(since).toISOString());
+    .eq('company_id', companyId);
+  const { data: convIds } = await supabase
+    .from('social_conversations')
+    .select('id')
+    .eq('company_id', companyId);
+  const ids = (convIds || []).map((c) => c.id);
+  let msgCount = 0;
+  if (ids.length) {
+    const { count } = await supabase
+      .from('social_messages')
+      .select('*', { count: 'exact', head: true })
+      .in('conversation_id', ids)
+      .gte('created_at', new Date(since).toISOString());
+    msgCount = count || 0;
+  }
 
   const won = list.filter((c) =>
     ['finance', 'projects', 'completed'].includes(c.pipeline_stage || '')
@@ -724,7 +795,7 @@ export async function getDashboardStats(range: string) {
   };
 }
 
-export async function syncAccountAnalytics(accountId: string) {
+export async function syncAccountAnalytics(accountId: string, companyId?: string | null) {
   if (isMemoryStore()) {
     const acc = marketingMemory.accounts.list().find((a) => a.id === accountId);
     if (!acc) return { ok: false, error: 'not found' };
@@ -736,7 +807,13 @@ export async function syncAccountAnalytics(accountId: string) {
     acc.last_sync_at = new Date().toISOString();
     return { ok: true, analytics };
   }
-  const { data: acc } = await supabase.from('social_accounts').select('*').eq('id', accountId).maybeSingle();
+  if (!companyId) return { ok: false, error: 'not found' };
+  const { data: acc } = await supabase
+    .from('social_accounts')
+    .select('*')
+    .eq('id', accountId)
+    .eq('company_id', companyId)
+    .maybeSingle();
   if (!acc) return { ok: false, error: 'not found' };
   const token = decryptSocialSecret(acc.access_token_encrypted);
   if (!token) return { ok: false, error: 'token unavailable' };
@@ -748,6 +825,7 @@ export async function syncAccountAnalytics(accountId: string) {
   await supabase
     .from('social_accounts')
     .update({ last_sync_at: new Date().toISOString() })
-    .eq('id', accountId);
+    .eq('id', accountId)
+    .eq('company_id', companyId);
   return { ok: analytics.ok, analytics };
 }

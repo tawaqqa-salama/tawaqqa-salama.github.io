@@ -7,6 +7,8 @@ const MAX_RETRY = 3;
 
 export type OutboundSendInput = {
   conversationId: string;
+  /** Session tenant — required for cross-tenant IDOR prevention */
+  companyId?: string | null;
   userId?: string | null;
   kind: 'text' | 'template' | 'image' | 'document';
   text?: string;
@@ -24,7 +26,10 @@ export async function sendOutboundMessage(input: OutboundSendInput): Promise<{
   message: WhatsAppMessage;
   error?: string;
 }> {
-  const conversation = await waRepository.getConversation(input.conversationId);
+  const conversation = await waRepository.getConversation(
+    input.conversationId,
+    input.companyId
+  );
   if (!conversation) {
     throw new Error('conversation_not_found');
   }

@@ -7,14 +7,14 @@ export const runtime = 'nodejs';
 export async function GET(request: Request) {
   const gated = await withTenantApi(request, { module: 'website' });
   if ('response' in gated) return gated.response;
-  const pages = await listWebsitePages();
-  return NextResponse.json({ ok: true, pages });
+  const rows = await listWebsitePages(gated.ctx.tenantId);
+  return NextResponse.json({ ok: true, pages: rows });
 }
 
 export async function POST(request: Request) {
   const gated = await withTenantApi(request, { module: 'website' });
   if ('response' in gated) return gated.response;
   const body = await request.json();
-  const page = await saveWebsitePage(body);
-  return NextResponse.json({ ok: true, page });
+  const row = await saveWebsitePage(body, gated.ctx.tenantId);
+  return NextResponse.json({ ok: true, page: row });
 }

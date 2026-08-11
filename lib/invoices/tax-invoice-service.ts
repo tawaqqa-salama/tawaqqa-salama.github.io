@@ -235,6 +235,34 @@ export async function generateTaxInvoiceFromMilestone(
   if (request.contractId) {
     const { data } = await supabase.from('sales_contracts').select('*').eq('id', request.contractId).maybeSingle();
     contract = (data as SalesContract) || null;
+    // Ownership: contract must belong to this client
+    if (contract && contract.client_id !== client.id) {
+      return {
+        ok: false,
+        invoice: null,
+        milestone: null,
+        messages,
+        error: 'العقد غير مرتبط بهذا العميل',
+        promptPreview: false,
+      };
+    }
+    const contractCompany = (data as { company_id?: string } | null)?.company_id;
+    const clientCompany = (client as ClientRecord & { company_id?: string }).company_id;
+    if (
+      contract &&
+      contractCompany &&
+      clientCompany &&
+      contractCompany !== clientCompany
+    ) {
+      return {
+        ok: false,
+        invoice: null,
+        milestone: null,
+        messages,
+        error: 'العقد غير مرتبط بهذا العميل',
+        promptPreview: false,
+      };
+    }
   } else {
     const { data } = await supabase
       .from('sales_contracts')
@@ -258,6 +286,20 @@ export async function generateTaxInvoiceFromMilestone(
         .eq('id', request.milestoneId)
         .maybeSingle();
       milestone = (data as PaymentMilestone) || null;
+    }
+    if (
+      milestone &&
+      milestone.client_id &&
+      milestone.client_id !== client.id
+    ) {
+      return {
+        ok: false,
+        invoice: null,
+        milestone: null,
+        messages,
+        error: 'الدفعة غير مرتبطة بهذا العميل',
+        promptPreview: false,
+      };
     }
   } else if (request.percentage != null && Number(request.percentage) > 0) {
     const money = amountsForPercentage(

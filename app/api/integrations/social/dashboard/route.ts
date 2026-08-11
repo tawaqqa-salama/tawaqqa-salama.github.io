@@ -8,6 +8,6 @@ export async function GET(request: Request) {
   const gated = await withTenantApi(request, { module: 'social_media' });
   if ('response' in gated) return gated.response;
   const range = new URL(request.url).searchParams.get('range') || '30d';
-  const stats = await getDashboardStats(range);
+  const stats = await getDashboardStats(range, gated.ctx.tenantId);
   return NextResponse.json({ ok: true, ...stats });
 }

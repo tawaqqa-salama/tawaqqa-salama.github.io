@@ -386,8 +386,17 @@ export const memoryStore = {
     return msg;
   },
 
-  listConversations(filter?: { status?: string; unassigned?: boolean }): WhatsAppConversation[] {
+  listConversations(filter?: {
+    status?: string;
+    unassigned?: boolean;
+    companyId?: string | null;
+  }): WhatsAppConversation[] {
     let rows = [...getMemoryDb().conversations];
+    if (filter?.companyId) {
+      rows = rows.filter(
+        (c) => !c.company_id || c.company_id === filter.companyId
+      );
+    }
     if (filter?.status) rows = rows.filter((c) => c.status === filter.status);
     if (filter?.unassigned) rows = rows.filter((c) => !c.assigned_user_id);
     return rows.sort((a, b) =>
@@ -395,8 +404,11 @@ export const memoryStore = {
     );
   },
 
-  getConversation(id: string): WhatsAppConversation | null {
-    return getMemoryDb().conversations.find((c) => c.id === id) || null;
+  getConversation(id: string, companyId?: string | null): WhatsAppConversation | null {
+    const row = getMemoryDb().conversations.find((c) => c.id === id) || null;
+    if (!row) return null;
+    if (companyId && row.company_id && row.company_id !== companyId) return null;
+    return row;
   },
 
   listMessages(conversationId: string): WhatsAppMessage[] {

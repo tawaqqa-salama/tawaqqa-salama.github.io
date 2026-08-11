@@ -40,7 +40,7 @@ const DEFAULT_SERVICES = [
   { name: 'خدمات السلامة', slug: 'safety', crm_service_key: 'safety' },
 ];
 
-export async function getOrCreateWebsiteSite() {
+export async function getOrCreateWebsiteSite(companyId?: string | null) {
   if (isMemoryStore()) {
     let site = marketingMemory.website.get();
     if (!site) {
@@ -106,12 +106,21 @@ export async function getOrCreateWebsiteSite() {
     return site;
   }
 
-  const { data: existing } = await supabase.from('website_sites').select('*').limit(1);
+  if (!companyId) {
+    throw new Error('company_id_required');
+  }
+
+  const { data: existing } = await supabase
+    .from('website_sites')
+    .select('*')
+    .eq('company_id', companyId)
+    .limit(1);
   if (existing?.[0]) return existing[0];
 
   const { data: created, error } = await supabase
     .from('website_sites')
     .insert({
+      company_id: companyId,
       website_name: 'موقع مكتب الاستشارات',
       company_name: 'توقع سلامة',
       connection_status: 'not_connected',
@@ -160,8 +169,11 @@ export async function getOrCreateWebsiteSite() {
   return created;
 }
 
-export async function updateWebsiteSettings(patch: Record<string, unknown>) {
-  const site = await getOrCreateWebsiteSite();
+export async function updateWebsiteSettings(
+  patch: Record<string, unknown>,
+  companyId?: string | null
+) {
+  const site = await getOrCreateWebsiteSite(companyId);
   if (isMemoryStore()) {
     return marketingMemory.website.save({
       ...(site as ReturnType<typeof marketingMemory.website.get> & object),
@@ -173,14 +185,15 @@ export async function updateWebsiteSettings(patch: Record<string, unknown>) {
     .from('website_sites')
     .update({ ...patch, updated_at: new Date().toISOString() })
     .eq('id', site.id)
+    .eq('company_id', companyId as string)
     .select('*')
     .single();
   if (error) throw new Error(error.message);
   return data;
 }
 
-export async function listWebsitePages() {
-  const site = await getOrCreateWebsiteSite();
+export async function listWebsitePages(companyId?: string | null) {
+  const site = await getOrCreateWebsiteSite(companyId);
   if (isMemoryStore()) return marketingMemory.website.pages().filter((p) => p.site_id === site.id);
   const { data } = await supabase
     .from('website_pages')
@@ -190,8 +203,8 @@ export async function listWebsitePages() {
   return data || [];
 }
 
-export async function saveWebsitePage(input: Record<string, unknown>) {
-  const site = await getOrCreateWebsiteSite();
+export async function saveWebsitePage(input: Record<string, unknown>, companyId?: string | null) {
+  const site = await getOrCreateWebsiteSite(companyId);
   if (isMemoryStore()) {
     return marketingMemory.website.savePage({
       id: input.id || randomUUID(),
@@ -219,8 +232,8 @@ export async function saveWebsitePage(input: Record<string, unknown>) {
   return data;
 }
 
-export async function listWebsiteServices() {
-  const site = await getOrCreateWebsiteSite();
+export async function listWebsiteServices(companyId?: string | null) {
+  const site = await getOrCreateWebsiteSite(companyId);
   if (isMemoryStore()) return marketingMemory.website.services().filter((s) => s.site_id === site.id);
   const { data } = await supabase
     .from('website_services')
@@ -230,8 +243,8 @@ export async function listWebsiteServices() {
   return data || [];
 }
 
-export async function saveWebsiteService(input: Record<string, unknown>) {
-  const site = await getOrCreateWebsiteSite();
+export async function saveWebsiteService(input: Record<string, unknown>, companyId?: string | null) {
+  const site = await getOrCreateWebsiteSite(companyId);
   if (isMemoryStore()) {
     return marketingMemory.website.saveService({
       id: input.id || randomUUID(),
@@ -258,15 +271,15 @@ export async function saveWebsiteService(input: Record<string, unknown>) {
   return data;
 }
 
-export async function listWebsiteForms() {
-  const site = await getOrCreateWebsiteSite();
+export async function listWebsiteForms(companyId?: string | null) {
+  const site = await getOrCreateWebsiteSite(companyId);
   if (isMemoryStore()) return marketingMemory.website.forms().filter((f) => f.site_id === site.id);
   const { data } = await supabase.from('website_forms').select('*').eq('site_id', site.id);
   return data || [];
 }
 
-export async function saveWebsiteForm(input: Record<string, unknown>) {
-  const site = await getOrCreateWebsiteSite();
+export async function saveWebsiteForm(input: Record<string, unknown>, companyId?: string | null) {
+  const site = await getOrCreateWebsiteSite(companyId);
   if (isMemoryStore()) {
     return marketingMemory.website.saveForm({
       id: input.id || randomUUID(),
@@ -293,8 +306,8 @@ export async function saveWebsiteForm(input: Record<string, unknown>) {
   return data;
 }
 
-export async function listBlogPosts() {
-  const site = await getOrCreateWebsiteSite();
+export async function listBlogPosts(companyId?: string | null) {
+  const site = await getOrCreateWebsiteSite(companyId);
   if (isMemoryStore()) return marketingMemory.website.blog().filter((b) => b.site_id === site.id);
   const { data } = await supabase
     .from('website_blog_posts')
@@ -304,8 +317,8 @@ export async function listBlogPosts() {
   return data || [];
 }
 
-export async function saveBlogPost(input: Record<string, unknown>) {
-  const site = await getOrCreateWebsiteSite();
+export async function saveBlogPost(input: Record<string, unknown>, companyId?: string | null) {
+  const site = await getOrCreateWebsiteSite(companyId);
   if (isMemoryStore()) {
     return marketingMemory.website.saveBlog({
       id: input.id || randomUUID(),
@@ -333,8 +346,8 @@ export async function saveBlogPost(input: Record<string, unknown>) {
   return data;
 }
 
-export async function listProjectShowcases() {
-  const site = await getOrCreateWebsiteSite();
+export async function listProjectShowcases(companyId?: string | null) {
+  const site = await getOrCreateWebsiteSite(companyId);
   if (isMemoryStore()) return marketingMemory.website.showcases().filter((s) => s.site_id === site.id);
   const { data } = await supabase
     .from('website_project_showcases')
@@ -344,8 +357,8 @@ export async function listProjectShowcases() {
   return data || [];
 }
 
-export async function saveProjectShowcase(input: Record<string, unknown>) {
-  const site = await getOrCreateWebsiteSite();
+export async function saveProjectShowcase(input: Record<string, unknown>, companyId?: string | null) {
+  const site = await getOrCreateWebsiteSite(companyId);
   if (isMemoryStore()) {
     return marketingMemory.website.saveShowcase({
       id: input.id || randomUUID(),
@@ -546,14 +559,14 @@ export function robotsTxt(origin: string) {
   return `User-agent: *\nAllow: /\nSitemap: ${origin}/sitemap.xml\n`;
 }
 
-export async function getWebsiteBundle() {
-  const site = await getOrCreateWebsiteSite();
+export async function getWebsiteBundle(companyId?: string | null) {
+  const site = await getOrCreateWebsiteSite(companyId);
   const [pages, services, forms, blog, showcases] = await Promise.all([
-    listWebsitePages(),
-    listWebsiteServices(),
-    listWebsiteForms(),
-    listBlogPosts(),
-    listProjectShowcases(),
+    listWebsitePages(companyId),
+    listWebsiteServices(companyId),
+    listWebsiteForms(companyId),
+    listBlogPosts(companyId),
+    listProjectShowcases(companyId),
   ]);
   return {
     site: {
