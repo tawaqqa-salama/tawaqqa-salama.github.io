@@ -8,6 +8,7 @@ import type { ProjectEngineeringData, SupervisionReport } from '@/lib/types/proj
 import { trimSupervisionTextFields } from '@/lib/projects/supervision-report';
 import { sanitizeEngineeringDataForPersist } from '@/lib/projects/sanitize-engineering-files';
 import { backupEngineeringDataLocally } from '@/lib/supabase/safe-client-write';
+import { saveStage5LiveBundle } from '@/lib/projects/stage5-live-store';
 
 export type UpsertProjectReportResult = {
   error: string | null;
@@ -239,31 +240,27 @@ export async function saveReportData(
   // Optimistic local persistence BEFORE network — UI retry keeps user input
   backupEngineeringDataLocally(clientId, stamped);
 
-  let usedRelationalTables = false;
+  // Radical path for stage 5: never rewrite project_engineering_data
   if (options?.supervisionFocus && stamped.supervision_report) {
-    const relational = await upsertProjectReport(clientId, stamped.supervision_report);
-    if (relational.error) {
-      return {
-        error: relational.error,
-        usedRelationalTables: !relational.skipped,
-        localOnly: true,
-      };
+    const live = await saveStage5LiveBundle({
+      clientId,
+      fieldVisits: stamped.field_visits || [],
+      supervision: stamped.supervision_report,
+      pdfArchive: stamped.report_pdf_archive || [],
+      pipelineStage: options?.pipelineStage ?? null,
+    });
+    if (live.error) {
+      return { error: live.error, usedRelationalTables: true, localOnly: true };
     }
-    usedRelationalTables = !relational.skipped;
+    return { error: null, usedRelationalTables: true };
   }
 
   const pipelineStage = options?.pipelineStage ?? null;
-  const mode = options?.supervisionFocus ? 'supervision-merge' : 'full';
-  let error = await persistEngineeringJsonb(clientId, stamped, pipelineStage, mode);
-
-  if (error && isTimeout(error) && options?.supervisionFocus && stamped.supervision_report) {
-    // Retry lean merge only — avoids rewriting large design_center blobs
-    error = await persistEngineeringJsonb(clientId, stamped, pipelineStage, 'supervision-merge');
-  }
+  const error = await persistEngineeringJsonb(clientId, stamped, pipelineStage, 'full');
 
   if (error) {
-    return { error, usedRelationalTables, localOnly: true };
+    return { error, usedRelationalTables: false, localOnly: true };
   }
 
-  return { error: null, usedRelationalTables };
+  return { error: null, usedRelationalTables: false };
 }
