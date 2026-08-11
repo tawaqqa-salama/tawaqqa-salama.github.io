@@ -70,8 +70,9 @@ export function requiredExitsFromOccupantLoad(
  * Returns null → caller NEEDS_DATA (may still show measured actual).
  */
 export function resolveTravelDistanceLimitM(
-  _ctx: ComplianceRuleContext
+  _ctx?: ComplianceRuleContext
 ): ResolvedThreshold | null {
+  void _ctx;
   // Intentionally null — do not use heuristic 45/60 as code-required.
   return null;
 }

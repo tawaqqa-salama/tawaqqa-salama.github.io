@@ -363,7 +363,7 @@ export function buildComplianceContext(params: {
         fp.standpipe.required === 'yes' || fp.standpipe.required === 'no' || fp.standpipe.required === 'unknown'
           ? fp.standpipe.required
           : null,
-      standpipe_provided: hasNonEmpty(fp.standpipe.notes) ? 'yes' : null,
+      standpipe_provided: null, // never infer from free-text notes
       pump_exists:
         fp.pump.exists === 'yes' || fp.pump.exists === 'no' || fp.pump.exists === 'unknown'
           ? fp.pump.exists
@@ -379,8 +379,7 @@ export function buildComplianceContext(params: {
       tank_required_m3: tankRequired,
       fdc_required: null,
       extinguisher_count:
-        (fp.extinguishers || []).reduce((n, e) => n + (parseNumber(e.count) || 0), 0) ||
-        (fp.extinguishers?.length ? fp.extinguishers.length : null),
+        (fp.extinguishers || []).reduce((n, e) => n + (parseNumber(e.count) || 0), 0) || null,
       applicable_codes: fp.applicable_codes || [],
     },
     hydraulic: {

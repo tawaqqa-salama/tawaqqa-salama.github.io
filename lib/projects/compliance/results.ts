@@ -29,26 +29,30 @@ export function applyOverride(
   const identityOk =
     String(override.engineerName || '').trim().length >= 2 ||
     String(override.engineerUserId || '').trim().length >= 2;
+  const roleOk = String(override.engineerRole || '').trim().length >= 3;
+  const tsOk = String(override.overriddenAt || '').trim().length >= 10;
 
-  if (!reasonOk || !refOk || !identityOk) {
+  if (!reasonOk || !refOk || !identityOk || !roleOk || !tsOk) {
     return {
       ...base,
       override,
-      // Keep original status — override rejected
+      // Keep original status — override rejected / BLOCK for this rule
       effectiveStatus: base.status,
-      message: `${base.message} — تجاوز مهندس مرفوض (يلزم سبب ≥8 + مرجع كودي + هوية المهندس). النتيجة الأصلية: ${base.status}`,
+      message: `${base.message} — تجاوز مهندس مرفوض (يلزم سبب ≥8 + مرجع كودي + هوية + صلاحية/دور ≥3 + وقت). النتيجة الأصلية: ${base.status}`,
       reason: `${base.reason} | override_rejected`,
     };
   }
 
+  // Documented engineer exception only — never hides original automated result
   const identity = override.engineerName || override.engineerUserId || 'engineer';
+  const role = String(override.engineerRole).trim();
   return {
     ...base,
     override,
     // Original status preserved in `status`; effectiveStatus reflects override
     effectiveStatus: override.resultingStatus,
-    message: `${base.message} — [الأصل ${base.status}] تجاوز مهندس (${identity}): ${override.reason} [${override.codeReference}] → ${override.resultingStatus}`,
-    reason: `original=${base.status}; override→${override.resultingStatus}; by=${identity}`,
+    message: `${base.message} — [الأصل ${base.status}] قرار مهندس موثّق (${identity} / ${role}): ${override.reason} [${override.codeReference}] @ ${override.overriddenAt} → ${override.resultingStatus} — ليس تحققًا آليًا من الكود`,
+    reason: `original=${base.status}; override→${override.resultingStatus}; by=${identity}; role=${role}`,
   };
 }
 

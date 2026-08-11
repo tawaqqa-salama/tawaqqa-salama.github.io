@@ -34,6 +34,7 @@ export default function ComplianceMatrixPanel({ client, data, onChange }: Props)
   const [reason, setReason] = useState('');
   const [codeRef, setCodeRef] = useState('');
   const [engineerName, setEngineerName] = useState('');
+  const [engineerRole, setEngineerRole] = useState('licensed_engineer');
   const [msg, setMsg] = useState<string | null>(null);
 
   const overrides = useMemo(() => data.compliance?.overrides || [], [data.compliance?.overrides]);
@@ -50,8 +51,15 @@ export default function ComplianceMatrixPanel({ client, data, onChange }: Props)
       setMsg('اختر قاعدة للتجاوز');
       return;
     }
-    if (reason.trim().length < 8 || codeRef.trim().length < 3 || engineerName.trim().length < 2) {
-      setMsg('التجاوز يتطلب سببًا (≥8) ومرجعًا كوديًا (≥3) واسم المهندس (≥2) — النتيجة الأصلية تبقى ظاهرة');
+    if (
+      reason.trim().length < 8 ||
+      codeRef.trim().length < 3 ||
+      engineerName.trim().length < 2 ||
+      engineerRole.trim().length < 3
+    ) {
+      setMsg(
+        'التجاوز يتطلب سببًا (≥8) ومرجعًا كوديًا (≥3) واسم المهندس (≥2) وصلاحية/دور (≥3) — النتيجة الأصلية تبقى ظاهرة'
+      );
       return;
     }
     const next: EngineerOverride = {
@@ -59,6 +67,7 @@ export default function ComplianceMatrixPanel({ client, data, onChange }: Props)
       reason: reason.trim(),
       codeReference: codeRef.trim(),
       engineerName: engineerName.trim(),
+      engineerRole: engineerRole.trim(),
       overriddenAt: new Date().toISOString(),
       resultingStatus: 'PASS',
     };
@@ -183,10 +192,11 @@ export default function ComplianceMatrixPanel({ client, data, onChange }: Props)
       <div className="rounded-lg border border-dashed border-slate-300 bg-slate-50 p-3 space-y-2">
         <h4 className="text-sm font-bold text-slate-800">Engineer Override</h4>
         <p className="text-[11px] text-amber-900 bg-amber-50 border border-amber-100 rounded-md px-2 py-1.5 leading-relaxed">
-          التجاوز قرار هندسي موثّق (سبب + مرجع كودي + هوية + وقت) — <strong>ليس</strong> نتيجة تحقق آلي من
-          الكود. يبقى عمود Result على النتيجة الأصلية؛ يتغيّر فقط Status (effectiveStatus).
+          التجاوز قرار مهندس مرخّص موثّق (سبب + مرجع كودي + هوية + صلاحية/دور + وقت) — <strong>ليس</strong>{' '}
+          نتيجة تحقق آلي من الكود. يبقى عمود Result على النتيجة الأصلية؛ يتغيّر فقط Status (effectiveStatus).
+          نقص البيانات لا يتحول إلى PASS دون هذا التوثيق.
         </p>
-        <div className="grid md:grid-cols-5 gap-2">
+        <div className="grid md:grid-cols-6 gap-2">
           <label className="text-xs block md:col-span-1">
             <span className="text-gray-600 mb-1 block">القاعدة</span>
             <select
@@ -212,6 +222,18 @@ export default function ComplianceMatrixPanel({ client, data, onChange }: Props)
               onChange={(e) => setEngineerName(e.target.value)}
               placeholder="هوية المهندس"
             />
+          </label>
+          <label className="text-xs block">
+            <span className="text-gray-600 mb-1 block">الصلاحية / الدور</span>
+            <select
+              className="w-full border rounded-lg px-2 py-2 bg-white"
+              value={engineerRole}
+              onChange={(e) => setEngineerRole(e.target.value)}
+            >
+              <option value="licensed_engineer">مهندس مرخّص</option>
+              <option value="supervising_engineer">مهندس مشرف</option>
+              <option value="design_reviewer">مراجع تصميم</option>
+            </select>
           </label>
           <label className="text-xs block md:col-span-2">
             <span className="text-gray-600 mb-1 block">السبب</span>

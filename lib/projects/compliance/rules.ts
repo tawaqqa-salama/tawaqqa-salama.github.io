@@ -25,7 +25,7 @@ import {
   resolveStairMinWidthM,
   resolveTravelDistanceLimitM,
 } from '@/lib/projects/compliance/thresholds';
-import { citationFor, primaryStandardFor } from '@/lib/projects/compliance/code-refs';
+import { citationFor } from '@/lib/projects/compliance/code-refs';
 import type {
   ComplianceRule,
   ComplianceRuleContext,
@@ -36,10 +36,6 @@ export { requiredExitsFromOccupantLoad } from '@/lib/projects/compliance/thresho
 
 function ref(ruleId: string): string {
   return citationFor(ruleId);
-}
-
-function primaryCode(ruleId: string): string {
-  return primaryStandardFor(ruleId);
 }
 
 // ─── Context helpers ─────────────────────────────────────────────────────────

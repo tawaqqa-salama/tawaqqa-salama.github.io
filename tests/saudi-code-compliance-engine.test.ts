@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import {
   COMPLIANCE_RULES,
   RULE_CODE_REFS,
+  COMPLIANCE_ASSESSMENT_DISCLAIMER_AR,
   getComplianceRuleById,
   isFullyCompliant,
   requiredExitsFromOccupantLoad,
@@ -503,6 +504,7 @@ describe('Saudi Code Compliance Engine — final citation audit', () => {
               reason: 'التحقق من جدول الإشغال المعتمد في الطبعة المرفقة للمشروع',
               codeReference: 'SBC 201 §1017 Table (adopted edition)',
               engineerName: 'م. خالد',
+              engineerRole: 'licensed_engineer',
               overriddenAt: at,
               resultingStatus: 'PASS',
             },
@@ -516,7 +518,7 @@ describe('Saudi Code Compliance Engine — final citation audit', () => {
       expect(run.matrix[0].engineerOverride).toContain(at);
     });
 
-    it('rejects without identity', () => {
+    it('rejects without identity / role / reason / code ref — BLOCK keeps original', () => {
       const run = runComplianceRules(
         emptyCtx({
           overrides: [
@@ -533,6 +535,231 @@ describe('Saudi Code Compliance Engine — final citation audit', () => {
       );
       expect(run.results[0].status).toBe('NEEDS_DATA');
       expect(run.results[0].effectiveStatus).toBe('NEEDS_DATA');
+      expect(run.gate).toBe('BLOCKED');
+    });
+  });
+
+  describe('PR #138 audit — explicit NEEDS_DATA / Override BLOCK cases', () => {
+    it('complete EGR-02 data → FAIL then PASS by exits count', () => {
+      const rule = getComplianceRuleById('EGR-02')!;
+      expect(
+        evaluateRule(
+          rule,
+          emptyCtx({
+            building: { ...emptyCtx().building, occupancy_classification: 'GROUP B' },
+            egress: { metrics: [], occupant_load_total: 120, exits_count: 1 },
+          })
+        ).status
+      ).toBe('FAIL');
+      expect(
+        evaluateRule(
+          rule,
+          emptyCtx({
+            building: { ...emptyCtx().building, occupancy_classification: 'GROUP B' },
+            egress: { metrics: [], occupant_load_total: 120, exits_count: 2 },
+          })
+        ).status
+      ).toBe('PASS');
+    });
+
+    it('missing pump flow → FP-07 NEEDS_DATA', () => {
+      expect(
+        evaluateRule(
+          getComplianceRuleById('FP-07')!,
+          emptyCtx({
+            fireProtection: {
+              applicable_codes: [],
+              sprinkler_required: 'yes',
+              pump_exists: 'yes',
+              pump_flow_lpm: null,
+              sprinkler_demand_lpm: 1000,
+            },
+          })
+        ).status
+      ).toBe('NEEDS_DATA');
+    });
+
+    it('missing sprinkler demand → FP-04 and FP-07 NEEDS_DATA', () => {
+      expect(
+        evaluateRule(
+          getComplianceRuleById('FP-04')!,
+          emptyCtx({
+            fireProtection: {
+              applicable_codes: [],
+              sprinkler_required: 'yes',
+              pump_flow_lpm: 1200,
+              sprinkler_demand_lpm: null,
+            },
+          })
+        ).status
+      ).toBe('NEEDS_DATA');
+      expect(
+        evaluateRule(
+          getComplianceRuleById('FP-07')!,
+          emptyCtx({
+            fireProtection: {
+              applicable_codes: [],
+              sprinkler_required: 'yes',
+              pump_exists: 'yes',
+              pump_flow_lpm: 1200,
+              sprinkler_demand_lpm: null,
+            },
+          })
+        ).status
+      ).toBe('NEEDS_DATA');
+    });
+
+    it('missing smoke control → SMK-01 NEEDS_DATA', () => {
+      expect(
+        evaluateRule(
+          getComplianceRuleById('SMK-01')!,
+          emptyCtx({ smokeControl: { required: true, status: 'unknown', ventilation_only: false } })
+        ).status
+      ).toBe('NEEDS_DATA');
+    });
+
+    it('missing hydraulic K-factor → HYD-01 NEEDS_DATA', () => {
+      const fullMinusK = {
+        has_network_data: false,
+        attachment_count: 2,
+        k_factor: null as number | null,
+        flow_lpm: 900,
+        pressure_bar: 4.5,
+        required_residual_pressure_bar: 1,
+        pipe_diameter_mm: 50,
+        pipe_length_m: 40,
+        elevation_m: 3,
+        friction_loss_bar: 0.4,
+        remote_area_m2: 140,
+        node_demand_lpm: 100,
+        pump_flow_lpm: 1200,
+        pump_pressure_bar: 8,
+        tank_volume_m3: 72,
+      };
+      const r = evaluateRule(
+        getComplianceRuleById('HYD-01')!,
+        emptyCtx({
+          fireProtection: { applicable_codes: [], sprinkler_provided: 'yes' },
+          hydraulic: fullMinusK,
+        })
+      );
+      expect(r.status).toBe('NEEDS_DATA');
+      expect(r.message).toMatch(/k_factor|ناقص/i);
+    });
+
+    it('missing pipe data → HYD-01 NEEDS_DATA', () => {
+      const r = evaluateRule(
+        getComplianceRuleById('HYD-01')!,
+        emptyCtx({
+          fireProtection: { applicable_codes: [], sprinkler_provided: 'yes' },
+          hydraulic: {
+            has_network_data: false,
+            attachment_count: 1,
+            k_factor: 5.6,
+            flow_lpm: 900,
+            pressure_bar: 4.5,
+            required_residual_pressure_bar: 1,
+            pipe_diameter_mm: null,
+            pipe_length_m: null,
+            elevation_m: 3,
+            friction_loss_bar: 0.4,
+            remote_area_m2: 140,
+            node_demand_lpm: 100,
+            pump_flow_lpm: 1200,
+            pump_pressure_bar: 8,
+            tank_volume_m3: 72,
+          },
+        })
+      );
+      expect(r.status).toBe('NEEDS_DATA');
+      expect(r.message).toMatch(/pipe_|ناقص/i);
+    });
+
+    it('Override without reason → rejected; original NEEDS_DATA; gate BLOCKED', () => {
+      const run = runComplianceRules(
+        emptyCtx({
+          overrides: [
+            {
+              ruleId: 'SMK-01',
+              reason: '',
+              codeReference: 'SBC 801 smoke',
+              engineerName: 'م. أحمد',
+              engineerRole: 'licensed_engineer',
+              overriddenAt: new Date().toISOString(),
+              resultingStatus: 'PASS',
+            },
+          ],
+          smokeControl: { required: true, status: 'unknown' },
+        }),
+        [getComplianceRuleById('SMK-01')!]
+      );
+      expect(run.results[0].status).toBe('NEEDS_DATA');
+      expect(run.results[0].effectiveStatus).toBe('NEEDS_DATA');
+      expect(run.results[0].message).toMatch(/مرفوض|override_rejected|سبب/);
+      expect(run.gate).toBe('BLOCKED');
+    });
+
+    it('Override without code/reference → rejected BLOCK', () => {
+      const run = runComplianceRules(
+        emptyCtx({
+          overrides: [
+            {
+              ruleId: 'SMK-01',
+              reason: 'تم اعتماد نظام دخان في ملحق الدفاع المدني',
+              codeReference: '',
+              engineerName: 'م. أحمد',
+              engineerRole: 'licensed_engineer',
+              overriddenAt: new Date().toISOString(),
+              resultingStatus: 'PASS',
+            },
+          ],
+          smokeControl: { required: true, status: 'unknown' },
+        }),
+        [getComplianceRuleById('SMK-01')!]
+      );
+      expect(run.results[0].effectiveStatus).toBe('NEEDS_DATA');
+      expect(run.gate).toBe('BLOCKED');
+    });
+
+    it('fully documented Override → exception only on effectiveStatus', () => {
+      const run = runComplianceRules(
+        emptyCtx({
+          overrides: [
+            {
+              ruleId: 'SMK-01',
+              reason: 'تم اعتماد نظام دخان ميكانيكي في ملحق الدفاع المدني المرفق',
+              codeReference: 'SBC 801 — Smoke Control (AHJ letter)',
+              engineerName: 'م. سارة',
+              engineerRole: 'licensed_engineer',
+              overriddenAt: '2026-08-11T14:00:00.000Z',
+              resultingStatus: 'PASS',
+            },
+          ],
+          smokeControl: { required: true, status: 'unknown' },
+        }),
+        [getComplianceRuleById('SMK-01')!]
+      );
+      expect(run.results[0].status).toBe('NEEDS_DATA');
+      expect(run.results[0].effectiveStatus).toBe('PASS');
+      expect(run.results[0].message).toMatch(/ليس تحققًا آليًا|قرار مهندس/);
+      expect(run.gate).toBe('ALLOW'); // single-rule run with effective PASS
+    });
+
+    it('rule IDs in COMPLIANCE_RULES match RULE_CODE_REFS 1:1', () => {
+      const ids = COMPLIANCE_RULES.map((r) => r.id).sort();
+      const refIds = Object.keys(RULE_CODE_REFS).sort();
+      expect(ids).toEqual(refIds);
+    });
+
+    it('no absolute SBC/Civil Defense compliant wording', () => {
+      const run = runProjectCompliance({
+        client: baseClient(),
+        data: { ...EMPTY_PROJECT_ENGINEERING_DATA },
+      });
+      const label = complianceStatusLabelAr(run);
+      expect(label.toLowerCase()).not.toContain('sbc compliant');
+      expect(label).not.toMatch(/مطابق للدفاع/);
+      expect(COMPLIANCE_ASSESSMENT_DISCLAIMER_AR).toMatch(/documented rules\/data|القواعد الكودية الموثقة/);
     });
   });
 

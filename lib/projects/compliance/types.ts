@@ -31,11 +31,17 @@ export type EngineerOverride = {
   reason: string;
   /** Required SBC / code section reference */
   codeReference: string;
-  /** Engineer identity (name / user id) — required for accepted override */
+  /** Engineer identity (name) — required for accepted override */
   engineerName?: string;
+  /** Auth user id when available — preferred with name */
   engineerUserId?: string;
+  /**
+   * Role/authority claim for the override (e.g. licensed_engineer).
+   * Required for acceptance — free-text name alone is not enough to imply authority.
+   */
+  engineerRole?: string;
   overriddenAt: string;
-  /** Status claimed after override — never auto-PASS without reason+ref+identity */
+  /** Status claimed after override — never auto-PASS without reason+ref+identity+role+timestamp */
   resultingStatus: 'PASS' | 'N/A';
 };
 
