@@ -392,44 +392,50 @@ export function generateAdminUcReport(params: {
               VALUE_SOURCE_LABEL_AR[design.water_tank.source],
             ],
             [
-              'سعة خزان مياه الإطفاء التصميمية',
+              'سعة خزان مياه الإطفاء التصميمية (تلقائي)',
               formatMeasured(design.water_tank.capacity_m3),
               VALUE_SOURCE_LABEL_AR[design.water_tank.capacity_m3.source],
             ],
             [
-              'الطلب المائي',
+              'الطلب المائي Q',
               formatMeasured(design.water_tank.water_demand_lpm),
               VALUE_SOURCE_LABEL_AR[design.water_tank.water_demand_lpm.source],
             ],
             [
-              'مدة التشغيل',
+              'مدة التشغيل T',
               formatMeasured(design.water_tank.duration_min),
               VALUE_SOURCE_LABEL_AR[design.water_tank.duration_min.source],
             ],
+            [
+              'معادلة الدفاع المدني',
+              design.water_tank.formula_ar ||
+                'V (م³) = Q (لتر/دقيقة) × T (دقيقة) ÷ 1000',
+              VALUE_SOURCE_LABEL_AR.rule_requirement,
+            ],
           ],
         },
-        { kind: 'h2', text: 'بيانات مضخة الحريق (مدخلات تصميمية)' },
+        { kind: 'h2', text: 'مجموعة مضخات الحريق الثلاثية (مدخلات تصميمية)' },
         {
           kind: 'p',
-          text: 'القيم التالية Design Input وليست اعتماداً تلقائياً. تحتاج مطابقة مع الحسابات الهيدروليكية المعتمدة ومتطلبات النظام الفعلي للمشروع.',
+          text: 'المجموعة قياسية ثلاثية: كهرباء + ديزل + جوكي. نوع الاعتماد UL أو non UL فقط. القيم Design Input وليست اعتماداً تلقائياً وتحتاج مطابقة مع الحسابات الهيدروليكية المعتمدة.',
         },
         {
           kind: 'table',
           headers: ['البند', 'القيمة المدخلة', 'المصدر'],
           rows: [
-            ['هل توجد مضخة حريق؟', yesNoLabel(design.pump.exists), VALUE_SOURCE_LABEL_AR[design.pump.source]],
+            ['هل توجد مجموعة مضخات؟', yesNoLabel(design.pump.exists), VALUE_SOURCE_LABEL_AR[design.pump.source]],
             [
-              'نوع المضخة',
+              'نوع المضخة (الاعتماد)',
               formatDisplayOrNotEntered(design.pump.type),
               VALUE_SOURCE_LABEL_AR[design.pump.source],
             ],
             [
-              'سعة مضخة الحريق المدخلة',
+              'سعة مضخة الكهرباء',
               formatMeasured(design.pump.capacity),
               VALUE_SOURCE_LABEL_AR[design.pump.capacity.source],
             ],
             [
-              'ضغط المضخة المدخل',
+              'ضغط مضخة الكهرباء',
               formatMeasured(design.pump.pressure),
               VALUE_SOURCE_LABEL_AR[design.pump.pressure.source],
             ],
@@ -439,49 +445,58 @@ export function generateAdminUcReport(params: {
               VALUE_SOURCE_LABEL_AR[design.pump.rated_pressure.source],
             ],
             [
-              'Jockey Pump',
+              'سعة مضخة الديزل',
+              formatMeasured(design.diesel_pump.capacity),
+              VALUE_SOURCE_LABEL_AR[design.diesel_pump.capacity.source],
+            ],
+            [
+              'ضغط مضخة الديزل',
+              formatMeasured(design.diesel_pump.pressure),
+              VALUE_SOURCE_LABEL_AR[design.diesel_pump.pressure.source],
+            ],
+            [
+              'مضخة الجوكي',
               yesNoLabel(design.jockey_pump.exists),
               VALUE_SOURCE_LABEL_AR[design.jockey_pump.source],
             ],
             [
-              'سعة Jockey Pump',
+              'سعة الجوكي',
               formatMeasured(design.jockey_pump.capacity),
               VALUE_SOURCE_LABEL_AR[design.jockey_pump.capacity.source],
             ],
             [
-              'ضغط Jockey',
+              'ضغط الجوكي',
               formatMeasured(design.jockey_pump.pressure),
               VALUE_SOURCE_LABEL_AR[design.jockey_pump.pressure.source],
             ],
           ],
         },
-        { kind: 'h3', text: 'النتيجة الهندسية (تحقق أولي للخزان)' },
+        { kind: 'h3', text: 'النتيجة الهندسية — حجم الخزان (اشتراطات الدفاع المدني)' },
         {
           kind: 'table',
           headers: ['البند', 'القيمة'],
           rows: [
             [
-              'الحجم النظري المطلوب حسب المدخلات (Q × T / 1000)',
+              'المعادلة',
+              design.water_tank.formula_ar ||
+                'V (م³) = Q (لتر/دقيقة) × T (دقيقة) ÷ 1000',
+            ],
+            [
+              'الحجم النظري المطلوب V = Q × T / 1000',
               design.water_tank.calculated_required_volume_m3 != null
                 ? `${design.water_tank.calculated_required_volume_m3} m³`
                 : NOT_ENTERED_AR,
             ],
             [
-              'حجم الخزان المدخل',
+              'سعة الخزان المعتمدة في التقرير',
               formatMeasured(design.water_tank.capacity_m3),
-            ],
-            [
-              'الحجم النظري المحسوب من المدخلات',
-              design.water_tank.calculated_required_volume_m3 != null
-                ? `${design.water_tank.calculated_required_volume_m3} m³`
-                : NOT_ENTERED_AR,
             ],
             ['الحالة', tankCheck.label_ar],
           ],
         },
         {
           kind: 'note',
-          text: 'هذه المقارنة Preliminary Engineering Check وليست اعتماداً نهائياً لمتطلبات NFPA إلى أن تُربط بالحساب الهيدروليكي ومتطلبات النظام المعتمدة.',
+          text: 'الحساب تلقائي وفق معادلة الدفاع المدني V=Q×T/1000 وهو Preliminary Engineering Check وليس اعتماداً نهائياً لـ NFPA إلى أن يُربط بالحساب الهيدروليكي المعتمد.',
         },
       ],
     },

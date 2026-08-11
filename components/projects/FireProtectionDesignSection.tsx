@@ -1,6 +1,8 @@
 'use client';
 
 import {
+  TANK_VOLUME_FORMULA_AR,
+  TANK_VOLUME_FORMULA_EN,
   barToPsi,
   gpmToLpm,
   lpmToGpm,
@@ -8,6 +10,7 @@ import {
   type FireProtectionDesign,
   type FlowUnit,
   type PressureUnit,
+  type PumpCertification,
   type YesNoUnknown,
 } from '@/lib/types/fire-protection-design';
 import {
@@ -38,15 +41,18 @@ export default function FireProtectionDesignSection({
   };
 
   const tankCheck = getTankVolumeCheck(design);
-  const cap = design.pump.capacity;
-  const press = design.pump.pressure;
-  const altFlow =
+  const electricCap = design.pump.capacity;
+  const electricPress = design.pump.pressure;
+  const dieselCap = design.diesel_pump.capacity;
+  const dieselPress = design.diesel_pump.pressure;
+
+  const altFlow = (cap: typeof electricCap) =>
     cap.value != null
       ? cap.unit === 'GPM'
         ? `${gpmToLpm(cap.value)} L/min (عرض فقط)`
         : `${lpmToGpm(cap.value)} GPM (عرض فقط)`
       : null;
-  const altPress =
+  const altPress = (press: typeof electricPress) =>
     press.value != null
       ? press.unit === 'bar'
         ? `${barToPsi(press.value)} psi (عرض فقط)`
@@ -62,234 +68,320 @@ export default function FireProtectionDesignSection({
       }`}
     >
       <div>
-        <h3 className="text-base font-bold text-gray-900">التصميم الهيدروليكي</h3>
+        <h3 className="text-base font-bold text-gray-900">التصميم الهيدروليكي — مجموعة المضخات الثلاثية</h3>
         <p className="text-xs text-gray-600 mt-1 leading-relaxed">
-          مدخلات مضخة الحريق والخزان — Design Inputs تظهر مباشرة في التقرير الفني للمبنى
-          الإداري تحت الإنشاء. التحويل بين الوحدات للعرض فقط ويُحتفظ بالقيمة والوحدة الأصلية.
+          مجموعة مضخات الحريق قياسية ثلاثية: كهرباء + ديزل + جوكي. نوع الاعتماد UL أو non UL فقط.
+          يُحسب خزان الإطفاء تلقائياً وفق اشتراطات الدفاع المدني بالمعادلة المرفقة.
         </p>
       </div>
 
       <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
         <Select
-          label="هل توجد مضخة حريق؟"
+          label="هل توجد مجموعة مضخات حريق؟"
           value={design.pump.exists}
           onChange={(exists) =>
-            patch({ pump: { ...design.pump, exists: exists as YesNoUnknown, source: 'engineer_input' } })
+            patch({
+              pump: { ...design.pump, exists: exists as YesNoUnknown, source: 'engineer_input' },
+              diesel_pump: {
+                ...design.diesel_pump,
+                exists: exists === 'no' ? 'no' : design.diesel_pump.exists,
+              },
+              jockey_pump: {
+                ...design.jockey_pump,
+                exists: exists === 'no' ? 'no' : design.jockey_pump.exists,
+              },
+            })
           }
           options={[
             { value: 'unknown', label: 'لم يُحدَّد بعد' },
-            { value: 'yes', label: 'نعم' },
+            { value: 'yes', label: 'نعم (ثلاثية)' },
             { value: 'no', label: 'لا' },
           ]}
         />
         <Select
-          label="نوع المضخة"
+          label="نوع المضخة (الاعتماد)"
           value={design.pump.type}
           onChange={(type) =>
             patch({
               pump: {
                 ...design.pump,
-                type: type as FireProtectionDesign['pump']['type'],
+                type: type as PumpCertification,
                 source: 'engineer_input',
               },
             })
           }
           options={[
             { value: '', label: '—' },
-            { value: 'Electric', label: 'Electric' },
-            { value: 'Diesel', label: 'Diesel' },
-            { value: 'Other', label: 'Other' },
+            { value: 'UL', label: 'UL' },
+            { value: 'non UL', label: 'non UL' },
           ]}
-        />
-        <MeasuredFlow
-          label="سعة المضخة (Pump Capacity)"
-          value={cap.value}
-          unit={cap.unit}
-          onValue={(value) =>
-            patch({
-              pump: {
-                ...design.pump,
-                capacity: {
-                  ...cap,
-                  value,
-                  input_unit: cap.unit,
-                  source: 'engineer_input',
-                },
-                source: 'engineer_input',
-              },
-            })
-          }
-          onUnit={(unit) =>
-            patch({
-              pump: {
-                ...design.pump,
-                capacity: { ...cap, unit, input_unit: unit, source: 'engineer_input' },
-              },
-            })
-          }
-          hint={altFlow}
-        />
-        <MeasuredPressure
-          label="ضغط المضخة (Pump Pressure)"
-          value={press.value}
-          unit={press.unit}
-          onValue={(value) =>
-            patch({
-              pump: {
-                ...design.pump,
-                pressure: {
-                  ...press,
-                  value,
-                  input_unit: press.unit,
-                  source: 'engineer_input',
-                },
-                source: 'engineer_input',
-              },
-            })
-          }
-          onUnit={(unit) =>
-            patch({
-              pump: {
-                ...design.pump,
-                pressure: { ...press, unit, input_unit: unit, source: 'engineer_input' },
-              },
-            })
-          }
-          hint={altPress}
-        />
-        <MeasuredPressure
-          label="ضغط التشغيل المطلوب (Rated Pressure)"
-          value={design.pump.rated_pressure.value}
-          unit={design.pump.rated_pressure.unit}
-          onValue={(value) =>
-            patch({
-              pump: {
-                ...design.pump,
-                rated_pressure: {
-                  ...design.pump.rated_pressure,
-                  value,
-                  source: 'engineer_input',
-                },
-              },
-            })
-          }
-          onUnit={(unit) =>
-            patch({
-              pump: {
-                ...design.pump,
-                rated_pressure: {
-                  ...design.pump.rated_pressure,
-                  unit,
-                  input_unit: unit,
-                  source: 'engineer_input',
-                },
-              },
-            })
-          }
-        />
-        <Select
-          label="Jockey Pump"
-          value={design.jockey_pump.exists}
-          onChange={(exists) =>
-            patch({
-              jockey_pump: {
-                ...design.jockey_pump,
-                exists: exists as YesNoUnknown,
-                source: 'engineer_input',
-              },
-            })
-          }
-          options={[
-            { value: 'unknown', label: 'لم يُحدَّد بعد' },
-            { value: 'yes', label: 'نعم' },
-            { value: 'no', label: 'لا' },
-          ]}
-        />
-        <MeasuredFlow
-          label="سعة Jockey Pump"
-          value={design.jockey_pump.capacity.value}
-          unit={design.jockey_pump.capacity.unit}
-          onValue={(value) =>
-            patch({
-              jockey_pump: {
-                ...design.jockey_pump,
-                capacity: {
-                  ...design.jockey_pump.capacity,
-                  value,
-                  source: 'engineer_input',
-                },
-              },
-            })
-          }
-          onUnit={(unit) =>
-            patch({
-              jockey_pump: {
-                ...design.jockey_pump,
-                capacity: {
-                  ...design.jockey_pump.capacity,
-                  unit,
-                  input_unit: unit,
-                  source: 'engineer_input',
-                },
-              },
-            })
-          }
-        />
-        <MeasuredPressure
-          label="ضغط Jockey"
-          value={design.jockey_pump.pressure.value}
-          unit={design.jockey_pump.pressure.unit}
-          onValue={(value) =>
-            patch({
-              jockey_pump: {
-                ...design.jockey_pump,
-                pressure: {
-                  ...design.jockey_pump.pressure,
-                  value,
-                  source: 'engineer_input',
-                },
-              },
-            })
-          }
-          onUnit={(unit) =>
-            patch({
-              jockey_pump: {
-                ...design.jockey_pump,
-                pressure: {
-                  ...design.jockey_pump.pressure,
-                  unit,
-                  input_unit: unit,
-                  source: 'engineer_input',
-                },
-              },
-            })
-          }
         />
       </div>
 
-      <div className="border-t border-emerald-100 pt-3 space-y-3">
-        <h4 className="text-sm font-bold text-gray-900">خزان مياه الإطفاء (Tank)</h4>
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
-          <Field
-            label="سعة خزان مياه الإطفاء (m³)"
-            value={design.water_tank.capacity_m3.value ?? ''}
-            onChange={(v) =>
+      <div className="rounded-xl border border-gray-200 bg-gray-50/60 p-3 space-y-3">
+        <h4 className="text-sm font-bold text-gray-900">1) مضخة كهرباء (Electric)</h4>
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+          <MeasuredFlow
+            label="سعة مضخة الكهرباء"
+            value={electricCap.value}
+            unit={electricCap.unit}
+            onValue={(value) =>
               patch({
-                water_tank: {
-                  ...design.water_tank,
-                  capacity_m3: {
-                    ...design.water_tank.capacity_m3,
-                    value: numOrNull(v),
-                    unit: 'm³',
+                pump: {
+                  ...design.pump,
+                  capacity: {
+                    ...electricCap,
+                    value,
+                    input_unit: electricCap.unit,
                     source: 'engineer_input',
                   },
                   source: 'engineer_input',
                 },
               })
             }
+            onUnit={(unit) =>
+              patch({
+                pump: {
+                  ...design.pump,
+                  capacity: {
+                    ...electricCap,
+                    unit,
+                    input_unit: unit,
+                    source: 'engineer_input',
+                  },
+                },
+              })
+            }
+            hint={altFlow(electricCap)}
           />
+          <MeasuredPressure
+            label="ضغط مضخة الكهرباء"
+            value={electricPress.value}
+            unit={electricPress.unit}
+            onValue={(value) =>
+              patch({
+                pump: {
+                  ...design.pump,
+                  pressure: {
+                    ...electricPress,
+                    value,
+                    input_unit: electricPress.unit,
+                    source: 'engineer_input',
+                  },
+                  source: 'engineer_input',
+                },
+              })
+            }
+            onUnit={(unit) =>
+              patch({
+                pump: {
+                  ...design.pump,
+                  pressure: {
+                    ...electricPress,
+                    unit,
+                    input_unit: unit,
+                    source: 'engineer_input',
+                  },
+                },
+              })
+            }
+            hint={altPress(electricPress)}
+          />
+          <MeasuredPressure
+            label="ضغط التشغيل المطلوب (Rated Pressure)"
+            value={design.pump.rated_pressure.value}
+            unit={design.pump.rated_pressure.unit}
+            onValue={(value) =>
+              patch({
+                pump: {
+                  ...design.pump,
+                  rated_pressure: {
+                    ...design.pump.rated_pressure,
+                    value,
+                    source: 'engineer_input',
+                  },
+                },
+              })
+            }
+            onUnit={(unit) =>
+              patch({
+                pump: {
+                  ...design.pump,
+                  rated_pressure: {
+                    ...design.pump.rated_pressure,
+                    unit,
+                    input_unit: unit,
+                    source: 'engineer_input',
+                  },
+                },
+              })
+            }
+          />
+        </div>
+      </div>
+
+      <div className="rounded-xl border border-gray-200 bg-gray-50/60 p-3 space-y-3">
+        <h4 className="text-sm font-bold text-gray-900">2) مضخة ديزل (Diesel)</h4>
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+          <MeasuredFlow
+            label="سعة مضخة الديزل"
+            value={dieselCap.value}
+            unit={dieselCap.unit}
+            onValue={(value) =>
+              patch({
+                diesel_pump: {
+                  ...design.diesel_pump,
+                  exists: 'yes',
+                  capacity: {
+                    ...dieselCap,
+                    value,
+                    input_unit: dieselCap.unit,
+                    source: 'engineer_input',
+                  },
+                  source: 'engineer_input',
+                },
+              })
+            }
+            onUnit={(unit) =>
+              patch({
+                diesel_pump: {
+                  ...design.diesel_pump,
+                  capacity: {
+                    ...dieselCap,
+                    unit,
+                    input_unit: unit,
+                    source: 'engineer_input',
+                  },
+                },
+              })
+            }
+            hint={altFlow(dieselCap)}
+          />
+          <MeasuredPressure
+            label="ضغط مضخة الديزل"
+            value={dieselPress.value}
+            unit={dieselPress.unit}
+            onValue={(value) =>
+              patch({
+                diesel_pump: {
+                  ...design.diesel_pump,
+                  exists: 'yes',
+                  pressure: {
+                    ...dieselPress,
+                    value,
+                    input_unit: dieselPress.unit,
+                    source: 'engineer_input',
+                  },
+                  source: 'engineer_input',
+                },
+              })
+            }
+            onUnit={(unit) =>
+              patch({
+                diesel_pump: {
+                  ...design.diesel_pump,
+                  pressure: {
+                    ...dieselPress,
+                    unit,
+                    input_unit: unit,
+                    source: 'engineer_input',
+                  },
+                },
+              })
+            }
+            hint={altPress(dieselPress)}
+          />
+        </div>
+      </div>
+
+      <div className="rounded-xl border border-gray-200 bg-gray-50/60 p-3 space-y-3">
+        <h4 className="text-sm font-bold text-gray-900">3) مضخة جوكي (Jockey)</h4>
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+          <MeasuredFlow
+            label="سعة الجوكي"
+            value={design.jockey_pump.capacity.value}
+            unit={design.jockey_pump.capacity.unit}
+            onValue={(value) =>
+              patch({
+                jockey_pump: {
+                  ...design.jockey_pump,
+                  exists: 'yes',
+                  capacity: {
+                    ...design.jockey_pump.capacity,
+                    value,
+                    source: 'engineer_input',
+                  },
+                  source: 'engineer_input',
+                },
+              })
+            }
+            onUnit={(unit) =>
+              patch({
+                jockey_pump: {
+                  ...design.jockey_pump,
+                  capacity: {
+                    ...design.jockey_pump.capacity,
+                    unit,
+                    input_unit: unit,
+                    source: 'engineer_input',
+                  },
+                },
+              })
+            }
+          />
+          <MeasuredPressure
+            label="ضغط الجوكي"
+            value={design.jockey_pump.pressure.value}
+            unit={design.jockey_pump.pressure.unit}
+            onValue={(value) =>
+              patch({
+                jockey_pump: {
+                  ...design.jockey_pump,
+                  exists: 'yes',
+                  pressure: {
+                    ...design.jockey_pump.pressure,
+                    value,
+                    source: 'engineer_input',
+                  },
+                  source: 'engineer_input',
+                },
+              })
+            }
+            onUnit={(unit) =>
+              patch({
+                jockey_pump: {
+                  ...design.jockey_pump,
+                  pressure: {
+                    ...design.jockey_pump.pressure,
+                    unit,
+                    input_unit: unit,
+                    source: 'engineer_input',
+                  },
+                },
+              })
+            }
+          />
+        </div>
+      </div>
+
+      <div className="border-t border-emerald-100 pt-3 space-y-3">
+        <h4 className="text-sm font-bold text-gray-900">خزان مياه الإطفاء — حساب تلقائي (الدفاع المدني)</h4>
+        <div className="rounded-xl border border-emerald-200 bg-emerald-50/50 px-3 py-2 text-sm space-y-1">
+          <div className="font-bold text-emerald-950">المعادلة المعتمدة</div>
+          <div className="font-semibold text-gray-900" dir="rtl">
+            {TANK_VOLUME_FORMULA_AR}
+          </div>
+          <div className="text-xs text-gray-600" dir="ltr">
+            {TANK_VOLUME_FORMULA_EN}
+          </div>
+          <p className="text-[11px] text-gray-600 leading-relaxed">
+            Q = أعلى تدفق تصميمي لمضخات الكهرباء/الديزل (لتر/دقيقة)، T = مدة التشغيل التصميمية
+            (افتراضي 60 دقيقة وفق اشتراطات الدفاع المدني ما لم يُعدَّل)، V = سعة الخزان المطلوبة بالمتر المكعب.
+          </p>
+        </div>
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
           <Field
-            label="الطلب المائي (L/min)"
+            label="الطلب المائي Q (L/min) — يُحسب من المضخات أو يُعدَّل"
             value={design.water_tank.water_demand_lpm.value ?? ''}
             onChange={(v) =>
               patch({
@@ -307,7 +399,7 @@ export default function FireProtectionDesignSection({
             }
           />
           <Field
-            label="مدة التشغيل التصميمية (min)"
+            label="مدة التشغيل T (min)"
             value={design.water_tank.duration_min.value ?? ''}
             onChange={(v) =>
               patch({
@@ -324,17 +416,35 @@ export default function FireProtectionDesignSection({
               })
             }
           />
+          <label className="text-sm block">
+            <span className="text-xs font-semibold text-gray-600 mb-1 block">
+              سعة الخزان V (m³) — تلقائي
+            </span>
+            <input
+              type="text"
+              readOnly
+              dir="ltr"
+              value={
+                design.water_tank.calculated_required_volume_m3 != null
+                  ? design.water_tank.calculated_required_volume_m3
+                  : ''
+              }
+              className="w-full border rounded-xl px-3 py-2.5 text-sm bg-gray-50 font-bold text-emerald-900"
+            />
+            <span className="text-[11px] text-gray-500 mt-1 block">
+              مصدر: {design.water_tank.capacity_m3.source === 'calculated' ? 'محسوب' : 'مدخل مهندس'}
+            </span>
+          </label>
         </div>
         <div className="rounded-xl bg-white border border-gray-200 px-3 py-2 text-sm">
-          <div className="font-semibold text-gray-800">الحجم النظري المطلوب (Q × T / 1000)</div>
-          <div className="text-emerald-800 font-bold mt-0.5" dir="ltr">
-            {design.water_tank.calculated_required_volume_m3 != null
-              ? `${design.water_tank.calculated_required_volume_m3} m³`
-              : '—'}
+          <div className="font-semibold text-gray-800">تطبيق المعادلة</div>
+          <div className="text-emerald-900 font-bold mt-0.5 text-xs sm:text-sm" dir="ltr">
+            {design.water_tank.formula_ar || TANK_VOLUME_FORMULA_AR}
           </div>
           <div className="text-xs text-amber-800 mt-1 font-semibold">{tankCheck.label_ar}</div>
           <p className="text-[11px] text-gray-500 mt-1">
-            تحقق أولي فقط (Preliminary Engineering Check) — ليس اعتماد NFPA تلقائياً.
+            تحقق أولي وفق اشتراطات الدفاع المدني / SBC — ليس اعتماد NFPA تلقائياً؛ يلزم ربط الحساب
+            الهيدروليكي المعتمد.
           </p>
         </div>
       </div>

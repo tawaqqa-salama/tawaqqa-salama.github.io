@@ -4,7 +4,9 @@ import {
   compareTankVolume,
   EMPTY_FIRE_PROTECTION_DESIGN,
   NOT_ENTERED_AR,
+  TANK_VOLUME_FORMULA_AR,
   formatMeasured,
+  normalizePumpCertification,
 } from '@/lib/types/fire-protection-design';
 import {
   generateAdminUcReport,
@@ -39,9 +41,23 @@ function designFixture() {
     pump: {
       ...EMPTY_FIRE_PROTECTION_DESIGN.pump,
       exists: 'yes',
-      type: 'Electric',
+      type: 'UL',
       capacity: { value: 1000, unit: 'GPM', input_unit: 'GPM', source: 'engineer_input' },
       pressure: { value: 8, unit: 'bar', input_unit: 'bar', source: 'engineer_input' },
+      source: 'engineer_input',
+    },
+    diesel_pump: {
+      ...EMPTY_FIRE_PROTECTION_DESIGN.diesel_pump,
+      exists: 'yes',
+      capacity: { value: 1000, unit: 'GPM', input_unit: 'GPM', source: 'engineer_input' },
+      pressure: { value: 8, unit: 'bar', input_unit: 'bar', source: 'engineer_input' },
+      source: 'engineer_input',
+    },
+    jockey_pump: {
+      ...EMPTY_FIRE_PROTECTION_DESIGN.jockey_pump,
+      exists: 'yes',
+      capacity: { value: 50, unit: 'GPM', input_unit: 'GPM', source: 'engineer_input' },
+      pressure: { value: 9, unit: 'bar', input_unit: 'bar', source: 'engineer_input' },
       source: 'engineer_input',
     },
     water_tank: {
@@ -62,6 +78,41 @@ describe('admin UC fire protection design', () => {
     const check = compareTankVolume(100, 120);
     expect(check.status).toBe('needs_review');
     expect(check.label_ar).toBe('يحتاج مراجعة هندسية');
+  });
+
+  it('limits pump certification to UL or non UL', () => {
+    expect(normalizePumpCertification('UL')).toBe('UL');
+    expect(normalizePumpCertification('non UL')).toBe('non UL');
+    expect(normalizePumpCertification('Electric')).toBe('');
+    expect(normalizePumpCertification('Diesel')).toBe('');
+    expect(normalizePumpCertification('nano UL')).toBe('');
+  });
+
+  it('auto-sizes tank from pump demand using Civil Defense equation', () => {
+    const design = mergeFireProtectionDesign({
+      ...EMPTY_FIRE_PROTECTION_DESIGN,
+      pump: {
+        ...EMPTY_FIRE_PROTECTION_DESIGN.pump,
+        exists: 'yes',
+        type: 'non UL',
+        capacity: { value: 500, unit: 'L/min', input_unit: 'L/min', source: 'engineer_input' },
+        source: 'engineer_input',
+      },
+      water_tank: {
+        ...EMPTY_FIRE_PROTECTION_DESIGN.water_tank,
+        capacity_m3: { value: null, unit: 'm³', source: 'unknown' },
+        water_demand_lpm: { value: null, unit: 'L/min', source: 'unknown' },
+        duration_min: { value: 60, unit: 'min', source: 'rule_requirement' },
+      },
+    });
+    expect(design.water_tank.water_demand_lpm.value).toBe(500);
+    expect(design.water_tank.calculated_required_volume_m3).toBe(30);
+    expect(design.water_tank.capacity_m3.value).toBe(30);
+    expect(design.water_tank.capacity_m3.source).toBe('calculated');
+    expect(design.water_tank.formula_ar).toContain('30');
+    expect(design.water_tank.formula_ar).toContain('500');
+    expect(design.water_tank.formula_ar).toContain('60');
+    expect(TANK_VOLUME_FORMULA_AR).toContain('Q');
   });
 
   it('selects admin UC template for administrative + under construction', () => {
@@ -117,6 +168,9 @@ describe('admin UC fire protection design', () => {
     expect(htmlChunk).toContain('يحتاج مراجعة هندسية');
     expect(htmlChunk).not.toContain('غير محدد');
     expect(htmlChunk).toContain('Preliminary Engineering Check');
+    expect(htmlChunk).toContain('UL');
+    expect(htmlChunk).toContain('مجموعة مضخات');
+    expect(htmlChunk).toContain('معادلة');
 
     // Re-issue after pump change updates all linked places
     const updated = mergeFireProtectionDesign({
