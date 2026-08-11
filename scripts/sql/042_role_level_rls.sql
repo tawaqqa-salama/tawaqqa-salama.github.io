@@ -105,6 +105,73 @@ GRANT EXECUTE ON FUNCTION public.app_can_read_finance() TO authenticated, servic
 GRANT EXECUTE ON FUNCTION public.app_can_write_finance() TO authenticated, service_role;
 GRANT EXECUTE ON FUNCTION public.app_can_manage_tenant_settings() TO authenticated, service_role;
 
+-- ─── Self-update helpers (SECURITY DEFINER — never query users inside policies) ─
+-- Reading public.users from a policy ON public.users causes RLS recursion.
+CREATE OR REPLACE FUNCTION public.app_users_self_update_ok(
+  p_role_code text,
+  p_company_id uuid,
+  p_is_platform_admin boolean
+)
+RETURNS boolean
+LANGUAGE sql
+STABLE
+SECURITY DEFINER
+SET search_path = public
+AS $$
+  SELECT EXISTS (
+    SELECT 1
+    FROM public.users u
+    WHERE u.auth_user_id = auth.uid()
+      AND u.deleted_at IS NULL
+      AND u.is_active = true
+      AND u.role_code IS NOT DISTINCT FROM p_role_code
+      AND u.company_id IS NOT DISTINCT FROM p_company_id
+      AND COALESCE(u.is_platform_admin, false)
+            IS NOT DISTINCT FROM COALESCE(p_is_platform_admin, false)
+  );
+$$;
+
+CREATE OR REPLACE FUNCTION public.app_can_update_user_row(
+  p_target_id uuid,
+  p_new_role_code text,
+  p_new_company_id uuid,
+  p_new_is_platform_admin boolean
+)
+RETURNS boolean
+LANGUAGE sql
+STABLE
+SECURITY DEFINER
+SET search_path = public
+AS $$
+  SELECT
+    CASE
+      WHEN public.is_platform_admin() THEN true
+      WHEN public.app_can_manage_users()
+           AND p_new_company_id IS NOT DISTINCT FROM public.current_app_company_id()
+           AND EXISTS (
+             SELECT 1 FROM public.users t
+             WHERE t.id = p_target_id
+               AND t.company_id = public.current_app_company_id()
+           )
+        THEN true
+      WHEN p_target_id IS NOT DISTINCT FROM public.current_app_user_id()
+           AND public.app_users_self_update_ok(
+             p_new_role_code,
+             p_new_company_id,
+             p_new_is_platform_admin
+           )
+        THEN true
+      ELSE false
+    END;
+$$;
+
+REVOKE ALL ON FUNCTION public.app_users_self_update_ok(text, uuid, boolean) FROM PUBLIC;
+REVOKE ALL ON FUNCTION public.app_can_update_user_row(uuid, text, uuid, boolean) FROM PUBLIC;
+GRANT EXECUTE ON FUNCTION public.app_users_self_update_ok(text, uuid, boolean)
+  TO authenticated, service_role;
+GRANT EXECUTE ON FUNCTION public.app_can_update_user_row(uuid, text, uuid, boolean)
+  TO authenticated, service_role;
+
 -- ─── users: staff cannot escalate / manage peers ─────────────────────────────
 DO $$
 BEGIN
@@ -115,6 +182,10 @@ BEGIN
   DROP POLICY IF EXISTS users_update_tenant ON public.users;
   DROP POLICY IF EXISTS users_delete_tenant ON public.users;
   DROP POLICY IF EXISTS users_tenant_isolation ON public.users;
+  DROP POLICY IF EXISTS users_select_scoped ON public.users;
+  DROP POLICY IF EXISTS users_insert_admin ON public.users;
+  DROP POLICY IF EXISTS users_update_admin ON public.users;
+  DROP POLICY IF EXISTS users_delete_admin ON public.users;
 
   CREATE POLICY users_select_scoped ON public.users
     FOR SELECT TO authenticated
@@ -126,7 +197,7 @@ BEGIN
         AND public.app_can_manage_users()
       )
       OR (
-        -- Non-admin peers: read-only directory within tenant (no privileged fields enforced here)
+        -- Non-admin peers: read-only directory within tenant
         company_id = public.current_app_company_id()
         AND public.app_role_in(ARRAY[
           'tenant_admin','admin','manager','engineer','sales','accountant','employee','staff','viewer'
@@ -144,6 +215,8 @@ BEGIN
       )
     );
 
+  -- No SELECT FROM public.users inside this policy — privileged-field checks go
+  -- through SECURITY DEFINER helpers only (avoids RLS recursion).
   CREATE POLICY users_update_admin ON public.users
     FOR UPDATE TO authenticated
     USING (
@@ -155,26 +228,11 @@ BEGIN
       OR id = public.current_app_user_id()
     )
     WITH CHECK (
-      public.is_platform_admin()
-      OR (
-        company_id = public.current_app_company_id()
-        AND (
-          public.app_can_manage_users()
-          OR (
-            -- Self-update: cannot change role / company / platform flag
-            id = public.current_app_user_id()
-            AND role_code IS NOT DISTINCT FROM (
-              SELECT u.role_code FROM public.users u WHERE u.id = public.current_app_user_id()
-            )
-            AND company_id IS NOT DISTINCT FROM (
-              SELECT u.company_id FROM public.users u WHERE u.id = public.current_app_user_id()
-            )
-            AND COALESCE(is_platform_admin, false) IS NOT DISTINCT FROM (
-              SELECT COALESCE(u.is_platform_admin, false)
-              FROM public.users u WHERE u.id = public.current_app_user_id()
-            )
-          )
-        )
+      public.app_can_update_user_row(
+        id,
+        role_code,
+        company_id,
+        COALESCE(is_platform_admin, false)
       )
     );
 
@@ -386,3 +444,7 @@ COMMENT ON FUNCTION public.app_can_write_finance() IS
   '042: accountant/admin only — blocks staff JWT from mutating finance tables';
 COMMENT ON FUNCTION public.app_can_manage_users() IS
   '042: tenant admin only — blocks privilege escalation via users UPDATE';
+COMMENT ON FUNCTION public.app_users_self_update_ok(text, uuid, boolean) IS
+  '042/043: SECURITY DEFINER — self-update cannot change role/company/platform flag';
+COMMENT ON FUNCTION public.app_can_update_user_row(uuid, text, uuid, boolean) IS
+  '042/043: SECURITY DEFINER gate for users UPDATE (avoids RLS recursion)';
