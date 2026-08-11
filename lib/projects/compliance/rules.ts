@@ -1110,7 +1110,7 @@ const fireProtectionRules: ComplianceRule[] = [
           { ...base, actual_value: 'yes_unverified' }
         );
       }
-      if (!hasNonEmpty(ctx.fireProtection.sprinkler_system_type)) {
+      if (!hasNonEmpty(ctx.fireProtection.sprinkler_system_type) || String(ctx.fireProtection.sprinkler_system_type).trim().length < 3) {
         return needsData(
           'المرشات مُعلَن تحققها دون نوع النظام (sprinkler_system_type) — لا PASS مع نقص بيانات هندسية.',
           inputs,
@@ -1151,16 +1151,45 @@ const fireProtectionRules: ComplianceRule[] = [
       const h = ctx.fireProtection.hazard_class;
       const inputs = { hazard_class: h };
       if (!hasNonEmpty(h)) return needsData('تصنيف الخطورة غير موثّق.', inputs, ['hazard_class']);
-      const normalized = String(h).trim().toLowerCase().replace(/\s+/g, '_');
-      const known = /^(light|ordinary(_?[12])?|extra(_?[12])?|high|light_hazard|ordinary_hazard)/i.test(
-        normalized
-      ) || /خطورة|ordinary|light|extra/i.test(String(h));
+      const normalized = String(h)
+        .trim()
+        .toLowerCase()
+        .replace(/[–—]/g, '-')
+        .replace(/\s+/g, '_');
+      const platformCodes = new Set([
+        'light',
+        'light_hazard',
+        'ordinary',
+        'ordinary_1',
+        'ordinary_2',
+        'ordinary_hazard',
+        'ordinary_hazard_1',
+        'ordinary_hazard_2',
+        'extra',
+        'extra_1',
+        'extra_2',
+        'extra_hazard',
+        'extra_hazard_1',
+        'extra_hazard_2',
+        'high',
+        'high_hazard',
+      ]);
+      const arabicOk =
+        /^(خطورة_?(خفيفة|عادية([_-]?مجموعة[_-]?[12])?|عالية([_-]?مجموعة[_-]?[12])?|استثنائية([_-]?مجموعة[_-]?[12])?)|خفيف|عادي([_-]?[12])?|عالي([_-]?[12])?)$/i.test(
+          normalized.replace(/-/g, '_')
+        );
+      const known = platformCodes.has(normalized) || arabicOk;
       if (!known) {
         return needsData(
           `تصنيف الخطورة «${h}» غير مُعرّف ضمن فئات الخطورة المعتمدة في المنصة — NEEDS_DATA.`,
           inputs,
           ['hazard_class'],
-          { actual_value: h, required_value: 'light|ordinary|extra (documented class)', occupancy: occLabel(ctx) }
+          {
+            actual_value: h,
+            required_value: 'light|ordinary_1|ordinary_2|extra_1|extra_2 (platform codes)',
+            occupancy: occLabel(ctx),
+            required_value_source: 'missing',
+          }
         );
       }
       return passEval(`تصنيف الخطورة موثّق ضمن فئات معتمدة: ${h}`, {
@@ -1170,6 +1199,7 @@ const fireProtectionRules: ComplianceRule[] = [
         code_reference: ref('FP-02'),
         occupancy: occLabel(ctx),
         condition: 'hazard_class ∈ documented platform hazard categories',
+        required_value_source: 'documentation_completeness',
       });
     },
   },

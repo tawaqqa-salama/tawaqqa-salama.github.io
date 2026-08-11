@@ -933,6 +933,27 @@ describe('Saudi Code Compliance Engine — final citation audit', () => {
         ).status
       ).toBe('NEEDS_DATA');
     });
+
+    it('FP-02 loose hazard text → NEEDS_DATA; platform code PASS', () => {
+      expect(
+        evaluateRule(
+          getComplianceRuleById('FP-02')!,
+          emptyCtx({ fireProtection: { applicable_codes: [], hazard_class: 'خطورة' } })
+        ).status
+      ).toBe('NEEDS_DATA');
+      expect(
+        evaluateRule(
+          getComplianceRuleById('FP-02')!,
+          emptyCtx({ fireProtection: { applicable_codes: [], hazard_class: 'slightly' } })
+        ).status
+      ).toBe('NEEDS_DATA');
+      expect(
+        evaluateRule(
+          getComplianceRuleById('FP-02')!,
+          emptyCtx({ fireProtection: { applicable_codes: [], hazard_class: 'ordinary_1' } })
+        ).status
+      ).toBe('PASS');
+    });
   });
 
   it('empty project BLOCKED; assessment label not absolute مطابق', () => {
