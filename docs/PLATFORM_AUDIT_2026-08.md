@@ -63,17 +63,22 @@ A full multi-tenant security and architecture audit was performed against the Ne
 | P0-2 Public website / WhatsApp token → company | **FIXED** |
 | P1 Document download signed URL tenant ownership | **FIXED** in repo (`/api/documents/signed-url` + helpers); **OPS_REQUIRED** confirm 041 storage RLS live |
 | Regression suite (DI / public token / signed URL / company_id override) | **FIXED** (`tests/platform-audit-security-closure.test.ts`) |
+| P0-3 SECURITY DEFINER grants + tenant guards on live RPCs | **FIXED** in repo (`scripts/sql/20260812_security_definer_hardening.sql`); **OPS_REQUIRED** apply + re-check Advisor |
 
 ### OPS_REQUIRED
 
 ```
 OPS_REQUIRED:
-Apply migration 045
+Apply migration 045 / 20260812_design_intelligence_tenant_rls (if not already)
+Apply migration 20260812_security_definer_hardening.sql
 Confirm migration 041
 Verify storage policies
+Re-check Supabase Security Advisor after DEFINER hardening
+Enable Auth → Leaked Password Protection (Dashboard only; not changed from code)
 ```
 
-No production DB verification was performed in this environment.
+No production DB verification / Security Advisor API access in this agent environment.
+Agent cannot toggle Auth Leaked Password Protection from the repository — Dashboard configuration required.
 
 ---
 
