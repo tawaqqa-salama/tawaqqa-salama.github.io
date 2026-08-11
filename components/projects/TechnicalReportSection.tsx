@@ -23,6 +23,7 @@ import type {
   TechnicalReportPhoto,
   TechnicalReportSectionItem,
 } from '@/lib/types/project-reports';
+import { uploadTechnicalReportPhoto } from '@/lib/projects/technical-report-photos';
 
 const REPORT_STATUSES = ['مسودة', 'قيد الإعداد', 'مكتمل', 'معتمد'] as const;
 
@@ -37,19 +38,6 @@ type Props = {
   chapter?: TechReportChapterId;
   onChapterChange?: (chapter: TechReportChapterId) => void;
 };
-
-function newPhotoId() {
-  return `ph-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
-}
-
-async function fileToDataUrl(file: File): Promise<string> {
-  return new Promise((resolve, reject) => {
-    const reader = new FileReader();
-    reader.onload = () => resolve(String(reader.result || ''));
-    reader.onerror = () => reject(new Error('تعذر قراءة الملف'));
-    reader.readAsDataURL(file);
-  });
-}
 
 export default function TechnicalReportSection({
   client,
@@ -114,8 +102,16 @@ export default function TechnicalReportSection({
       alert('حجم الصورة كبير. اختر صورة أصغر من 2.5MB');
       return;
     }
-    const dataUrl = await fileToDataUrl(file);
-    apply({ id: newPhotoId(), dataUrl, caption: file.name });
+    try {
+      const photo = await uploadTechnicalReportPhoto({
+        clientId: client.id,
+        file,
+        caption: file.name,
+      });
+      apply(photo);
+    } catch (e) {
+      alert(e instanceof Error ? e.message : 'تعذر رفع الصورة');
+    }
   };
 
   const itemsForChapter = (chapterId: string) => {
@@ -591,14 +587,23 @@ function PhotoBox({
   onUpload: (file: File | null) => void;
   onClear: () => void;
 }) {
+  const src = photo?.dataUrl || null;
+  const hasCloudOnly = Boolean(photo?.storagePath && !src);
   return (
     <div className="border rounded-xl p-3 bg-gray-50">
       <p className="text-sm font-semibold text-gray-700 mb-2">{title}</p>
-      {photo?.dataUrl ? (
+      {src ? (
         <div className="relative">
           {/* eslint-disable-next-line @next/next/no-img-element */}
-          <img src={photo.dataUrl} alt={title} className="w-full h-36 object-cover rounded-lg" />
+          <img src={src} alt={title} className="w-full h-36 object-cover rounded-lg" />
           <button type="button" onClick={onClear} className="absolute top-2 left-2 bg-white text-rose-600 text-xs px-2 py-1 rounded">
+            حذف
+          </button>
+        </div>
+      ) : hasCloudOnly ? (
+        <div className="relative h-36 border rounded-lg flex flex-col items-center justify-center gap-2 bg-white text-xs text-emerald-800">
+          <span>الصورة محفوظة في السحابة — ستظهر بعد إعادة فتح الملف أو الطباعة</span>
+          <button type="button" onClick={onClear} className="text-rose-600 font-semibold">
             حذف
           </button>
         </div>

@@ -10,39 +10,48 @@ import {
   printAdminUcTechnicalReport,
   shouldUseAdminUcReport,
 } from '@/lib/projects/admin-uc-report';
+import { hydrateTechnicalReportPhotosForDisplay } from '@/lib/projects/technical-report-photos';
 
 /**
  * Technical report print router:
  * - Administrative + under construction → independent Admin UC template
  * - Otherwise → Nasaim-style engineering study
  */
-export function printTechnicalReport(params: {
+export async function printTechnicalReport(params: {
   client: ClientRecord;
   report: TechnicalReport;
   company: CompanyProfile;
   engineeringData?: ProjectEngineeringData | null;
   locale?: ReportLocale;
 }) {
+  const report = await hydrateTechnicalReportPhotosForDisplay(params.report);
+  const engineeringData = params.engineeringData
+    ? {
+        ...params.engineeringData,
+        technical_report: report,
+      }
+    : params.engineeringData;
+
   if (
     shouldUseAdminUcReport({
       client: params.client,
-      report: params.report,
-      engineeringData: params.engineeringData,
+      report,
+      engineeringData,
     })
   ) {
     printAdminUcTechnicalReport({
       client: params.client,
-      report: params.report,
+      report,
       company: params.company,
-      engineeringData: params.engineeringData,
+      engineeringData,
     });
     return;
   }
 
   const document = generateEngineeringStudy({
     client: params.client,
-    report: params.report,
-    engineeringData: params.engineeringData,
+    report,
+    engineeringData,
     locale: params.locale || 'ar',
   });
 

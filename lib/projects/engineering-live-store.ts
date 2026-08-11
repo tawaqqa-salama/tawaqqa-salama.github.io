@@ -7,6 +7,11 @@ import { supabase } from '@/lib/supabase';
 import type { ProjectEngineeringData } from '@/lib/types/project-reports';
 import { parseProjectEngineeringData } from '@/lib/business/project-reports';
 import { sanitizeEngineeringDataForPersist } from '@/lib/projects/sanitize-engineering-files';
+import {
+  hydrateTechnicalReportPhotosForDisplay,
+  persistTechnicalReportPhotosToStorage,
+  preferTechnicalReportPhoto,
+} from '@/lib/projects/technical-report-photos';
 
 function isMissing(message: string): boolean {
   return /relation|does not exist|Could not find|schema cache|function/i.test(message);
@@ -23,7 +28,15 @@ export async function saveEngineeringLive(params: {
   data: ProjectEngineeringData;
   pipelineStage?: string | null;
 }): Promise<{ error: string | null; usedRpc: boolean }> {
-  const payload = sanitizeEngineeringDataForPersist(params.data, { aggressive: true });
+  // Move inline tech-report photos to Storage first so sanitize can drop dataUrls safely
+  const withStoredPhotos: ProjectEngineeringData = {
+    ...params.data,
+    technical_report: await persistTechnicalReportPhotosToStorage(
+      params.clientId,
+      params.data.technical_report
+    ),
+  };
+  const payload = sanitizeEngineeringDataForPersist(withStoredPhotos, { aggressive: true });
 
   const { error: rpcError } = await supabase.rpc('save_project_engineering_live', {
     p_client_id: params.clientId,
@@ -73,7 +86,12 @@ export async function loadEngineeringLive(
 
   if (error) return null;
   if (!data?.payload || typeof data.payload !== 'object') return null;
-  return parseProjectEngineeringData(data.payload);
+  const parsed = parseProjectEngineeringData(data.payload);
+  // Restore displayable image srcs from Storage paths
+  return {
+    ...parsed,
+    technical_report: await hydrateTechnicalReportPhotosForDisplay(parsed.technical_report),
+  };
 }
 
 /**
@@ -85,11 +103,35 @@ export function hydrateEngineeringWithLive(
   live: ProjectEngineeringData | null
 ): ProjectEngineeringData {
   if (!live) return base;
+  const baseTr = base.technical_report;
+  const liveTr = live.technical_report;
   return {
     ...base,
     ...live,
-    // Deep-ish merge for nested blobs that may be partially filled
-    technical_report: { ...base.technical_report, ...live.technical_report },
+    technical_report: {
+      ...baseTr,
+      ...liveTr,
+      earth_photo: preferTechnicalReportPhoto(baseTr.earth_photo, liveTr.earth_photo),
+      facade_photo: preferTechnicalReportPhoto(baseTr.facade_photo, liveTr.facade_photo),
+      site_photo: preferTechnicalReportPhoto(baseTr.site_photo, liveTr.site_photo),
+      code_proof_photos:
+        (liveTr.code_proof_photos || []).length > 0
+          ? liveTr.code_proof_photos
+          : baseTr.code_proof_photos,
+      code_proofs_by_key: {
+        ...(baseTr.code_proofs_by_key || {}),
+        ...(liveTr.code_proofs_by_key || {}),
+      },
+      floor_uses: liveTr.floor_uses?.length ? liveTr.floor_uses : baseTr.floor_uses,
+      firefighting_items: liveTr.firefighting_items?.length
+        ? liveTr.firefighting_items
+        : baseTr.firefighting_items,
+      ventilation_items: liveTr.ventilation_items?.length
+        ? liveTr.ventilation_items
+        : baseTr.ventilation_items,
+      alarm_items: liveTr.alarm_items?.length ? liveTr.alarm_items : baseTr.alarm_items,
+      exits_items: liveTr.exits_items?.length ? liveTr.exits_items : baseTr.exits_items,
+    },
     building_plan: { ...base.building_plan, ...live.building_plan },
     fire_protection_design: live.fire_protection_design || base.fire_protection_design,
     design_center: live.design_center || base.design_center,

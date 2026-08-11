@@ -407,7 +407,7 @@ export default function ProjectReportModal({
       report = nextData.technical_report;
     }
     const profile = await loadCompanyProfile();
-    printTechnicalReport({
+    await printTechnicalReport({
       client,
       report,
       company: profile,

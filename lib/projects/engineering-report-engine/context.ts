@@ -108,7 +108,7 @@ function itemDetail(report: TechnicalReport, itemId: string) {
   };
 }
 
-/** Convert stored report photos to print-ready study images (data URLs only). */
+/** Convert stored report photos to print-ready study images. */
 export function photosToStudyImages(
   photos: TechnicalReportPhoto[] | null | undefined,
   fallbackCaptionAr: string,
