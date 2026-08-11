@@ -1,4 +1,8 @@
 import { supabase } from '@/lib/supabase';
+import { saveEngineeringLive } from '@/lib/projects/engineering-live-store';
+import { sanitizeEngineeringDataForPersist } from '@/lib/projects/sanitize-engineering-files';
+import type { ProjectEngineeringData } from '@/lib/types/project-reports';
+import { parseProjectEngineeringData } from '@/lib/business/project-reports';
 
 const LOCAL_CLIENT_OVERRIDES_KEY = 'tawaqqa_client_field_overrides_v1';
 const LOCAL_ENGINEERING_BACKUP_KEY = 'tawaqqa_engineering_backup_v1';
@@ -110,7 +114,36 @@ export async function updateClientSafe(
   delete current.id;
   delete current.created_at;
 
+  // Radical: never UPDATE fat project_engineering_data on clients — use live table
+  let engineeringLiveError: string | null = null;
+  if ('project_engineering_data' in current) {
+    const rawEng = current.project_engineering_data;
+    delete current.project_engineering_data;
+    const parsed = parseProjectEngineeringData(
+      (rawEng && typeof rawEng === 'object'
+        ? rawEng
+        : null) as ProjectEngineeringData | null
+    );
+    const live = await saveEngineeringLive({
+      clientId,
+      data: sanitizeEngineeringDataForPersist(parsed, {
+        aggressive: true,
+      }),
+      pipelineStage:
+        typeof current.pipeline_stage === 'string' ? current.pipeline_stage : null,
+    });
+    if (live.error) engineeringLiveError = live.error;
+  }
+
   const skippedColumns: string[] = [];
+
+  // If only engineering was being saved, live write is enough
+  if (Object.keys(current).length === 0) {
+    if (engineeringLiveError) {
+      return { error: engineeringLiveError, skippedColumns: ['project_engineering_data'] };
+    }
+    return { error: null, skippedColumns: ['project_engineering_data'] };
+  }
 
   for (let attempt = 0; attempt < 20; attempt += 1) {
     const { error } = await supabase.from('clients').update(current).eq('id', clientId);
@@ -127,7 +160,18 @@ export async function updateClientSafe(
       if ('quotation_documents' in payload) {
         localPatch.quotation_documents = payload.quotation_documents;
       }
+      if ('project_engineering_data' in payload) {
+        localPatch.project_engineering_data = payload.project_engineering_data;
+      }
       if (Object.keys(localPatch).length) saveLocalClientOverrides(clientId, localPatch);
+
+      if (engineeringLiveError) {
+        return {
+          error: engineeringLiveError,
+          skippedColumns: [...skippedColumns, 'project_engineering_data'],
+          warning: 'حُفظت بقية الحقول؛ تعذر مزامنة الملف الهندسي الحي.',
+        };
+      }
 
       if (skippedColumns.length > 0) {
         return {

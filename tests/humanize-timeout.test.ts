@@ -7,7 +7,6 @@ describe('statement timeout humanize', () => {
     expect(isStatementTimeoutError(raw)).toBe(true);
     const msg = humanizeFetchError(raw);
     expect(msg).toContain('مهلة قاعدة البيانات');
-    expect(msg).toContain('039');
-    expect(msg).toContain('038');
+    expect(msg).toContain('040');
   });
 });

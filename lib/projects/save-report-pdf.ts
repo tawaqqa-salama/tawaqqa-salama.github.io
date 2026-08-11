@@ -25,6 +25,7 @@ import { buildSupervisionReportHtml } from '@/components/projects/SupervisionRep
 import { trimSupervisionTextFields } from '@/lib/projects/supervision-report';
 import { sanitizeEngineeringDataForPersist } from '@/lib/projects/sanitize-engineering-files';
 import { saveStage5LiveBundle } from '@/lib/projects/stage5-live-store';
+import { saveEngineeringLive } from '@/lib/projects/engineering-live-store';
 
 function isMissingRelation(message: string): boolean {
   return /relation|does not exist|Could not find the table|schema cache|function|Could not find/i.test(
@@ -222,11 +223,10 @@ export async function saveFieldVisitAsPdfAttachment(params: {
     warning = `بيانات الزيارة ستُحفظ لكن تعذر إنشاء PDF: ${msg}`;
   }
 
-  const live = await saveStage5LiveBundle({
+  // All-stages live store (never fat JSONB); stage-5 tables are best-effort mirror
+  const live = await saveEngineeringLive({
     clientId: client.id,
-    fieldVisits: data.field_visits,
-    supervision: data.supervision_report,
-    pdfArchive: data.report_pdf_archive || [],
+    data,
     pipelineStage,
   });
   if (live.error) {
@@ -237,6 +237,13 @@ export async function saveFieldVisitAsPdfAttachment(params: {
       warning: warning || 'تم حفظ نسخة محلية — تعذر المزامنة السحابية للزيارة',
     };
   }
+  await saveStage5LiveBundle({
+    clientId: client.id,
+    fieldVisits: data.field_visits,
+    supervision: data.supervision_report,
+    pdfArchive: data.report_pdf_archive || [],
+    pipelineStage,
+  });
 
   backupEngineeringDataLocally(client.id, data);
   return { error: null, data, snapshot, warning };
@@ -316,11 +323,9 @@ export async function saveSupervisionAsPdfAttachment(params: {
     warning = `بيانات الإشراف ستُحفظ لكن تعذر إنشاء PDF: ${msg}`;
   }
 
-  const live = await saveStage5LiveBundle({
+  const live = await saveEngineeringLive({
     clientId: client.id,
-    fieldVisits: data.field_visits || [],
-    supervision: data.supervision_report,
-    pdfArchive: data.report_pdf_archive || [],
+    data,
     pipelineStage,
   });
   if (live.error) {
@@ -332,6 +337,13 @@ export async function saveSupervisionAsPdfAttachment(params: {
       usedRelationalTables: true,
     };
   }
+  await saveStage5LiveBundle({
+    clientId: client.id,
+    fieldVisits: data.field_visits || [],
+    supervision: data.supervision_report,
+    pdfArchive: data.report_pdf_archive || [],
+    pipelineStage,
+  });
 
   backupEngineeringDataLocally(client.id, data);
   return {
