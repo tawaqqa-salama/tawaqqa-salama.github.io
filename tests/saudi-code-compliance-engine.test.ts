@@ -75,12 +75,14 @@ describe('Saudi Code Compliance Engine', () => {
   });
 
   it('required exits are based on occupant load bands — not exits=occupants', () => {
-    expect(requiredExitsFromOccupantLoad(40)).toBe(1);
-    expect(requiredExitsFromOccupantLoad(50)).toBe(2);
-    expect(requiredExitsFromOccupantLoad(500)).toBe(2);
-    expect(requiredExitsFromOccupantLoad(501)).toBe(3);
-    expect(requiredExitsFromOccupantLoad(1000)).toBe(3);
-    expect(requiredExitsFromOccupantLoad(1500)).toBe(4);
+    const occ = { classification: 'GROUP B — مكاتب' };
+    expect(requiredExitsFromOccupantLoad(40, occ)?.required).toBe(1);
+    expect(requiredExitsFromOccupantLoad(50, occ)?.required).toBe(2);
+    expect(requiredExitsFromOccupantLoad(500, occ)?.required).toBe(2);
+    expect(requiredExitsFromOccupantLoad(501, occ)?.required).toBe(3);
+    expect(requiredExitsFromOccupantLoad(1000, occ)?.required).toBe(3);
+    expect(requiredExitsFromOccupantLoad(1500, occ)?.required).toBe(4);
+    expect(requiredExitsFromOccupantLoad(40, null)).toBeNull();
   });
 
   it('OCC-01 NEEDS_DATA when occupancy missing — never PASS by assumption', () => {
@@ -108,6 +110,10 @@ describe('Saudi Code Compliance Engine', () => {
     const result = evaluateRule(
       rule,
       emptyCtx({
+        building: {
+          ...emptyCtx().building,
+          occupancy_classification: 'GROUP B — مكاتب',
+        },
         egress: {
           metrics: [],
           occupant_load_total: 120,
@@ -124,6 +130,10 @@ describe('Saudi Code Compliance Engine', () => {
     const result = evaluateRule(
       rule,
       emptyCtx({
+        building: {
+          ...emptyCtx().building,
+          occupancy_classification: 'GROUP B — مكاتب',
+        },
         egress: {
           metrics: [],
           occupant_load_total: 120,
