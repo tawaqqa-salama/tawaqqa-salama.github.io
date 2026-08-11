@@ -1,11 +1,14 @@
 import { NextResponse } from 'next/server';
 import { getCrmClient } from '@/lib/whatsapp/crm-bridge';
 import { waRepository } from '@/lib/whatsapp/store/repository';
+import { withTenantApi } from '@/lib/tenant/api-guard';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
 
 export async function GET(request: Request) {
+  const gated = await withTenantApi(request, { module: 'whatsapp' });
+  if ('response' in gated) return gated.response;
   const url = new URL(request.url);
   const status = url.searchParams.get('status') || undefined;
   const unassigned = url.searchParams.get('unassigned') === '1';

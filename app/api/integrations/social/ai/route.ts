@@ -1,9 +1,12 @@
 import { NextResponse } from 'next/server';
 import { runMarketingAiAssist, type AiAssistKind } from '@/lib/marketing/ai-assist';
+import { withTenantApi } from '@/lib/tenant/api-guard';
 
 export const runtime = 'nodejs';
 
 export async function POST(request: Request) {
+  const gated = await withTenantApi(request, { module: 'social_media' });
+  if ('response' in gated) return gated.response;
   const body = (await request.json().catch(() => ({}))) as {
     kind?: AiAssistKind;
     text?: string;

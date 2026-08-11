@@ -21,21 +21,21 @@ import { POST as onboardingPost } from '@/app/api/onboarding/route';
 import { GET as tenantsGet, POST as tenantsPost } from '@/app/api/platform/tenants/route';
 import { GET as funnelGet } from '@/app/api/integrations/marketing/funnel/route';
 import { POST as contractPost } from '@/app/api/contracts/auto-generate/route';
+import { encodeCookiePayload, type CookieSessionPayload } from '@/lib/auth/session-cookie';
 
 function cookieHeader(role = 'super_admin', companyId = 'co-tawaqqa', userId = 'usr-admin') {
-  const payload = Buffer.from(
-    JSON.stringify({
-      userId,
-      email: 'admin@tawaqqa.sa',
-      fullName: 'Admin',
-      roleCode: role,
-      companyId,
-      loggedInAt: new Date().toISOString(),
-      method: 'email',
-    }),
-    'utf8'
-  ).toString('base64url');
-  return `tawaqqa_auth=${payload}`;
+  process.env.AUTH_SESSION_SECRET =
+    process.env.AUTH_SESSION_SECRET || 'test-auth-session-secret-32chars!!';
+  const payload: CookieSessionPayload = {
+    userId,
+    email: 'admin@tawaqqa.sa',
+    fullName: 'Admin',
+    roleCode: role,
+    companyId,
+    loggedInAt: new Date().toISOString(),
+    method: 'email',
+  };
+  return `tawaqqa_auth=${encodeURIComponent(encodeCookiePayload(payload))}`;
 }
 
 describe('Multi-tenant SaaS', () => {
@@ -124,14 +124,14 @@ describe('Multi-tenant SaaS', () => {
   it('platform tenants API requires super admin', async () => {
     const denied = await tenantsGet(
       new Request('http://localhost/api/platform/tenants', {
-        headers: { cookie: cookieHeader('sales') },
+        headers: { cookie: cookieHeader('sales', 'co-tawaqqa', 'usr-sales') },
       })
     );
     expect(denied.status).toBe(403);
 
     const ok = await tenantsGet(
       new Request('http://localhost/api/platform/tenants', {
-        headers: { cookie: cookieHeader('super_admin') },
+        headers: { cookie: cookieHeader('super_admin', 'co-tawaqqa', 'usr-admin') },
       })
     );
     const json = await ok.json();
@@ -224,7 +224,7 @@ describe('Multi-tenant SaaS', () => {
 
     const ok = await funnelGet(
       new Request('http://localhost/api/integrations/marketing/funnel', {
-        headers: { cookie: cookieHeader('sales', 'co-tawaqqa') },
+        headers: { cookie: cookieHeader('sales', 'co-tawaqqa', 'usr-sales') },
       })
     );
     expect(ok.status).toBe(200);

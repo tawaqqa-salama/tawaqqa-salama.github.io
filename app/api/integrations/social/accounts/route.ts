@@ -3,10 +3,13 @@ import { listProviderCapabilities } from '@/lib/social/provider';
 import { disconnectAccount, listSocialAccounts, startOAuth } from '@/lib/social/service';
 import type { SocialPlatform } from '@/lib/social/types';
 import { SOCIAL_PLATFORMS } from '@/lib/social/types';
+import { withTenantApi } from '@/lib/tenant/api-guard';
 
 export const runtime = 'nodejs';
 
-export async function GET() {
+export async function GET(request: Request) {
+  const gated = await withTenantApi(request, { module: 'social_media' });
+  if ('response' in gated) return gated.response;
   const accounts = await listSocialAccounts();
   return NextResponse.json({
     ok: true,
@@ -17,6 +20,8 @@ export async function GET() {
 }
 
 export async function POST(request: Request) {
+  const gated = await withTenantApi(request, { module: 'social_media' });
+  if ('response' in gated) return gated.response;
   const body = (await request.json().catch(() => ({}))) as {
     action?: string;
     platform?: SocialPlatform;

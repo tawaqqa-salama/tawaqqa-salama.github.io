@@ -51,8 +51,9 @@ export function verifyMetaSignature(
   appSecret: string | null | undefined
 ): boolean {
   if (!appSecret) {
-    // Dev/demo: allow when secret not configured; production should set WHATSAPP_APP_SECRET
-    return process.env.NODE_ENV !== 'production' || process.env.WHATSAPP_ALLOW_UNSIGNED === 'true';
+    // Never allow unsigned webhooks in production — even if WHATSAPP_ALLOW_UNSIGNED is set.
+    if (process.env.NODE_ENV === 'production') return false;
+    return process.env.WHATSAPP_ALLOW_UNSIGNED === 'true';
   }
   if (!signatureHeader?.startsWith('sha256=')) return false;
   const expected = createHmac('sha256', appSecret).update(rawBody, 'utf8').digest('hex');

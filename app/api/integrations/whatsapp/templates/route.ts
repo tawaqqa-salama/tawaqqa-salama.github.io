@@ -1,14 +1,19 @@
 import { NextResponse } from 'next/server';
 import { memoryStore } from '@/lib/whatsapp/store/memory';
+import { withTenantApi } from '@/lib/tenant/api-guard';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
 
-export async function GET() {
+export async function GET(request: Request) {
+  const gated = await withTenantApi(request, { module: 'whatsapp' });
+  if ('response' in gated) return gated.response;
   return NextResponse.json({ ok: true, templates: memoryStore.listTemplates() });
 }
 
 export async function POST(request: Request) {
+  const gated = await withTenantApi(request, { module: 'whatsapp' });
+  if ('response' in gated) return gated.response;
   const body = (await request.json()) as {
     name?: string;
     display_name_ar?: string;

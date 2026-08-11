@@ -1,15 +1,15 @@
 import { NextResponse } from 'next/server';
-import { requireApiSession } from '@/lib/api/require-session';
 import { supabase, isDemoMode } from '@/lib/supabase';
 import { loadLocalZatcaSettings } from '@/lib/zatca/settings';
 import { assertLiveOrDemoAllowed, isDemoAllowed } from '@/lib/runtime/mode';
+import { withTenantApi } from '@/lib/tenant/api-guard';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
 
 export async function GET(request: Request) {
-  const gate = requireApiSession(request);
-  if (!gate.ok) return gate.response;
+  const gated = await withTenantApi(request, { module: 'finance_zatca' });
+  if ('response' in gated) return gated.response;
 
   const { searchParams } = new URL(request.url);
   const invoiceNumber = searchParams.get('invoiceNumber');

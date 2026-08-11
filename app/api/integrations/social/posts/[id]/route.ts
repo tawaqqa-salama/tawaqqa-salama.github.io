@@ -1,4 +1,5 @@
 import { NextResponse } from 'next/server';
+import { withTenantApi } from '@/lib/tenant/api-guard';
 import {
   createOrUpdatePost,
   deletePost,
@@ -12,6 +13,8 @@ export async function PATCH(
   request: Request,
   ctx: { params: Promise<{ id: string }> }
 ) {
+  const gated = await withTenantApi(request, { module: 'social_media' });
+  if ('response' in gated) return gated.response;
   const { id } = await ctx.params;
   const body = await request.json();
   if (body.action === 'publish') {
@@ -40,9 +43,11 @@ export async function PATCH(
 }
 
 export async function DELETE(
-  _request: Request,
+  request: Request,
   ctx: { params: Promise<{ id: string }> }
 ) {
+  const gated = await withTenantApi(request, { module: 'social_media' });
+  if ('response' in gated) return gated.response;
   const { id } = await ctx.params;
   await deletePost(id);
   return NextResponse.json({ ok: true });

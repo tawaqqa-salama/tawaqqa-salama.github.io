@@ -17,6 +17,7 @@ import { submitWebsiteForm, trackWebsiteWhatsAppClick, getOrCreateWebsiteSite } 
 import { saveMarketingCampaign, campaignPerformance } from '@/lib/marketing/campaigns';
 import { POST as inboundPost } from '@/app/api/integrations/social/inbound/route';
 import { POST as publicFormPost } from '@/app/api/public/website/forms/[slug]/route';
+import { testAuthCookie } from '@/tests/helpers/auth-cookie';
 
 describe('Social + Website CRM hub', () => {
   beforeEach(() => {
@@ -211,7 +212,7 @@ describe('Social + Website CRM hub', () => {
     const res = await inboundPost(
       new Request('http://localhost/api/integrations/social/inbound', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 'Content-Type': 'application/json', cookie: testAuthCookie() },
         body: JSON.stringify({
           platform: 'linkedin',
           platformUserId: 'li_1',

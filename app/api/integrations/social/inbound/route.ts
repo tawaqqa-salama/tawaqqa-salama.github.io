@@ -1,11 +1,14 @@
 import { NextResponse } from 'next/server';
 import { ingestInboundSocialMessage } from '@/lib/social/service';
 import type { SocialPlatform } from '@/lib/social/types';
+import { withTenantApi } from '@/lib/tenant/api-guard';
 
 export const runtime = 'nodejs';
 
 /** Internal/test + provider webhook forwarder for official inbound payloads. */
 export async function POST(request: Request) {
+  const gated = await withTenantApi(request, { module: 'social_media' });
+  if ('response' in gated) return gated.response;
   const body = (await request.json().catch(() => ({}))) as {
     platform?: SocialPlatform;
     platformUserId?: string;

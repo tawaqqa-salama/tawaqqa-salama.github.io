@@ -1,30 +1,19 @@
 import { NextResponse } from 'next/server';
-import { AUTH_COOKIE_NAME, decodeCookiePayload } from '@/lib/auth/session-cookie';
-import { isSuperAdminRole } from '@/lib/tenant/rbac';
+import { requireLivePlatformAdmin } from '@/lib/auth/platform-gate';
 import { createTenant, listTenants } from '@/lib/tenant/service';
 
 export const runtime = 'nodejs';
 
-function sessionFrom(request: Request) {
-  const cookie = request.headers.get('cookie') || '';
-  const match = cookie.match(new RegExp(`${AUTH_COOKIE_NAME}=([^;]+)`));
-  return decodeCookiePayload(match?.[1] ? decodeURIComponent(match[1]) : null);
-}
-
 export async function GET(request: Request) {
-  const session = sessionFrom(request);
-  if (!session || !isSuperAdminRole(session.roleCode)) {
-    return NextResponse.json({ ok: false, error: 'Platform admin required' }, { status: 403 });
-  }
+  const gate = await requireLivePlatformAdmin(request);
+  if (!gate.ok) return gate.response;
   const tenants = await listTenants();
   return NextResponse.json({ ok: true, tenants });
 }
 
 export async function POST(request: Request) {
-  const session = sessionFrom(request);
-  if (!session || !isSuperAdminRole(session.roleCode)) {
-    return NextResponse.json({ ok: false, error: 'Platform admin required' }, { status: 403 });
-  }
+  const gate = await requireLivePlatformAdmin(request);
+  if (!gate.ok) return gate.response;
   const body = await request.json();
   if (!body.name) {
     return NextResponse.json({ ok: false, error: 'name required' }, { status: 400 });
@@ -37,7 +26,7 @@ export async function POST(request: Request) {
       secondaryLanguage: body.secondaryLanguage || body.secondary_language,
       defaultCurrency: body.defaultCurrency || body.default_currency,
       planCode: body.planCode || body.plan_code,
-      actorUserId: session.userId,
+      actorUserId: gate.actor.user.id,
     });
     return NextResponse.json({ ok: true, tenant });
   } catch (e) {

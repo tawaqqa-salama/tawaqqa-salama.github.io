@@ -1,11 +1,14 @@
 import { NextResponse } from 'next/server';
 import { createWhatsAppProvider } from '@/lib/whatsapp/provider';
 import { memoryStore, getMemoryDb } from '@/lib/whatsapp/store/memory';
+import { withTenantApi } from '@/lib/tenant/api-guard';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
 
-export async function GET() {
+export async function GET(request: Request) {
+  const gated = await withTenantApi(request, { module: 'whatsapp' });
+  if ('response' in gated) return gated.response;
   return NextResponse.json({
     ok: true,
     campaigns: memoryStore.listCampaigns(),
@@ -14,6 +17,8 @@ export async function GET() {
 }
 
 export async function POST(request: Request) {
+  const gated = await withTenantApi(request, { module: 'whatsapp' });
+  if ('response' in gated) return gated.response;
   const body = (await request.json()) as {
     action?: 'create' | 'send' | 'automation';
     name?: string;

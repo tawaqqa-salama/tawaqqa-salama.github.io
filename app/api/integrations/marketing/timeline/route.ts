@@ -3,10 +3,13 @@ import { listCustomerTimeline } from '@/lib/marketing/crm-identity';
 import { isMarketingCrmMemoryMode } from '@/lib/marketing/crm-identity';
 import { marketingMemory } from '@/lib/marketing/store/memory';
 import { supabase } from '@/lib/supabase';
+import { withTenantApi } from '@/lib/tenant/api-guard';
 
 export const runtime = 'nodejs';
 
 export async function GET(request: Request) {
+  const gated = await withTenantApi(request, { module: 'marketing' });
+  if ('response' in gated) return gated.response;
   const customerId = new URL(request.url).searchParams.get('customerId');
   if (!customerId) {
     return NextResponse.json({ ok: false, error: 'customerId مطلوب' }, { status: 400 });

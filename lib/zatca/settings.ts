@@ -3,8 +3,11 @@ import { supabase, isDemoMode } from '@/lib/supabase';
 import { DEFAULT_ZATCA_SETTINGS, ZATCA_LOCAL_SETTINGS_KEY } from '@/lib/zatca/constants';
 import type { ZatcaSettings } from '@/lib/zatca/types';
 
-async function resolveZatcaCompanyRow(): Promise<Record<string, unknown> | null> {
-  const companyId = loadSession()?.companyId;
+async function resolveZatcaCompanyRow(
+  preferredCompanyId?: string | null
+): Promise<Record<string, unknown> | null> {
+  // Prefer explicit server session company — never invent cross-tenant settings from client
+  const companyId = preferredCompanyId || loadSession()?.companyId;
   if (companyId) {
     const { data } = await supabase.from('companies').select('*').eq('id', companyId).maybeSingle();
     if (data) return data as Record<string, unknown>;
@@ -34,11 +37,11 @@ function pick(row: Record<string, unknown>, key: string, fallback: string): stri
   return typeof value === 'string' ? value : fallback;
 }
 
-export async function loadZatcaSettings(): Promise<ZatcaSettings> {
+export async function loadZatcaSettings(companyId?: string | null): Promise<ZatcaSettings> {
   const local = loadLocalZatcaSettings();
   if (isDemoMode) return local;
 
-  const row = await resolveZatcaCompanyRow();
+  const row = await resolveZatcaCompanyRow(companyId);
   if (!row) return local;
 
   return {

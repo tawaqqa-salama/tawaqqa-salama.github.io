@@ -1,9 +1,13 @@
 import { NextResponse } from 'next/server';
-import { AUTH_COOKIE_NAME, decodeCookiePayload, encodeCookiePayload } from '@/lib/auth/session-cookie';
-import { AUTH_COOKIE_MAX_AGE } from '@/lib/auth/session-cookie';
+import {
+  AUTH_COOKIE_MAX_AGE,
+  AUTH_COOKIE_NAME,
+  encodeCookiePayload,
+} from '@/lib/auth/session-cookie';
+import { requireLivePlatformAdmin } from '@/lib/auth/platform-gate';
+import { applyLiveActorToSession } from '@/lib/auth/session-actor';
 import { writeSaasAudit } from '@/lib/tenant/audit';
 import { tenantMemory } from '@/lib/tenant/memory';
-import { isSuperAdminRole } from '@/lib/tenant/rbac';
 import { getTenant } from '@/lib/tenant/service';
 import { isDemoMode, isSupabaseConfigured } from '@/lib/supabase';
 
@@ -11,12 +15,9 @@ export const runtime = 'nodejs';
 
 /** Explicit audited support access into a tenant context. */
 export async function POST(request: Request) {
-  const cookie = request.headers.get('cookie') || '';
-  const match = cookie.match(new RegExp(`${AUTH_COOKIE_NAME}=([^;]+)`));
-  const session = decodeCookiePayload(match?.[1] ? decodeURIComponent(match[1]) : null);
-  if (!session || !isSuperAdminRole(session.roleCode)) {
-    return NextResponse.json({ ok: false, error: 'Platform admin required' }, { status: 403 });
-  }
+  const gate = await requireLivePlatformAdmin(request);
+  if (!gate.ok) return gate.response;
+
   const body = await request.json();
   const companyId = body.companyId as string;
   const reason = (body.reason as string) || 'support';
@@ -26,12 +27,13 @@ export async function POST(request: Request) {
   const tenant = await getTenant(companyId);
   if (!tenant) return NextResponse.json({ ok: false, error: 'Tenant not found' }, { status: 404 });
 
+  const actorId = gate.actor.user.id;
   if (!isSupabaseConfigured || isDemoMode || process.env.TENANT_FORCE_MEMORY === 'true') {
-    tenantMemory.startSupport(session.userId, companyId, reason);
+    tenantMemory.startSupport(actorId, companyId, reason);
   }
 
   await writeSaasAudit({
-    actor_user_id: session.userId,
+    actor_user_id: actorId,
     company_id: companyId,
     action: 'SUPPORT_IMPERSONATION_START',
     entity_type: 'support_session',
@@ -40,7 +42,7 @@ export async function POST(request: Request) {
   });
 
   const payload = {
-    ...session,
+    ...applyLiveActorToSession(gate.session, gate.actor),
     companyId,
   };
   const res = NextResponse.json({ ok: true, tenant, support: true });

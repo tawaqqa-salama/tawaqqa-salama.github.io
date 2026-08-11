@@ -51,6 +51,8 @@ export function clearSession(): void {
 /**
  * Best-effort cookie sync for Node/Vercel hosts.
  * Skipped on GitHub Pages (no /api routes) so auth hydrate never hangs.
+ * Sends Supabase access token when available so the server can mint a trusted cookie
+ * (role/company are loaded server-side — never trusted from this payload alone).
  */
 export async function syncSessionCookie(
   session: AuthSession,
@@ -59,10 +61,29 @@ export async function syncSessionCookie(
   if (typeof window === 'undefined') return;
   if (!areApiRoutesAvailable()) return;
   try {
+    let accessToken: string | undefined;
+    try {
+      const { supabase, isDemoMode } = await import('@/lib/supabase');
+      if (!isDemoMode) {
+        const { data } = await supabase.auth.getSession();
+        accessToken = data.session?.access_token || undefined;
+      }
+    } catch {
+      // Demo / unavailable Auth — server may still mint in demo-allowed mode
+    }
+
+    const payload = {
+      ...sessionToCookiePayload(session, companyId),
+      ...(accessToken ? { accessToken } : {}),
+    };
+
     await fetch('/api/auth/session', {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(sessionToCookiePayload(session, companyId)),
+      headers: {
+        'Content-Type': 'application/json',
+        ...(accessToken ? { Authorization: `Bearer ${accessToken}` } : {}),
+      },
+      body: JSON.stringify(payload),
       credentials: 'same-origin',
       signal: abortAfter(COOKIE_SYNC_TIMEOUT_MS),
     });

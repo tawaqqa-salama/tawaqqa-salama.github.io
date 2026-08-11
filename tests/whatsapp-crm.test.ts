@@ -20,6 +20,7 @@ import {
 } from '@/lib/whatsapp';
 import { createHmac } from 'node:crypto';
 import { POST as settingsPost } from '@/app/api/integrations/whatsapp/settings/route';
+import { testAuthCookie } from '@/tests/helpers/auth-cookie';
 
 function metaInbound(overrides?: {
   messageId?: string;
@@ -263,6 +264,10 @@ describe('Outbound + opportunity', () => {
     const res = await sendPost(
       new Request('http://localhost/api/integrations/whatsapp/send', {
         method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          cookie: testAuthCookie(),
+        },
         body: JSON.stringify({ conversationId: conv.id, kind: 'text', text: 'رد تجريبي' }),
       })
     );
@@ -283,6 +288,10 @@ describe('Outbound + opportunity', () => {
     const res = await sendPost(
       new Request('http://localhost/api/integrations/whatsapp/send', {
         method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          cookie: testAuthCookie(),
+        },
         body: JSON.stringify({ conversationId: conv.id, kind: 'text', text: 'hi' }),
       })
     );
@@ -300,6 +309,10 @@ describe('Outbound + opportunity', () => {
     const res = await sendPost(
       new Request('http://localhost/api/integrations/whatsapp/send', {
         method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          cookie: testAuthCookie(),
+        },
         body: JSON.stringify({
           conversationId: conv.id,
           kind: 'template',
@@ -322,10 +335,18 @@ describe('Outbound + opportunity', () => {
       estimated_value: 10000,
     };
     const r1 = await opportunityPost(
-      new Request('http://localhost', { method: 'POST', body: JSON.stringify(body) })
+      new Request('http://localhost', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', cookie: testAuthCookie() },
+        body: JSON.stringify(body),
+      })
     );
     const r2 = await opportunityPost(
-      new Request('http://localhost', { method: 'POST', body: JSON.stringify(body) })
+      new Request('http://localhost', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', cookie: testAuthCookie() },
+        body: JSON.stringify(body),
+      })
     );
     const d1 = await r1.json();
     const d2 = await r2.json();
@@ -433,6 +454,7 @@ describe('Lead extraction + permissions + audit + signature', () => {
     const res = await settingsPost(
       new Request('http://localhost', {
         method: 'POST',
+        headers: { 'Content-Type': 'application/json', cookie: testAuthCookie() },
         body: JSON.stringify({
           action: 'save',
           phone_number_id: '999',

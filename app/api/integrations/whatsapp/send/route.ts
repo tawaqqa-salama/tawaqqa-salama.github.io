@@ -1,10 +1,13 @@
 import { NextResponse } from 'next/server';
 import { sendOutboundMessage } from '@/lib/whatsapp/outbound';
+import { withTenantApi } from '@/lib/tenant/api-guard';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
 
 export async function POST(request: Request) {
+  const gated = await withTenantApi(request, { module: 'whatsapp' });
+  if ('response' in gated) return gated.response;
   try {
     const body = (await request.json()) as {
       conversationId?: string;

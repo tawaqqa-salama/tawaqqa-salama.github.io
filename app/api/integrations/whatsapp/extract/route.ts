@@ -1,11 +1,14 @@
 import { NextResponse } from 'next/server';
 import { updateCrmClientFields } from '@/lib/whatsapp/crm-bridge';
 import { waRepository } from '@/lib/whatsapp/store/repository';
+import { withTenantApi } from '@/lib/tenant/api-guard';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
 
 export async function POST(request: Request) {
+  const gated = await withTenantApi(request, { module: 'whatsapp' });
+  if ('response' in gated) return gated.response;
   const body = (await request.json()) as {
     extractionId?: string;
     action?: 'confirm' | 'edit' | 'ignore';
