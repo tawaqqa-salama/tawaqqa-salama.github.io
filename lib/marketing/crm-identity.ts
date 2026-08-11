@@ -28,6 +28,8 @@ export type IdentityMatchInput = {
   activityType?: string | null;
   serviceKey?: string | null;
   messagePreview?: string | null;
+  /** Owning tenant for public website / channel leads — never from client override alone */
+  companyId?: string | null;
   touch: AttributionTouch;
 };
 
@@ -111,25 +113,39 @@ async function linkSocialIdentity(
 
 async function findExisting(input: IdentityMatchInput): Promise<ClientRecord | null> {
   if (isMemoryStore()) {
-    return marketingMemory.findClient(input) as ClientRecord | null;
+    const found = marketingMemory.findClient(input) as (ClientRecord & { company_id?: string }) | null;
+    if (!found) return null;
+    if (
+      input.companyId &&
+      found.company_id &&
+      found.company_id !== input.companyId
+    ) {
+      return null;
+    }
+    return found;
   }
 
   if (input.platform && input.platformUserId) {
-    const { data: ident } = await supabase
+    let identQuery = supabase
       .from('client_social_identities')
-      .select('customer_id')
+      .select('customer_id, company_id')
       .eq('platform', input.platform)
-      .eq('platform_user_id', input.platformUserId)
-      .maybeSingle();
+      .eq('platform_user_id', input.platformUserId);
+    if (input.companyId) identQuery = identQuery.eq('company_id', input.companyId);
+    const { data: ident } = await identQuery.maybeSingle();
     if (ident?.customer_id) {
-      const { data } = await supabase.from('clients').select('*').eq('id', ident.customer_id).maybeSingle();
+      let clientQ = supabase.from('clients').select('*').eq('id', ident.customer_id);
+      if (input.companyId) clientQ = clientQ.eq('company_id', input.companyId);
+      const { data } = await clientQ.maybeSingle();
       if (data) return data as ClientRecord;
     }
   }
 
   if (input.email) {
     const email = input.email.trim().toLowerCase();
-    const { data } = await supabase.from('clients').select('*').ilike('email', email).limit(1);
+    let q = supabase.from('clients').select('*').ilike('email', email);
+    if (input.companyId) q = q.eq('company_id', input.companyId);
+    const { data } = await q.limit(1);
     if (data?.[0]) return data[0] as ClientRecord;
   }
 
@@ -137,7 +153,9 @@ async function findExisting(input: IdentityMatchInput): Promise<ClientRecord | n
     const e164 = normalizeWhatsAppPhone(input.phone);
     if (e164) {
       const candidates = phoneLookupCandidates(e164);
-      const { data } = await supabase.from('clients').select('*').in('phone', candidates).limit(1);
+      let q = supabase.from('clients').select('*').in('phone', candidates);
+      if (input.companyId) q = q.eq('company_id', input.companyId);
+      const { data } = await q.limit(1);
       if (data?.[0]) return data[0] as ClientRecord;
     }
   }
@@ -240,6 +258,7 @@ export async function resolveCrmClientFromChannel(
     quotation_status: 'مسودة',
     visit_status: 'لم تُجدول',
     final_report_status: 'قيد الإعداد',
+    ...(input.companyId ? { company_id: input.companyId } : {}),
     ...attr,
   };
 

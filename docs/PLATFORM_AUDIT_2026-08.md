@@ -46,11 +46,34 @@ A full multi-tenant security and architecture audit was performed against the Ne
 
 ### P0 remaining / ops-dependent
 
-| ID | Finding | Notes |
-|---|---|---|
-| P0-R1 | Migration `045` must be applied on production DB | Code alone does not revoke live policies |
-| P0-R2 | Historical storage anon policies (028) vs hardening (041) | Confirm 041 applied in prod; not changed here without live evidence |
-| P0-R3 | Public website form / WhatsApp click paths still resolve site without session | By design for public tokens; document as residual risk until token-bound lookup is verified end-to-end |
+| ID | Status | Finding | Notes |
+|---|---|---|---|
+| P0-R1 | **OPS_REQUIRED** | Migration `045` must be applied on production DB | No live Supabase connection in this agent run — cannot claim applied |
+| P0-R2 | **OPS_REQUIRED** | Confirm migration `041` + storage policies on production | Historical anon policies in 028 vs tenant policies in 041 |
+| P0-DI | **FIXED** (code) / **OPS_REQUIRED** (apply) | DI RLS includes `di_engineering_*`; regression prevents FOR ALL USING (true) reintroduction | `045` expanded; tests in `platform-audit-security-closure.test.ts` |
+| P0-PUBLIC | **FIXED** | Public website form / WhatsApp click require `public_form_token` → company | `resolveWebsiteSiteByPublicToken`; no unscoped `getOrCreate` on public paths |
+
+---
+
+## Final security closure (PR #140 follow-up)
+
+| Item | Status |
+|---|---|
+| P0-1 Design Intelligence RLS (045 + di_engineering_*) | **FIXED** in repo; **OPS_REQUIRED** apply on prod |
+| P0-2 Public website / WhatsApp token → company | **FIXED** |
+| P1 Document download signed URL tenant ownership | **FIXED** in repo (`/api/documents/signed-url` + helpers); **OPS_REQUIRED** confirm 041 storage RLS live |
+| Regression suite (DI / public token / signed URL / company_id override) | **FIXED** (`tests/platform-audit-security-closure.test.ts`) |
+
+### OPS_REQUIRED
+
+```
+OPS_REQUIRED:
+Apply migration 045
+Confirm migration 041
+Verify storage policies
+```
+
+No production DB verification was performed in this environment.
 
 ---
 
@@ -98,8 +121,10 @@ A full multi-tenant security and architecture audit was performed against the Ne
 
 ## Reports / Documents Findings
 
-- Report isolation largely inherits client/project tenant checks; no confirmed IDOR fixed beyond shared fetchers.
-- Document download path ownership: confirm storage signed URLs + RLS in ops (P1 remaining if 041 not applied).
+- Report isolation largely inherits client/project tenant checks.
+- **FIXED:** `/api/documents/signed-url` requires auth + tenant + path ownership before minting a signed URL.
+- **FIXED:** `storagePathBelongsToTenant` / `assertStoragePathTenantAccess` refuse foreign paths (404, no existence leak).
+- **OPS_REQUIRED:** Confirm `041` `project_files_tenant_*` storage policies are live on production.
 - Final report generation missing-data gates: existing compliance engine behavior retained; no threshold invention.
 
 ---
@@ -132,21 +157,26 @@ A full multi-tenant security and architecture audit was performed against the Ne
 6. Fetchers fail closed without company  
 7. Invoice contract/milestone ownership checks  
 8. Design RAG auth + tenant-scoped chunks  
-9. SQL `045` DI RLS lockdown  
+9. SQL `045` DI RLS lockdown (includes `di_engineering_fields` / `di_engineering_rules`)  
 10. `lib/tenant/resource-scope.ts` helpers  
 11. Phase 17 security regression tests  
+12. Public website / WhatsApp click: token → company (no first-site fallback)  
+13. Document signed URL API with tenant ownership check  
+14. Final closure regression suite  
 
 ---
 
 ## Remaining Issues
 
 ### P0
-- Apply `045` (and confirm `041`) on production Supabase.
+- **OPS_REQUIRED:** Apply `045` on production Supabase (not verified live).
 
 ### P1
-- Public website submit/track paths: ensure token→company binding without unscoped `getOrCreate`.
-- Document download APIs: re-verify storage path + RLS in live JWT tests.
-- WhatsApp child resources (messages/opportunities via conversation id) — defense-in-depth after conversation gate; further message-level company checks optional.
+- **OPS_REQUIRED:** Confirm `041` storage RLS live; optional live JWT download E2E.
+- WhatsApp child resources (messages after conversation gate) — optional deeper company checks (P2).
+
+### P2 / P3
+- Unchanged from prior audit section.
 
 ### P2
 - Project UI maintainability (giant components).

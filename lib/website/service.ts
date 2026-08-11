@@ -42,10 +42,16 @@ const DEFAULT_SERVICES = [
 
 export async function getOrCreateWebsiteSite(companyId?: string | null) {
   if (isMemoryStore()) {
-    let site = marketingMemory.website.get();
+    let site = companyId
+      ? marketingMemory.website.findByCompanyId(companyId)
+      : marketingMemory.website.get();
+    if (!site && !companyId) {
+      site = marketingMemory.website.get();
+    }
     if (!site) {
       site = marketingMemory.website.save({
         id: randomUUID(),
+        company_id: companyId || null,
         website_name: 'موقع مكتب الاستشارات',
         domain: null,
         logo_url: null,
@@ -102,6 +108,8 @@ export async function getOrCreateWebsiteSite(companyId?: string | null) {
         thank_you_message: 'شكرًا لتواصلك — سيتواصل معك فريقنا قريبًا.',
         active: true,
       });
+    } else if (companyId && !site.company_id) {
+      site = marketingMemory.website.save({ ...site, company_id: companyId });
     }
     return site;
   }
@@ -385,8 +393,43 @@ export async function saveProjectShowcase(input: Record<string, unknown>, compan
   return data;
 }
 
+/**
+ * Public token → owning website site (and company). Never falls back to "first site".
+ * Missing/invalid token → null (callers return 401/404).
+ */
+export async function resolveWebsiteSiteByPublicToken(
+  token: string | null | undefined
+): Promise<
+  | (Record<string, unknown> & {
+      id: string;
+      company_id?: string | null;
+      public_form_token?: string | null;
+      whatsapp?: string | null;
+      phone?: string | null;
+    })
+  | null
+> {
+  const t = String(token || '').trim();
+  if (!t || t.length < 16 || t.length > 128) return null;
+
+  if (isMemoryStore()) {
+    const site = marketingMemory.website.getByToken(t);
+    return (site as Record<string, unknown> & { id: string }) || null;
+  }
+
+  const { data, error } = await supabase
+    .from('website_sites')
+    .select('*')
+    .eq('public_form_token', t)
+    .maybeSingle();
+  if (error || !data) return null;
+  return data as Record<string, unknown> & { id: string; company_id?: string | null };
+}
+
 export type FormSubmitInput = {
   formSlug: string;
+  /** Required public site token — binds submission to owning company */
+  publicFormToken: string;
   payload: Record<string, unknown>;
   utm?: Record<string, string | null | undefined>;
   landing_page?: string | null;
@@ -395,12 +438,29 @@ export type FormSubmitInput = {
   ip?: string | null;
 };
 
-/** Website form → Lead/Client on existing CRM. */
+/** Website form → Lead/Client on existing CRM (scoped to token's company). */
 export async function submitWebsiteForm(input: FormSubmitInput) {
-  await getOrCreateWebsiteSite();
-  const forms = await listWebsiteForms();
+  const site = await resolveWebsiteSiteByPublicToken(input.publicFormToken);
+  if (!site) {
+    const err = new Error('invalid_public_token');
+    (err as Error & { status?: number }).status = 404;
+    throw err;
+  }
+  const companyId = (site.company_id as string | null | undefined) || null;
+
+  let forms: Array<Record<string, unknown>>;
+  if (isMemoryStore()) {
+    forms = marketingMemory.website.forms().filter((f) => f.site_id === site.id);
+  } else {
+    const { data } = await supabase.from('website_forms').select('*').eq('site_id', site.id);
+    forms = (data || []) as Array<Record<string, unknown>>;
+  }
   const form = forms.find((f) => f.slug === input.formSlug && f.active !== false);
-  if (!form) throw new Error('النموذج غير موجود أو غير مفعّل');
+  if (!form) {
+    const err = new Error('النموذج غير موجود أو غير مفعّل');
+    (err as Error & { status?: number }).status = 404;
+    throw err;
+  }
 
   const utm = parseUtmFromSearchParams({
     ...(input.utm || {}),
@@ -429,6 +489,7 @@ export async function submitWebsiteForm(input: FormSubmitInput) {
     messagePreview: message || `طلب عبر نموذج ${form.name}`,
     platform: 'website',
     platformUserId: email || phone || `form:${form.slug}:${name}`,
+    companyId,
     touch: {
       ...touch,
       campaign: utm.utm_campaign || (form.marketing_campaign_id as string) || null,
@@ -472,18 +533,26 @@ export async function submitWebsiteForm(input: FormSubmitInput) {
     client,
     createdLead: client.createdLead,
     thank_you_message: form.thank_you_message || 'تم استلام طلبك',
+    company_id: companyId,
   };
 }
 
-/** Track WhatsApp click from website with attribution when possible. */
+/** Track WhatsApp click from website — requires public form token. */
 export async function trackWebsiteWhatsAppClick(input: {
+  publicFormToken: string;
   phone?: string | null;
   utm?: Record<string, string | null | undefined>;
   landing_page?: string | null;
   referrer?: string | null;
 }) {
-  const site = await getOrCreateWebsiteSite();
-  const wa = site.whatsapp || site.phone;
+  const site = await resolveWebsiteSiteByPublicToken(input.publicFormToken);
+  if (!site) {
+    const err = new Error('invalid_public_token');
+    (err as Error & { status?: number }).status = 404;
+    throw err;
+  }
+  const companyId = (site.company_id as string | null | undefined) || null;
+  const wa = (site.whatsapp as string | null) || (site.phone as string | null);
   const utm = parseUtmFromSearchParams({
     ...(input.utm || {}),
     utm_source: input.utm?.utm_source || 'website',
@@ -501,6 +570,7 @@ export async function trackWebsiteWhatsAppClick(input: {
       touch: { ...touch, channel: 'whatsapp' },
       platform: 'website',
       platformUserId: `wa_click:${input.phone}`,
+      companyId,
     });
     await appendTimelineEvent({
       customer_id: client.id,
@@ -521,6 +591,7 @@ export async function trackWebsiteWhatsAppClick(input: {
     whatsapp_url: url,
     site_whatsapp: wa,
     client,
+    company_id: companyId,
     attribution: touch,
     note: client
       ? 'تم ربط النقرة بعميل/Lead عند توفر رقم'

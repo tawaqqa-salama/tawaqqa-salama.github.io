@@ -284,11 +284,21 @@ export async function uploadCompletionAttachment(
   return base;
 }
 
-export async function getPlanFileUrl(file: PlanAttachmentFile): Promise<string | null> {
+export async function getPlanFileUrl(
+  file: PlanAttachmentFile,
+  opts?: { companyId?: string | null; ownerCompanyId?: string | null }
+): Promise<string | null> {
   if (file.dataUrl && !file.dataUrl.startsWith('http')) return file.dataUrl;
   if (file.dataUrl?.startsWith('http') && !file.storagePath) return file.dataUrl;
   if (!file.storagePath || isDemoMode) {
     return file.dataUrl || null;
+  }
+  // Defense-in-depth: refuse minting when caller provides tenant context that does not own the path
+  if (opts?.companyId) {
+    const { storagePathBelongsToTenant } = await import('@/lib/storage/tenant-signed-url');
+    if (!storagePathBelongsToTenant(file.storagePath, opts.companyId, opts.ownerCompanyId)) {
+      return null;
+    }
   }
   const bucket = file.storageBucket || PROJECT_FILES_BUCKET;
   const { data, error } = await supabase.storage.from(bucket).createSignedUrl(file.storagePath, 3600);
