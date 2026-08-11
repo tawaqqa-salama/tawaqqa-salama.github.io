@@ -15,7 +15,7 @@ import type {
 } from '@/lib/projects/compliance/types';
 
 export function emptyCounts(): Record<ComplianceResultStatus, number> {
-  return { PASS: 0, FAIL: 0, NEEDS_DATA: 0, 'N/A': 0 };
+  return { PASS: 0, FAIL: 0, NEEDS_DATA: 0, 'N/A': 0, BLOCKED: 0 };
 }
 
 export function applyOverride(
@@ -63,15 +63,18 @@ export function summarizeResults(results: ComplianceRuleResult[]): ComplianceRun
   const mandatory = results.filter((r) => r.severity === 'mandatory' && r.effectiveStatus !== 'N/A');
   const mandatoryFail = mandatory.filter((r) => r.effectiveStatus === 'FAIL').length;
   const mandatoryNeedsData = mandatory.filter((r) => r.effectiveStatus === 'NEEDS_DATA').length;
+  const mandatoryBlocked = mandatory.filter((r) => r.effectiveStatus === 'BLOCKED').length;
   const allMandatoryPass =
     mandatory.length > 0 &&
     mandatory.every((r) => r.effectiveStatus === 'PASS') &&
     mandatoryFail === 0 &&
-    mandatoryNeedsData === 0;
+    mandatoryNeedsData === 0 &&
+    mandatoryBlocked === 0;
 
   const gateReasons: string[] = [];
   if (mandatoryFail > 0) gateReasons.push(`${mandatoryFail} متطلب إلزامي FAIL`);
   if (mandatoryNeedsData > 0) gateReasons.push(`${mandatoryNeedsData} متطلب إلزامي NEEDS_DATA`);
+  if (mandatoryBlocked > 0) gateReasons.push(`${mandatoryBlocked} متطلب إلزامي BLOCKED (CODE_REFERENCE_REQUIRED)`);
   if (mandatory.length === 0) {
     gateReasons.push('لا توجد متطلبات إلزامية قابلة للتقييم — NEEDS_DATA ضمني');
   }
@@ -123,7 +126,9 @@ export function gateBlockerMessages(run: ComplianceRunResult): string[] {
     .filter(
       (r) =>
         r.severity === 'mandatory' &&
-        (r.effectiveStatus === 'FAIL' || r.effectiveStatus === 'NEEDS_DATA')
+        (r.effectiveStatus === 'FAIL' ||
+          r.effectiveStatus === 'NEEDS_DATA' ||
+          r.effectiveStatus === 'BLOCKED')
     )
     .slice(0, 6)
     .map((r) => `• ${r.ruleId} ${r.title_ar || r.title}: ${r.effectiveStatus}`);

@@ -329,6 +329,9 @@ export function buildComplianceContext(params: {
       exit_access_ok: boolMetric(metrics, [/exit\s*access|مسار\s*الوصول/i]),
       notes: fp.egress?.notes || null,
       metrics: metrics.map((m) => ({ label: m.label, value: m.value })),
+      // Explicit only — never assume sprinklered because an FP package exists
+      sprinkler_status:
+        sprinklerProvided === 'yes' ? 'sprinklered' : sprinklerProvided === 'no' ? 'non_sprinklered' : null,
     },
     fireAccess: {
       site_entrance: fp.fire_truck_access?.site_entrance || null,

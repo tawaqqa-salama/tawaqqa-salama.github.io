@@ -233,6 +233,12 @@ export function passEval(
     required_value_source: opts.required_value_source,
     missing_data: opts.missing_data,
     remediation: opts.remediation,
+    source_code: opts.source_code,
+    source_edition: opts.source_edition,
+    source_section: opts.source_section,
+    source_table: opts.source_table,
+    measured_value: opts.measured_value,
+    decision: opts.decision,
   };
 }
 
@@ -257,6 +263,12 @@ export function failEval(
     code_reference: opts.code_reference,
     required_value_source: opts.required_value_source,
     missing_data: opts.missing_data,
+    source_code: opts.source_code,
+    source_edition: opts.source_edition,
+    source_section: opts.source_section,
+    source_table: opts.source_table,
+    measured_value: opts.measured_value,
+    decision: opts.decision,
   };
 }
 
@@ -276,6 +288,29 @@ export function naEval(
     occupancy: opts.occupancy,
     condition: opts.condition,
     code_reference: opts.code_reference,
+  };
+}
+
+/**
+ * Rule exists but no adopted/encoded code mapping is available.
+ * Never upgrade to PASS via fallback.
+ */
+export function blockedEval(
+  message: string,
+  inputs: ComplianceRuleEvaluation['inputs'] = {},
+  extra: Partial<ComplianceRuleEvaluation> = {}
+): ComplianceRuleEvaluation {
+  return {
+    status: 'BLOCKED',
+    message: `${message} [CODE_REFERENCE_REQUIRED]`,
+    reason: message,
+    inputs,
+    remediation:
+      extra.remediation ||
+      'أدخل صف جدول كودي مرمّز (edition + section/table) في code-database أو project_adopted_mapping مكتمل — لا تخمين.',
+    required_value_source: 'missing',
+    decision: 'BLOCKED',
+    ...extra,
   };
 }
 

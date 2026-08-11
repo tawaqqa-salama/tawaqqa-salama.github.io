@@ -3,7 +3,22 @@
  * Deterministic rules only; AI findings are never authoritative.
  */
 
-export type ComplianceResultStatus = 'PASS' | 'FAIL' | 'NEEDS_DATA' | 'N/A';
+export type ComplianceResultStatus = 'PASS' | 'FAIL' | 'NEEDS_DATA' | 'N/A' | 'BLOCKED';
+
+/** Project-documented adopted code mapping (edition + section required for PASS/FAIL). */
+export type ProjectCodeMapping = {
+  value: number;
+  unit: string;
+  source_code: string;
+  source_edition: string;
+  source_section: string;
+  source_table?: string | null;
+  applicability?: string | null;
+  occupancy?: string | null;
+  sprinkler_status?: 'sprinklered' | 'non_sprinklered' | null;
+  hazard?: string | null;
+  fire_class?: 'A' | 'B' | 'C' | 'D' | 'K' | null;
+};
 
 export type ComplianceSeverity = 'mandatory' | 'advisory';
 
@@ -71,9 +86,17 @@ export type ComplianceRuleEvaluation = {
     | 'project_design'
     | 'documentation_completeness'
     | 'engineer_attested'
+    | 'documented_code_mapping'
     | 'missing'
     | null;
   missing_data?: string[];
+  /** Structured evidence package fields for matrix PASS/FAIL/BLOCKED */
+  source_code?: string | null;
+  source_edition?: string | null;
+  source_section?: string | null;
+  source_table?: string | null;
+  measured_value?: string | number | boolean | null;
+  decision?: string | null;
 };
 
 export type ComplianceRuleContext = {
@@ -140,6 +163,22 @@ export type ComplianceRuleContext = {
     exit_access_ok?: boolean | null;
     notes?: string | null;
     metrics: Array<{ label: string; value: string }>;
+    /** Explicit sprinkler status for MoE tables — never inferred from “FP system exists” */
+    sprinkler_status?: 'sprinklered' | 'non_sprinklered' | null;
+    path_geometry_documented?: boolean | null;
+    occupant_load_served?: number | null;
+    corridor_type?: string | null;
+    corridor_clear_width_m?: number | null;
+    door_type?: string | null;
+    door_clear_opening_width_m?: number | null;
+    door_egress_direction?: string | null;
+    stair_clear_width_m?: number | null;
+    travel_distance_mapping?: ProjectCodeMapping | null;
+    common_path_mapping?: ProjectCodeMapping | null;
+    dead_end_mapping?: ProjectCodeMapping | null;
+    corridor_width_mapping?: ProjectCodeMapping | null;
+    door_width_mapping?: ProjectCodeMapping | null;
+    stair_width_mapping?: ProjectCodeMapping | null;
   };
   fireAccess: {
     site_entrance?: string | null;
@@ -153,6 +192,14 @@ export type ComplianceRuleContext = {
     fdc_present?: string | null;
     fdc_location?: string | null;
     notes?: string | null;
+    element_type?: string | null;
+    required_clearance_m?: number | null;
+    measured_clearance_m?: number | null;
+    accessible_route_status?: string | null;
+    turning_space_dimensions?: string | null;
+    obstruction_geometry?: string | null;
+    clearance_mapping?: ProjectCodeMapping | null;
+    turning_mapping?: ProjectCodeMapping | null;
   };
   fireProtection: {
     hazard_class?: string | null;
@@ -179,6 +226,28 @@ export type ComplianceRuleContext = {
     fdc_required?: boolean | null;
     extinguisher_count?: number | null;
     applicable_codes: string[];
+    /** Matrix inputs — never invent defaults */
+    commodity?: string | null;
+    sprinkler_count?: number | null;
+    ceiling_installation_conditions?: string | null;
+    sprinkler_design_method?: string | null;
+    nfpa_edition?: string | null;
+    hose_table_id?: string | null;
+    density_mapping?: ProjectCodeMapping | null;
+    hose_mapping?: ProjectCodeMapping | null;
+    standpipe_demand_lpm?: number | null;
+    other_required_fire_demand_lpm?: number | null;
+    usable_tank_volume_m3?: number | null;
+    tank_reserve_or_dedicated_fire_volume_m3?: number | null;
+    tank_mapping?: ProjectCodeMapping | null;
+    fire_class?: 'A' | 'B' | 'C' | 'D' | 'K' | null;
+    extinguisher_hazard_level?: string | null;
+    extinguisher_rating?: string | null;
+    extinguisher_floor_area_m2?: number | null;
+    extinguisher_travel_distance_m?: number | null;
+    special_hazards?: string | null;
+    cooking_hazard?: boolean | null;
+    extinguisher_mapping?: ProjectCodeMapping | null;
   };
   hydraulic: {
     /** True only when core network numeric fields are present — never from attachment alone */
@@ -267,9 +336,16 @@ export type ComplianceRuleResult = {
     | 'project_design'
     | 'documentation_completeness'
     | 'engineer_attested'
+    | 'documented_code_mapping'
     | 'missing'
     | null;
   missing_data?: string[];
+  source_code?: string | null;
+  source_edition?: string | null;
+  source_section?: string | null;
+  source_table?: string | null;
+  measured_value?: string | number | boolean | null;
+  decision?: string | null;
 };
 
 export type ComplianceGateDecision = 'ALLOW' | 'BLOCKED';

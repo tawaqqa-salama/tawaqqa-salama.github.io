@@ -80,8 +80,8 @@ function emptyCtx(partial: Partial<ComplianceRuleContext> = {}): ComplianceRuleC
 }
 
 describe('Saudi Code Compliance Engine — final citation audit', () => {
-  it('registers 44 rules with precise code citations', () => {
-    expect(COMPLIANCE_RULES.length).toBe(44);
+  it('registers 56 rules with precise code citations', () => {
+    expect(COMPLIANCE_RULES.length).toBe(56);
     for (const r of COMPLIANCE_RULES) {
       expect(RULE_CODE_REFS[r.id], `missing citation for ${r.id}`).toBeTruthy();
       expect(RULE_CODE_REFS[r.id].citation.length).toBeGreaterThan(10);

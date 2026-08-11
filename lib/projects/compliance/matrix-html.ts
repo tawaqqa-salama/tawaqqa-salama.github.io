@@ -12,6 +12,7 @@ const STATUS_COLOR: Record<string, string> = {
   PASS: '#1f7a4d',
   FAIL: '#b42318',
   NEEDS_DATA: '#b54708',
+  BLOCKED: '#6941c6',
   'N/A': '#667085',
 };
 
@@ -46,7 +47,7 @@ export function buildComplianceMatrixHtml(run: ComplianceRunResult, opts?: { tit
     تقييم المطابقة بناءً على البيانات والقواعد الكودية الموثقة. التجاوز الهندسي <strong>قرار مهندس</strong> وليس automated code compliance.
     الحالة: <strong>${escapeHtml(claim)}</strong>
     — البوابة: <strong style="color:${gateColor}">${run.gate}</strong>
-    (PASS ${run.counts.PASS} / FAIL ${run.counts.FAIL} / NEEDS_DATA ${run.counts.NEEDS_DATA} / N/A ${run.counts['N/A']})
+    (PASS ${run.counts.PASS} / FAIL ${run.counts.FAIL} / NEEDS_DATA ${run.counts.NEEDS_DATA} / BLOCKED ${run.counts.BLOCKED || 0} / N/A ${run.counts['N/A']})
   </p>
   ${
     run.gateReasons.length

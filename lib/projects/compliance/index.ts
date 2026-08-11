@@ -15,6 +15,7 @@ export {
   passEval,
   failEval,
   naEval,
+  blockedEval,
 } from '@/lib/projects/compliance/evidence';
 export {
   applyOverride,
@@ -45,8 +46,27 @@ export {
   complianceStatusLabelAr,
   COMPLIANCE_ASSESSMENT_DISCLAIMER_AR,
 } from '@/lib/projects/compliance/engine';
-export { RULE_CODE_REFS, citationFor, primaryStandardFor } from '@/lib/projects/compliance/code-refs';
+export {
+  RULE_CODE_REFS,
+  citationFor,
+  primaryStandardFor,
+} from '@/lib/projects/compliance/code-refs';
 export type { StandardFamily, CodeCitation } from '@/lib/projects/compliance/code-refs';
 export type { ThresholdSourceKind } from '@/lib/projects/compliance/thresholds';
+export {
+  RULE_MATRIX,
+  getRuleMatrixDefinition,
+  listRuleMatrixIds,
+  resolveMatrixThreshold,
+  isCompleteCodeMapping,
+  formatCodeMapping,
+} from '@/lib/projects/compliance/code-database';
+export type {
+  RuleMatrixDefinition,
+  DocumentedCodeLimit,
+  SprinklerStatus,
+  FireClass,
+} from '@/lib/projects/compliance/code-database';
+export { MATRIX_COMPLIANCE_RULES } from '@/lib/projects/compliance/matrix-rules';
 export { buildComplianceMatrixHtml } from '@/lib/projects/compliance/matrix-html';
 export { appendComplianceMatrixToReportHtml } from '@/lib/projects/compliance/pdf-appendix';

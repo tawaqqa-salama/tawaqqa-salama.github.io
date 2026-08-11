@@ -47,6 +47,12 @@ export function evaluateRule(
     code_reference: ev.code_reference,
     required_value_source: ev.required_value_source,
     missing_data: ev.missing_data,
+    source_code: ev.source_code,
+    source_edition: ev.source_edition,
+    source_section: ev.source_section,
+    source_table: ev.source_table,
+    measured_value: ev.measured_value,
+    decision: ev.decision,
   };
 }
 
@@ -90,6 +96,7 @@ export function complianceStatusLabelAr(run: ComplianceRunResult): string {
     return 'تقييم مطابقة وفق القواعد/البيانات الموثّقة — اجتياز المتطلبات الإلزامية';
   }
   if (run.mandatoryFail > 0) return 'تقييم مطابقة — عدم اجتياز متطلب إلزامي';
+  if (run.counts.BLOCKED > 0) return 'تقييم مطابقة — مرجع كودي ناقص (BLOCKED)';
   if (run.mandatoryNeedsData > 0) return 'تقييم مطابقة — يحتاج بيانات/مراجع موثّقة';
   return 'تقييم مطابقة — غير مكتمل';
 }

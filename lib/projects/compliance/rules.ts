@@ -31,6 +31,7 @@ import type {
   ComplianceRuleContext,
   ComplianceRuleEvaluation,
 } from '@/lib/projects/compliance/types';
+import { MATRIX_COMPLIANCE_RULES } from '@/lib/projects/compliance/matrix-rules';
 
 export { requiredExitsFromOccupantLoad } from '@/lib/projects/compliance/thresholds';
 
@@ -2005,6 +2006,7 @@ export const COMPLIANCE_RULES: ComplianceRule[] = [
   ...hydraulicRules,
   ...fireAlarmRules,
   ...smokeRules,
+  ...MATRIX_COMPLIANCE_RULES,
 ];
 
 export function getComplianceRuleById(id: string): ComplianceRule | undefined {

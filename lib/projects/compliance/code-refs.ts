@@ -285,6 +285,78 @@ export const RULE_CODE_REFS: Record<string, CodeCitation> = {
     citation: 'SBC 801 — Smoke control / smoke management (not HVAC ventilation alone)',
     hasPlatformNumericTable: false,
   },
+  'EGR-TRAVEL-DISTANCE': {
+    primary: 'SBC 201',
+    citation: 'SBC 201:2024 §1017 — Exit Access Travel Distance (Table 1017.2 cells not encoded)',
+    complementary: ['SBC 801'],
+    hasPlatformNumericTable: false,
+    notes_ar: 'مصفوفة: بدون صف مرمّز أو project_adopted_mapping → BLOCKED؛ بدون مدخلات → NEEDS_DATA.',
+  },
+  'EGR-COMMON-PATH': {
+    primary: 'SBC 201',
+    citation: 'SBC 201:2024 §1016.2 — Common Path of Egress Travel',
+    hasPlatformNumericTable: false,
+  },
+  'EGR-DEAD-END': {
+    primary: 'SBC 201',
+    citation: 'SBC 201:2024 §1020.4 — Dead Ends (occupancy-specific; no universal value)',
+    hasPlatformNumericTable: false,
+  },
+  'EGR-CORRIDOR-WIDTH': {
+    primary: 'SBC 201',
+    citation: 'SBC 201:2024 §1020.2 — Corridor Width (net clear width)',
+    hasPlatformNumericTable: false,
+  },
+  'EGR-DOOR-WIDTH': {
+    primary: 'SBC 201',
+    citation: 'SBC 201:2024 §1010.1.1 — Size of Doors (clear opening width)',
+    hasPlatformNumericTable: false,
+  },
+  'EGR-STAIR-WIDTH': {
+    primary: 'SBC 201',
+    citation: 'SBC 201:2024 §1011.2 — Stairway Width (occupancy-specific)',
+    hasPlatformNumericTable: false,
+  },
+  'FAC-CLEARANCE': {
+    primary: 'SBC 801',
+    citation: 'SBC 801 — Access clearance / staging (linked project citation FAC-03)',
+    hasPlatformNumericTable: false,
+    notes_ar: 'لا FAC code مخترع — مرتبط بـ FAC-03. بلا مصدر رقمي → BLOCKED + CODE_REFERENCE_REQUIRED.',
+  },
+  'FAC-TURNING': {
+    primary: 'SBC 801',
+    citation: 'SBC 801 — Turning radius / access geometry (linked project citation FAC-04)',
+    hasPlatformNumericTable: false,
+    notes_ar: 'لا FAC code مخترع — مرتبط بـ FAC-04.',
+  },
+  'FP-SPRINKLER-DENSITY': {
+    primary: 'NFPA 13',
+    citation: 'NFPA 13 — Density/Area tables (adopted edition; complementary to SBC 801)',
+    complementary: ['SBC 801'],
+    hasPlatformNumericTable: false,
+    notes_ar: 'ممنوع كثافة عامة ثابتة — يلزم صف جدول بـ edition/section/table.',
+  },
+  'FP-HOSE-ALLOWANCE': {
+    primary: 'NFPA 13',
+    citation: 'NFPA 13 — Hose stream allowance tables (adopted edition)',
+    complementary: ['SBC 801'],
+    hasPlatformNumericTable: false,
+    notes_ar: 'ممنوع 250/500 gpm كافتراض عام.',
+  },
+  'FP-FIRE-WATER-TANK': {
+    primary: 'NFPA 22',
+    citation: 'NFPA 22 / SBC 801 — Fire water supply duration & usable fire volume',
+    complementary: ['SBC 801', 'NFPA 13', 'NFPA 14'],
+    hasPlatformNumericTable: false,
+    notes_ar: 'الحجم = الطلب المنطبق × المدة — بلا حجم خزان ثابت.',
+  },
+  'FP-EXTINGUISHER': {
+    primary: 'NFPA 10',
+    citation: 'NFPA 10 — Portable extinguishers (class-specific rating / travel / placement)',
+    complementary: ['SBC 801'],
+    hasPlatformNumericTable: false,
+    notes_ar: 'Class C ليست فئة تحجيم مستقلة؛ ممنوع 75 ft كحد عام لكل الطفايات.',
+  },
 };
 
 export function citationFor(ruleId: string): string {
