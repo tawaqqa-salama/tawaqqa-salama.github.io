@@ -357,6 +357,146 @@ export const RULE_CODE_REFS: Record<string, CodeCitation> = {
     hasPlatformNumericTable: false,
     notes_ar: 'Class C ليست فئة تحجيم مستقلة؛ ممنوع 75 ft كحد عام لكل الطفايات.',
   },
+  'SBC201-EGR-001': {
+    primary: 'SBC 201',
+    citation: 'SBC 201-2024 §1004 — Occupant Load (Table 1004.5 cells CODE_TABLE_REQUIRED)',
+    hasPlatformNumericTable: false,
+  },
+  'SBC201-EGR-002': {
+    primary: 'SBC 201',
+    citation: 'SBC 201-2024 §1006 — Number of Exits and Access to Exits',
+    hasPlatformNumericTable: false,
+  },
+  'SBC201-EGR-003': {
+    primary: 'SBC 201',
+    citation: 'SBC 201-2024 §1006 — Single Exit / Single Access exceptions',
+    hasPlatformNumericTable: false,
+  },
+  'SBC201-EGR-004': {
+    primary: 'SBC 201',
+    citation: 'SBC 201-2024 §1005 — Means of Egress Sizing (capacity factors)',
+    hasPlatformNumericTable: false,
+  },
+  'SBC201-EGR-005': {
+    primary: 'SBC 201',
+    citation: 'SBC 201-2024 §1007 — Exit and Exit Access Doorway Configuration (separation)',
+    hasPlatformNumericTable: false,
+  },
+  'SBC201-EGR-006': {
+    primary: 'SBC 201',
+    citation: 'SBC 201-2024 §1016.2 — Common Path of Egress Travel',
+    hasPlatformNumericTable: false,
+  },
+  'SBC201-EGR-007': {
+    primary: 'SBC 201',
+    citation: 'SBC 201-2024 §1017 — Exit Access Travel Distance (Table 1017.2 CODE_TABLE_REQUIRED)',
+    hasPlatformNumericTable: false,
+  },
+  'SBC201-EGR-008': {
+    primary: 'SBC 201',
+    citation: 'SBC 201-2024 §1020 — Corridors (clear width)',
+    hasPlatformNumericTable: false,
+  },
+  'SBC201-EGR-009': {
+    primary: 'SBC 201',
+    citation: 'SBC 201-2024 §1020 — Dead-End Corridors',
+    hasPlatformNumericTable: false,
+  },
+  'SBC201-EGR-010': {
+    primary: 'SBC 201',
+    citation: 'SBC 201-2024 §1010 — Doors (clear opening width)',
+    hasPlatformNumericTable: false,
+  },
+  'SBC201-EGR-011': {
+    primary: 'SBC 201',
+    citation: 'SBC 201-2024 §1010 — Door Swing',
+    hasPlatformNumericTable: false,
+  },
+  'SBC201-EGR-012': {
+    primary: 'SBC 201',
+    citation: 'SBC 201-2024 §1010 — Panic / Fire Exit Hardware',
+    hasPlatformNumericTable: false,
+  },
+  'SBC201-EGR-013': {
+    primary: 'SBC 201',
+    citation: 'SBC 201-2024 §1011 — Stairway Width',
+    hasPlatformNumericTable: false,
+  },
+  'SBC201-EGR-014': {
+    primary: 'SBC 201',
+    citation: 'SBC 201-2024 §1011 — Stair Riser',
+    hasPlatformNumericTable: false,
+  },
+  'SBC201-EGR-015': {
+    primary: 'SBC 201',
+    citation: 'SBC 201-2024 §1011 — Stair Tread',
+    hasPlatformNumericTable: false,
+  },
+  'SBC201-EGR-016': {
+    primary: 'SBC 201',
+    citation: 'SBC 201-2024 §1011 — Stair Headroom',
+    hasPlatformNumericTable: false,
+  },
+  'SBC201-EGR-017': {
+    primary: 'SBC 201',
+    citation: 'SBC 201-2024 §1011 — Stair Landings',
+    hasPlatformNumericTable: false,
+  },
+  'SBC201-EGR-018': {
+    primary: 'SBC 201',
+    citation: 'SBC 201-2024 §1012 — Ramps',
+    hasPlatformNumericTable: false,
+  },
+  'SBC201-EGR-019': {
+    primary: 'SBC 201',
+    citation: 'SBC 201-2024 §1013 — Exit Signs',
+    hasPlatformNumericTable: false,
+  },
+  'SBC201-EGR-020': {
+    primary: 'SBC 201',
+    citation: 'SBC 201-2024 §1014 — Handrails',
+    hasPlatformNumericTable: false,
+  },
+  'SBC201-EGR-021': {
+    primary: 'SBC 201',
+    citation: 'SBC 201-2024 §1015 — Guards',
+    hasPlatformNumericTable: false,
+  },
+  'SBC201-EGR-022': {
+    primary: 'SBC 201',
+    citation: 'SBC 201-2024 §1016 — Exit Access',
+    hasPlatformNumericTable: false,
+  },
+  'SBC201-EGR-023': {
+    primary: 'SBC 201',
+    citation: 'SBC 201-2024 §1019 — Exit Access Stairways and Ramps',
+    hasPlatformNumericTable: false,
+  },
+  'SBC201-EGR-024': {
+    primary: 'SBC 201',
+    citation: 'SBC 201-2024 §1023 — Interior Exit Stairways and Ramps',
+    hasPlatformNumericTable: false,
+  },
+  'SBC201-EGR-025': {
+    primary: 'SBC 201',
+    citation: 'SBC 201-2024 §1024 — Exit Passageways',
+    hasPlatformNumericTable: false,
+  },
+  'SBC201-EGR-026': {
+    primary: 'SBC 201',
+    citation: 'SBC 201-2024 §1026 — Horizontal Exits',
+    hasPlatformNumericTable: false,
+  },
+  'SBC201-EGR-027': {
+    primary: 'SBC 201',
+    citation: 'SBC 201-2024 §1028 — Exit Discharge',
+    hasPlatformNumericTable: false,
+  },
+  'SBC201-EGR-028': {
+    primary: 'SBC 201',
+    citation: 'SBC 201-2024 §1029 — Egress Courts',
+    hasPlatformNumericTable: false,
+  },
 };
 
 export function citationFor(ruleId: string): string {

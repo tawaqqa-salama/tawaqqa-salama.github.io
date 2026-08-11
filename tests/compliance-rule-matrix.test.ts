@@ -68,7 +68,7 @@ describe('Compliance rule matrix — no invented thresholds', () => {
       'FP-FIRE-WATER-TANK',
       'FP-EXTINGUISHER',
     ]);
-    expect(COMPLIANCE_RULES.length).toBe(56);
+    expect(COMPLIANCE_RULES.length).toBe(84);
     for (const id of ids) {
       expect(getComplianceRuleById(id)).toBeTruthy();
       expect(RULE_CODE_REFS[id]).toBeTruthy();

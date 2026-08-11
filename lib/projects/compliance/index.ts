@@ -68,5 +68,15 @@ export type {
   FireClass,
 } from '@/lib/projects/compliance/code-database';
 export { MATRIX_COMPLIANCE_RULES } from '@/lib/projects/compliance/matrix-rules';
+export {
+  SBC201_EGRESS_RULES,
+  getSbc201EgressRuleDef,
+  listSbc201EgressRuleIds,
+  countSbc201VerifiedThresholds,
+  countSbc201CodeTableRequired,
+  resolveSbc201Threshold,
+  isSbc2012024Mapping,
+} from '@/lib/projects/compliance/sbc201-egress-database';
+export { SBC201_EGRESS_COMPLIANCE_RULES } from '@/lib/projects/compliance/sbc201-egress-rules';
 export { buildComplianceMatrixHtml } from '@/lib/projects/compliance/matrix-html';
 export { appendComplianceMatrixToReportHtml } from '@/lib/projects/compliance/pdf-appendix';

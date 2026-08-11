@@ -32,6 +32,7 @@ import type {
   ComplianceRuleEvaluation,
 } from '@/lib/projects/compliance/types';
 import { MATRIX_COMPLIANCE_RULES } from '@/lib/projects/compliance/matrix-rules';
+import { SBC201_EGRESS_COMPLIANCE_RULES } from '@/lib/projects/compliance/sbc201-egress-rules';
 
 export { requiredExitsFromOccupantLoad } from '@/lib/projects/compliance/thresholds';
 
@@ -2007,6 +2008,7 @@ export const COMPLIANCE_RULES: ComplianceRule[] = [
   ...fireAlarmRules,
   ...smokeRules,
   ...MATRIX_COMPLIANCE_RULES,
+  ...SBC201_EGRESS_COMPLIANCE_RULES,
 ];
 
 export function getComplianceRuleById(id: string): ComplianceRule | undefined {
