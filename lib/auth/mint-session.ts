@@ -1,12 +1,19 @@
 /**
  * Server-side session minting: never trust browser roleCode / companyId.
- * Role and tenant are loaded from the database (or demo store) after Auth verification.
+ * Production: verify Supabase JWT, load users by auth_user_id only (JWT/service-role client).
  */
 
 import {
   encodeCookiePayload,
   type CookieSessionPayload,
 } from '@/lib/auth/session-cookie';
+import {
+  isUserRowUsable,
+  loadUserByAuthUserIdTrusted,
+  loadUserByEmailTrusted,
+  loadUserByIdTrusted,
+  type TrustedUserRow,
+} from '@/lib/auth/trusted-user';
 import { isDemoMode, isSupabaseConfigured, supabase } from '@/lib/supabase';
 import { isDemoAllowed } from '@/lib/runtime/mode';
 
@@ -18,7 +25,7 @@ export type SessionMintRequest = {
   companyId?: string;
   loggedInAt?: string;
   method?: 'email' | 'phone';
-  /** Supabase Auth access token — preferred proof of identity when configured */
+  /** Supabase Auth access token — required proof of identity when Supabase is configured */
   accessToken?: string;
 };
 
@@ -26,58 +33,12 @@ export type SessionMintResult =
   | { ok: true; payload: CookieSessionPayload; cookieValue: string }
   | { ok: false; error: string; status: number };
 
-type TrustedUserRow = {
-  id: string;
-  email: string;
-  full_name: string;
-  role_code: string;
-  company_id: string;
-  is_active: boolean;
-  is_platform_admin?: boolean | null;
-  auth_user_id?: string | null;
-};
-
-async function loadUserById(userId: string): Promise<TrustedUserRow | null> {
-  const { data, error } = await supabase
-    .from('users')
-    .select('id, email, full_name, role_code, company_id, is_active, is_platform_admin, auth_user_id')
-    .eq('id', userId)
-    .maybeSingle();
-  if (error || !data) return null;
-  return data as TrustedUserRow;
-}
-
-async function loadUserByAuthId(authUserId: string): Promise<TrustedUserRow | null> {
-  const { data, error } = await supabase
-    .from('users')
-    .select('id, email, full_name, role_code, company_id, is_active, is_platform_admin, auth_user_id')
-    .eq('auth_user_id', authUserId)
-    .maybeSingle();
-  if (error || !data) return null;
-  return data as TrustedUserRow;
-}
-
-async function loadUserByEmail(email: string): Promise<TrustedUserRow | null> {
-  const { data, error } = await supabase
-    .from('users')
-    .select('id, email, full_name, role_code, company_id, is_active, is_platform_admin, auth_user_id')
-    .eq('email', email.trim().toLowerCase())
-    .maybeSingle();
-  if (error || !data) return null;
-  return data as TrustedUserRow;
-}
-
 function toPayload(
   user: TrustedUserRow,
   method: 'email' | 'phone',
   loggedInAt?: string
 ): CookieSessionPayload {
-  const roleCode =
-    user.is_platform_admin || user.role_code === 'super_admin'
-      ? user.role_code === 'super_admin'
-        ? 'super_admin'
-        : user.role_code
-      : user.role_code;
+  const roleCode = user.role_code;
 
   return {
     userId: user.id,
@@ -93,7 +54,7 @@ function toPayload(
 /**
  * Establish a trusted session cookie payload.
  * - Ignores client-supplied roleCode / companyId for authorization.
- * - With Supabase: verifies accessToken when provided; otherwise demo/local path.
+ * - Production: JWT required; profile matched strictly by auth_user_id.
  */
 export async function mintTrustedSession(input: SessionMintRequest): Promise<SessionMintResult> {
   const method = input.method === 'phone' ? 'phone' : 'email';
@@ -107,24 +68,31 @@ export async function mintTrustedSession(input: SessionMintRequest): Promise<Ses
     const token = String(input.accessToken || '').trim();
     if (token) {
       const { data, error } = await supabase.auth.getUser(token);
-      if (error || !data.user) {
+      if (error || !data.user?.id) {
         return { ok: false, error: 'Invalid or expired auth token', status: 401 };
       }
 
-      const user =
-        (await loadUserByAuthId(data.user.id)) ||
-        (data.user.email ? await loadUserByEmail(data.user.email) : null);
+      const user = await loadUserByAuthUserIdTrusted(data.user.id, token);
 
-      if (!user || !user.is_active) {
-        return { ok: false, error: 'No active employee profile for this account', status: 403 };
+      if (!user) {
+        return {
+          ok: false,
+          error: 'No employee profile linked to this auth account',
+          status: 403,
+        };
       }
 
-      // Optional consistency checks — never elevate from client claims
+      if (!isUserRowUsable(user)) {
+        return { ok: false, error: 'Account disabled', status: 403 };
+      }
+
+      // Strict link: profile.auth_user_id must equal verified Auth user id
+      if (!user.auth_user_id || user.auth_user_id !== data.user.id) {
+        return { ok: false, error: 'auth_user_id mismatch', status: 403 };
+      }
+
       if (claimedUserId && claimedUserId !== user.id) {
         return { ok: false, error: 'User identity mismatch', status: 403 };
-      }
-      if (claimedEmail && claimedEmail !== user.email.toLowerCase()) {
-        return { ok: false, error: 'Email identity mismatch', status: 403 };
       }
 
       const payload = toPayload(user, method, input.loggedInAt);
@@ -147,10 +115,10 @@ export async function mintTrustedSession(input: SessionMintRequest): Promise<Ses
   }
 
   let user: TrustedUserRow | null = null;
-  if (claimedUserId) user = await loadUserById(claimedUserId);
-  if (!user && claimedEmail) user = await loadUserByEmail(claimedEmail);
+  if (claimedUserId) user = await loadUserByIdTrusted(claimedUserId);
+  if (!user && claimedEmail) user = await loadUserByEmailTrusted(claimedEmail);
 
-  if (!user || !user.is_active) {
+  if (!isUserRowUsable(user)) {
     return { ok: false, error: 'User not found or inactive', status: 401 };
   }
 

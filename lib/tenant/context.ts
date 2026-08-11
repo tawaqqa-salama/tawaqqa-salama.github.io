@@ -1,6 +1,6 @@
 /**
  * Server-side tenant context helpers.
- * Tenant is resolved from authenticated session membership — never trust client IDs alone.
+ * Tenant is resolved from live DB actor state — never trust cookie role/company alone.
  */
 
 import { cookies } from 'next/headers';
@@ -9,6 +9,11 @@ import {
   decodeCookiePayload,
   type CookieSessionPayload,
 } from '@/lib/auth/session-cookie';
+import {
+  ActorValidationError,
+  applyLiveActorToSession,
+  resolveLiveActor,
+} from '@/lib/auth/session-actor';
 import { hasPermission } from '@/lib/auth/permissions';
 import type { PermissionCode } from '@/lib/auth/types';
 import { hasModule as checkModule, getTenant, getUserMemberships } from '@/lib/tenant/service';
@@ -44,22 +49,29 @@ export function getSessionFromRequest(request: Request): CookieSessionPayload | 
   return decodeCookiePayload(match?.[1] ? decodeURIComponent(match[1]) : null);
 }
 
-/**
- * Resolve tenant from an incoming Request (preferred for Route Handlers).
- * Never trusts client-supplied companyId unless the actor is a platform admin in support mode.
- */
-export async function requireTenantFromRequest(
-  request: Request,
+async function buildTenantContext(
+  session: CookieSessionPayload,
   opts?: { companyIdFromRequest?: string | null; allowSupport?: boolean }
 ): Promise<TenantContext> {
-  const session = getSessionFromRequest(request);
-  if (!session) throw new TenantAccessError('Authentication required', 401);
+  let actor;
+  try {
+    actor = await resolveLiveActor(session);
+  } catch (e) {
+    if (e instanceof ActorValidationError) {
+      throw new TenantAccessError(e.message, e.status);
+    }
+    throw e;
+  }
 
-  const isPlatform = isSuperAdminRole(session.roleCode);
-  let tenantId = session.companyId || null;
+  const liveSession = applyLiveActorToSession(session, actor);
+  const isPlatform = actor.isPlatformAdmin || isSuperAdminRole(actor.roleCode);
+
+  let tenantId = actor.companyId || null;
 
   if (!tenantId) {
-    const memberships = await getUserMemberships(session.userId);
+    const memberships = actor.memberships.length
+      ? actor.memberships
+      : await getUserMemberships(actor.user.id);
     const def =
       memberships.find((m) => (m as { is_default?: boolean }).is_default) || memberships[0];
     tenantId = def ? String((def as { company_id: string }).company_id) : null;
@@ -77,10 +89,12 @@ export async function requireTenantFromRequest(
   if (!tenantId) throw new TenantAccessError('No tenant context', 400);
 
   if (!isPlatform) {
-    const memberships = await getUserMemberships(session.userId);
+    const memberships = actor.memberships.length
+      ? actor.memberships
+      : await getUserMemberships(actor.user.id);
     const ok =
       memberships.some((m) => String((m as { company_id: string }).company_id) === tenantId) ||
-      session.companyId === tenantId;
+      actor.user.company_id === tenantId;
     if (!ok) throw new TenantAccessError('Not a member of this tenant');
   }
 
@@ -90,15 +104,26 @@ export async function requireTenantFromRequest(
   }
 
   return {
-    session,
+    session: { ...liveSession, companyId: tenantId },
     tenantId,
     tenant,
-    roleCode: session.roleCode,
+    roleCode: actor.roleCode,
     isPlatformAdmin: isPlatform,
-    supportMode: Boolean(
-      isPlatform && requested && requested !== session.companyId
-    ),
+    supportMode: Boolean(isPlatform && requested && requested !== actor.companyId),
   };
+}
+
+/**
+ * Resolve tenant from an incoming Request (preferred for Route Handlers).
+ * Revalidates is_active / deleted_at / role_code / company_id / memberships every call.
+ */
+export async function requireTenantFromRequest(
+  request: Request,
+  opts?: { companyIdFromRequest?: string | null; allowSupport?: boolean }
+): Promise<TenantContext> {
+  const session = getSessionFromRequest(request);
+  if (!session) throw new TenantAccessError('Authentication required', 401);
+  return buildTenantContext(session, opts);
 }
 
 export async function getCurrentTenantId(
@@ -106,10 +131,12 @@ export async function getCurrentTenantId(
 ): Promise<string | null> {
   const s = session ?? (await getSessionFromCookies());
   if (!s) return null;
-  if (s.companyId) return s.companyId;
-  const memberships = await getUserMemberships(s.userId);
-  const def = memberships.find((m) => (m as { is_default?: boolean }).is_default) || memberships[0];
-  return def ? String((def as { company_id: string }).company_id) : null;
+  try {
+    const actor = await resolveLiveActor(s);
+    return actor.companyId || null;
+  } catch {
+    return null;
+  }
 }
 
 export async function requireTenant(opts?: {
@@ -118,45 +145,7 @@ export async function requireTenant(opts?: {
 }): Promise<TenantContext> {
   const session = await getSessionFromCookies();
   if (!session) throw new TenantAccessError('Authentication required', 401);
-
-  const isPlatform = isSuperAdminRole(session.roleCode);
-  let tenantId = session.companyId || (await getCurrentTenantId(session));
-
-  // Super admin may pass an explicit tenant for support — must still be intentional
-  if (opts?.companyIdFromRequest) {
-    if (isPlatform && opts.allowSupport !== false) {
-      tenantId = opts.companyIdFromRequest;
-    } else if (tenantId && opts.companyIdFromRequest !== tenantId) {
-      throw new TenantAccessError('Cross-tenant access denied');
-    }
-  }
-
-  if (!tenantId) throw new TenantAccessError('No tenant context', 400);
-
-  // Non-platform users must have membership
-  if (!isPlatform) {
-    const memberships = await getUserMemberships(session.userId);
-    const ok = memberships.some(
-      (m) => String((m as { company_id: string }).company_id) === tenantId
-    );
-    if (!ok && session.companyId !== tenantId) {
-      throw new TenantAccessError('Not a member of this tenant');
-    }
-  }
-
-  const tenant = await getTenant(tenantId);
-  if (!tenant || !tenant.is_active || tenant.status === 'suspended') {
-    throw new TenantAccessError('Tenant inactive or suspended', 403);
-  }
-
-  return {
-    session,
-    tenantId,
-    tenant,
-    roleCode: session.roleCode,
-    isPlatformAdmin: isPlatform,
-    supportMode: Boolean(isPlatform && opts?.companyIdFromRequest && opts.companyIdFromRequest !== session.companyId),
-  };
+  return buildTenantContext(session, opts);
 }
 
 export async function requireRole(

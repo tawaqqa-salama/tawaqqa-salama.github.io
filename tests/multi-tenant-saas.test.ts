@@ -124,14 +124,14 @@ describe('Multi-tenant SaaS', () => {
   it('platform tenants API requires super admin', async () => {
     const denied = await tenantsGet(
       new Request('http://localhost/api/platform/tenants', {
-        headers: { cookie: cookieHeader('sales') },
+        headers: { cookie: cookieHeader('sales', 'co-tawaqqa', 'usr-sales') },
       })
     );
     expect(denied.status).toBe(403);
 
     const ok = await tenantsGet(
       new Request('http://localhost/api/platform/tenants', {
-        headers: { cookie: cookieHeader('super_admin') },
+        headers: { cookie: cookieHeader('super_admin', 'co-tawaqqa', 'usr-admin') },
       })
     );
     const json = await ok.json();
@@ -224,7 +224,7 @@ describe('Multi-tenant SaaS', () => {
 
     const ok = await funnelGet(
       new Request('http://localhost/api/integrations/marketing/funnel', {
-        headers: { cookie: cookieHeader('sales', 'co-tawaqqa') },
+        headers: { cookie: cookieHeader('sales', 'co-tawaqqa', 'usr-sales') },
       })
     );
     expect(ok.status).toBe(200);

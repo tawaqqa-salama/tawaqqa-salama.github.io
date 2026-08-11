@@ -175,7 +175,8 @@ describe('Security — role / company cannot be escalated from browser', () => {
         headers: { cookie: `${AUTH_COOKIE_NAME}=${forged}` },
       })
     );
-    expect(denied.status).toBe(403);
+    // Unsigned cookie → unauthenticated (401); never treated as platform admin
+    expect([401, 403]).toContain(denied.status);
   });
 });
 
