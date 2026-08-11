@@ -1,10 +1,12 @@
 import type { DesignCenterState } from '@/lib/projects/design-center/types';
+import type { ProjectComplianceState } from '@/lib/projects/compliance/types';
 import type { FireProtectionDesign } from '@/lib/types/fire-protection-design';
 import type { ReportPdfSnapshot } from '@/lib/types/report-pdf-snapshot';
 
 export type { DesignCenterState };
 export type { FireProtectionDesign };
 export type { ReportPdfSnapshot };
+export type { ProjectComplianceState };
 
 export interface ReportMeta {
   status: 'مسودة' | 'قيد الإعداد' | 'مكتمل' | 'معتمد';
@@ -572,6 +574,11 @@ export interface ProjectEngineeringData {
    * مصدر بيانات قالب «التقرير الفني — مبنى إداري تحت الإنشاء»
    */
   fire_protection_design?: FireProtectionDesign;
+  /**
+   * Saudi Code Compliance Engine snapshot (SBC 201/801).
+   * Additive — overrides + last gate only; does not replace existing reports.
+   */
+  compliance?: ProjectComplianceState;
   /**
    * أرشيف PDF ثابت لتقارير الزيارات والإشراف (عدة تقارير لكل مشروع).
    * الملف الثنائي في Storage؛ هنا بيانات وصفية فقط.
