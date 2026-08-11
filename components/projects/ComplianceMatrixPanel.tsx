@@ -96,8 +96,8 @@ export default function ComplianceMatrixPanel({ client, data, onChange }: Props)
             {COMPLIANCE_ASSESSMENT_DISCLAIMER_AR}
           </p>
           <p className="text-xs text-gray-600 mt-1 leading-relaxed max-w-3xl">
-            الحكم النهائي حتمي بالقواعد الموثّقة. البيانات الناقصة = NEEDS_DATA وليست PASS. عمود Result = النتيجة
-            الأصلية؛ عمود Status = effectiveStatus بعد التجاوز إن وُجد.
+            تقييم المطابقة بناءً على البيانات والقواعد الكودية الموثقة. قيم required_* المدخلة = تصميم مشروع وليست
+            الكود تلقائيًا. عمود Result = الأصل؛ Status = effectiveStatus بعد التجاوز.
           </p>
         </div>
         <div className="text-left space-y-1">

@@ -25,6 +25,7 @@ export function buildComplianceMatrixHtml(run: ComplianceRunResult, opts?: { tit
         <td>${escapeHtml(r.code)}</td>
         <td>${escapeHtml(r.section)}</td>
         <td>${escapeHtml(r.actual)}${r.required !== '—' ? ` / req ${escapeHtml(r.required)}` : ''}</td>
+        <td>${escapeHtml(r.required_value_source || '—')}</td>
         <td style="color:${STATUS_COLOR[r.result] || '#333'};font-weight:700">${r.result}</td>
         <td>${escapeHtml(r.code_reference)}</td>
         <td>${escapeHtml(r.evidence)}</td>
@@ -42,8 +43,8 @@ export function buildComplianceMatrixHtml(run: ComplianceRunResult, opts?: { tit
   <h2 style="font-size:18px;margin:0 0 8px">${escapeHtml(title)}</h2>
   <p style="margin:0 0 8px;font-size:12px;color:#444">${escapeHtml(COMPLIANCE_ASSESSMENT_DISCLAIMER_AR)}</p>
   <p style="margin:0 0 12px;font-size:13px;color:#444">
-    الحكم النهائي حتمي بالقواعد الموثّقة. التجاوز الهندسي ليس نتيجة تحقق آلي من الكود.
-    الحالة الإجمالية: <strong>${escapeHtml(claim)}</strong>
+    تقييم المطابقة بناءً على البيانات والقواعد الكودية الموثقة. التجاوز الهندسي <strong>قرار مهندس</strong> وليس automated code compliance.
+    الحالة: <strong>${escapeHtml(claim)}</strong>
     — البوابة: <strong style="color:${gateColor}">${run.gate}</strong>
     (PASS ${run.counts.PASS} / FAIL ${run.counts.FAIL} / NEEDS_DATA ${run.counts.NEEDS_DATA} / N/A ${run.counts['N/A']})
   </p>
@@ -61,10 +62,11 @@ export function buildComplianceMatrixHtml(run: ComplianceRunResult, opts?: { tit
         <th style="border:1px solid #d0d5dd;padding:6px;text-align:right">Code</th>
         <th style="border:1px solid #d0d5dd;padding:6px;text-align:right">Section</th>
         <th style="border:1px solid #d0d5dd;padding:6px;text-align:right">Actual / Required</th>
+        <th style="border:1px solid #d0d5dd;padding:6px;text-align:right">Req Source</th>
         <th style="border:1px solid #d0d5dd;padding:6px;text-align:right">Result (أصل)</th>
         <th style="border:1px solid #d0d5dd;padding:6px;text-align:right">Code Reference</th>
         <th style="border:1px solid #d0d5dd;padding:6px;text-align:right">Evidence</th>
-        <th style="border:1px solid #d0d5dd;padding:6px;text-align:right">Engineer Override</th>
+        <th style="border:1px solid #d0d5dd;padding:6px;text-align:right">Engineer Override (قرار مهندس)</th>
         <th style="border:1px solid #d0d5dd;padding:6px;text-align:right">Effective Status</th>
       </tr>
     </thead>

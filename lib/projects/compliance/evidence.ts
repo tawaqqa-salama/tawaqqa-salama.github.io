@@ -71,7 +71,9 @@ type CompareMode = 'gte' | 'lte' | 'eq';
 
 /**
  * Compare actual vs required threshold.
- * FAIL/PASS only when both sides + threshold metadata exist.
+ * PASS/FAIL only when threshold.sourceKind === 'platform_code_table'.
+ * project_design values are shown for transparency but force NEEDS_DATA
+ * (user-entered threshold is not automatic “code”).
  */
 export function compareToThreshold(params: {
   actual: number | null | undefined;
@@ -88,6 +90,7 @@ export function compareToThreshold(params: {
   const inputs = {
     actual,
     required: threshold?.value ?? null,
+    required_source_kind: threshold?.sourceKind ?? 'missing',
     ...(params.extraInputs || {}),
   };
 
@@ -99,6 +102,7 @@ export function compareToThreshold(params: {
       unit: threshold?.unit ?? null,
       code_reference: threshold?.code_reference ?? null,
       condition: threshold?.condition ?? null,
+      required_value_source: threshold?.sourceKind ?? 'missing',
     });
   }
 
@@ -110,9 +114,46 @@ export function compareToThreshold(params: {
       unit: null,
       code_reference: null,
       condition: null,
+      required_value_source: 'missing',
     });
   }
 
+  // Project/design-entered figures are never automated code PASS/FAIL.
+  if (threshold.sourceKind === 'project_design' || threshold.sourceKind === 'missing') {
+    const provisional =
+      mode === 'gte'
+        ? actual + 1e-9 >= threshold.value
+          ? 'meets_project_design'
+          : 'below_project_design'
+        : mode === 'lte'
+          ? actual - 1e-9 <= threshold.value
+            ? 'meets_project_design'
+            : 'above_project_design'
+          : Math.abs(actual - threshold.value) < 1e-9
+            ? 'meets_project_design'
+            : 'differs_from_project_design';
+
+    return needsData(
+      `قيمة تصميم/إدخال مشروع (${threshold.value} ${threshold.unit}) ليست مرجعًا كوديًا آليًا — الحالة NEEDS_DATA. المقارنة المبدئية: ${provisional}. يلزم جدول كود مرمّز أو Engineer Override موثّق.`,
+      inputs,
+      ['platform_code_table_threshold'],
+      {
+        occupancy,
+        actual_value: actual,
+        required_value: threshold.value,
+        unit: threshold.unit,
+        code_reference: threshold.code_reference,
+        condition: `${threshold.condition}; provisional=${provisional}`,
+        required_value_source: threshold.sourceKind,
+        evidence: [
+          evidence('measurement', 'actual', actual, 'project'),
+          evidence('document', 'project_design_required', threshold.value, threshold.source, threshold.code_reference),
+        ],
+      }
+    );
+  }
+
+  // platform_code_table | explicit_code_condition → may PASS/FAIL
   const ok =
     mode === 'gte'
       ? actual + 1e-9 >= threshold.value
@@ -128,9 +169,10 @@ export function compareToThreshold(params: {
     unit: threshold.unit,
     code_reference: threshold.code_reference,
     condition: threshold.condition,
+    required_value_source: threshold.sourceKind,
     evidence: [
       evidence('measurement', 'actual', actual, 'project'),
-      evidence('document', 'required_threshold', threshold.value, threshold.source, threshold.code_reference),
+      evidence('document', 'code_required_threshold', threshold.value, threshold.source, threshold.code_reference),
     ],
   };
 
@@ -188,6 +230,7 @@ export function passEval(
     occupancy: opts.occupancy,
     condition: opts.condition,
     code_reference: opts.code_reference,
+    required_value_source: opts.required_value_source,
     missing_data: opts.missing_data,
     remediation: opts.remediation,
   };
@@ -212,6 +255,7 @@ export function failEval(
     occupancy: opts.occupancy,
     condition: opts.condition,
     code_reference: opts.code_reference,
+    required_value_source: opts.required_value_source,
     missing_data: opts.missing_data,
   };
 }

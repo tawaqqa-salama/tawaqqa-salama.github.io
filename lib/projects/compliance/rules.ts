@@ -25,6 +25,7 @@ import {
   resolveStairMinWidthM,
   resolveTravelDistanceLimitM,
 } from '@/lib/projects/compliance/thresholds';
+import { citationFor, primaryStandardFor } from '@/lib/projects/compliance/code-refs';
 import type {
   ComplianceRule,
   ComplianceRuleContext,
@@ -32,6 +33,14 @@ import type {
 } from '@/lib/projects/compliance/types';
 
 export { requiredExitsFromOccupantLoad } from '@/lib/projects/compliance/thresholds';
+
+function ref(ruleId: string): string {
+  return citationFor(ruleId);
+}
+
+function primaryCode(ruleId: string): string {
+  return primaryStandardFor(ruleId);
+}
 
 // ─── Context helpers ─────────────────────────────────────────────────────────
 
@@ -63,7 +72,7 @@ function resolveSprinklerRequired(
   const def = primaryOccupancyDef(ctx);
   const area = ctx.building.building_area_m2;
   const explicit = ctx.fireProtection.sprinkler_required;
-  const refs = def?.sbc_refs.filter((r) => r.includes('SPR') || r.includes('Ch')).join(', ') || 'SBC-801-SPR';
+  const refs = def?.sbc_refs.filter((r) => r.includes('SPR') || r.includes('Ch')).join(', ') || ref('FP-01');
 
   if (explicit === 'yes') {
     return { required: true, code_reference: `${refs} / engineer_input`, condition: 'sprinkler_required=yes' };
@@ -104,7 +113,7 @@ function resolveAlarmRequired(
   const load = ctx.egress.occupant_load_total;
   const plan = ctx.fireAlarm.building_plan_alarm;
   const refs =
-    def?.sbc_refs.filter((r) => r.includes('ALM')).join(', ') || 'SBC-801-ALM';
+    def?.sbc_refs.filter((r) => r.includes('ALM')).join(', ') || ref('FA-01');
 
   if (def?.alarm_always) {
     return { required: true, code_reference: refs, condition: `occupancy=${def.code}; alarm_always=true` };
@@ -167,17 +176,18 @@ const occupancyRules: ComplianceRule[] = [
       return passEval('تصنيف الإشغال متوفر من المخطط/المناطق.', {
         inputs,
         actual_value: actual ?? null,
-        required_value: 'documented',
-        code_reference: 'SBC 201 Ch.3 / Occupancy Classification',
+        required_value: 'occupancy_classification_documented',
+        code_reference: ref('OCC-01'),
         occupancy: occLabel(ctx),
-        evidence: [evidence('document', 'occupancy', actual, 'project')],
+        required_value_source: 'documentation_completeness',
+        evidence: [evidence('document', 'occupancy', actual, 'project', ref('OCC-01'))],
       });
     },
   },
   {
     id: 'OCC-02',
     code: 'SBC 201',
-    section: 'Occupancy Group',
+    section: 'Ch.3 Occupancy Groups',
     title: 'Occupancy group letter',
     title_ar: 'مجموعة الإشغال (Group)',
     applicability: { description: 'When occupancy is classified' },
@@ -187,13 +197,14 @@ const occupancyRules: ComplianceRule[] = [
     evaluate: (ctx) => {
       const g = ctx.building.group_letter || ctx.occupancyZones.find((z) => z.group_letter)?.group_letter;
       const inputs = { group_letter: g };
-      if (!hasNonEmpty(g)) return needsData('حرف مجموعة الإشغال غير محدد.', inputs, ['group_letter']);
+      if (!hasNonEmpty(g)) return needsData('حرف مجموعة الإشغال غير محدد.', inputs, ['group_letter'], { code_reference: ref('OCC-02') });
       return passEval(`مجموعة الإشغال: ${g}`, {
         inputs,
         actual_value: g,
-        required_value: 'documented',
-        code_reference: 'SBC 201 Ch.3 / Occupancy Group',
+        required_value: 'group_letter_documented',
+        code_reference: ref('OCC-02'),
         occupancy: occLabel(ctx),
+        required_value_source: 'documentation_completeness',
       });
     },
   },
@@ -219,7 +230,8 @@ const occupancyRules: ComplianceRule[] = [
         inputs,
         actual_value: t,
         required_value: 'documented',
-        code_reference: 'SBC 201 Ch.6 / Construction Type',
+        code_reference: ref('OCC-03'),
+        required_value_source: 'documentation_completeness',
         occupancy: occLabel(ctx),
       });
     },
@@ -246,7 +258,8 @@ const occupancyRules: ComplianceRule[] = [
         actual_value: a,
         required_value: '>0',
         unit: 'm²',
-        code_reference: 'SBC 201 Ch.5 / Building Area',
+        code_reference: ref('OCC-04'),
+        required_value_source: 'documentation_completeness',
         occupancy: occLabel(ctx),
       });
     },
@@ -273,7 +286,8 @@ const occupancyRules: ComplianceRule[] = [
         actual_value: h ?? s ?? null,
         required_value: 'documented',
         unit: h != null ? 'm' : 'stories',
-        code_reference: 'SBC 201 Ch.5 / Height & Stories',
+        code_reference: ref('OCC-05'),
+        required_value_source: 'documentation_completeness',
         occupancy: occLabel(ctx),
       });
     },
@@ -290,7 +304,7 @@ const occupancyRules: ComplianceRule[] = [
     evidenceRequired: ['measurement'],
     evaluate: (ctx) => {
       const inputs = { high_rise: ctx.building.high_rise, height_m: ctx.building.building_height_m };
-      const codeRef = `SBC_STRUCTURE_RULES.high_rise_floor_height_m=${SBC_STRUCTURE_RULES.high_rise_floor_height_m}m / SBC 201 high-rise`;
+      const codeRef = ref('OCC-06');
       if (ctx.building.high_rise == null && ctx.building.building_height_m == null) {
         return needsData('لم يُحدد إن كان المبنى عالي الارتفاع.', inputs, ['high_rise'], {
           code_reference: codeRef,
@@ -311,6 +325,7 @@ const occupancyRules: ComplianceRule[] = [
           code_reference: codeRef,
           condition: `threshold=${SBC_STRUCTURE_RULES.high_rise_floor_height_m}m`,
           occupancy: occLabel(ctx),
+          required_value_source: 'platform_code_table',
         }
       );
     },
@@ -334,7 +349,8 @@ const occupancyRules: ComplianceRule[] = [
           inputs,
           actual_value: ctx.building.mixed_occupancy ?? false,
           required_value: 'documented',
-          code_reference: 'SBC 201 Ch.5 / Mixed Occupancies',
+          code_reference: ref('OCC-07'),
+        required_value_source: 'documentation_completeness',
           occupancy: occLabel(ctx),
         }
       );
@@ -368,7 +384,8 @@ const occupancyRules: ComplianceRule[] = [
         inputs,
         actual_value: true,
         required_value: 'documented',
-        code_reference: 'SBC 201 Ch.4 / Special Conditions',
+        code_reference: ref('OCC-08'),
+        required_value_source: 'documentation_completeness',
         occupancy: occLabel(ctx),
       });
     },
@@ -399,7 +416,8 @@ const egressRules: ComplianceRule[] = [
         actual_value: total,
         required_value: '>0',
         unit: 'persons',
-        code_reference: 'SBC 201 §1004',
+        code_reference: ref('EGR-01'),
+        required_value_source: 'documentation_completeness',
         occupancy: occLabel(ctx),
         evidence: [evidence('calculation', 'occupant_load', total, 'zones')],
       });
@@ -479,7 +497,7 @@ const egressRules: ComplianceRule[] = [
       const cap = ctx.egress.exit_capacity_persons;
       const load = ctx.egress.occupant_load_total;
       const inputs = { exit_capacity_persons: cap, occupant_load_total: load };
-      const codeRef = 'SBC 201 §1005';
+      const codeRef = ref('EGR-03');
       if (cap == null) return needsData('سعة المخارج غير موثّقة.', inputs, ['exit_capacity_persons'], { code_reference: codeRef });
       if (load == null) return needsData('حمل الشاغلين ناقص لمقارنة السعة.', inputs, ['occupant_load'], { code_reference: codeRef });
       const base = {
@@ -490,6 +508,11 @@ const egressRules: ComplianceRule[] = [
         code_reference: codeRef,
         occupancy: occLabel(ctx),
         condition: `exit_capacity >= occupant_load (${load})`,
+        required_value_source: 'explicit_code_condition' as const,
+        evidence: [
+          evidence('calculation', 'exit_capacity_persons', cap, 'project', codeRef),
+          evidence('calculation', 'occupant_load_total', load, 'project', codeRef),
+        ],
       };
       if (cap < load) return failEval(`سعة المخارج (${cap}) أقل من الحمل (${load}).`, base);
       return passEval('سعة المخارج كافية للحمل الموثّق.', base);
@@ -508,7 +531,7 @@ const egressRules: ComplianceRule[] = [
     evaluate: (ctx) => {
       const v = ctx.egress.exit_access_ok;
       const inputs = { exit_access_ok: v, notes: ctx.egress.notes };
-      const codeRef = 'SBC 201 §1016';
+      const codeRef = ref('EGR-04');
       if (v == null) return needsData('مسار الوصول للمخرج غير موثّق.', inputs, ['exit_access'], { code_reference: codeRef });
       const ev = egressNotesEvidence(ctx, 'exit access');
       const base = {
@@ -517,10 +540,11 @@ const egressRules: ComplianceRule[] = [
         required_value: true,
         code_reference: codeRef,
         occupancy: occLabel(ctx),
+        required_value_source: 'engineer_attested' as const,
         evidence: [ev],
       };
       return v
-        ? passEval('مسار الوصول موثّق كمقبول.', base)
+        ? passEval('مسار الوصول موثّق كمقبول (إقرار هندسي — ليس قياسًا آليًا).', base)
         : failEval('مسار الوصول غير مقبول وفق البيانات.', base);
     },
   },
@@ -553,7 +577,7 @@ const egressRules: ComplianceRule[] = [
         occupancy: occLabel(ctx),
         missingActualLabel: 'exit_separation_m',
         missingThresholdMessage:
-          'تباعد المخارج غير مقاس أو الحد الأدنى الكودي غير موثّق في المشروع (required_exit_separation_m + إشغال + رشاشات).',
+          'تباعد المخارج: لا توجد معادلة تباعد مرمّزة كجدول كود في المنصة. قيمة required_exit_separation_m المدخلة = تصميم مشروع وليست الكود تلقائيًا.',
         passMessage: (a, r) => `تباعد المخارج ${a} م ≥ المطلوب ${r} م.`,
         failMessage: (a, r) => `تباعد المخارج ${a} م < المطلوب ${r} م.`,
         extraInputs: inputs,
@@ -578,7 +602,7 @@ const egressRules: ComplianceRule[] = [
         occupancy: occLabel(ctx),
         missingActualLabel: 'travel_distance_m',
         missingThresholdMessage:
-          'مسافة السفر غير موثّقة أو لا يمكن استنتاج الحد الأقصى (يلزم إشغال + حالة الرشاشات الموثّقة).',
+          'مسافة السفر: جدول الحد الأقصى حسب الإشغال في الطبعة المعتمدة غير مرمّز في المنصة — لا استخدام عتبة 45/60 كممرّر آلي. أدخل القياس + Engineer Override أو جدول معتمد.',
         passMessage: (a, r) => `مسافة السفر ${a} م ≤ الحد ${r} م.`,
         failMessage: (a, r) => `مسافة السفر ${a} م تتجاوز الحد ${r} م.`,
         extraInputs: {
@@ -600,7 +624,7 @@ const egressRules: ComplianceRule[] = [
     evaluate: (ctx) => {
       const d = ctx.egress.common_path_m;
       const inputs = { common_path_m: d };
-      const codeRef = 'SBC 201 §1016.2';
+      const codeRef = ref('EGR-07');
       if (d == null) {
         return needsData('المسار المشترك غير موثّق.', inputs, ['common_path_m'], { code_reference: codeRef });
       }
@@ -631,7 +655,7 @@ const egressRules: ComplianceRule[] = [
     evaluate: (ctx) => {
       const d = ctx.egress.dead_end_m;
       const inputs = { dead_end_m: d };
-      const codeRef = 'SBC 201 §1020';
+      const codeRef = ref('EGR-08');
       if (d == null) {
         return needsData('طول الطريق المسدود غير موثّق.', inputs, ['dead_end_m'], { code_reference: codeRef });
       }
@@ -724,7 +748,7 @@ const egressRules: ComplianceRule[] = [
       if (singleStory) {
         return naEval('مبنى دور واحد دون قبو — سلالم الهروب غير منطبقة كمتطلب أدوار متعددة.', {
           inputs,
-          code_reference: 'SBC 201 §1011',
+          code_reference: ref('EGR-11'),
           occupancy: occLabel(ctx),
         });
       }
@@ -734,7 +758,7 @@ const egressRules: ComplianceRule[] = [
           inputs,
           actual_value: stairs,
           required_value: '>=1',
-          code_reference: 'SBC 201 §1011',
+          code_reference: ref('EGR-11'),
           occupancy: occLabel(ctx),
         });
       }
@@ -765,7 +789,7 @@ const egressRules: ComplianceRule[] = [
     evaluate: (ctx) => {
       const v = ctx.egress.exit_discharge_ok;
       const inputs = { exit_discharge_ok: v, notes: ctx.egress.notes };
-      const codeRef = 'SBC 201 §1028';
+      const codeRef = ref('EGR-12');
       if (v == null) return needsData('تصريف الخروج النهائي غير موثّق.', inputs, ['exit_discharge'], { code_reference: codeRef });
       const ev = egressNotesEvidence(ctx, 'discharge');
       const base = {
@@ -774,9 +798,10 @@ const egressRules: ComplianceRule[] = [
         required_value: true,
         code_reference: codeRef,
         occupancy: occLabel(ctx),
+        required_value_source: 'engineer_attested' as const,
         evidence: [ev],
       };
-      return v ? passEval('تصريف الخروج موثّق كمقبول.', base) : failEval('تصريف الخروج غير مقبول.', base);
+      return v ? passEval('تصريف الخروج موثّق كمقبول (إقرار هندسي).', base) : failEval('تصريف الخروج غير مقبول.', base);
     },
   },
 ];
@@ -816,7 +841,7 @@ const fireAccessRules: ComplianceRule[] = [
           'وُجد وصف نصي لوصول الآليات، لكن لا PASS على النص وحده — يلزم قياس عرض الطريق ومقارنته بحد كودي موثّق (FAC-02).',
           inputs,
           ['road_width_m'],
-          { code_reference: 'SBC 801 / Fire Apparatus Access', occupancy: occLabel(ctx) }
+          { code_reference: ref('FAC-01'), occupancy: occLabel(ctx) }
         );
       }
       if (!threshold) {
@@ -824,7 +849,7 @@ const fireAccessRules: ComplianceRule[] = [
           'عرض طريق الوصول مقاس لكن الحد الأدنى الكودي غير موثّق في المشروع — لا افتراض عتبة عامة.',
           inputs,
           ['required_road_width_m', 'required_road_width_code_ref'],
-          { code_reference: 'SBC 801 / Fire Apparatus Access', actual_value: a.road_width_m, occupancy: occLabel(ctx) }
+          { code_reference: ref('FAC-01'), actual_value: a.road_width_m, occupancy: occLabel(ctx) }
         );
       }
       return compareToThreshold({
@@ -889,7 +914,7 @@ const fireAccessRules: ComplianceRule[] = [
         inputs,
         ['staging_clearance_required_m|engineer_verified_clearance'],
         {
-          code_reference: 'SBC 801 / Access Clearance',
+          code_reference: ref('FAC-03'),
           actual_value: ctx.fireAccess.staging_area || ctx.fireAccess.notes,
           required_value: 'documented_clearance_threshold',
           occupancy: occLabel(ctx),
@@ -917,7 +942,7 @@ const fireAccessRules: ComplianceRule[] = [
         inputs,
         ['turning_radius_m|required_turning_radius_m'],
         {
-          code_reference: 'SBC 801 / Turning Access',
+          code_reference: ref('FAC-04'),
           actual_value: ctx.fireAccess.fire_road || ctx.fireAccess.building_access,
           required_value: 'documented_turning_threshold',
           occupancy: occLabel(ctx),
@@ -948,7 +973,7 @@ const fireAccessRules: ComplianceRule[] = [
         inputs,
         actual_value: yn,
         required_value: true,
-        code_reference: 'SBC 801 / FDC Accessibility',
+        code_reference: ref('FAC-05'),
         occupancy: occLabel(ctx),
         condition: 'fdc_present===yes && fdc_location documented',
       };
@@ -1060,7 +1085,7 @@ const fireProtectionRules: ComplianceRule[] = [
         inputs,
         actual_value: h,
         required_value: 'documented_hazard_class',
-        code_reference: 'SBC 801 / Hazard Classification (project hazard class)',
+        code_reference: ref('FP-02'),
         occupancy: occLabel(ctx),
         condition: 'hazard_class ∈ documented platform hazard categories',
       });
@@ -1085,12 +1110,12 @@ const fireProtectionRules: ComplianceRule[] = [
       if (!needed) {
         return naEval('المرشات غير مطلوبة/غير مفعّلة — منطقة التصميم غير منطبقة.', {
           inputs,
-          code_reference: 'SBC-801-SPR',
+          code_reference: ref('FP-03'),
         });
       }
       if (ctx.fireProtection.design_area_m2 == null || ctx.fireProtection.density_lpm_m2 == null) {
         return needsData('منطقة التصميم و/أو الكثافة غير موثّقتين.', inputs, ['design_area', 'density'], {
-          code_reference: 'SBC-801-SPR',
+          code_reference: ref('FP-03'),
         });
       }
       return needsData(
@@ -1098,7 +1123,7 @@ const fireProtectionRules: ComplianceRule[] = [
         inputs,
         ['required_density_lpm_m2|hazard_density_table'],
         {
-          code_reference: 'SBC-801-SPR',
+          code_reference: ref('FP-03'),
           actual_value: `${ctx.fireProtection.design_area_m2} m² @ ${ctx.fireProtection.density_lpm_m2}`,
           required_value: 'documented_density_threshold',
           occupancy: occLabel(ctx),
@@ -1121,13 +1146,13 @@ const fireProtectionRules: ComplianceRule[] = [
       const demand = ctx.fireProtection.sprinkler_demand_lpm;
       const pump = ctx.fireProtection.pump_flow_lpm;
       const inputs = { sprinkler_demand_lpm: demand, pump_flow_lpm: pump };
-      if (!needed) return naEval('لا ينطبق دون نظام مرشات.', { inputs, code_reference: 'SBC-801-SPR' });
+      if (!needed) return naEval('لا ينطبق دون نظام مرشات.', { inputs, code_reference: ref('FP-04') });
       if (demand == null) {
         return needsData(
           'طلب المرشات التصميمي (sprinkler_demand_lpm) غير موثّق — Pump Flow لا يُعدّ Required Fire Demand.',
           inputs,
           ['sprinkler_demand_lpm'],
-          { code_reference: 'SBC-801-SPR', actual_value: pump ?? null }
+          { code_reference: ref('FP-04'), actual_value: pump ?? null }
         );
       }
       return passEval(`طلب المرشات الموثّق: ${demand} لتر/د`, {
@@ -1135,7 +1160,7 @@ const fireProtectionRules: ComplianceRule[] = [
         actual_value: demand,
         required_value: 'documented',
         unit: 'lpm',
-        code_reference: 'SBC-801-SPR',
+        code_reference: ref('FP-04'),
         occupancy: occLabel(ctx),
         evidence: [evidence('calculation', 'sprinkler_demand', demand)],
       });
@@ -1154,16 +1179,16 @@ const fireProtectionRules: ComplianceRule[] = [
     evaluate: (ctx) => {
       const needed = sprinklerInScope(ctx);
       const inputs = { hose_allowance_lpm: ctx.fireProtection.hose_allowance_lpm };
-      if (!needed) return naEval('غير منطبق.', { inputs, code_reference: 'SBC-801-SPR' });
+      if (!needed) return naEval('غير منطبق.', { inputs, code_reference: ref('FP-05') });
       if (ctx.fireProtection.hose_allowance_lpm == null) {
-        return needsData('بدل الخراطيم غير موثّق.', inputs, ['hose_allowance'], { code_reference: 'SBC-801-SPR' });
+        return needsData('بدل الخراطيم غير موثّق.', inputs, ['hose_allowance'], { code_reference: ref('FP-05') });
       }
       return needsData(
         'بدل الخراطيم موثّق رقميًا، لكن لا يوجد بدل مطلوب كودي موثّق للمقارنة في المشروع — لا PASS على القيمة وحدها.',
         inputs,
         ['required_hose_allowance_lpm'],
         {
-          code_reference: 'SBC-801-SPR',
+          code_reference: ref('FP-05'),
           actual_value: ctx.fireProtection.hose_allowance_lpm,
           required_value: 'documented_hose_threshold',
           unit: 'lpm',
@@ -1187,7 +1212,7 @@ const fireProtectionRules: ComplianceRule[] = [
       const explicit = ctx.fireProtection.standpipe_required;
       const provided = ctx.fireProtection.standpipe_provided;
       const inputs = { height_m: h, standpipe_required: explicit, standpipe_provided: provided };
-      const codeRef = `SBC_STRUCTURE_RULES.standpipe_height_m=${SBC_STRUCTURE_RULES.standpipe_height_m}m / SBC 801`;
+      const codeRef = ref('FP-06');
 
       let required: boolean | null = null;
       if (explicit === 'yes') required = true;
@@ -1237,7 +1262,7 @@ const fireProtectionRules: ComplianceRule[] = [
       const pump = ctx.fireProtection.pump_flow_lpm;
       const exists = ctx.fireProtection.pump_exists;
       const inputs = { pump_exists: exists, pump_flow_lpm: pump, sprinkler_demand_lpm: demand };
-      const codeRef = 'SBC 801 / Fire Pump vs Sprinkler Demand';
+      const codeRef = ref('FP-07');
       const systemNeeded =
         sprinklerInScope(ctx) || ctx.fireProtection.standpipe_required === 'yes';
 
@@ -1268,11 +1293,16 @@ const fireProtectionRules: ComplianceRule[] = [
         required_value: demand,
         unit: 'lpm',
         code_reference: codeRef,
-        condition: 'pump_flow_lpm >= sprinkler_demand_lpm',
+        condition: 'pump_flow_lpm >= sprinkler_demand_lpm (design consistency; NFPA 20 complementary)',
         occupancy: occLabel(ctx),
+        required_value_source: 'explicit_code_condition' as const,
+        evidence: [
+          evidence('calculation', 'pump_flow_lpm', pump, 'project', codeRef),
+          evidence('calculation', 'sprinkler_demand_lpm', demand, 'project', codeRef),
+        ],
       };
       if (pump < demand) return failEval(`تدفق المضخة ${pump} < طلب المرشات ${demand}.`, base);
-      return passEval('المضخة موثّقة وتدفقها لا يقل عن طلب المرشات الموثّق.', base);
+      return passEval('المضخة موثّقة وتدفقها لا يقل عن طلب المرشات الموثّق (تحقق تصميمي).', base);
     },
   },
   {
@@ -1294,7 +1324,7 @@ const fireProtectionRules: ComplianceRule[] = [
         duration: ctx.fireProtection.tank_duration_min,
         required: ctx.fireProtection.tank_required_m3,
       };
-      const codeRef = 'SBC 801 / Fire Tank';
+      const codeRef = ref('FP-08');
       if (!systemNeeded) return naEval('خزان الإطفاء غير منطبق وفق البيانات.', { inputs, code_reference: codeRef });
       if (ctx.fireProtection.tank_exists == null) {
         return needsData('وجود الخزان غير موثّق.', inputs, ['tank.exists'], { code_reference: codeRef });
@@ -1318,26 +1348,32 @@ const fireProtectionRules: ComplianceRule[] = [
           {
             code_reference: codeRef,
             actual_value: ctx.fireProtection.tank_volume_m3,
+            required_value_source: 'missing',
             occupancy: occLabel(ctx),
           }
         );
       }
-      const base = {
+      const vol = ctx.fireProtection.tank_volume_m3;
+      const req = ctx.fireProtection.tank_required_m3;
+      const provisional = vol + 1e-6 >= req ? 'meets_project_calc' : 'below_project_calc';
+      return needsData(
+        `حجم الخزان المطلوب (${req} م³) ناتج حساب تصميم مشروع وليس جدول كود مرمّز كاملًا (NFPA 22 مكمل). المقارنة المبدئية: ${provisional}. NEEDS_DATA حتى اعتماد مهندس/جدول معتمد.`,
         inputs,
-        actual_value: ctx.fireProtection.tank_volume_m3,
-        required_value: ctx.fireProtection.tank_required_m3,
-        unit: 'm³',
-        code_reference: codeRef,
-        occupancy: occLabel(ctx),
-        condition: 'tank_volume_m3 >= tank_required_m3',
-      };
-      if (ctx.fireProtection.tank_volume_m3 + 1e-6 < ctx.fireProtection.tank_required_m3) {
-        return failEval(
-          `سعة الخزان ${ctx.fireProtection.tank_volume_m3} م³ أقل من المحسوب ${ctx.fireProtection.tank_required_m3} م³.`,
-          base
-        );
-      }
-      return passEval('سعة الخزان ≥ المطلوب المحسوب الموثّق.', base);
+        ['platform_code_table_tank_duration'],
+        {
+          code_reference: codeRef,
+          actual_value: vol,
+          required_value: req,
+          unit: 'm³',
+          occupancy: occLabel(ctx),
+          condition: `project_design tank_volume>=tank_required; provisional=${provisional}`,
+          required_value_source: 'project_design',
+          evidence: [
+            evidence('calculation', 'tank_volume_m3', vol, 'project', codeRef),
+            evidence('calculation', 'tank_required_m3', req, 'project_calc', codeRef),
+          ],
+        }
+      );
     },
   },
   {
@@ -1356,7 +1392,7 @@ const fireProtectionRules: ComplianceRule[] = [
         sprinklerInScope(ctx) ||
         ctx.fireProtection.standpipe_required === 'yes';
       const inputs = { fdc: ctx.fireAccess.fdc_present };
-      const codeRef = 'SBC 801 / FDC Requirement';
+      const codeRef = ref('FP-09');
       if (!systemNeeded) return naEval('FDC غير منطبق دون نظام مرشات/مواسير.', { inputs, code_reference: codeRef });
       const yn = parseYesNoUnknown(ctx.fireAccess.fdc_present);
       if (yn === 'unknown' || !hasNonEmpty(ctx.fireAccess.fdc_present)) {
@@ -1396,7 +1432,7 @@ const fireProtectionRules: ComplianceRule[] = [
           actual_value: n,
           required_value: 'documented_min_count',
           unit: 'count',
-          code_reference: 'SBC 801 / Portable Extinguishers',
+          code_reference: ref('FP-10'),
           occupancy: occLabel(ctx),
         }
       );
@@ -1447,7 +1483,7 @@ const hydraulicRules: ComplianceRule[] = [
       if (!needed) {
         return naEval('لا يوجد نظام مرشات يتطلب هيدروليك شبكة.', {
           inputs,
-          code_reference: 'SBC 801 hydraulic / NFPA 13 calc foundation',
+          code_reference: ref('HYD-01'),
         });
       }
 
@@ -1457,7 +1493,7 @@ const hydraulicRules: ComplianceRule[] = [
         if (v == null || (typeof v === 'number' && !Number.isFinite(v))) missing.push(f.label);
       }
 
-      const codeRef = 'SBC 801 hydraulic / NFPA 13 calc foundation';
+      const codeRef = ref('HYD-01');
       if (missing.length) {
         return needsData(
           'بيانات شبكة الأنابيب الهيدروليكية ناقصة — attachment_count وحدها لا تكفي للـ PASS.',
@@ -1467,13 +1503,14 @@ const hydraulicRules: ComplianceRule[] = [
         );
       }
 
-      return passEval('أساس الحساب الهيدروليكي مكتمل الحقول.', {
+      return passEval('أساس الحساب الهيدروليكي مكتمل الحقول (توثيق شبكة — ليس اعتماد كثافة/جدول NFPA 13).', {
         inputs,
         actual_value: true,
         required_value: 'all_fields_present',
         code_reference: codeRef,
         occupancy: occLabel(ctx),
-        evidence: [evidence('calculation', 'hydraulic_network', true, 'hydraulic')],
+        required_value_source: 'documentation_completeness',
+        evidence: [evidence('calculation', 'hydraulic_network', true, 'hydraulic', codeRef)],
       });
     },
   },
@@ -1485,10 +1522,11 @@ function evalAlarmField(
   ctx: ComplianceRuleContext,
   key: string,
   value: string | null | undefined,
-  labelAr: string
+  labelAr: string,
+  ruleId: string
 ): ComplianceRuleEvaluation {
   const inputs = { [key]: value, alarm_verified: ctx.fireAlarm.verified };
-  const codeRef = 'SBC-801-ALM';
+  const codeRef = ref(ruleId);
   if (!alarmRequired(ctx)) {
     return naEval(`${labelAr} غير منطبق.`, { inputs, code_reference: codeRef });
   }
@@ -1504,6 +1542,7 @@ function evalAlarmField(
         actual_value: value,
         required_value: 'documented_and_system_verified',
         occupancy: occLabel(ctx),
+        required_value_source: 'missing',
       }
     );
   }
@@ -1514,6 +1553,7 @@ function evalAlarmField(
     code_reference: codeRef,
     occupancy: occLabel(ctx),
     condition: 'field_present && fire_alarm.verified===true',
+    required_value_source: 'engineer_attested',
   });
 }
 
@@ -1594,7 +1634,7 @@ const fireAlarmRules: ComplianceRule[] = [
     requiredInputs: ['panel'],
     severity: 'mandatory',
     evidenceRequired: ['document'],
-    evaluate: (ctx) => evalAlarmField(ctx, 'panel', ctx.fireAlarm.panel, 'لوحة التحكم'),
+    evaluate: (ctx) => evalAlarmField(ctx, 'panel', ctx.fireAlarm.panel, 'لوحة التحكم', 'FA-02'),
   },
   {
     id: 'FA-03',
@@ -1606,7 +1646,7 @@ const fireAlarmRules: ComplianceRule[] = [
     requiredInputs: ['detection'],
     severity: 'mandatory',
     evidenceRequired: ['drawing'],
-    evaluate: (ctx) => evalAlarmField(ctx, 'detection', ctx.fireAlarm.detection, 'الكشف'),
+    evaluate: (ctx) => evalAlarmField(ctx, 'detection', ctx.fireAlarm.detection, 'الكشف', 'FA-03'),
   },
   {
     id: 'FA-04',
@@ -1619,7 +1659,7 @@ const fireAlarmRules: ComplianceRule[] = [
     severity: 'mandatory',
     evidenceRequired: ['drawing'],
     evaluate: (ctx) =>
-      evalAlarmField(ctx, 'manual_call_points', ctx.fireAlarm.manual_call_points, 'نقاط النداء اليدوي'),
+      evalAlarmField(ctx, 'manual_call_points', ctx.fireAlarm.manual_call_points, 'نقاط النداء اليدوي', 'FA-04'),
   },
   {
     id: 'FA-05',
@@ -1631,7 +1671,7 @@ const fireAlarmRules: ComplianceRule[] = [
     requiredInputs: ['notification'],
     severity: 'mandatory',
     evidenceRequired: ['drawing'],
-    evaluate: (ctx) => evalAlarmField(ctx, 'notification', ctx.fireAlarm.notification, 'التنبيه'),
+    evaluate: (ctx) => evalAlarmField(ctx, 'notification', ctx.fireAlarm.notification, 'التنبيه', 'FA-05'),
   },
   {
     id: 'FA-06',
@@ -1644,7 +1684,7 @@ const fireAlarmRules: ComplianceRule[] = [
     severity: 'mandatory',
     evidenceRequired: ['document'],
     evaluate: (ctx) =>
-      evalAlarmField(ctx, 'emergency_power', ctx.fireAlarm.emergency_power, 'تغذية الطوارئ'),
+      evalAlarmField(ctx, 'emergency_power', ctx.fireAlarm.emergency_power, 'تغذية الطوارئ', 'FA-06'),
   },
   {
     id: 'FA-07',
@@ -1657,7 +1697,7 @@ const fireAlarmRules: ComplianceRule[] = [
     severity: 'mandatory',
     evidenceRequired: ['document'],
     evaluate: (ctx) => {
-      const codeRef = 'SBC-801-ALM';
+      const codeRef = ref('FA-07');
       if (!alarmRequired(ctx)) {
         return naEval('غير منطبق دون إلزام إنذار.', {
           inputs: {
@@ -1713,7 +1753,7 @@ const smokeRules: ComplianceRule[] = [
         ventilation_only: ctx.smokeControl.ventilation_only,
         note: ctx.smokeControl.note,
       };
-      const codeRef = 'SBC 801 / Smoke Control';
+      const codeRef = ref('SMK-01');
 
       if (!required) {
         if (status === 'not_required') {

@@ -84,10 +84,11 @@ export function summarizeResults(results: ComplianceRuleResult[]): ComplianceRun
     result: r.status,
     evidence: formatEvidenceList(r.evidence),
     engineerOverride: r.override
-      ? `[أصل ${r.status}] ${r.override.engineerName || r.override.engineerUserId || '?'} — ${r.override.reason} (${r.override.codeReference}) → ${r.override.resultingStatus}`
+      ? `قرار مهندس (ليس تحققًا آليًا من الكود) [أصل ${r.status}] ${r.override.engineerName || r.override.engineerUserId || '?'} — ${r.override.reason} (${r.override.codeReference}) @ ${r.override.overriddenAt} → ${r.override.resultingStatus}`
       : '—',
     status: r.effectiveStatus,
     code_reference: r.code_reference || r.section || '—',
+    required_value_source: r.required_value_source || undefined,
   }));
 
   return {

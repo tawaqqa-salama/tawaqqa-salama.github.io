@@ -59,6 +59,14 @@ export type ComplianceRuleEvaluation = {
   occupancy?: string | null;
   condition?: string | null;
   code_reference?: string | null;
+  required_value_source?:
+    | 'platform_code_table'
+    | 'explicit_code_condition'
+    | 'project_design'
+    | 'documentation_completeness'
+    | 'engineer_attested'
+    | 'missing'
+    | null;
   missing_data?: string[];
 };
 
@@ -247,6 +255,14 @@ export type ComplianceRuleResult = {
   occupancy?: string | null;
   condition?: string | null;
   code_reference?: string | null;
+  required_value_source?:
+    | 'platform_code_table'
+    | 'explicit_code_condition'
+    | 'project_design'
+    | 'documentation_completeness'
+    | 'engineer_attested'
+    | 'missing'
+    | null;
   missing_data?: string[];
 };
 
@@ -276,6 +292,7 @@ export type ComplianceMatrixRow = {
   engineerOverride: string;
   status: ComplianceResultStatus;
   code_reference: string;
+  required_value_source?: string;
 };
 
 /** Persisted project snapshot (additive on ProjectEngineeringData) */

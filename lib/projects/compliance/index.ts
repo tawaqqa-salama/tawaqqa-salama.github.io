@@ -45,5 +45,8 @@ export {
   complianceStatusLabelAr,
   COMPLIANCE_ASSESSMENT_DISCLAIMER_AR,
 } from '@/lib/projects/compliance/engine';
+export { RULE_CODE_REFS, citationFor, primaryStandardFor } from '@/lib/projects/compliance/code-refs';
+export type { StandardFamily, CodeCitation } from '@/lib/projects/compliance/code-refs';
+export type { ThresholdSourceKind } from '@/lib/projects/compliance/thresholds';
 export { buildComplianceMatrixHtml } from '@/lib/projects/compliance/matrix-html';
 export { appendComplianceMatrixToReportHtml } from '@/lib/projects/compliance/pdf-appendix';

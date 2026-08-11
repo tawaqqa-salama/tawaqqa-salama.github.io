@@ -45,6 +45,7 @@ export function evaluateRule(
     occupancy: ev.occupancy,
     condition: ev.condition,
     code_reference: ev.code_reference,
+    required_value_source: ev.required_value_source,
     missing_data: ev.missing_data,
   };
 }
@@ -94,4 +95,4 @@ export function complianceStatusLabelAr(run: ComplianceRunResult): string {
 }
 
 export const COMPLIANCE_ASSESSMENT_DISCLAIMER_AR =
-  'Compliance assessment based on documented rules/data — تقييم مطابقة وفق القواعد والبيانات الموثّقة فقط، وليس إعلانًا مطلقًا بمطابقة SBC أو الدفاع المدني حتى تُدخل المراجع الكودية المعتمدة بالكامل.';
+  'تقييم المطابقة بناءً على البيانات والقواعد الكودية الموثقة — Compliance assessment based on documented rules/data. ليس إعلانًا مطلقًا بمطابقة SBC أو الدفاع المدني.';

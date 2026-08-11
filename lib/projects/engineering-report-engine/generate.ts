@@ -633,8 +633,8 @@ const generators: Partial<Record<EngineeringStudySectionId, Gen>> = {
     const run = runProjectCompliance({ client: ctx.client, data });
     const sbcText =
       locale === 'ar'
-        ? `تقييم المطابقة الكودية (SBC 201/801) وفق القواعد/البيانات الموثّقة: «${complianceStatusLabelAr(run)}» — البوابة ${run.gate}. إلزامي FAIL=${run.mandatoryFail}، NEEDS_DATA=${run.mandatoryNeedsData}. ليس إعلانًا مطلقًا بمطابقة SBC/الدفاع المدني. الجدول التفصيلي مرفق في ملحق التقرير.`
-        : `Compliance assessment based on documented rules/data (SBC 201/801): «${complianceStatusLabelAr(run)}» — gate ${run.gate}. Mandatory FAIL=${run.mandatoryFail}, NEEDS_DATA=${run.mandatoryNeedsData}. Not an absolute SBC/Civil Defense compliance claim. Detailed matrix attached.`;
+        ? `تقييم المطابقة بناءً على البيانات والقواعد الكودية الموثقة (SBC 201/801): «${complianceStatusLabelAr(run)}» — البوابة ${run.gate}. PASS/FAIL/NEEDS_DATA مفصّلة في الملحق. ليس إعلانًا مطلقًا بمطابقة SBC/الدفاع المدني.`
+        : `Compliance assessment based on documented rules/data (SBC 201/801): «${complianceStatusLabelAr(run)}» — gate ${run.gate}. PASS/FAIL/NEEDS_DATA in appendix. Not an absolute SBC/Civil Defense compliance claim.`;
     paragraphs.push(p(sbcText, ['SBC 201', 'SBC 801'], ctx.allowedCitations));
 
     return { paragraphs };

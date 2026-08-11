@@ -1,12 +1,23 @@
 /**
  * Documented compliance thresholds ONLY from in-repo sources.
- * If a numeric code limit is not documented for the project condition → null
- * (caller must return NEEDS_DATA — never invent numbers).
+ *
+ * Distinction (mandatory):
+ * - platform_code_table: numeric/boolean value encoded from EKB / sbc801.ts — may PASS/FAIL
+ * - project_design: user/engineer-entered design figure — NEVER treated as automatic "code"
+ * - missing: no usable threshold → NEEDS_DATA
+ *
+ * Never invent generic numbers (e.g. 6 m access width, 45/60 m travel) for automated PASS.
  */
 
 import { SBC_OCCUPANCIES, type SbcOccupancyCode } from '@/lib/constants/sbc801';
-import { sbc801TravelDistanceLimit } from '@/lib/projects/design-center/vision/egressEngine';
 import type { ComplianceRuleContext } from '@/lib/projects/compliance/types';
+import { citationFor } from '@/lib/projects/compliance/code-refs';
+
+export type ThresholdSourceKind =
+  | 'platform_code_table'
+  | 'explicit_code_condition'
+  | 'project_design'
+  | 'missing';
 
 export type ResolvedThreshold = {
   value: number;
@@ -14,6 +25,8 @@ export type ResolvedThreshold = {
   code_reference: string;
   condition: string;
   source: string;
+  /** Who authored this number / how it may be used for PASS/FAIL */
+  sourceKind: ThresholdSourceKind;
 };
 
 /**
@@ -24,7 +37,7 @@ export type ResolvedThreshold = {
 export function requiredExitsFromOccupantLoad(
   occupants: number,
   occupancy: { code?: string | null; group?: string | null; classification?: string | null } | null | undefined
-): { required: number; code_reference: string; condition: string } | null {
+): { required: number; code_reference: string; condition: string; sourceKind: 'platform_code_table' } | null {
   if (!Number.isFinite(occupants) || occupants < 0) return null;
   const hasOcc =
     Boolean(occupancy?.code) ||
@@ -45,61 +58,40 @@ export function requiredExitsFromOccupantLoad(
 
   return {
     required,
-    code_reference: 'SBC 201 §1006 / SBC-201-1004',
+    code_reference: citationFor('EGR-02'),
     condition: `occupant_load=${occupants}; occupancy=${occLabel}; bands≤49→1, ≤500→2, else max(3, ceil(n/500)+1)`,
-  };
-}
-
-/** Travel distance max from in-repo SBC 801 heuristic table — only with occupancy + sprinkler known. */
-export function resolveTravelDistanceLimitM(
-  ctx: ComplianceRuleContext
-): ResolvedThreshold | null {
-  const occ =
-    ctx.building.primary_occupancy_code ||
-    ctx.building.occupancy_classification ||
-    ctx.building.group_letter;
-  if (!occ) return null;
-
-  const spr = ctx.fireProtection.sprinkler_provided;
-  if (spr !== 'yes' && spr !== 'no') return null;
-
-  const limit = sbc801TravelDistanceLimit({
-    hasSprinkler: spr === 'yes',
-    occupancy: String(occ),
-  });
-
-  return {
-    value: limit.applied_max_m,
-    unit: 'm',
-    code_reference: `${limit.code} travel-distance table (platform heuristic — verify adopted edition)`,
-    condition: `occupancy=${occ}; sprinkler=${spr}; applied_max=${limit.applied_max_m}m (${limit.max_m_without_sprinkler}/${limit.max_m_with_sprinkler})`,
-    source: 'lib/projects/design-center/vision/egressEngine.ts#sbc801TravelDistanceLimit',
+    sourceKind: 'platform_code_table',
   };
 }
 
 /**
- * Exit separation minimum — not automated in-repo without engineer-documented required value.
- * SBC 201 §1007 typically uses diagonal/remote rules; we do not invent the formula here.
+ * Travel distance: adopted occupancy tables are NOT fully encoded.
+ * Platform 45/60 heuristic must NOT drive automated PASS/FAIL.
+ * Returns null → caller NEEDS_DATA (may still show measured actual).
+ */
+export function resolveTravelDistanceLimitM(
+  _ctx: ComplianceRuleContext
+): ResolvedThreshold | null {
+  // Intentionally null — do not use heuristic 45/60 as code-required.
+  return null;
+}
+
+/**
+ * Project-entered exit separation — informational design figure only.
+ * Never sourceKind=platform_code_table (user entry ≠ automatic code).
  */
 export function resolveExitSeparationMinM(
   ctx: ComplianceRuleContext
 ): ResolvedThreshold | null {
   const req = ctx.egress.required_exit_separation_m;
   if (req == null || !Number.isFinite(req) || req <= 0) return null;
-  const occ =
-    ctx.building.primary_occupancy_code ||
-    ctx.building.occupancy_classification ||
-    ctx.building.group_letter;
-  if (!occ) return null;
-  const spr = ctx.fireProtection.sprinkler_provided;
-  if (spr !== 'yes' && spr !== 'no') return null;
-
   return {
     value: req,
     unit: 'm',
-    code_reference: 'SBC 201 §1007 (engineer-documented required separation for this occupancy/protection)',
-    condition: `occupancy=${occ}; sprinkler=${spr}; required_exit_separation_m=${req}`,
+    code_reference: `${citationFor('EGR-05')} [project_design value — not auto code]`,
+    condition: `project_design required_exit_separation_m=${req}`,
     source: 'project egress.required_exit_separation_m',
+    sourceKind: 'project_design',
   };
 }
 
@@ -109,9 +101,10 @@ export function resolveCorridorMinWidthM(ctx: ComplianceRuleContext): ResolvedTh
   return {
     value: req,
     unit: 'm',
-    code_reference: 'SBC 201 §1020 (engineer-documented required corridor width)',
-    condition: `required_corridor_width_m=${req}`,
+    code_reference: `${citationFor('EGR-09')} [project_design value — not auto code]`,
+    condition: `project_design required_corridor_width_m=${req}`,
     source: 'project egress.required_corridor_width_m',
+    sourceKind: 'project_design',
   };
 }
 
@@ -121,9 +114,10 @@ export function resolveDoorMinWidthM(ctx: ComplianceRuleContext): ResolvedThresh
   return {
     value: req,
     unit: 'm',
-    code_reference: 'SBC 201 §1010 (engineer-documented required door width)',
-    condition: `required_door_width_m=${req}`,
+    code_reference: `${citationFor('EGR-10')} [project_design value — not auto code]`,
+    condition: `project_design required_door_width_m=${req}`,
     source: 'project egress.required_door_width_m',
+    sourceKind: 'project_design',
   };
 }
 
@@ -133,15 +127,16 @@ export function resolveStairMinWidthM(ctx: ComplianceRuleContext): ResolvedThres
   return {
     value: req,
     unit: 'm',
-    code_reference: 'SBC 201 §1011 (engineer-documented required stair width)',
-    condition: `required_stair_width_m=${req}`,
+    code_reference: `${citationFor('EGR-11')} [project_design value — not auto code]`,
+    condition: `project_design required_stair_width_m=${req}`,
     source: 'project egress.required_stair_width_m',
+    sourceKind: 'project_design',
   };
 }
 
 /**
- * Fire apparatus access width — only when project documents required width + code ref.
- * No invented “common 6 m” threshold.
+ * Fire apparatus access width — project-entered + free-text ref is still project_design.
+ * No invented “common 6 m” platform table.
  */
 export function resolveFireAccessMinWidthM(
   ctx: ComplianceRuleContext
@@ -153,9 +148,10 @@ export function resolveFireAccessMinWidthM(
   return {
     value: req,
     unit: 'm',
-    code_reference: String(ref).trim(),
-    condition: `required_road_width_m=${req}`,
+    code_reference: `${String(ref).trim()} [project_design citation — not auto-validated code table]`,
+    condition: `project_design required_road_width_m=${req}`,
     source: 'project fireAccess.required_road_width_m + code_ref',
+    sourceKind: 'project_design',
   };
 }
 
