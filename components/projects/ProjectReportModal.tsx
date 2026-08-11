@@ -57,6 +57,10 @@ import {
   saveSupervisionAsPdfAttachment,
 } from '@/lib/projects/save-report-pdf';
 import {
+  hydrateEngineeringWithStage5,
+  loadStage5LiveBundle,
+} from '@/lib/projects/stage5-live-store';
+import {
   isLastTechReportChapter,
   isTechReportChapterId,
   nextTechReportChapter,
@@ -121,38 +125,48 @@ export default function ProjectReportModal({
 
   useEffect(() => {
     if (!client) return;
-    const visitsCount = client.quotation_visits_count || 1;
-    const parsed = parseProjectEngineeringData(client.project_engineering_data);
-    const withPlan = {
-      ...parsed,
-      building_plan: seedBuildingPlanFromClient(client, parsed.building_plan),
+    let cancelled = false;
+    void (async () => {
+      const visitsCount = client.quotation_visits_count || 1;
+      const parsed = parseProjectEngineeringData(client.project_engineering_data);
+      const withPlan = {
+        ...parsed,
+        building_plan: seedBuildingPlanFromClient(client, parsed.building_plan),
+      };
+      const seeded = seedProjectEngineeringFromClient(client, withPlan);
+      const companySnapshot = company || loadLocalCompanyProfile();
+      const withSupervision = {
+        ...seeded,
+        supervision_report: seedSupervisionReport(
+          client,
+          seeded,
+          companySnapshot,
+          seeded.supervision_report
+        ),
+      };
+      let synced = syncProjectVisitsFromQuotation(withSupervision, visitsCount);
+      // Stage 5 lives in dedicated tables — overlay after fat JSONB parse
+      const stage5 = await loadStage5LiveBundle(client.id);
+      if (cancelled) return;
+      synced = hydrateEngineeringWithStage5(synced, stage5);
+      setData(synced);
+      const savedChapter = synced.workflow?.tech_report_chapter;
+      setTechReportChapter(isTechReportChapterId(savedChapter) ? savedChapter : 'facility');
+      const resolved = resolveActiveStage(client, synced, preferredStage);
+      setActiveStage(resolved);
+      if (
+        preferredStage === 'designs' &&
+        resolved !== 'designs' &&
+        !canUnlockStage('designs', client, synced)
+      ) {
+        setMessage('مرحلة التصاميم مقفلة — اعتمد مرحلة «العقد» أولاً ثم افتح مركز التصاميم.');
+      } else {
+        setMessage(null);
+      }
+    })();
+    return () => {
+      cancelled = true;
     };
-    const seeded = seedProjectEngineeringFromClient(client, withPlan);
-    const companySnapshot = company || loadLocalCompanyProfile();
-    const withSupervision = {
-      ...seeded,
-      supervision_report: seedSupervisionReport(
-        client,
-        seeded,
-        companySnapshot,
-        seeded.supervision_report
-      ),
-    };
-    const synced = syncProjectVisitsFromQuotation(withSupervision, visitsCount);
-    setData(synced);
-    const savedChapter = synced.workflow?.tech_report_chapter;
-    setTechReportChapter(isTechReportChapterId(savedChapter) ? savedChapter : 'facility');
-    const resolved = resolveActiveStage(client, synced, preferredStage);
-    setActiveStage(resolved);
-    if (
-      preferredStage === 'designs' &&
-      resolved !== 'designs' &&
-      !canUnlockStage('designs', client, synced)
-    ) {
-      setMessage('مرحلة التصاميم مقفلة — اعتمد مرحلة «العقد» أولاً ثم افتح مركز التصاميم.');
-    } else {
-      setMessage(null);
-    }
   }, [client, preferredStage]);
 
   useEffect(() => {
@@ -326,6 +340,7 @@ export default function ProjectReportModal({
       }
     }
 
+    const approvingInspections = activeStage === 'inspections';
     const result = approveWorkflowStage({
       stageId: activeStage,
       client,
@@ -353,7 +368,11 @@ export default function ProjectReportModal({
       `تم اعتماد المرحلة والانتقال إلى: ${
         WORKFLOW_STAGES.find((s) => s.id === result.nextStage)?.label_ar || result.nextStage
       }`,
-      { stayOpen: true }
+      {
+        stayOpen: true,
+        // Stage 5 approval must not rewrite the fat engineering JSONB
+        supervisionFocus: approvingInspections,
+      }
     );
   };
 

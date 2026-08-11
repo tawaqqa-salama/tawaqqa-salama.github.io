@@ -27,8 +27,8 @@ export function humanizeFetchError(message: string): string {
   if (isStatementTimeoutError(message)) {
     return (
       'انتهت مهلة قاعدة البيانات أثناء حفظ ملف المشروع (العمود project_engineering_data كبير جداً غالباً بسبب صور/مخططات مضمّنة). ' +
-      'نُفِّذت نسخة محلية. الحل: نفّذ في Supabase SQL Editor السكربتات 035 ثم 036 ثم 037، ' +
-      'ثم نفّذ: SELECT slim_project_engineering_data_urls(NULL); لتقليص الحجم، وأعد الحفظ.'
+      'نُفِّذت نسخة محلية. لمرحلة الزيارات/الإشراف: نفّذ مرة واحدة في Supabase SQL Editor السكربت scripts/sql/038_stage5_live_store.sql ثم أعد الحفظ (لا يلمس العمود الثقيل). ' +
+      'للمراحل الأخرى: نفّذ 035 ثم 036 ثم 037، ثم SELECT slim_project_engineering_data_urls(NULL);'
     );
   }
   return message;

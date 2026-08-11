@@ -1,6 +1,7 @@
 /**
  * Save visit / supervision reports as fixed PDF attachments (append-only history).
- * Lean JSONB patch — does not rewrite the entire engineering blob.
+ * Stage-5 persistence goes through dedicated tables (038) — never rewrites
+ * clients.project_engineering_data.
  */
 
 import { supabase, isDemoMode } from '@/lib/supabase';
@@ -22,8 +23,8 @@ import { htmlDocumentToPdfFile } from '@/lib/print/html-to-pdf';
 import { buildFieldVisitReportHtml } from '@/components/projects/FieldVisitReportPrint';
 import { buildSupervisionReportHtml } from '@/components/projects/SupervisionReportPrint';
 import { trimSupervisionTextFields } from '@/lib/projects/supervision-report';
-import { upsertProjectReport } from '@/lib/projects/save-supervision-report';
 import { sanitizeEngineeringDataForPersist } from '@/lib/projects/sanitize-engineering-files';
+import { saveStage5LiveBundle } from '@/lib/projects/stage5-live-store';
 
 function isMissingRelation(message: string): boolean {
   return /relation|does not exist|Could not find the table|schema cache|function|Could not find/i.test(
@@ -35,7 +36,7 @@ function uid() {
   return `pdf-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
 }
 
-/** Lean merge of selected keys into clients.project_engineering_data */
+/** Lean merge of selected keys into clients.project_engineering_data (non–stage-5 use). */
 export async function mergeEngineeringPatch(
   clientId: string,
   patch: Record<string, unknown>,
@@ -48,7 +49,6 @@ export async function mergeEngineeringPatch(
   });
   if (!rpcError) return null;
 
-  // Timeout on lean patch → try server-side slim of bloated dataUrls then retry once
   if (/statement timeout|canceling statement|57014/i.test(rpcError.message)) {
     await supabase.rpc('slim_project_engineering_data_urls', { p_client_id: clientId });
     const { error: retryError } = await supabase.rpc('merge_project_engineering_patch', {
@@ -60,7 +60,6 @@ export async function mergeEngineeringPatch(
     return retryError.message;
   }
 
-  // Supervision-only RPC (script 035) — still lean, no full-blob rewrite from the client
   if (patch.supervision_report) {
     const { error: mergeError } = await supabase.rpc('merge_supervision_report_json', {
       p_client_id: clientId,
@@ -68,9 +67,8 @@ export async function mergeEngineeringPatch(
       p_pipeline_stage: pipelineStage ?? null,
     });
     if (!mergeError) {
-      // Best-effort second patch for visits/archive if the multi-key RPC was only missing
       if (patch.field_visits || patch.report_pdf_archive) {
-        const { error: patch2 } = await supabase.rpc('merge_project_engineering_patch', {
+        await supabase.rpc('merge_project_engineering_patch', {
           p_client_id: clientId,
           p_patch: {
             ...(patch.field_visits ? { field_visits: patch.field_visits } : {}),
@@ -80,9 +78,6 @@ export async function mergeEngineeringPatch(
           },
           p_pipeline_stage: pipelineStage ?? null,
         });
-        if (patch2 && !isMissingRelation(patch2.message)) {
-          // supervision saved; visits may be local-only
-        }
       }
       return null;
     }
@@ -94,8 +89,7 @@ export async function mergeEngineeringPatch(
   if (isMissingRelation(rpcError.message)) {
     return (
       'دوال الحفظ الخفيف غير موجودة في Supabase. ' +
-      'نفّذ السكربتات scripts/sql/035 و 036 و 037 ثم أعد المحاولة. ' +
-      '(تم تجنّب إعادة كتابة ملف المشروع كاملاً لأنها تسبب statement timeout)'
+      'لحفظ الزيارات/الإشراف نفّذ scripts/sql/038_stage5_live_store.sql ثم أعد المحاولة.'
     );
   }
 
@@ -131,27 +125,6 @@ async function uploadReportPdfFile(
     };
   }
   return { storagePath: path, dataUrl: null };
-}
-
-async function insertSnapshotRow(clientId: string, snap: ReportPdfSnapshot): Promise<void> {
-  const row: Record<string, unknown> = {
-    client_id: clientId,
-    kind: snap.kind,
-    visit_number: snap.visit_number ?? null,
-    report_date: snap.report_date || null,
-    title_ar: snap.title_ar,
-    file_name: snap.fileName,
-    size_bytes: snap.sizeBytes,
-    mime_type: snap.mimeType,
-    storage_bucket: snap.storageBucket || PROJECT_FILES_BUCKET,
-    storage_path: snap.storagePath || null,
-    created_at: snap.created_at,
-  };
-  const { error } = await supabase.from('report_pdf_snapshots').insert(row);
-  if (error && !isMissingRelation(error.message)) {
-    // Non-fatal — JSONB archive still holds the meta
-    console.warn('report_pdf_snapshots insert:', error.message);
-  }
 }
 
 async function fileToDataUrl(file: File): Promise<string | null> {
@@ -205,25 +178,11 @@ export async function saveFieldVisitAsPdfAttachment(params: {
     ...data.field_visits[idx],
     updated_at: new Date().toISOString(),
   };
-
-  // Optimistic local backup of visit text first
   data.field_visits[idx] = visit;
-  // Keep local full copy; server patch is lean keys only
-  backupEngineeringDataLocally(client.id, sanitizeEngineeringDataForPersist(data, { aggressive: true }));
-
-  const mergeErr = await mergeEngineeringPatch(
+  backupEngineeringDataLocally(
     client.id,
-    { field_visits: data.field_visits },
-    pipelineStage
+    sanitizeEngineeringDataForPersist(data, { aggressive: true })
   );
-  if (mergeErr) {
-    return {
-      error: mergeErr,
-      data,
-      snapshot: null,
-      warning: 'تم حفظ نسخة محلية — تعذر المزامنة السحابية للزيارة',
-    };
-  }
 
   let snapshot: ReportPdfSnapshot | null = null;
   let warning: string | null = null;
@@ -254,35 +213,32 @@ export async function saveFieldVisitAsPdfAttachment(params: {
       created_at: new Date().toISOString(),
     };
 
-    const snapshots = appendArchive(visit.pdf_snapshots, snapshot);
-    visit.pdf_snapshots = snapshots;
+    visit.pdf_snapshots = appendArchive(visit.pdf_snapshots, snapshot);
     visit.latest_pdf = snapshot;
     data.field_visits[idx] = visit;
     data.report_pdf_archive = appendArchive(data.report_pdf_archive, snapshot);
-
-    await insertSnapshotRow(client.id, snapshot);
-    const metaErr = await mergeEngineeringPatch(
-      client.id,
-      {
-        field_visits: data.field_visits,
-        report_pdf_archive: data.report_pdf_archive,
-      },
-      pipelineStage
-    );
-    if (metaErr) {
-      warning = `${warning || ''} · تعذر حفظ بيانات المرفق في السجل: ${metaErr}`.trim();
-    }
-    backupEngineeringDataLocally(client.id, data);
   } catch (e) {
     const msg = e instanceof Error ? e.message : String(e);
+    warning = `بيانات الزيارة ستُحفظ لكن تعذر إنشاء PDF: ${msg}`;
+  }
+
+  const live = await saveStage5LiveBundle({
+    clientId: client.id,
+    fieldVisits: data.field_visits,
+    supervision: data.supervision_report,
+    pdfArchive: data.report_pdf_archive || [],
+    pipelineStage,
+  });
+  if (live.error) {
     return {
-      error: null,
+      error: live.error,
       data,
-      snapshot: null,
-      warning: `حُفظت بيانات الزيارة لكن تعذر إنشاء PDF: ${msg}`,
+      snapshot,
+      warning: warning || 'تم حفظ نسخة محلية — تعذر المزامنة السحابية للزيارة',
     };
   }
 
+  backupEngineeringDataLocally(client.id, data);
   return { error: null, data, snapshot, warning };
 }
 
@@ -315,34 +271,6 @@ export async function saveSupervisionAsPdfAttachment(params: {
     client.id,
     sanitizeEngineeringDataForPersist(data, { aggressive: true })
   );
-
-  const relational = await upsertProjectReport(client.id, supervision);
-  if (relational.error) {
-    return {
-      error: relational.error,
-      data,
-      snapshot: null,
-      usedRelationalTables: !relational.skipped,
-    };
-  }
-
-  const mergeErr = await mergeEngineeringPatch(
-    client.id,
-    {
-      supervision_report: supervision,
-      field_visits: data.field_visits,
-    },
-    pipelineStage
-  );
-  if (mergeErr) {
-    return {
-      error: mergeErr,
-      data,
-      snapshot: null,
-      warning: 'تم حفظ نسخة محلية — تعذر مزامنة تقرير الإشراف',
-      usedRelationalTables: !relational.skipped,
-    };
-  }
 
   let snapshot: ReportPdfSnapshot | null = null;
   let warning: string | null = null;
@@ -383,37 +311,35 @@ export async function saveSupervisionAsPdfAttachment(params: {
       },
       report_pdf_archive: appendArchive(data.report_pdf_archive, snapshot),
     };
-
-    await insertSnapshotRow(client.id, snapshot);
-    const metaErr = await mergeEngineeringPatch(
-      client.id,
-      {
-        supervision_report: data.supervision_report,
-        report_pdf_archive: data.report_pdf_archive,
-      },
-      pipelineStage
-    );
-    if (metaErr) {
-      warning = `${warning || ''} · تعذر حفظ بيانات مرفق الإشراف: ${metaErr}`.trim();
-    }
-    backupEngineeringDataLocally(client.id, data);
   } catch (e) {
     const msg = e instanceof Error ? e.message : String(e);
+    warning = `بيانات الإشراف ستُحفظ لكن تعذر إنشاء PDF: ${msg}`;
+  }
+
+  const live = await saveStage5LiveBundle({
+    clientId: client.id,
+    fieldVisits: data.field_visits || [],
+    supervision: data.supervision_report,
+    pdfArchive: data.report_pdf_archive || [],
+    pipelineStage,
+  });
+  if (live.error) {
     return {
-      error: null,
+      error: live.error,
       data,
-      snapshot: null,
-      warning: `حُفظ تقرير الإشراف لكن تعذر إنشاء PDF: ${msg}`,
-      usedRelationalTables: !relational.skipped,
+      snapshot,
+      warning: warning || 'تم حفظ نسخة محلية — تعذر مزامنة تقرير الإشراف',
+      usedRelationalTables: true,
     };
   }
 
+  backupEngineeringDataLocally(client.id, data);
   return {
     error: null,
     data,
     snapshot,
     warning,
-    usedRelationalTables: !relational.skipped,
+    usedRelationalTables: true,
   };
 }
 
