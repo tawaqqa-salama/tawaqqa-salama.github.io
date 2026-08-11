@@ -190,6 +190,7 @@ AS $$
   LIMIT 1;
 $$;
 
+-- Production tenant link is public.users.company_id (no tenant_memberships table).
 CREATE OR REPLACE FUNCTION public.current_app_company_id()
 RETURNS uuid
 LANGUAGE sql
@@ -197,34 +198,12 @@ STABLE
 SECURITY DEFINER
 SET search_path = pg_catalog, public
 AS $$
-  SELECT COALESCE(
-    (
-      SELECT u.company_id
-      FROM public.users u
-      WHERE u.auth_user_id = auth.uid()
-        AND u.deleted_at IS NULL
-        AND u.is_active = true
-      LIMIT 1
-    ),
-    (
-      SELECT tm.company_id
-      FROM public.tenant_memberships tm
-      JOIN public.users u ON u.id = tm.user_id
-      WHERE u.auth_user_id = auth.uid()
-        AND tm.status = 'active'
-        AND tm.is_default = true
-      LIMIT 1
-    ),
-    (
-      SELECT tm.company_id
-      FROM public.tenant_memberships tm
-      JOIN public.users u ON u.id = tm.user_id
-      WHERE u.auth_user_id = auth.uid()
-        AND tm.status = 'active'
-      ORDER BY tm.created_at ASC
-      LIMIT 1
-    )
-  );
+  SELECT u.company_id
+  FROM public.users u
+  WHERE u.auth_user_id = auth.uid()
+    AND u.deleted_at IS NULL
+    AND u.is_active = true
+  LIMIT 1;
 $$;
 
 CREATE OR REPLACE FUNCTION public.app_can_manage_users()
