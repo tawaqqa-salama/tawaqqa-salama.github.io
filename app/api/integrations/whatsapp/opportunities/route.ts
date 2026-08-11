@@ -1,11 +1,14 @@
 import { NextResponse } from 'next/server';
 import { advanceClientToSalesPipeline } from '@/lib/whatsapp/crm-bridge';
 import { waRepository } from '@/lib/whatsapp/store/repository';
+import { withTenantApi } from '@/lib/tenant/api-guard';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
 
 export async function POST(request: Request) {
+  const gated = await withTenantApi(request, { module: 'whatsapp' });
+  if ('response' in gated) return gated.response;
   const body = (await request.json()) as {
     customerId?: string;
     conversationId?: string;
@@ -43,6 +46,8 @@ export async function POST(request: Request) {
 }
 
 export async function GET(request: Request) {
+  const gated = await withTenantApi(request, { module: 'whatsapp' });
+  if ('response' in gated) return gated.response;
   const url = new URL(request.url);
   const customerId = url.searchParams.get('customerId') || undefined;
   return NextResponse.json({

@@ -12,11 +12,13 @@ Attackers must not read or mutate another tenant’s data by:
 ## Controls implemented
 
 ### Authentication
-- Existing cookie + localStorage session (`lib/auth/*`)
-- Middleware requires cookie for non-public routes (Node/Vercel hosts)
+- Cryptographically signed httpOnly cookie (`AUTH_SESSION_SECRET` HMAC) — Base64 alone is rejected
+- `POST /api/auth/session` loads role/company from Auth/DB — ignores client `roleCode` / `companyId`
+- Middleware + `requireApiSession` verify signature and expiration
+- Existing localStorage session for UI hydrate (GitHub Pages / demo)
 
 ### Tenant context
-- `requireTenant` / `requireTenantFromRequest` (`lib/tenant/context.ts`)
+- `requireTenant` / `requireTenantFromRequest` / `withTenantApi` (`lib/tenant/*`, `lib/auth/authorization.ts`)
 - Membership check for non–platform admins
 - Suspended tenants rejected
 
@@ -26,15 +28,25 @@ Attackers must not read or mutate another tenant’s data by:
 - `withTenantId` for inserts
 
 ### API examples secured
+- WhatsApp / Social / Website / Marketing integration routes — `withTenantApi` + module flags
+- ZATCA submit/onboard/status — tenant + `finance_zatca` module; secrets never from client body
+- Invoices from milestone — tenant ownership of `clientId`
 - `GET /api/integrations/marketing/funnel` — tenant + marketing module  
-- `GET /api/integrations/whatsapp/stats` — tenant + whatsapp module  
 - `POST /api/contracts/auto-generate` — client must match `ctx.tenantId`  
-- `/api/platform/*` — `super_admin` only  
+- `/api/platform/*` — `super_admin` only (from signed cookie minted from DB)
+- Public website forms — sanitization + in-process rate limit
+- Meta webhooks — signature required in production (unsigned never allowed in prod)
 
 ### Data access helpers
 - `lib/data/fetchers.ts` applies `company_id` from session when present  
 - `listUsers` / `listRoles` scoped to session company  
 - Company profile / ZATCA settings load by session company (legacy TWAQQA fallback)
+
+### RLS / Storage
+- Apply `scripts/sql/041_production_security_hardening.sql` after 029/033
+- Tenant policies on CRM/finance/WhatsApp/social/live-store tables
+- Storage `project-files` scoped via client/company path ownership
+- Live-save SECURITY DEFINER RPCs check tenant + revoke anon execute
 
 ### Support access
 - Super Admin support entry via `/api/platform/support`  
@@ -45,6 +57,6 @@ Attackers must not read or mutate another tenant’s data by:
 
 ## Remaining hardening (honest)
 
-Not every integration route yet calls `withTenantApi`. WhatsApp/social/website repositories still need systematic `company_id` filters. Prefer enabling RLS (`029` + `033`) in production and finishing route-by-route adoption of `withTenantApi`.
+Client-side Supabase access still depends on Supabase Auth JWT + RLS (`041`). Cookie session alone does not set `auth.uid()` — production logins must use Supabase Auth so RLS binds. Demo/Pages without Auth continue via memory stores.
 
 Never rely on frontend filtering alone.

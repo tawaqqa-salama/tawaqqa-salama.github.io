@@ -1,14 +1,19 @@
 import { NextResponse } from 'next/server';
 import { createOrUpdatePost, listPosts } from '@/lib/social/service';
+import { withTenantApi } from '@/lib/tenant/api-guard';
 
 export const runtime = 'nodejs';
 
-export async function GET() {
+export async function GET(request: Request) {
+  const gated = await withTenantApi(request, { module: 'social_media' });
+  if ('response' in gated) return gated.response;
   const posts = await listPosts();
   return NextResponse.json({ ok: true, posts });
 }
 
 export async function POST(request: Request) {
+  const gated = await withTenantApi(request, { module: 'social_media' });
+  if ('response' in gated) return gated.response;
   const body = await request.json();
   const post = await createOrUpdatePost({
     id: body.id,

@@ -7,7 +7,8 @@ import {
 import { isDemoAllowed, isZatcaServerOnly, assertLiveOrDemoAllowed } from '@/lib/runtime/mode';
 
 describe('P0 — session cookie codec', () => {
-  it('round-trips payload', () => {
+  it('round-trips signed payload', () => {
+    process.env.AUTH_SESSION_SECRET = 'test-auth-session-secret-32chars!!';
     const payload = sessionToCookiePayload({
       userId: 'u1',
       email: 'a@b.c',
@@ -19,9 +20,11 @@ describe('P0 — session cookie codec', () => {
       method: 'email',
     });
     const encoded = encodeCookiePayload(payload);
+    expect(encoded).toContain('.');
     const decoded = decodeCookiePayload(encoded);
     expect(decoded?.userId).toBe('u1');
     expect(decoded?.email).toBe('a@b.c');
+    delete process.env.AUTH_SESSION_SECRET;
   });
 });
 

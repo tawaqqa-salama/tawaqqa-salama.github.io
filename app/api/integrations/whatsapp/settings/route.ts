@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 import { ensureWhatsAppRuntimeHydrated, getWhatsAppPublicStatus } from '@/lib/whatsapp/config';
 import { isWhatsAppCrmMemoryMode } from '@/lib/whatsapp/crm-bridge';
 import { createWhatsAppProvider } from '@/lib/whatsapp/provider';
+import { withTenantApi } from '@/lib/tenant/api-guard';
 import {
   getSavedWhatsAppSettingsSync,
   saveWhatsAppSettings,
@@ -11,7 +12,9 @@ import { waRepository } from '@/lib/whatsapp/store/repository';
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
 
-export async function GET() {
+export async function GET(request: Request) {
+  const gated = await withTenantApi(request, { module: 'whatsapp' });
+  if ('response' in gated) return gated.response;
   await ensureWhatsAppRuntimeHydrated();
   const status = getWhatsAppPublicStatus();
   const cfgPhone = status.phoneNumberId;
@@ -43,6 +46,8 @@ export async function GET() {
 }
 
 export async function POST(request: Request) {
+  const gated = await withTenantApi(request, { module: 'whatsapp' });
+  if ('response' in gated) return gated.response;
   const body = (await request.json()) as {
     action?: 'test' | 'save';
     business_name?: string;

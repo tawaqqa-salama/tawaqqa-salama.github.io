@@ -26,6 +26,19 @@ export async function POST(request: Request) {
   }
 
   const inviteToken = process.env.TENANT_ONBOARDING_TOKEN;
+  const productionLocked =
+    process.env.NODE_ENV === 'production' &&
+    process.env.ALLOW_DEMO_MODE !== 'true' &&
+    process.env.NEXT_PUBLIC_ALLOW_DEMO_MODE !== 'true' &&
+    process.env.USER_PAGES !== 'true' &&
+    process.env.GITHUB_PAGES !== 'true';
+
+  if (productionLocked && !inviteToken) {
+    return NextResponse.json(
+      { ok: false, error: 'Onboarding disabled until TENANT_ONBOARDING_TOKEN is configured' },
+      { status: 403 }
+    );
+  }
   if (inviteToken && body.inviteToken !== inviteToken) {
     return NextResponse.json({ ok: false, error: 'Invalid invite token' }, { status: 403 });
   }

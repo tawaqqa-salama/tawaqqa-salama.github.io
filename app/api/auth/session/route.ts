@@ -3,9 +3,8 @@ import {
   AUTH_COOKIE_MAX_AGE,
   AUTH_COOKIE_NAME,
   decodeCookiePayload,
-  encodeCookiePayload,
-  type CookieSessionPayload,
 } from '@/lib/auth/session-cookie';
+import { mintTrustedSession, type SessionMintRequest } from '@/lib/auth/mint-session';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -21,24 +20,31 @@ function cookieOptions(maxAge: number) {
   };
 }
 
-/** Establish httpOnly session cookie after client login */
+/**
+ * Establish httpOnly signed session cookie after client login.
+ * roleCode / companyId from the body are ignored — loaded from trusted Auth/DB.
+ */
 export async function POST(request: Request) {
   try {
-    const body = (await request.json()) as CookieSessionPayload;
-    if (!body?.userId || !body?.email) {
-      return NextResponse.json({ ok: false, error: 'session payload required' }, { status: 400 });
+    const body = (await request.json()) as SessionMintRequest;
+    const authHeader = request.headers.get('authorization') || '';
+    const bearer = authHeader.startsWith('Bearer ') ? authHeader.slice(7).trim() : '';
+    if (!body.accessToken && bearer) {
+      body.accessToken = bearer;
     }
-    const value = encodeCookiePayload({
-      userId: body.userId,
-      email: body.email,
-      fullName: body.fullName || body.email,
-      roleCode: body.roleCode || 'staff',
-      companyId: body.companyId,
-      loggedInAt: body.loggedInAt || new Date().toISOString(),
-      method: body.method || 'email',
+
+    const minted = await mintTrustedSession(body);
+    if (!minted.ok) {
+      return NextResponse.json({ ok: false, error: minted.error }, { status: minted.status });
+    }
+
+    const res = NextResponse.json({
+      ok: true,
+      userId: minted.payload.userId,
+      roleCode: minted.payload.roleCode,
+      companyId: minted.payload.companyId || null,
     });
-    const res = NextResponse.json({ ok: true });
-    res.cookies.set(AUTH_COOKIE_NAME, value, cookieOptions(AUTH_COOKIE_MAX_AGE));
+    res.cookies.set(AUTH_COOKIE_NAME, minted.cookieValue, cookieOptions(AUTH_COOKIE_MAX_AGE));
     return res;
   } catch (e) {
     return NextResponse.json(
@@ -55,7 +61,7 @@ export async function DELETE() {
   return res;
 }
 
-/** Inspect session (for diagnostics) */
+/** Inspect session (for diagnostics) — verifies signature */
 export async function GET(request: Request) {
   const cookie = request.headers.get('cookie') || '';
   const match = cookie
@@ -73,5 +79,6 @@ export async function GET(request: Request) {
     userId: session.userId,
     email: session.email,
     roleCode: session.roleCode,
+    companyId: session.companyId || null,
   });
 }

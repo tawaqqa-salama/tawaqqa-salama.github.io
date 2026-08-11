@@ -1,9 +1,9 @@
 import { NextResponse } from 'next/server';
-import { requireApiSession } from '@/lib/api/require-session';
 import { submitInvoiceToZatca } from '@/lib/zatca/api-client';
 import { loadZatcaSettings } from '@/lib/zatca/settings';
 import type { ZatcaInvoiceKind, ZatcaSettings } from '@/lib/zatca/types';
 import { assertLiveOrDemoAllowed } from '@/lib/runtime/mode';
+import { withTenantApi } from '@/lib/tenant/api-guard';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -18,8 +18,8 @@ type Body = {
 };
 
 export async function POST(request: Request) {
-  const gate = requireApiSession(request);
-  if (!gate.ok) return gate.response;
+  const gated = await withTenantApi(request, { module: 'finance_zatca' });
+  if ('response' in gated) return gated.response;
 
   const live = assertLiveOrDemoAllowed('ZATCA submit');
   if (!live.ok) {
@@ -39,12 +39,18 @@ export async function POST(request: Request) {
       );
     }
 
-    const serverSettings = await loadZatcaSettings();
-    // Never trust client-provided CSID/secret/private key — merge non-secret overlays only
+    // Load ZATCA credentials for the authenticated tenant only — never from client body secrets
+    const serverSettings = await loadZatcaSettings(gated.ctx.tenantId);
     const settings: ZatcaSettings = {
       ...serverSettings,
       invoice_kind: body.invoiceKind || body.settings?.invoice_kind || serverSettings.invoice_kind,
       environment: body.settings?.environment || serverSettings.environment,
+      // Strip any client-supplied secrets even if present on Partial<ZatcaSettings>
+      csid: serverSettings.csid,
+      secret: serverSettings.secret,
+      private_key_pem: serverSettings.private_key_pem,
+      certificate_pem: serverSettings.certificate_pem,
+      otp: serverSettings.otp,
     };
 
     if (!settings.csid || !settings.secret) {
@@ -69,7 +75,7 @@ export async function POST(request: Request) {
     return NextResponse.json(
       {
         ...result,
-        actorUserId: gate.session.userId,
+        actorUserId: gated.ctx.session.userId,
       },
       { status: result.ok ? 200 : 400 }
     );
