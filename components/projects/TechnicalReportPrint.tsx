@@ -3,7 +3,6 @@ import type { ClientRecord } from '@/lib/types/client';
 import type { ProjectEngineeringData, TechnicalReport } from '@/lib/types/project-reports';
 import {
   generateEngineeringStudy,
-  printEngineeringStudy,
   type ReportLocale,
 } from '@/lib/projects/engineering-report-engine';
 import {
@@ -11,11 +10,15 @@ import {
   shouldUseAdminUcReport,
 } from '@/lib/projects/admin-uc-report';
 import { hydrateTechnicalReportPhotosForDisplay } from '@/lib/projects/technical-report-photos';
+import { appendComplianceMatrixToReportHtml } from '@/lib/projects/compliance';
+import { buildEngineeringStudyHtml } from '@/lib/projects/engineering-report-engine/print-html';
+import { openDocumentPreview } from '@/lib/print/document-preview';
 
 /**
  * Technical report print router:
  * - Administrative + under construction → independent Admin UC template
  * - Otherwise → Nasaim-style engineering study
+ * Both paths append the SBC Compliance Matrix without removing existing sections.
  */
 export async function printTechnicalReport(params: {
   client: ClientRecord;
@@ -55,9 +58,24 @@ export async function printTechnicalReport(params: {
     locale: params.locale || 'ar',
   });
 
-  printEngineeringStudy({
+  const baseHtml = buildEngineeringStudyHtml({
     document,
     company: params.company,
-    clientCode: params.client.client_code,
+  });
+  const html = appendComplianceMatrixToReportHtml({
+    html: baseHtml,
+    client: params.client,
+    engineeringData,
+  });
+
+  const title =
+    document.locale === 'ar'
+      ? `دراسة هندسية — ${document.project_name}`
+      : `Engineering Study — ${document.project_name}`;
+
+  openDocumentPreview({
+    title,
+    html,
+    fileName: `engineering-study-${params.client.client_code || document.client_code || 'report'}`,
   });
 }

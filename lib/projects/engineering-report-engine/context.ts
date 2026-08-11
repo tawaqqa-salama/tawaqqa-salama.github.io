@@ -41,6 +41,8 @@ export type EngineeringReportContext = {
   client: ClientRecord;
   report: TechnicalReport;
   buildingPlan: BuildingPlanReport | null;
+  /** Full engineering bundle when available (for SBC compliance matrix, etc.) */
+  engineeringData?: ProjectEngineeringData | null;
   facility: ReturnType<typeof getTechnicalReportFacilitySnapshot>;
   selection: EngineeringSelection;
   rulesForm: EngineeringFormState;
@@ -503,6 +505,7 @@ export function buildEngineeringReportContext(params: {
     client,
     report,
     buildingPlan,
+    engineeringData: params.engineeringData || null,
     facility,
     selection: rulesForm.selection,
     rulesForm,

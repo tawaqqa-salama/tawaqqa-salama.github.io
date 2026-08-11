@@ -11,6 +11,7 @@ import {
 } from '@/lib/business/project-reports';
 import TechnicalReportSection from '@/components/projects/TechnicalReportSection';
 import FireProtectionDesignSection from '@/components/projects/FireProtectionDesignSection';
+import ComplianceMatrixPanel from '@/components/projects/ComplianceMatrixPanel';
 import { printTechnicalReport } from '@/components/projects/TechnicalReportPrint';
 import {
   mergeFireProtectionDesign,
@@ -651,6 +652,11 @@ export default function ProjectReportModal({
                       engineeringData: data,
                     })}
                     onChange={(fire_protection_design) => patch({ fire_protection_design })}
+                  />
+                  <ComplianceMatrixPanel
+                    client={client}
+                    data={data}
+                    onChange={(compliance) => patch({ compliance })}
                   />
                   <TechnicalReportSection
                     client={client}

@@ -3,6 +3,7 @@ import type { ClientRecord } from '@/lib/types/client';
 import type { ProjectEngineeringData, TechnicalReport } from '@/lib/types/project-reports';
 import { generateAdminUcReport } from '@/lib/projects/admin-uc-report/generate';
 import { buildAdminUcReportHtml } from '@/lib/projects/admin-uc-report/template';
+import { appendComplianceMatrixToReportHtml } from '@/lib/projects/compliance';
 
 export function printAdminUcTechnicalReport(params: {
   client: ClientRecord;
@@ -16,7 +17,12 @@ export function printAdminUcTechnicalReport(params: {
     engineeringData: params.engineeringData,
     company: params.company,
   });
-  const html = buildAdminUcReportHtml({ document, company: params.company });
+  const baseHtml = buildAdminUcReportHtml({ document, company: params.company });
+  const html = appendComplianceMatrixToReportHtml({
+    html: baseHtml,
+    client: params.client,
+    engineeringData: params.engineeringData,
+  });
   void import('@/lib/print/document-preview').then(({ openDocumentPreview }) => {
     openDocumentPreview({
       title: `التقرير الفني — مبنى إداري تحت الإنشاء — ${document.project_name}`,

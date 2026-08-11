@@ -30,6 +30,11 @@ import type { CompanyProfile } from '@/lib/company-profile';
 import { validateCompletionAttachmentsForIssue } from '@/lib/projects/completion-certificate-attachments';
 import { seedCompletionCertificate } from '@/lib/projects/completion-certificate';
 import { getClientIdentitySnapshot } from '@/lib/projects/client-identity';
+import {
+  gateBlockerMessages,
+  isComplianceGatedStage,
+  runProjectCompliance,
+} from '@/lib/projects/compliance';
 
 export const WORKFLOW_STAGE_IDS = [
   'contract',
@@ -328,6 +333,16 @@ export function stageApprovalBlockers(
     default:
       break;
   }
+
+  // Saudi Code Compliance Engine gate (additive): Engineering Delivery, Final Inspection,
+  // Completion Certificate, and Technical Report approval require mandatory PASS.
+  if (isComplianceGatedStage(stageId)) {
+    const run = runProjectCompliance({ client, data });
+    if (run.gate === 'BLOCKED') {
+      blockers.push(...gateBlockerMessages(run));
+    }
+  }
+
   return blockers;
 }
 

@@ -22,6 +22,11 @@ import { TECH_REPORT_GENERAL_RECOMMENDATIONS } from '@/lib/constants/technical-r
 import { buildEngineeringReportContext } from '@/lib/projects/engineering-report-engine/context';
 import type { ClientRecord } from '@/lib/types/client';
 import type { ProjectEngineeringData, TechnicalReport } from '@/lib/types/project-reports';
+import {
+  complianceStatusLabelAr,
+  runProjectCompliance,
+} from '@/lib/projects/compliance';
+import { EMPTY_PROJECT_ENGINEERING_DATA } from '@/lib/types/project-reports';
 
 function missing(locale: ReportLocale): EngineeringStudyParagraph {
   return {
@@ -614,9 +619,25 @@ const generators: Partial<Record<EngineeringStudySectionId, Gen>> = {
         : `Compliance review via the Engineering Decision Engine: ${rulesSummaryEn}. Gate status: ${rulesGateOk ? 'open (compliant cascade)' : 'closed / incomplete'}. Missing inputs: ${
             missingInputs.length ? missingInputs.join(', ') : 'none within recorded minimum'
           }. Visible rule violations: ${violations.length}. Engineering conclusions that conflict with locked values or disallowed options are not approved.`;
-    return {
-      paragraphs: [p(text, ['SBC 801', 'NFPA', 'Civil Defense', 'Company Standards'], ctx.allowedCitations)],
+
+    const paragraphs = [
+      p(text, ['SBC 801', 'NFPA', 'Civil Defense', 'Company Standards'], ctx.allowedCitations),
+    ];
+
+    const data: ProjectEngineeringData = {
+      ...EMPTY_PROJECT_ENGINEERING_DATA,
+      ...(ctx.engineeringData || {}),
+      technical_report: ctx.report,
+      building_plan: ctx.buildingPlan || ctx.engineeringData?.building_plan || EMPTY_PROJECT_ENGINEERING_DATA.building_plan,
     };
+    const run = runProjectCompliance({ client: ctx.client, data });
+    const sbcText =
+      locale === 'ar'
+        ? `تقييم المطابقة بناءً على البيانات والقواعد الكودية الموثقة (SBC 201/801): «${complianceStatusLabelAr(run)}» — البوابة ${run.gate}. PASS/FAIL/NEEDS_DATA مفصّلة في الملحق. ليس إعلانًا مطلقًا بمطابقة SBC/الدفاع المدني.`
+        : `Compliance assessment based on documented rules/data (SBC 201/801): «${complianceStatusLabelAr(run)}» — gate ${run.gate}. PASS/FAIL/NEEDS_DATA in appendix. Not an absolute SBC/Civil Defense compliance claim.`;
+    paragraphs.push(p(sbcText, ['SBC 201', 'SBC 801'], ctx.allowedCitations));
+
+    return { paragraphs };
   },
 
   summary: (ctx) => {
