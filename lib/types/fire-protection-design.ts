@@ -27,6 +27,16 @@ export type MeasuredValue<U extends string> = {
 
 export type YesNoUnknown = 'yes' | 'no' | 'unknown';
 
+/** Pump set certification (UL listed vs non-UL). Legacy Electric/Diesel/Other migrated away. */
+export type PumpCertification = '' | 'UL' | 'non UL';
+
+export type PumpUnitInputs = {
+  exists: YesNoUnknown;
+  capacity: MeasuredValue<FlowUnit>;
+  pressure: MeasuredValue<PressureUnit>;
+  source: ValueSource;
+};
+
 export type SupportingSystemState = {
   status: 'required' | 'not_required' | 'by_design' | 'unknown';
   note?: string;
@@ -97,9 +107,14 @@ export type FireProtectionDesign = {
     tank_material?: '' | 'خرسانة' | 'فولاذ' | 'أخرى' | string;
   };
 
+  /**
+   * Fire pump set — always triple: Electric + Diesel + Jockey.
+   * `type` = UL / non UL certification for the set (not drive type).
+   * Capacity/pressure on `pump` = Electric unit (backward compatible).
+   */
   pump: {
     exists: YesNoUnknown;
-    type: '' | 'Electric' | 'Diesel' | 'Other';
+    type: PumpCertification;
     capacity: MeasuredValue<FlowUnit>;
     pressure: MeasuredValue<PressureUnit>;
     rated_flow: MeasuredValue<FlowUnit>;
@@ -107,20 +122,21 @@ export type FireProtectionDesign = {
     source: ValueSource;
   };
 
-  jockey_pump: {
-    exists: YesNoUnknown;
-    capacity: MeasuredValue<FlowUnit>;
-    pressure: MeasuredValue<PressureUnit>;
-    source: ValueSource;
-  };
+  diesel_pump: PumpUnitInputs;
+  jockey_pump: PumpUnitInputs;
 
   water_tank: {
     exists: YesNoUnknown;
     capacity_m3: MeasuredValue<'m³'>;
     water_demand_lpm: MeasuredValue<'L/min'>;
     duration_min: MeasuredValue<'min'>;
-    /** Derived: Q × T / 1000 — preliminary engineering check only */
+    /**
+     * Civil Defense preliminary tank volume:
+     * V (m³) = Q (L/min) × T (min) / 1000
+     */
     calculated_required_volume_m3: number | null;
+    /** Human-readable equation snapshot for UI/report */
+    formula_ar?: string;
     source: ValueSource;
   };
 
@@ -196,6 +212,21 @@ const measured = <U extends string>(unit: U, source: ValueSource = 'engineer_inp
   source,
 });
 
+/** Civil Defense / SBC fire-tank sizing equation (preliminary). */
+export const TANK_VOLUME_FORMULA_AR =
+  'V (م³) = Q (لتر/دقيقة) × T (دقيقة) ÷ 1000';
+export const TANK_VOLUME_FORMULA_EN = 'V (m³) = Q (L/min) × T (min) / 1000';
+/** Default operating duration used when engineer has not overridden (minutes). */
+export const DEFAULT_CD_TANK_DURATION_MIN = 60;
+
+export function gpmToLpm(gpm: number): number {
+  return Math.round(gpm * 3.785411784 * 100) / 100;
+}
+
+export function lpmToGpm(lpm: number): number {
+  return Math.round((lpm / 3.785411784) * 100) / 100;
+}
+
 export const EMPTY_FIRE_PROTECTION_DESIGN: FireProtectionDesign = {
   lifecycle_mode: 'under_construction',
   building_kind: 'administrative',
@@ -225,7 +256,7 @@ export const EMPTY_FIRE_PROTECTION_DESIGN: FireProtectionDesign = {
     tank_material: '',
   },
   pump: {
-    exists: 'unknown',
+    exists: 'yes',
     type: '',
     capacity: measured('GPM'),
     pressure: measured('bar'),
@@ -233,18 +264,25 @@ export const EMPTY_FIRE_PROTECTION_DESIGN: FireProtectionDesign = {
     rated_pressure: measured('bar'),
     source: 'engineer_input',
   },
+  diesel_pump: {
+    exists: 'yes',
+    capacity: measured('GPM'),
+    pressure: measured('bar'),
+    source: 'engineer_input',
+  },
   jockey_pump: {
-    exists: 'unknown',
+    exists: 'yes',
     capacity: measured('GPM'),
     pressure: measured('bar'),
     source: 'engineer_input',
   },
   water_tank: {
-    exists: 'unknown',
+    exists: 'yes',
     capacity_m3: measured('m³'),
     water_demand_lpm: measured('L/min'),
-    duration_min: measured('min'),
+    duration_min: { value: 60, unit: 'min', input_unit: 'min', source: 'rule_requirement' },
     calculated_required_volume_m3: null,
+    formula_ar: TANK_VOLUME_FORMULA_AR,
     source: 'engineer_input',
   },
   sprinkler: {
@@ -289,6 +327,35 @@ export const EMPTY_FIRE_PROTECTION_DESIGN: FireProtectionDesign = {
 export const NOT_ENTERED_AR = 'لم يتم إدخال القيمة';
 /** Truly unavailable project fact (e.g. no permit number on file). */
 export const NOT_AVAILABLE_AR = 'غير متوفر';
+
+export function normalizePumpCertification(raw: unknown): PumpCertification {
+  if (raw === 'UL' || raw === 'non UL') return raw;
+  // Legacy drive-type values — certification must be re-selected
+  if (raw === 'Electric' || raw === 'Diesel' || raw === 'Other' || raw === 'nano UL') return '';
+  if (typeof raw === 'string' && /non\s*ul/i.test(raw)) return 'non UL';
+  if (typeof raw === 'string' && /^ul$/i.test(raw.trim())) return 'UL';
+  return '';
+}
+
+export function flowToLpm(m: MeasuredValue<FlowUnit> | null | undefined): number | null {
+  if (!m || m.value == null || !Number.isFinite(m.value)) return null;
+  return m.unit === 'GPM' ? gpmToLpm(m.value) : m.value;
+}
+
+/** Design demand Q = max(electric, diesel) in L/min. */
+export function designPumpDemandLpm(design: Pick<FireProtectionDesign, 'pump' | 'diesel_pump'>): number | null {
+  const electric = flowToLpm(design.pump.capacity);
+  const diesel = flowToLpm(design.diesel_pump?.capacity);
+  if (electric == null && diesel == null) return null;
+  return Math.max(electric ?? 0, diesel ?? 0);
+}
+
+export function formatTankFormulaFilled(demandLpm: number | null, durationMin: number | null, volumeM3: number | null): string {
+  const q = demandLpm != null ? String(demandLpm) : 'Q';
+  const t = durationMin != null ? String(durationMin) : 'T';
+  const v = volumeM3 != null ? String(volumeM3) : 'V';
+  return `${TANK_VOLUME_FORMULA_AR}  ←  ${v} = ${q} × ${t} ÷ 1000`;
+}
 
 export function calcRequiredTankVolumeM3(
   demandLpm: number | null | undefined,
@@ -336,14 +403,6 @@ export function compareTankVolume(
     status: 'preliminary_ok',
     label_ar: 'المدخلات تغطي الحجم النظري الأولي (تحقق أولي — ليس اعتماد NFPA)',
   };
-}
-
-export function gpmToLpm(gpm: number): number {
-  return Math.round(gpm * 3.785411784 * 100) / 100;
-}
-
-export function lpmToGpm(lpm: number): number {
-  return Math.round((lpm / 3.785411784) * 100) / 100;
 }
 
 export function barToPsi(bar: number): number {
