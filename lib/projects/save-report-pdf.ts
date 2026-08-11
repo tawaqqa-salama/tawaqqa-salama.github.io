@@ -4,7 +4,7 @@
  */
 
 import { supabase, isDemoMode } from '@/lib/supabase';
-import type { CompanyProfile } from '@/lib/company-profile';
+import { DEFAULT_COMPANY_PROFILE, type CompanyProfile } from '@/lib/company-profile';
 import type { ClientRecord } from '@/lib/types/client';
 import type {
   FieldVisitReport,
@@ -350,7 +350,7 @@ export async function saveSupervisionAsPdfAttachment(params: {
     const html = buildSupervisionReportHtml({
       client,
       report: supervision,
-      company: company || null,
+      company: company || DEFAULT_COMPANY_PROFILE,
     });
     const stamp = supervision.report_date || new Date().toISOString().slice(0, 10);
     const fileName = `supervision-${client.client_code || client.id}-${stamp}-${Date.now()}.pdf`;
