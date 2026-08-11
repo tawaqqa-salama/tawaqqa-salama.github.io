@@ -9,6 +9,7 @@ import { trimSupervisionTextFields } from '@/lib/projects/supervision-report';
 import { sanitizeEngineeringDataForPersist } from '@/lib/projects/sanitize-engineering-files';
 import { backupEngineeringDataLocally } from '@/lib/supabase/safe-client-write';
 import { saveStage5LiveBundle } from '@/lib/projects/stage5-live-store';
+import { saveStage4LiveBundle } from '@/lib/projects/stage4-live-store';
 
 export type UpsertProjectReportResult = {
   error: string | null;
@@ -225,6 +226,8 @@ export async function saveReportData(
     pipelineStage?: string | null;
     /** Prefer lean supervision merge + relational batch upsert */
     supervisionFocus?: boolean;
+    /** Stage 4 technical report — dedicated live table, no fat JSONB rewrite */
+    techReportFocus?: boolean;
   }
 ): Promise<UpsertProjectReportResult> {
   const stamped = sanitizeEngineeringDataForPersist(
@@ -234,11 +237,26 @@ export async function saveReportData(
         ? trimSupervisionTextFields(nextData.supervision_report)
         : nextData.supervision_report,
     },
-    { aggressive: Boolean(options?.supervisionFocus) }
+    { aggressive: Boolean(options?.supervisionFocus || options?.techReportFocus) }
   );
 
   // Optimistic local persistence BEFORE network — UI retry keeps user input
   backupEngineeringDataLocally(clientId, stamped);
+
+  // Radical path for stage 4: never rewrite project_engineering_data
+  if (options?.techReportFocus) {
+    const live = await saveStage4LiveBundle({
+      clientId,
+      technicalReport: stamped.technical_report,
+      fireProtectionDesign: stamped.fire_protection_design,
+      workflow: stamped.workflow,
+      pipelineStage: options?.pipelineStage ?? null,
+    });
+    if (live.error) {
+      return { error: live.error, usedRelationalTables: true, localOnly: true };
+    }
+    return { error: null, usedRelationalTables: true };
+  }
 
   // Radical path for stage 5: never rewrite project_engineering_data
   if (options?.supervisionFocus && stamped.supervision_report) {

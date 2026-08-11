@@ -61,6 +61,10 @@ import {
   loadStage5LiveBundle,
 } from '@/lib/projects/stage5-live-store';
 import {
+  hydrateEngineeringWithStage4,
+  loadStage4LiveBundle,
+} from '@/lib/projects/stage4-live-store';
+import {
   isLastTechReportChapter,
   isTechReportChapterId,
   nextTechReportChapter,
@@ -145,9 +149,13 @@ export default function ProjectReportModal({
         ),
       };
       let synced = syncProjectVisitsFromQuotation(withSupervision, visitsCount);
-      // Stage 5 lives in dedicated tables — overlay after fat JSONB parse
-      const stage5 = await loadStage5LiveBundle(client.id);
+      // Stages 4–5 live in dedicated tables — overlay after fat JSONB parse
+      const [stage4, stage5] = await Promise.all([
+        loadStage4LiveBundle(client.id),
+        loadStage5LiveBundle(client.id),
+      ]);
       if (cancelled) return;
+      synced = hydrateEngineeringWithStage4(synced, stage4);
       synced = hydrateEngineeringWithStage5(synced, stage5);
       setData(synced);
       const savedChapter = synced.workflow?.tech_report_chapter;
@@ -196,6 +204,8 @@ export default function ProjectReportModal({
       stayOpen?: boolean;
       /** Batch-upsert supervision items + lean JSONB merge (avoids statement timeout) */
       supervisionFocus?: boolean;
+      /** Stage 4 technical report live table (no fat JSONB rewrite) */
+      techReportFocus?: boolean;
     }
   ): Promise<boolean> => {
     setSaving(true);
@@ -236,10 +246,13 @@ export default function ProjectReportModal({
     // Do NOT treat the whole inspections stage as supervision-only merge —
     // that previously dropped field_visits updates when lean RPC succeeded.
     const supervisionFocus = options?.supervisionFocus === true;
+    const techReportFocus =
+      options?.techReportFocus === true || activeStage === 'technical_report';
 
     const result = await saveReportData(client.id, stamped, {
       pipelineStage,
       supervisionFocus,
+      techReportFocus: techReportFocus && !supervisionFocus,
     });
 
     setSaving(false);
