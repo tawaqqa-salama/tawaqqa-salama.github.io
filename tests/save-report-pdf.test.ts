@@ -107,7 +107,7 @@ describe('saveFieldVisitAsPdfAttachment', () => {
     expect(second.data.field_visits[1].pdf_snapshots || []).toHaveLength(1);
     expect(second.data.report_pdf_archive || []).toHaveLength(2);
     expect(rpcMock).toHaveBeenCalledWith(
-      'save_stage5_live_bundle',
+      'save_project_engineering_live',
       expect.objectContaining({ p_client_id: 'c1' })
     );
   });

@@ -61,6 +61,10 @@ import {
   loadStage5LiveBundle,
 } from '@/lib/projects/stage5-live-store';
 import {
+  hydrateEngineeringWithLive,
+  loadEngineeringLive,
+} from '@/lib/projects/engineering-live-store';
+import {
   hydrateEngineeringWithStage4,
   loadStage4LiveBundle,
 } from '@/lib/projects/stage4-live-store';
@@ -149,14 +153,16 @@ export default function ProjectReportModal({
         ),
       };
       let synced = syncProjectVisitsFromQuotation(withSupervision, visitsCount);
-      // Stages 4–5 live in dedicated tables — overlay after fat JSONB parse
-      const [stage4, stage5] = await Promise.all([
+      // Older stage 4/5 tables first; all-stages live store wins last
+      const [live, stage4, stage5] = await Promise.all([
+        loadEngineeringLive(client.id),
         loadStage4LiveBundle(client.id),
         loadStage5LiveBundle(client.id),
       ]);
       if (cancelled) return;
       synced = hydrateEngineeringWithStage4(synced, stage4);
       synced = hydrateEngineeringWithStage5(synced, stage5);
+      synced = hydrateEngineeringWithLive(synced, live);
       setData(synced);
       const savedChapter = synced.workflow?.tech_report_chapter;
       setTechReportChapter(isTechReportChapterId(savedChapter) ? savedChapter : 'facility');

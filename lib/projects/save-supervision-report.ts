@@ -9,7 +9,7 @@ import { trimSupervisionTextFields } from '@/lib/projects/supervision-report';
 import { sanitizeEngineeringDataForPersist } from '@/lib/projects/sanitize-engineering-files';
 import { backupEngineeringDataLocally } from '@/lib/supabase/safe-client-write';
 import { saveStage5LiveBundle } from '@/lib/projects/stage5-live-store';
-import { saveStage4LiveBundle } from '@/lib/projects/stage4-live-store';
+import { saveEngineeringLive } from '@/lib/projects/engineering-live-store';
 
 export type UpsertProjectReportResult = {
   error: string | null;
@@ -217,14 +217,14 @@ async function persistEngineeringJsonb(
 
 /**
  * Save engineering payload with optimistic local backup first.
- * For supervision-heavy saves: batch upsert report_items, then lean JSONB merge.
+ * ALL stages use project_engineering_live — never rewrite fat JSONB.
  */
 export async function saveReportData(
   clientId: string,
   nextData: ProjectEngineeringData,
   options?: {
     pipelineStage?: string | null;
-    /** Prefer lean supervision merge + relational batch upsert */
+    /** Also mirror visits/supervision into relational stage-5 tables when available */
     supervisionFocus?: boolean;
     /** Stage 4 technical report — dedicated live table, no fat JSONB rewrite */
     techReportFocus?: boolean;
@@ -237,48 +237,32 @@ export async function saveReportData(
         ? trimSupervisionTextFields(nextData.supervision_report)
         : nextData.supervision_report,
     },
-    { aggressive: Boolean(options?.supervisionFocus || options?.techReportFocus) }
+    { aggressive: true }
   );
 
   // Optimistic local persistence BEFORE network — UI retry keeps user input
   backupEngineeringDataLocally(clientId, stamped);
 
-  // Radical path for stage 4: never rewrite project_engineering_data
-  if (options?.techReportFocus) {
-    const live = await saveStage4LiveBundle({
-      clientId,
-      technicalReport: stamped.technical_report,
-      fireProtectionDesign: stamped.fire_protection_design,
-      workflow: stamped.workflow,
-      pipelineStage: options?.pipelineStage ?? null,
-    });
-    if (live.error) {
-      return { error: live.error, usedRelationalTables: true, localOnly: true };
-    }
-    return { error: null, usedRelationalTables: true };
+  // Universal path: all stages → live table (never project_engineering_data)
+  const live = await saveEngineeringLive({
+    clientId,
+    data: stamped,
+    pipelineStage: options?.pipelineStage ?? null,
+  });
+  if (live.error) {
+    return { error: live.error, usedRelationalTables: true, localOnly: true };
   }
 
-  // Radical path for stage 5: never rewrite project_engineering_data
+  // Best-effort stage-5 relational mirror for PDF index / report_items
   if (options?.supervisionFocus && stamped.supervision_report) {
-    const live = await saveStage5LiveBundle({
+    await saveStage5LiveBundle({
       clientId,
       fieldVisits: stamped.field_visits || [],
       supervision: stamped.supervision_report,
       pdfArchive: stamped.report_pdf_archive || [],
       pipelineStage: options?.pipelineStage ?? null,
     });
-    if (live.error) {
-      return { error: live.error, usedRelationalTables: true, localOnly: true };
-    }
-    return { error: null, usedRelationalTables: true };
   }
 
-  const pipelineStage = options?.pipelineStage ?? null;
-  const error = await persistEngineeringJsonb(clientId, stamped, pipelineStage, 'full');
-
-  if (error) {
-    return { error, usedRelationalTables: false, localOnly: true };
-  }
-
-  return { error: null, usedRelationalTables: false };
+  return { error: null, usedRelationalTables: true };
 }

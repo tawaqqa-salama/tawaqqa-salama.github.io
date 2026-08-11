@@ -1,6 +1,7 @@
 import { loadSession } from '@/lib/auth/session';
 import { supabase } from '@/lib/supabase';
 import { mergeLocalClientOverrides } from '@/lib/supabase/safe-client-write';
+import { attachEngineeringLiveToClient } from '@/lib/projects/engineering-live-store';
 import { shouldShowInProjects } from '@/lib/business/pipeline';
 import {
   ARCHIVE_PAGE_SIZE,
@@ -93,7 +94,8 @@ export async function fetchClientById(
   if (tenantId && (data as { company_id?: string }).company_id && (data as { company_id: string }).company_id !== tenantId) {
     return null;
   }
-  return mergeLocalClientOverrides(data as ClientRecord);
+  const merged = mergeLocalClientOverrides(data as ClientRecord);
+  return attachEngineeringLiveToClient(merged);
 }
 
 export async function fetchSalesDocuments(limit = ARCHIVE_PAGE_SIZE): Promise<SalesDocument[]> {
