@@ -153,16 +153,16 @@ export default function ProjectReportModal({
         ),
       };
       let synced = syncProjectVisitsFromQuotation(withSupervision, visitsCount);
-      // Prefer all-stages live store; keep stage 4/5 overlays for earlier partial migrations
+      // Older stage 4/5 tables first; all-stages live store wins last
       const [live, stage4, stage5] = await Promise.all([
         loadEngineeringLive(client.id),
         loadStage4LiveBundle(client.id),
         loadStage5LiveBundle(client.id),
       ]);
       if (cancelled) return;
-      synced = hydrateEngineeringWithLive(synced, live);
       synced = hydrateEngineeringWithStage4(synced, stage4);
       synced = hydrateEngineeringWithStage5(synced, stage5);
+      synced = hydrateEngineeringWithLive(synced, live);
       setData(synced);
       const savedChapter = synced.workflow?.tech_report_chapter;
       setTechReportChapter(isTechReportChapterId(savedChapter) ? savedChapter : 'facility');
