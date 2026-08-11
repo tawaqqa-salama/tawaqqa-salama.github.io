@@ -31,31 +31,38 @@ export type EngineerOverride = {
   reason: string;
   /** Required SBC / code section reference */
   codeReference: string;
+  /** Engineer identity (name / user id) — required for accepted override */
   engineerName?: string;
+  engineerUserId?: string;
   overriddenAt: string;
-  /** Status claimed after override — never auto-PASS without reason+ref */
+  /** Status claimed after override — never auto-PASS without reason+ref+identity */
   resultingStatus: 'PASS' | 'N/A';
 };
 
 export type ComplianceApplicability = {
-  /** Human-readable when rule applies */
   description: string;
-  /** Optional predicate id for tests / docs */
   when?: string;
 };
 
 export type ComplianceRuleEvaluation = {
   status: ComplianceResultStatus;
+  /** Human-readable reason (always set) */
   message: string;
-  /** Concrete inputs used (for matrix) */
+  reason?: string;
   inputs?: Record<string, string | number | boolean | null | undefined>;
   evidence?: ComplianceEvidence[];
-  /** Suggested remediation */
   remediation?: string;
+  /** Trace fields for matrix / audit */
+  actual_value?: string | number | boolean | null;
+  required_value?: string | number | boolean | null;
+  unit?: string | null;
+  occupancy?: string | null;
+  condition?: string | null;
+  code_reference?: string | null;
+  missing_data?: string[];
 };
 
 export type ComplianceRuleContext = {
-  /** ISO timestamp of evaluation */
   evaluatedAt: string;
   client: {
     id?: string;
@@ -67,10 +74,15 @@ export type ComplianceRuleContext = {
   };
   building: {
     occupancy_classification?: string | null;
+    /** Building use / type classification (not construction type) */
     building_type_code?: string | null;
     group_letter?: string | null;
+    /** SBC construction type (Type I-A …) — never guessed from unrelated fields */
     construction_type?: string | null;
+    /** Gross building floor area (m²) — NOT site area */
     building_area_m2?: number | null;
+    /** Site / plot area (m²) — kept separate; not used as building area substitute */
+    total_site_area_m2?: number | null;
     building_height_m?: number | null;
     stories?: number | null;
     basement_floors?: number | null;
@@ -80,6 +92,8 @@ export type ComplianceRuleContext = {
     windowless?: boolean | null;
     atrium?: boolean | null;
     special_conditions: string[];
+    /** Primary SBC occupancy code when known from zones */
+    primary_occupancy_code?: string | null;
   };
   occupancyZones: Array<{
     floor_name: string;
@@ -95,25 +109,31 @@ export type ComplianceRuleContext = {
     exits_count?: number | null;
     stairs_count?: number | null;
     emergency_exit_doors?: string | null;
-    /** From design / CAD when present */
     travel_distance_m?: number | null;
     common_path_m?: number | null;
     dead_end_m?: number | null;
     exit_capacity_persons?: number | null;
     exit_separation_m?: number | null;
+    /** Engineer-documented required separation (m) when code table not automated */
+    required_exit_separation_m?: number | null;
     corridor_width_m?: number | null;
+    required_corridor_width_m?: number | null;
     door_width_m?: number | null;
+    required_door_width_m?: number | null;
     stair_width_m?: number | null;
+    required_stair_width_m?: number | null;
     exit_discharge_ok?: boolean | null;
     exit_access_ok?: boolean | null;
     notes?: string | null;
-    /** metrics from FireProtectionDesign.egress */
     metrics: Array<{ label: string; value: string }>;
   };
   fireAccess: {
     site_entrance?: string | null;
     fire_road?: string | null;
     road_width_m?: number | null;
+    /** Documented min width from project/code entry — not invented */
+    required_road_width_m?: number | null;
+    required_road_width_code_ref?: string | null;
     building_access?: string | null;
     staging_area?: string | null;
     fdc_present?: string | null;
@@ -122,8 +142,12 @@ export type ComplianceRuleContext = {
   };
   fireProtection: {
     hazard_class?: string | null;
+    /** Determined requirement */
     sprinkler_required?: 'yes' | 'no' | 'unknown' | null;
+    /** Stated as present on plan/design */
     sprinkler_provided?: 'yes' | 'no' | 'unknown' | null;
+    /** Verified via calculation/evidence (not merely “yes”) */
+    sprinkler_verified?: boolean | null;
     sprinkler_system_type?: string | null;
     design_area_m2?: number | null;
     density_lpm_m2?: number | null;
@@ -143,16 +167,22 @@ export type ComplianceRuleContext = {
     applicable_codes: string[];
   };
   hydraulic: {
+    /** True only when core network numeric fields are present — never from attachment alone */
     has_network_data: boolean;
+    attachment_count: number;
     k_factor?: number | null;
     flow_lpm?: number | null;
     pressure_bar?: number | null;
+    required_residual_pressure_bar?: number | null;
     pipe_diameter_mm?: number | null;
     pipe_length_m?: number | null;
     elevation_m?: number | null;
     friction_loss_bar?: number | null;
     remote_area_m2?: number | null;
     node_demand_lpm?: number | null;
+    pump_flow_lpm?: number | null;
+    pump_pressure_bar?: number | null;
+    tank_volume_m3?: number | null;
   };
   fireAlarm: {
     panel?: string | null;
@@ -163,7 +193,10 @@ export type ComplianceRuleContext = {
     coverage?: string | null;
     interfaces?: string | null;
     cause_and_effect?: string | null;
+    /** Determined requirement */
     required?: boolean | null;
+    provided?: 'yes' | 'no' | 'unknown' | null;
+    verified?: boolean | null;
     building_plan_alarm?: 'yes' | 'no' | 'unknown' | '' | null;
   };
   smokeControl: {
@@ -197,15 +230,24 @@ export type ComplianceRuleResult = {
   severity: ComplianceSeverity;
   applicability: string;
   requiredInputs: string[];
+  /** Original engine status before override */
   status: ComplianceResultStatus;
   /** Effective status after engineer override (if any) */
   effectiveStatus: ComplianceResultStatus;
   message: string;
+  reason: string;
   inputs: Record<string, string | number | boolean | null | undefined>;
   evidence: ComplianceEvidence[];
   remediation?: string;
   override?: EngineerOverride | null;
   evidenceRequired: ComplianceEvidenceKind[];
+  actual_value?: string | number | boolean | null;
+  required_value?: string | number | boolean | null;
+  unit?: string | null;
+  occupancy?: string | null;
+  condition?: string | null;
+  code_reference?: string | null;
+  missing_data?: string[];
 };
 
 export type ComplianceGateDecision = 'ALLOW' | 'BLOCKED';
@@ -216,7 +258,6 @@ export type ComplianceRunResult = {
   counts: Record<ComplianceResultStatus, number>;
   mandatoryFail: number;
   mandatoryNeedsData: number;
-  /** True only when every mandatory rule is PASS (or overridden to PASS/N/A) */
   allMandatoryPass: boolean;
   gate: ComplianceGateDecision;
   gateReasons: string[];
@@ -228,10 +269,13 @@ export type ComplianceMatrixRow = {
   code: string;
   section: string;
   input: string;
+  actual: string;
+  required: string;
   result: ComplianceResultStatus;
   evidence: string;
   engineerOverride: string;
   status: ComplianceResultStatus;
+  code_reference: string;
 };
 
 /** Persisted project snapshot (additive on ProjectEngineeringData) */

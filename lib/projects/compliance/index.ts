@@ -1,6 +1,5 @@
 /**
  * Saudi Code Compliance Engine (SBC 201 / SBC 801) — public API.
- * Additive layer over existing project / fire / egress / design-center code.
  */
 
 export type * from '@/lib/projects/compliance/types';
@@ -11,6 +10,11 @@ export {
   parseNumber,
   parseYesNoUnknown,
   ynFromYesNoValue,
+  compareToThreshold,
+  needsData,
+  passEval,
+  failEval,
+  naEval,
 } from '@/lib/projects/compliance/evidence';
 export {
   applyOverride,
@@ -21,7 +25,18 @@ export {
   isComplianceGatedStage,
 } from '@/lib/projects/compliance/results';
 export { COMPLIANCE_RULES, getComplianceRuleById, requiredExitsFromOccupantLoad } from '@/lib/projects/compliance/rules';
-export { buildComplianceContext, resolveFireProtectionDesign } from '@/lib/projects/compliance/context';
+export {
+  resolveTravelDistanceLimitM,
+  resolveExitSeparationMinM,
+  resolveFireAccessMinWidthM,
+  occupancyLabel,
+} from '@/lib/projects/compliance/thresholds';
+export {
+  buildComplianceContext,
+  resolveFireProtectionDesign,
+  resolveBuildingAreaM2,
+  resolveConstructionType,
+} from '@/lib/projects/compliance/context';
 export {
   evaluateRule,
   runComplianceRules,

@@ -33,11 +33,19 @@ export function evaluateRule(
     status: ev.status,
     effectiveStatus: ev.status,
     message: ev.message,
+    reason: ev.reason || ev.message,
     inputs: ev.inputs || {},
     evidence: ev.evidence || [],
     remediation: ev.remediation,
     override: null,
     evidenceRequired: rule.evidenceRequired,
+    actual_value: ev.actual_value,
+    required_value: ev.required_value,
+    unit: ev.unit,
+    occupancy: ev.occupancy,
+    condition: ev.condition,
+    code_reference: ev.code_reference,
+    missing_data: ev.missing_data,
   };
 }
 
@@ -54,9 +62,6 @@ export function runComplianceRules(
   return { ...summary, evaluatedAt: ctx.evaluatedAt || summary.evaluatedAt };
 }
 
-/**
- * Project-level entry: build context from live engineering data and run all rules.
- */
 export function runProjectCompliance(params: {
   client: ClientRecord;
   data: ProjectEngineeringData;
@@ -71,9 +76,6 @@ export function runProjectCompliance(params: {
   return runComplianceRules(ctx, params.rules || COMPLIANCE_RULES);
 }
 
-/**
- * Overall compliance claim — "مطابق" only when all mandatory rules PASS.
- */
 export function isFullyCompliant(run: ComplianceRunResult): boolean {
   return run.allMandatoryPass && run.gate === 'ALLOW';
 }

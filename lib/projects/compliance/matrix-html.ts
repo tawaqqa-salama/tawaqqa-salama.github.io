@@ -1,6 +1,5 @@
 /**
  * HTML fragment for Compliance Matrix (UI preview + PDF appendix).
- * Additive — does not replace existing report sections.
  */
 
 import type { ComplianceRunResult } from '@/lib/projects/compliance/types';
@@ -22,8 +21,9 @@ export function buildComplianceMatrixHtml(run: ComplianceRunResult, opts?: { tit
         <td>${escapeHtml(r.requirement)}</td>
         <td>${escapeHtml(r.code)}</td>
         <td>${escapeHtml(r.section)}</td>
-        <td>${escapeHtml(r.input)}</td>
+        <td>${escapeHtml(r.actual)}${r.required !== '—' ? ` / req ${escapeHtml(r.required)}` : ''}</td>
         <td style="color:${STATUS_COLOR[r.result] || '#333'};font-weight:700">${r.result}</td>
+        <td>${escapeHtml(r.code_reference)}</td>
         <td>${escapeHtml(r.evidence)}</td>
         <td>${escapeHtml(r.engineerOverride)}</td>
         <td style="color:${color};font-weight:700">${r.status}</td>
@@ -56,8 +56,9 @@ export function buildComplianceMatrixHtml(run: ComplianceRunResult, opts?: { tit
         <th style="border:1px solid #d0d5dd;padding:6px;text-align:right">Requirement</th>
         <th style="border:1px solid #d0d5dd;padding:6px;text-align:right">Code</th>
         <th style="border:1px solid #d0d5dd;padding:6px;text-align:right">Section</th>
-        <th style="border:1px solid #d0d5dd;padding:6px;text-align:right">Input</th>
+        <th style="border:1px solid #d0d5dd;padding:6px;text-align:right">Actual / Required</th>
         <th style="border:1px solid #d0d5dd;padding:6px;text-align:right">Result</th>
+        <th style="border:1px solid #d0d5dd;padding:6px;text-align:right">Code Reference</th>
         <th style="border:1px solid #d0d5dd;padding:6px;text-align:right">Evidence</th>
         <th style="border:1px solid #d0d5dd;padding:6px;text-align:right">Engineer Override</th>
         <th style="border:1px solid #d0d5dd;padding:6px;text-align:right">Status</th>

@@ -32,9 +32,10 @@ export default function ComplianceMatrixPanel({ client, data, onChange }: Props)
   const [overrideRuleId, setOverrideRuleId] = useState('');
   const [reason, setReason] = useState('');
   const [codeRef, setCodeRef] = useState('');
+  const [engineerName, setEngineerName] = useState('');
   const [msg, setMsg] = useState<string | null>(null);
 
-  const overrides = data.compliance?.overrides || [];
+  const overrides = useMemo(() => data.compliance?.overrides || [], [data.compliance?.overrides]);
 
   const run = useMemo(
     () => runProjectCompliance({ client, data, overrides }),
@@ -48,14 +49,15 @@ export default function ComplianceMatrixPanel({ client, data, onChange }: Props)
       setMsg('اختر قاعدة للتجاوز');
       return;
     }
-    if (reason.trim().length < 8 || codeRef.trim().length < 3) {
-      setMsg('التجاوز يتطلب سببًا واضحًا (≥8) ومرجعًا كوديًا (≥3)');
+    if (reason.trim().length < 8 || codeRef.trim().length < 3 || engineerName.trim().length < 2) {
+      setMsg('التجاوز يتطلب سببًا (≥8) ومرجعًا كوديًا (≥3) واسم المهندس (≥2) — النتيجة الأصلية تبقى ظاهرة');
       return;
     }
     const next: EngineerOverride = {
       ruleId: overrideRuleId,
       reason: reason.trim(),
       codeReference: codeRef.trim(),
+      engineerName: engineerName.trim(),
       overriddenAt: new Date().toISOString(),
       resultingStatus: 'PASS',
     };
@@ -66,7 +68,7 @@ export default function ComplianceMatrixPanel({ client, data, onChange }: Props)
       last_run_at: run.evaluatedAt,
       last_gate: run.gate,
     });
-    setMsg('تم تسجيل تجاوز المهندس');
+    setMsg('تم تسجيل التجاوز (النتيجة الأصلية محفوظة في العمود Result)');
     setReason('');
     setCodeRef('');
   };
@@ -91,7 +93,7 @@ export default function ComplianceMatrixPanel({ client, data, onChange }: Props)
           <h3 className="font-bold text-[#1f4d3a] text-lg">مصفوفة المطابقة الكودية (SBC 201 / SBC 801)</h3>
           <p className="text-xs text-gray-600 mt-1 leading-relaxed max-w-3xl">
             الحكم النهائي حتمي بالقواعد. لا يُعلن «مطابق» إلا باجتياز كل المتطلبات الإلزامية.
-            البيانات الناقصة = NEEDS_DATA وليست PASS. التجاوز الهندسي يتطلب سببًا ومرجعًا كوديًا.
+            البيانات الناقصة = NEEDS_DATA وليست PASS. التجاوز يتطلب سببًا ومرجعًا كوديًا وهوية المهندس، ولا يخفي النتيجة الأصلية.
           </p>
         </div>
         <div className="text-left space-y-1">
@@ -121,31 +123,51 @@ export default function ComplianceMatrixPanel({ client, data, onChange }: Props)
             <tr>
               <th className="px-2 py-2 text-right font-semibold">Requirement</th>
               <th className="px-2 py-2 text-right font-semibold">Code</th>
-              <th className="px-2 py-2 text-right font-semibold">Section</th>
-              <th className="px-2 py-2 text-right font-semibold">Input</th>
+              <th className="px-2 py-2 text-right font-semibold">Actual</th>
+              <th className="px-2 py-2 text-right font-semibold">Required</th>
               <th className="px-2 py-2 text-right font-semibold">Result</th>
+              <th className="px-2 py-2 text-right font-semibold">Code Ref</th>
               <th className="px-2 py-2 text-right font-semibold">Evidence</th>
-              <th className="px-2 py-2 text-right font-semibold">Engineer Override</th>
+              <th className="px-2 py-2 text-right font-semibold">Override</th>
               <th className="px-2 py-2 text-right font-semibold">Status</th>
             </tr>
           </thead>
           <tbody>
-            {run.matrix.map((row, idx) => (
-              <tr key={`${run.results[idx]?.ruleId || idx}`} className="border-t border-gray-100 align-top">
-                <td className="px-2 py-1.5 font-medium text-gray-900">{row.requirement}</td>
-                <td className="px-2 py-1.5 whitespace-nowrap">{row.code}</td>
-                <td className="px-2 py-1.5">{row.section}</td>
-                <td className="px-2 py-1.5 text-gray-600 max-w-[180px] break-words">{row.input}</td>
-                <td className="px-2 py-1.5">
-                  <span className={`inline-block rounded border px-1.5 py-0.5 font-bold ${STATUS_CLASS[row.result]}`}>
-                    {row.result}
-                  </span>
+            {run.results.map((row) => (
+              <tr key={row.ruleId} className="border-t border-gray-100 align-top">
+                <td className="px-2 py-1.5 font-medium text-gray-900">
+                  <span className="text-slate-400 ml-1">{row.ruleId}</span>
+                  {row.title_ar || row.title}
                 </td>
-                <td className="px-2 py-1.5 text-gray-600 max-w-[160px] break-words">{row.evidence}</td>
-                <td className="px-2 py-1.5 text-gray-600 max-w-[160px] break-words">{row.engineerOverride}</td>
+                <td className="px-2 py-1.5 whitespace-nowrap">{row.code}</td>
+                <td className="px-2 py-1.5 text-gray-700">
+                  {row.actual_value == null || row.actual_value === '' ? '—' : String(row.actual_value)}
+                  {row.unit ? ` ${row.unit}` : ''}
+                </td>
+                <td className="px-2 py-1.5 text-gray-700">
+                  {row.required_value == null || row.required_value === '' ? '—' : String(row.required_value)}
+                </td>
                 <td className="px-2 py-1.5">
                   <span className={`inline-block rounded border px-1.5 py-0.5 font-bold ${STATUS_CLASS[row.status]}`}>
                     {row.status}
+                  </span>
+                </td>
+                <td className="px-2 py-1.5 text-gray-600 max-w-[140px] break-words">
+                  {row.code_reference || row.section}
+                </td>
+                <td className="px-2 py-1.5 text-gray-600 max-w-[140px] break-words">
+                  {(row.evidence || []).map((e) => e.label).join('؛ ') || '—'}
+                </td>
+                <td className="px-2 py-1.5 text-gray-600 max-w-[160px] break-words">
+                  {row.override
+                    ? `${row.override.engineerName || row.override.engineerUserId || '?'} → ${row.override.resultingStatus}`
+                    : '—'}
+                </td>
+                <td className="px-2 py-1.5">
+                  <span
+                    className={`inline-block rounded border px-1.5 py-0.5 font-bold ${STATUS_CLASS[row.effectiveStatus]}`}
+                  >
+                    {row.effectiveStatus}
                   </span>
                 </td>
               </tr>
@@ -156,7 +178,7 @@ export default function ComplianceMatrixPanel({ client, data, onChange }: Props)
 
       <div className="rounded-lg border border-dashed border-slate-300 bg-slate-50 p-3 space-y-2">
         <h4 className="text-sm font-bold text-slate-800">Engineer Override</h4>
-        <div className="grid md:grid-cols-4 gap-2">
+        <div className="grid md:grid-cols-5 gap-2">
           <label className="text-xs block md:col-span-1">
             <span className="text-gray-600 mb-1 block">القاعدة</span>
             <select
@@ -173,6 +195,15 @@ export default function ComplianceMatrixPanel({ client, data, onChange }: Props)
                   </option>
                 ))}
             </select>
+          </label>
+          <label className="text-xs block">
+            <span className="text-gray-600 mb-1 block">اسم المهندس</span>
+            <input
+              className="w-full border rounded-lg px-2 py-2"
+              value={engineerName}
+              onChange={(e) => setEngineerName(e.target.value)}
+              placeholder="هوية المهندس"
+            />
           </label>
           <label className="text-xs block md:col-span-2">
             <span className="text-gray-600 mb-1 block">السبب</span>

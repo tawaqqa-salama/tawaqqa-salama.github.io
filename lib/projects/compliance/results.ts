@@ -1,7 +1,7 @@
 /**
  * Aggregate compliance results + approval gate.
  * Mandatory FAIL or NEEDS_DATA → BLOCKED. All mandatory PASS → ALLOW.
- * Overrides require reason + code reference; never silent PASS.
+ * Overrides require reason + code reference + engineer identity; never hide original status.
  */
 
 import { formatEvidenceList } from '@/lib/projects/compliance/evidence';
@@ -23,21 +23,32 @@ export function applyOverride(
   override: EngineerOverride | undefined
 ): ComplianceRuleResult {
   if (!override) return { ...base, override: null };
+
   const reasonOk = String(override.reason || '').trim().length >= 8;
   const refOk = String(override.codeReference || '').trim().length >= 3;
-  if (!reasonOk || !refOk) {
+  const identityOk =
+    String(override.engineerName || '').trim().length >= 2 ||
+    String(override.engineerUserId || '').trim().length >= 2;
+
+  if (!reasonOk || !refOk || !identityOk) {
     return {
       ...base,
       override,
+      // Keep original status — override rejected
       effectiveStatus: base.status,
-      message: `${base.message} — تجاوز مهندس مرفوض (يلزم سبب ≥8 أحرف + مرجع كودي).`,
+      message: `${base.message} — تجاوز مهندس مرفوض (يلزم سبب ≥8 + مرجع كودي + هوية المهندس). النتيجة الأصلية: ${base.status}`,
+      reason: `${base.reason} | override_rejected`,
     };
   }
+
+  const identity = override.engineerName || override.engineerUserId || 'engineer';
   return {
     ...base,
     override,
+    // Original status preserved in `status`; effectiveStatus reflects override
     effectiveStatus: override.resultingStatus,
-    message: `${base.message} — تجاوز مهندس: ${override.reason} [${override.codeReference}]`,
+    message: `${base.message} — [الأصل ${base.status}] تجاوز مهندس (${identity}): ${override.reason} [${override.codeReference}] → ${override.resultingStatus}`,
+    reason: `original=${base.status}; override→${override.resultingStatus}; by=${identity}`,
   };
 }
 
@@ -55,33 +66,28 @@ export function summarizeResults(results: ComplianceRuleResult[]): ComplianceRun
     mandatoryNeedsData === 0;
 
   const gateReasons: string[] = [];
-  if (mandatoryFail > 0) {
-    gateReasons.push(`${mandatoryFail} متطلب إلزامي FAIL`);
-  }
-  if (mandatoryNeedsData > 0) {
-    gateReasons.push(`${mandatoryNeedsData} متطلب إلزامي NEEDS_DATA`);
-  }
+  if (mandatoryFail > 0) gateReasons.push(`${mandatoryFail} متطلب إلزامي FAIL`);
+  if (mandatoryNeedsData > 0) gateReasons.push(`${mandatoryNeedsData} متطلب إلزامي NEEDS_DATA`);
   if (mandatory.length === 0) {
-    // No applicable mandatory rules → still need data to claim compliance
     gateReasons.push('لا توجد متطلبات إلزامية قابلة للتقييم — NEEDS_DATA ضمني');
   }
 
-  let gate: ComplianceGateDecision = 'BLOCKED';
-  if (allMandatoryPass) {
-    gate = 'ALLOW';
-  }
+  const gate: ComplianceGateDecision = allMandatoryPass ? 'ALLOW' : 'BLOCKED';
 
   const matrix: ComplianceMatrixRow[] = results.map((r) => ({
     requirement: r.title_ar || r.title,
     code: r.code,
     section: r.section,
     input: formatInputs(r.inputs),
+    actual: r.actual_value == null || r.actual_value === '' ? '—' : String(r.actual_value),
+    required: r.required_value == null || r.required_value === '' ? '—' : String(r.required_value),
     result: r.status,
     evidence: formatEvidenceList(r.evidence),
     engineerOverride: r.override
-      ? `${r.override.reason} (${r.override.codeReference}) → ${r.override.resultingStatus}`
+      ? `[أصل ${r.status}] ${r.override.engineerName || r.override.engineerUserId || '?'} — ${r.override.reason} (${r.override.codeReference}) → ${r.override.resultingStatus}`
       : '—',
     status: r.effectiveStatus,
+    code_reference: r.code_reference || r.section || '—',
   }));
 
   return {
@@ -107,10 +113,7 @@ export function formatInputs(
 
 export function gateBlockerMessages(run: ComplianceRunResult): string[] {
   if (run.gate === 'ALLOW') return [];
-  const lines = [
-    'بوابة المطابقة الكودية (SBC): الحالة BLOCKED',
-    ...run.gateReasons,
-  ];
+  const lines = ['بوابة المطابقة الكودية (SBC): الحالة BLOCKED', ...run.gateReasons];
   const samples = run.results
     .filter(
       (r) =>
@@ -118,11 +121,10 @@ export function gateBlockerMessages(run: ComplianceRunResult): string[] {
         (r.effectiveStatus === 'FAIL' || r.effectiveStatus === 'NEEDS_DATA')
     )
     .slice(0, 6)
-    .map((r) => `• ${r.title_ar || r.title}: ${r.effectiveStatus}`);
+    .map((r) => `• ${r.ruleId} ${r.title_ar || r.title}: ${r.effectiveStatus}`);
   return [...lines, ...samples];
 }
 
-/** Stages that require compliance ALLOW before approval */
 export const COMPLIANCE_GATED_STAGES = [
   'technical_report',
   'transmittals',
