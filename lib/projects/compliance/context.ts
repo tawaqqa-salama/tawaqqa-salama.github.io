@@ -42,6 +42,7 @@ import {
   resolveEngineeringFields,
   type EngineeringResolverBundle,
 } from '@/lib/projects/compliance/resolvers';
+import { buildNfpaEngineeringContext } from '@/lib/projects/compliance/nfpa/context';
 
 function pressureToBar(m: MeasuredValue<PressureUnit> | null | undefined): number | null {
   if (!m || m.value == null || !Number.isFinite(m.value)) return null;
@@ -373,6 +374,8 @@ export function buildComplianceContext(params: {
     sprinklerStatus,
   });
 
+  const nfpa = buildNfpaEngineeringContext({ client, data });
+
   return {
     evaluatedAt: new Date().toISOString(),
     client: {
@@ -588,5 +591,6 @@ export function buildComplianceContext(params: {
     },
     overrides,
     sbc201Egress,
+    nfpa,
   };
 }

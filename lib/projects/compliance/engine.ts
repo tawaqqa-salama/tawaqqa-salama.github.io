@@ -103,6 +103,10 @@ export function complianceStatusLabelAr(run: ComplianceRunResult): string {
   }
   if (run.mandatoryFail > 0) return 'تقييم مطابقة — عدم اجتياز متطلب إلزامي';
   if (run.counts.BLOCKED > 0) return 'تقييم مطابقة — مرجع كودي ناقص (BLOCKED)';
+  if (run.counts.RULE_NOT_CONFIGURED > 0) {
+    return 'تقييم مطابقة — قاعدة NFPA/كود غير مرمّزة (RULE_NOT_CONFIGURED)';
+  }
+  if (run.counts.CONFLICT > 0) return 'تقييم مطابقة — تعارض مصادر كانونية (CONFLICT)';
   if (run.mandatoryNeedsData > 0) return 'تقييم مطابقة — يحتاج بيانات/مراجع موثّقة';
   return 'تقييم مطابقة — غير مكتمل';
 }

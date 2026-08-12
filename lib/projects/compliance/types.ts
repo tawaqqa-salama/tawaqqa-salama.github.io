@@ -13,7 +13,16 @@
  * project_engineering_live.payload (see lib/projects/canonical-engineering.ts).
  */
 
-export type ComplianceResultStatus = 'PASS' | 'FAIL' | 'NEEDS_DATA' | 'N/A' | 'BLOCKED';
+export type ComplianceResultStatus =
+  | 'PASS'
+  | 'FAIL'
+  | 'NEEDS_DATA'
+  | 'N/A'
+  | 'BLOCKED'
+  /** Canonical source conflict — cannot invent a PASS from either side */
+  | 'CONFLICT'
+  /** Edition/table not encoded in-platform — never invent a threshold */
+  | 'RULE_NOT_CONFIGURED';
 
 /** Project-documented adopted code mapping (edition + section required for PASS/FAIL). */
 export type ProjectCodeMapping = {
@@ -304,6 +313,11 @@ export type ComplianceRuleContext = {
    * Never invent defaults — missing fields drive NEEDS_DATA.
    */
   sbc201Egress?: Sbc201EgressInputs | null;
+  /**
+   * NFPA architecture context (canonical inputs only).
+   * Built alongside SBC context — never from vision/DI/estimates.
+   */
+  nfpa?: import('@/lib/projects/compliance/nfpa/types').NfpaEngineeringContext | null;
 };
 
 /** Structured MoE inputs for SBC201-EGR-001..028 */

@@ -105,3 +105,24 @@ export {
   resolveComplianceRunForReport,
 } from '@/lib/projects/compliance/snapshot';
 export { buildSbc201EgressFromCanonical } from '@/lib/projects/compliance/context';
+export {
+  buildNfpaEngineeringContext,
+  buildNfpaComplianceRules,
+  runNfpaArchitectureFindings,
+  rejectAdvisoryPassAttempt,
+  isNfpaAdvisorySource,
+  NFPA_AUTHORITY,
+  NFPA_ADVISORY_SOURCES,
+  NFPA_RULE_DEFS,
+  evaluateNfpa13,
+  evaluateNfpa20,
+  evaluateNfpa22,
+  evaluateNfpa72,
+  evaluateNfpa101,
+} from '@/lib/projects/compliance/nfpa';
+export type {
+  NfpaEngineeringContext,
+  NfpaRuleFinding,
+  NfpaRuleStatus,
+  NfpaStandardCode,
+} from '@/lib/projects/compliance/nfpa';
