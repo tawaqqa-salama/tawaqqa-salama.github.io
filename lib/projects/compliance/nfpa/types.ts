@@ -12,6 +12,7 @@
  */
 
 import type { ResolverState } from '@/lib/projects/compliance/resolvers';
+import type { Nfpa13EncodedRow } from '@/lib/projects/compliance/nfpa/nfpa13-tables';
 
 export type NfpaStandardCode =
   | 'NFPA-13'
@@ -60,10 +61,14 @@ export type Nfpa13Context = {
   k_factor: { state: ResolverState; value: number | null };
   design_pressure: { state: ResolverState; value: number | null };
   design_flow_lpm: { state: ResolverState; value: number | null };
-  /** Not on FireProtectionDesign today — always MISSING until schema extended */
+  /**
+   * Design density/area/hose/spacing/coverage — from compliance.nfpa13_numeric.inputs
+   * when documented (FireProtectionDesign schema gap). Never from DI/vision estimates.
+   */
   design_area_m2: { state: ResolverState; value: number | null };
   density_lpm_m2: { state: ResolverState; value: number | null };
   sprinkler_spacing_m: { state: ResolverState; value: number | null };
+  max_coverage_m2: { state: ResolverState; value: number | null };
   water_demand_lpm: { state: ResolverState; value: number | null };
   hose_allowance_lpm: { state: ResolverState; value: number | null };
   remote_area_m2: { state: ResolverState; value: number | null };
@@ -71,6 +76,11 @@ export type Nfpa13Context = {
   available_water_supply: { state: ResolverState; value: string | null };
   /** Documented NFPA 13 edition — never invented */
   nfpa13_edition: { state: ResolverState; value: string | null };
+  /**
+   * Project-adopted encoded rows (complete provenance). Platform table is empty
+   * until a verified edition is encoded.
+   */
+  project_rule_rows: Nfpa13EncodedRow[];
 };
 
 export type Nfpa20Context = {

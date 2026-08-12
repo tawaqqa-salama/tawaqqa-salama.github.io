@@ -63,7 +63,7 @@ describe('SBC 201-2024 Chapter 10 Means of Egress', () => {
     expect(IDS[27]).toBe('SBC201-EGR-028');
     expect(countSbc201VerifiedThresholds()).toBe(0);
     expect(countSbc201CodeTableRequired()).toBeGreaterThanOrEqual(28);
-    expect(COMPLIANCE_RULES.length).toBe(126);
+    expect(COMPLIANCE_RULES.length).toBe(127);
     for (const id of IDS) {
       expect(getComplianceRuleById(id), id).toBeTruthy();
       expect(RULE_CODE_REFS[id]?.citation).toMatch(/SBC 201-2024/);

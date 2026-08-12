@@ -111,6 +111,9 @@ export function buildNfpaEngineeringContext(params: {
   const egressState = resolved.egress.state;
   const egress = egressState === 'VALID' ? resolved.egress.value : null;
 
+  const numeric = data.compliance?.nfpa13_numeric;
+  const nInputs = numeric?.inputs || {};
+
   const nfpa13: Nfpa13Context = {
     occupancy: fromResolved(resolved.occupancy),
     hazard_class: textField(fp.occupancy.hazard_class),
@@ -125,16 +128,18 @@ export function buildNfpaEngineeringContext(params: {
     k_factor: numField(fp.sprinkler.k_factor),
     design_pressure: numField(fp.sprinkler.design_pressure),
     design_flow_lpm: numField(fp.sprinkler.design_flow),
-    // Schema gap — authoritative density/design area not on FireProtectionDesign yet
-    design_area_m2: field('MISSING', null),
-    density_lpm_m2: field('MISSING', null),
-    sprinkler_spacing_m: field('MISSING', null),
+    // Documented via compliance.nfpa13_numeric.inputs (not DI/vision); FP schema gap
+    design_area_m2: numField(nInputs.design_area_m2 ?? null),
+    density_lpm_m2: numField(nInputs.density_lpm_m2 ?? null),
+    sprinkler_spacing_m: numField(nInputs.sprinkler_spacing_m ?? null),
+    max_coverage_m2: numField(nInputs.max_coverage_m2 ?? null),
     water_demand_lpm:
       resolved.tank.state === 'VALID' && resolved.tank.value?.demand_lpm != null
         ? field('VALID', resolved.tank.value.demand_lpm)
         : numField(fp.water_tank.water_demand_lpm?.value ?? null),
-    hose_allowance_lpm: field('MISSING', null),
+    hose_allowance_lpm: numField(nInputs.hose_allowance_lpm ?? null),
     remote_area_m2: (() => {
+      if (nInputs.remote_area_m2 != null) return numField(nInputs.remote_area_m2);
       const metrics = egressState === 'VALID' ? egress?.metrics || [] : [];
       for (const m of metrics) {
         if (/remote\s*area|منطقة\s*نائية/i.test(m.label)) {
@@ -149,6 +154,9 @@ export function buildNfpaEngineeringContext(params: {
     ), // set below after hyd check via design fields
     available_water_supply: textField(fp.water_supply?.water_source),
     nfpa13_edition: resolveNfpaEdition(data, 'NFPA-13'),
+    project_rule_rows: Array.isArray(numeric?.adopted_rows)
+      ? numeric!.adopted_rows!.filter((r) => r && r.encoding_source === 'project_adopted_mapping')
+      : [],
   };
 
   // Hydraulic completeness from documented FP sprinkler + pump fields (not estimates)

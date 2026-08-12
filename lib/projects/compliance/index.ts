@@ -119,10 +119,20 @@ export {
   evaluateNfpa22,
   evaluateNfpa72,
   evaluateNfpa101,
+  evaluateNfpa13NumericRule,
+  NFPA13_CODE,
+  NFPA13_PLATFORM_EDITION,
+  NFPA13_PLATFORM_THRESHOLDS,
+  NFPA13_RULE_DEFINITIONS,
+  getNfpa13RuleDefinition,
+  listNfpa13RuleIds,
+  resolveNfpa13EncodedRow,
 } from '@/lib/projects/compliance/nfpa';
 export type {
   NfpaEngineeringContext,
   NfpaRuleFinding,
   NfpaRuleStatus,
   NfpaStandardCode,
+  Nfpa13EncodedRow,
+  Nfpa13RuleDefinition,
 } from '@/lib/projects/compliance/nfpa';

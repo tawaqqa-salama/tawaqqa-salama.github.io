@@ -126,6 +126,16 @@ export function parseProjectEngineeringData(raw: ClientRecord['project_engineeri
           last_gate: data.compliance.last_gate ?? null,
           notes: data.compliance.notes,
           approved_snapshot: data.compliance.approved_snapshot ?? null,
+          nfpa13_numeric: data.compliance.nfpa13_numeric
+            ? {
+                adopted_rows: Array.isArray(data.compliance.nfpa13_numeric.adopted_rows)
+                  ? data.compliance.nfpa13_numeric.adopted_rows
+                  : [],
+                inputs: data.compliance.nfpa13_numeric.inputs
+                  ? { ...data.compliance.nfpa13_numeric.inputs }
+                  : undefined,
+              }
+            : undefined,
         }
       : undefined,
     engineering_meta: data.engineering_meta

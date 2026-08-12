@@ -19,7 +19,6 @@ import { evaluateNfpa20 } from '@/lib/projects/compliance/nfpa/nfpa20';
 import { evaluateNfpa22 } from '@/lib/projects/compliance/nfpa/nfpa22';
 import { evaluateNfpa72 } from '@/lib/projects/compliance/nfpa/nfpa72';
 import { evaluateNfpa101 } from '@/lib/projects/compliance/nfpa/nfpa101';
-import { rejectAdvisoryPassAttempt } from '@/lib/projects/compliance/nfpa/helpers';
 import type {
   NfpaEngineeringContext,
   NfpaRuleFinding,
@@ -47,6 +46,22 @@ export { evaluateNfpa20 } from '@/lib/projects/compliance/nfpa/nfpa20';
 export { evaluateNfpa22 } from '@/lib/projects/compliance/nfpa/nfpa22';
 export { evaluateNfpa72 } from '@/lib/projects/compliance/nfpa/nfpa72';
 export { evaluateNfpa101 } from '@/lib/projects/compliance/nfpa/nfpa101';
+export { evaluateNfpa13NumericRule } from '@/lib/projects/compliance/nfpa/nfpa13-numeric';
+export {
+  NFPA13_CODE,
+  NFPA13_PLATFORM_EDITION,
+  NFPA13_PLATFORM_THRESHOLDS,
+  NFPA13_RULE_DEFINITIONS,
+  getNfpa13RuleDefinition,
+  listNfpa13RuleIds,
+  resolveNfpa13EncodedRow,
+  isCompleteNfpa13EncodedRow,
+} from '@/lib/projects/compliance/nfpa/nfpa13-tables';
+export type {
+  Nfpa13EncodedRow,
+  Nfpa13RuleDefinition,
+  Nfpa13RuleDomain,
+} from '@/lib/projects/compliance/nfpa/nfpa13-tables';
 
 export function mapNfpaStatusToCompliance(status: NfpaRuleStatus): ComplianceResultStatus {
   if (status === 'CONFLICT') return 'CONFLICT';
@@ -114,6 +129,7 @@ export const NFPA_RULE_DEFS: NfpaRuleDef[] = [
   { rule_id: 'NFPA13-DESIGN-AREA', code: 'NFPA-13', field: 'design_area_m2', title_ar: 'مساحة التصميم', title_en: 'Design area' },
   { rule_id: 'NFPA13-DENSITY', code: 'NFPA-13', field: 'density_lpm_m2', title_ar: 'الكثافة', title_en: 'Density' },
   { rule_id: 'NFPA13-SPACING', code: 'NFPA-13', field: 'sprinkler_spacing_m', title_ar: 'التباعد', title_en: 'Spacing' },
+  { rule_id: 'NFPA13-MAX-COVERAGE', code: 'NFPA-13', field: 'max_coverage_m2', title_ar: 'أقصى تغطية', title_en: 'Max coverage' },
   { rule_id: 'NFPA13-WATER-DEMAND', code: 'NFPA-13', field: 'water_demand_lpm', title_ar: 'طلب الماء', title_en: 'Water demand' },
   { rule_id: 'NFPA13-HOSE-ALLOWANCE', code: 'NFPA-13', field: 'hose_allowance_lpm', title_ar: 'بدل الخراطيم', title_en: 'Hose allowance' },
   { rule_id: 'NFPA13-REMOTE-AREA', code: 'NFPA-13', field: 'remote_area_m2', title_ar: 'المنطقة النائية', title_en: 'Remote area' },

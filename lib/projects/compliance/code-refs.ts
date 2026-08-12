@@ -512,6 +512,7 @@ const NFPA_ARCH_CITATIONS: Array<{
   { id: 'NFPA13-DESIGN-AREA', primary: 'NFPA 13', citation: 'NFPA 13 — Design area (edition/table not encoded)' },
   { id: 'NFPA13-DENSITY', primary: 'NFPA 13', citation: 'NFPA 13 — Density/area (edition/table not encoded)' },
   { id: 'NFPA13-SPACING', primary: 'NFPA 13', citation: 'NFPA 13 — Sprinkler spacing (edition/table not encoded)' },
+  { id: 'NFPA13-MAX-COVERAGE', primary: 'NFPA 13', citation: 'NFPA 13 — Maximum coverage area (edition/table not encoded)' },
   { id: 'NFPA13-WATER-DEMAND', primary: 'NFPA 13', citation: 'NFPA 13 — Water demand (edition/table not encoded)' },
   { id: 'NFPA13-HOSE-ALLOWANCE', primary: 'NFPA 13', citation: 'NFPA 13 — Hose stream allowance (edition/table not encoded)' },
   { id: 'NFPA13-REMOTE-AREA', primary: 'NFPA 13', citation: 'NFPA 13 — Remote area (edition/table not encoded)' },

@@ -591,4 +591,20 @@ export type ProjectComplianceState = {
    * Approved reports MUST display this result even if later rules/data change.
    */
   approved_snapshot?: ApprovedComplianceSnapshot | null;
+  /**
+   * NFPA 13 numeric encoding — project-adopted rows + design inputs.
+   * Not a new DB table; lives in existing engineering JSON payload.
+   * Platform thresholds remain empty until a verified edition is encoded.
+   */
+  nfpa13_numeric?: {
+    adopted_rows?: import('@/lib/projects/compliance/nfpa/nfpa13-tables').Nfpa13EncodedRow[];
+    inputs?: {
+      design_area_m2?: number | null;
+      density_lpm_m2?: number | null;
+      sprinkler_spacing_m?: number | null;
+      max_coverage_m2?: number | null;
+      hose_allowance_lpm?: number | null;
+      remote_area_m2?: number | null;
+    };
+  } | null;
 };

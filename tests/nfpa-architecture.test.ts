@@ -149,9 +149,9 @@ function baseResult(partial: Partial<ComplianceRuleResult>): ComplianceRuleResul
 }
 
 describe('NFPA architecture', () => {
-  it('registers 42 NFPA architecture rules into authoritative COMPLIANCE_RULES', () => {
-    expect(NFPA_RULE_DEFS).toHaveLength(42);
-    expect(COMPLIANCE_RULES.length).toBe(126);
+  it('registers 43 NFPA architecture rules into authoritative COMPLIANCE_RULES', () => {
+    expect(NFPA_RULE_DEFS).toHaveLength(43);
+    expect(COMPLIANCE_RULES.length).toBe(127);
     expect(NFPA_AUTHORITY).toBe('lib/projects/compliance/nfpa');
     expect(CANONICAL_ENGINEERING_STORE).toBe('project_engineering_live.payload');
     for (const def of NFPA_RULE_DEFS) {
