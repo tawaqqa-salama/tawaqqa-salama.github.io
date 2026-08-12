@@ -26,9 +26,7 @@ export async function POST(request: Request) {
 
   if (!isSuperAdminRole(session.roleCode)) {
     const memberships = await getUserMemberships(session.userId);
-    const ok = memberships.some(
-      (m) => String((m as { company_id: string }).company_id) === companyId
-    );
+    const ok = memberships.some((m) => String(m.company_id) === companyId);
     if (!ok) {
       return NextResponse.json({ ok: false, error: 'Not a member of this tenant' }, { status: 403 });
     }

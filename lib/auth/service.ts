@@ -110,8 +110,7 @@ async function resolveTenantIds(preferredCompanyId?: string | null): Promise<{
 }
 
 function toSession(user: AppUser, permissions: PermissionCode[], method: 'email' | 'phone'): AuthSession {
-  const isPlatformAdmin =
-    user.role_code === 'super_admin' || Boolean((user as { is_platform_admin?: boolean }).is_platform_admin);
+  const isPlatformAdmin = user.role_code === 'super_admin';
   return {
     userId: user.id,
     email: user.email,

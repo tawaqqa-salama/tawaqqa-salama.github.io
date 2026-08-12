@@ -1,7 +1,12 @@
 import { supabase } from '@/lib/supabase';
 import { tenantMemory } from '@/lib/tenant/memory';
 import { isTenantMemoryMode } from '@/lib/tenant/mode';
-import type { PlatformModuleCode, SaasPlan, TenantRecord } from '@/lib/tenant/types';
+import type {
+  PlatformModuleCode,
+  SaasPlan,
+  TenantMembership,
+  TenantRecord,
+} from '@/lib/tenant/types';
 import { writeSaasAudit } from '@/lib/tenant/audit';
 
 function mapCompany(row: Record<string, unknown>): TenantRecord {
@@ -318,22 +323,45 @@ export async function listPlans(): Promise<SaasPlan[]> {
   }));
 }
 
-export async function getUserMemberships(userId: string) {
+/**
+ * Production has no tenant_memberships table.
+ * Membership = active users row with company_id (one tenant per user).
+ */
+export async function getUserMemberships(userId: string): Promise<TenantMembership[]> {
   if (isTenantMemoryMode()) return tenantMemory.listMemberships(userId);
-  const { data } = await supabase
-    .from('tenant_memberships')
-    .select('*')
-    .eq('user_id', userId)
-    .eq('status', 'active');
-  return data || [];
+
+  const { data, error } = await supabase
+    .from('users')
+    .select('id, company_id, role_code, is_active, deleted_at')
+    .eq('id', userId)
+    .maybeSingle();
+
+  if (error || !data) return [];
+  if (data.is_active === false || data.deleted_at) return [];
+  if (!data.company_id) return [];
+
+  return [
+    {
+      id: `users:${data.id}`,
+      user_id: String(data.id),
+      company_id: String(data.company_id),
+      role_code: String(data.role_code || 'staff'),
+      status: 'active',
+      is_default: true,
+    },
+  ];
 }
 
+/**
+ * Bind user → company via users.company_id / role_code.
+ * Does not create tenant_memberships (table absent in production).
+ */
 export async function ensureMembership(input: {
   userId: string;
   companyId: string;
   roleCode: string;
   isDefault?: boolean;
-}) {
+}): Promise<TenantMembership> {
   if (isTenantMemoryMode()) {
     return tenantMemory.upsertMembership({
       user_id: input.userId,
@@ -343,23 +371,29 @@ export async function ensureMembership(input: {
       is_default: Boolean(input.isDefault),
     });
   }
+
   const { data, error } = await supabase
-    .from('tenant_memberships')
-    .upsert(
-      {
-        user_id: input.userId,
-        company_id: input.companyId,
-        role_code: input.roleCode,
-        status: 'active',
-        is_default: Boolean(input.isDefault),
-        updated_at: new Date().toISOString(),
-      },
-      { onConflict: 'user_id,company_id' }
-    )
-    .select('*')
-    .single();
+    .from('users')
+    .update({
+      company_id: input.companyId,
+      role_code: input.roleCode,
+      updated_at: new Date().toISOString(),
+    })
+    .eq('id', input.userId)
+    .select('id, company_id, role_code')
+    .maybeSingle();
+
   if (error) throw new Error(error.message);
-  return data;
+  if (!data) throw new Error('User not found for membership bind');
+
+  return {
+    id: `users:${data.id}`,
+    user_id: String(data.id),
+    company_id: String(data.company_id),
+    role_code: String(data.role_code || input.roleCode),
+    status: 'active',
+    is_default: true,
+  };
 }
 
 export async function platformStats() {

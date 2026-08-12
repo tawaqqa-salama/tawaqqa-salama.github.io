@@ -1,6 +1,8 @@
 /**
- * Re-validate signed cookie claims against the live users / memberships tables.
+ * Re-validate signed cookie claims against the live users table.
  * Cookie roleCode/companyId alone must not authorize for up to 7 days.
+ *
+ * Production tenant link is users.company_id (no tenant_memberships table).
  */
 
 import type { CookieSessionPayload } from '@/lib/auth/session-cookie';
@@ -30,18 +32,27 @@ export class ActorValidationError extends Error {
   }
 }
 
-async function loadActiveMemberships(userId: string) {
+/** Synthesize memberships from users.company_id (prod schema). */
+async function loadActiveMemberships(userId: string): Promise<LiveActor['memberships']> {
   const db = getTrustedServerSupabase();
   const { data, error } = await db
-    .from('tenant_memberships')
-    .select('company_id, status, role_code, is_default')
-    .eq('user_id', userId)
-    .eq('status', 'active');
-  if (error) {
-    // Table may be absent until 033 — fall back to empty and rely on users.company_id
-    return [] as LiveActor['memberships'];
-  }
-  return (data || []) as LiveActor['memberships'];
+    .from('users')
+    .select('company_id, role_code, is_active, deleted_at')
+    .eq('id', userId)
+    .maybeSingle();
+
+  if (error || !data) return [];
+  if (data.is_active === false || data.deleted_at) return [];
+  if (!data.company_id) return [];
+
+  return [
+    {
+      company_id: String(data.company_id),
+      status: 'active',
+      role_code: String(data.role_code || 'staff'),
+      is_default: true,
+    },
+  ];
 }
 
 /**
@@ -55,8 +66,7 @@ export async function resolveLiveActor(session: CookieSessionPayload): Promise<L
   }
 
   const memberships = await loadActiveMemberships(user.id);
-  const isPlatform =
-    Boolean(user.is_platform_admin) || isSuperAdminRole(user.role_code);
+  const isPlatform = isSuperAdminRole(user.role_code);
 
   let companyId = user.company_id || '';
   if (!companyId && memberships.length) {
