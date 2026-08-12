@@ -281,17 +281,44 @@ BEGIN
       RAISE NOTICE '%: via user_id', t;
 
     ELSE
-      -- Reference/catalog tables with no tenant key: authenticated read-only,
-      -- writes platform admin only — OR lock fully to platform admin.
-      -- Safer default: platform admin for ALL (ref_* can be opened later).
-      EXECUTE format(
-        'CREATE POLICY %I ON public.%I
-           FOR ALL TO authenticated
-           USING (public.is_platform_admin())
-           WITH CHECK (public.is_platform_admin())',
-        t || '_tenant_isolation', t
-      );
-      RAISE NOTICE '%: no tenant key — platform admin only', t;
+      -- Shared catalogs (ref_*): authenticated can read; writes = platform admin
+      IF t LIKE 'ref_%' THEN
+        EXECUTE format(
+          'CREATE POLICY %I ON public.%I
+             FOR SELECT TO authenticated
+             USING (auth.uid() IS NOT NULL)',
+          t || '_select_authenticated', t
+        );
+        EXECUTE format(
+          'CREATE POLICY %I ON public.%I
+             FOR INSERT TO authenticated
+             WITH CHECK (public.is_platform_admin())',
+          t || '_insert_admin', t
+        );
+        EXECUTE format(
+          'CREATE POLICY %I ON public.%I
+             FOR UPDATE TO authenticated
+             USING (public.is_platform_admin())
+             WITH CHECK (public.is_platform_admin())',
+          t || '_update_admin', t
+        );
+        EXECUTE format(
+          'CREATE POLICY %I ON public.%I
+             FOR DELETE TO authenticated
+             USING (public.is_platform_admin())',
+          t || '_delete_admin', t
+        );
+        RAISE NOTICE '%: ref catalog — auth read, admin write', t;
+      ELSE
+        EXECUTE format(
+          'CREATE POLICY %I ON public.%I
+             FOR ALL TO authenticated
+             USING (public.is_platform_admin())
+             WITH CHECK (public.is_platform_admin())',
+          t || '_tenant_isolation', t
+        );
+        RAISE NOTICE '%: no tenant key — platform admin only', t;
+      END IF;
     END IF;
   END LOOP;
 END $$;
