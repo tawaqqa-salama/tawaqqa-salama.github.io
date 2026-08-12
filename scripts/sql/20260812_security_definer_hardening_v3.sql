@@ -208,13 +208,108 @@ BEGIN
 END;
 $$;
 
+-- True only when canonical zero-arg public.current_app_company_id() exists.
+CREATE OR REPLACE FUNCTION pg_temp.v3_has_company_resolver()
+RETURNS boolean
+LANGUAGE sql
+STABLE
+AS $$
+  SELECT EXISTS (
+    SELECT 1
+    FROM pg_proc p
+    JOIN pg_namespace nsp ON nsp.oid = p.pronamespace
+    WHERE nsp.nspname = 'public'
+      AND p.proname = 'current_app_company_id'
+      AND COALESCE(oidvectortypes(p.proargtypes), '') = ''
+  );
+$$;
+
+-- Returns comma-separated missing "table.column" (empty string if all present).
+CREATE OR REPLACE FUNCTION pg_temp.v3_missing_columns(
+  p_table text,
+  p_columns text[]
+)
+RETURNS text
+LANGUAGE plpgsql
+STABLE
+AS $$
+DECLARE
+  col text;
+  missing text[] := ARRAY[]::text[];
+BEGIN
+  IF to_regclass('public.' || p_table) IS NULL THEN
+    RETURN 'table:public.' || p_table;
+  END IF;
+  FOREACH col IN ARRAY p_columns LOOP
+    IF NOT EXISTS (
+      SELECT 1 FROM information_schema.columns
+      WHERE table_schema = 'public'
+        AND table_name = p_table
+        AND column_name = col
+    ) THEN
+      missing := array_append(missing, p_table || '.' || col);
+    END IF;
+  END LOOP;
+  RETURN array_to_string(missing, ', ');
+END;
+$$;
+
+-- Full schema gate for rewritten save_stage5_live_bundle body.
+CREATE OR REPLACE FUNCTION pg_temp.v3_stage5_rewrite_blockers()
+RETURNS text
+LANGUAGE plpgsql
+STABLE
+AS $$
+DECLARE
+  parts text[] := ARRAY[]::text[];
+  m text;
+BEGIN
+  m := pg_temp.v3_missing_columns('clients', ARRAY[
+    'id', 'company_id', 'pipeline_stage', 'updated_at'
+  ]);
+  IF m <> '' THEN parts := array_append(parts, m); END IF;
+
+  m := pg_temp.v3_missing_columns('field_visit_reports', ARRAY[
+    'client_id', 'visit_number', 'payload', 'updated_at'
+  ]);
+  IF m <> '' THEN parts := array_append(parts, m); END IF;
+
+  m := pg_temp.v3_missing_columns('project_supervision_reports', ARRAY[
+    'id', 'client_id', 'status', 'report_date', 'contractor_name',
+    'branch_manager_name', 'supervising_office', 'safety_engineer_name',
+    'inspection_form_number', 'study_number', 'total_duration', 'start_date',
+    'overall_progress_percent', 'overall_progress_manual', 'notes', 'months',
+    'header', 'live_payload', 'pdf_snapshots', 'updated_at'
+  ]);
+  IF m <> '' THEN parts := array_append(parts, m); END IF;
+
+  m := pg_temp.v3_missing_columns('report_items', ARRAY[
+    'id', 'report_id', 'client_id', 'sort_order', 'category_id',
+    'category_label', 'description', 'work_type', 'total_percent',
+    'month_progress', 'updated_at'
+  ]);
+  IF m <> '' THEN parts := array_append(parts, m); END IF;
+
+  m := pg_temp.v3_missing_columns('report_pdf_snapshots', ARRAY[
+    'client_id', 'kind', 'visit_number', 'report_date', 'title_ar',
+    'file_name', 'size_bytes', 'mime_type', 'storage_bucket',
+    'storage_path', 'created_at'
+  ]);
+  IF m <> '' THEN parts := array_append(parts, m); END IF;
+
+  RETURN array_to_string(parts, '; ');
+END;
+$$;
+
 -- Shared tenant gate (SQL snippet logic inlined into DEFINER bodies below):
 --   service_role → allow
 --   else require auth.uid()
 --   else require clients.company_id = users.company_id for auth.uid()
 --   super_admin (role_code) may bypass client company match
+-- Bodies that call public.current_app_company_id() are rewritten ONLY when
+-- the canonical 0-arg resolver already exists (never created here as fallback).
 
--- ─── 0) current_app_company_id() — exists in 029; harden if 0-arg present ────
+-- ─── 0) current_app_company_id() — harden only if 0-arg already exists ───────
 DO $$
 DECLARE
   canon oid;
@@ -222,6 +317,11 @@ DECLARE
 BEGIN
   canon := pg_temp.v3_find_canonical('current_app_company_id', '');
   IF canon IS NULL THEN
+    UPDATE _v3_actions
+      SET detail = detail
+        || ' — NOT created; dependent body rewrites that call current_app_company_id() will skip body changes'
+      WHERE proname = 'current_app_company_id'
+        AND kind IN ('absent', 'absent_canonical');
     RETURN;
   END IF;
 
@@ -240,8 +340,6 @@ BEGIN
     LIMIT 1;
   $f$;
 
-  ident := pg_temp.v3_ident(canon);
-  -- Re-resolve after replace (oid may stay stable)
   ident := COALESCE(
     (
       SELECT pg_temp.v3_ident(p.oid)
@@ -252,11 +350,11 @@ BEGIN
         AND COALESCE(oidvectortypes(p.proargtypes), '') = ''
       LIMIT 1
     ),
-    ident
+    pg_temp.v3_ident(canon)
   );
   PERFORM pg_temp.v3_harden_grants('current_app_company_id', ident);
   UPDATE _v3_actions
-    SET detail = 'CREATE OR REPLACE 0-arg + search_path=public + REVOKE PUBLIC/anon + GRANT authenticated/service_role'
+    SET detail = 'CREATE OR REPLACE existing 0-arg + search_path=public + REVOKE PUBLIC/anon + GRANT authenticated/service_role'
     WHERE proname = 'current_app_company_id' AND kind = 'canonical';
 END $$;
 
@@ -265,16 +363,36 @@ DO $$
 DECLARE
   canon oid;
   ident text;
+  skip_reason text := NULL;
 BEGIN
   canon := pg_temp.v3_find_canonical('save_project_engineering_live', 'uuid, jsonb, text');
   IF canon IS NULL THEN
     RETURN;
   END IF;
-  IF to_regclass('public.project_engineering_live') IS NULL THEN
-    ident := pg_temp.v3_ident(canon);
+  ident := pg_temp.v3_ident(canon);
+
+  IF NOT pg_temp.v3_has_company_resolver() THEN
+    skip_reason := 'current_app_company_id() 0-arg missing';
+  ELSIF to_regclass('public.project_engineering_live') IS NULL THEN
+    skip_reason := 'project_engineering_live table missing';
+  ELSIF pg_temp.v3_missing_columns(
+    'project_engineering_live', ARRAY['client_id', 'payload', 'updated_at']
+  ) <> '' THEN
+    skip_reason := pg_temp.v3_missing_columns(
+      'project_engineering_live', ARRAY['client_id', 'payload', 'updated_at']
+    );
+  ELSIF pg_temp.v3_missing_columns(
+    'clients', ARRAY['id', 'company_id', 'pipeline_stage', 'updated_at']
+  ) <> '' THEN
+    skip_reason := pg_temp.v3_missing_columns(
+      'clients', ARRAY['id', 'company_id', 'pipeline_stage', 'updated_at']
+    );
+  END IF;
+
+  IF skip_reason IS NOT NULL THEN
     PERFORM pg_temp.v3_harden_grants('save_project_engineering_live', ident);
     UPDATE _v3_actions
-      SET detail = 'grants+search_path only (project_engineering_live table missing; body unchanged)'
+      SET detail = 'grants+search_path only — body rewrite skipped: ' || skip_reason
       WHERE proname = 'save_project_engineering_live' AND kind = 'canonical';
     RETURN;
   END IF;
@@ -345,16 +463,38 @@ DO $$
 DECLARE
   canon oid;
   ident text;
+  skip_reason text := NULL;
 BEGIN
   canon := pg_temp.v3_find_canonical('save_stage4_live_bundle', 'uuid, jsonb, jsonb, jsonb, text');
   IF canon IS NULL THEN
     RETURN;
   END IF;
-  IF to_regclass('public.project_stage4_live') IS NULL THEN
-    ident := pg_temp.v3_ident(canon);
+  ident := pg_temp.v3_ident(canon);
+
+  IF NOT pg_temp.v3_has_company_resolver() THEN
+    skip_reason := 'current_app_company_id() 0-arg missing';
+  ELSIF to_regclass('public.project_stage4_live') IS NULL THEN
+    skip_reason := 'project_stage4_live table missing';
+  ELSIF pg_temp.v3_missing_columns(
+    'project_stage4_live',
+    ARRAY['client_id', 'technical_report', 'fire_protection_design', 'workflow', 'updated_at']
+  ) <> '' THEN
+    skip_reason := pg_temp.v3_missing_columns(
+      'project_stage4_live',
+      ARRAY['client_id', 'technical_report', 'fire_protection_design', 'workflow', 'updated_at']
+    );
+  ELSIF pg_temp.v3_missing_columns(
+    'clients', ARRAY['id', 'company_id', 'pipeline_stage', 'updated_at']
+  ) <> '' THEN
+    skip_reason := pg_temp.v3_missing_columns(
+      'clients', ARRAY['id', 'company_id', 'pipeline_stage', 'updated_at']
+    );
+  END IF;
+
+  IF skip_reason IS NOT NULL THEN
     PERFORM pg_temp.v3_harden_grants('save_stage4_live_bundle', ident);
     UPDATE _v3_actions
-      SET detail = 'grants+search_path only (project_stage4_live missing; body unchanged)'
+      SET detail = 'grants+search_path only — body rewrite skipped: ' || skip_reason
       WHERE proname = 'save_stage4_live_bundle' AND kind = 'canonical';
     RETURN;
   END IF;
@@ -437,7 +577,7 @@ DO $$
 DECLARE
   canon oid;
   ident text;
-  can_rewrite boolean;
+  blockers text;
 BEGIN
   canon := pg_temp.v3_find_canonical('save_stage5_live_bundle', 'uuid, jsonb, jsonb, jsonb, text');
   IF canon IS NULL THEN
@@ -445,22 +585,19 @@ BEGIN
   END IF;
 
   ident := pg_temp.v3_ident(canon);
-  can_rewrite :=
-    to_regclass('public.field_visit_reports') IS NOT NULL
-    AND to_regclass('public.report_items') IS NOT NULL
-    AND to_regclass('public.report_pdf_snapshots') IS NOT NULL
-    AND to_regclass('public.project_supervision_reports') IS NOT NULL
-    AND EXISTS (
-      SELECT 1 FROM information_schema.columns
-      WHERE table_schema = 'public'
-        AND table_name = 'project_supervision_reports'
-        AND column_name = 'live_payload'
-    );
+  blockers := pg_temp.v3_stage5_rewrite_blockers();
+  IF NOT pg_temp.v3_has_company_resolver() THEN
+    IF blockers = '' THEN
+      blockers := 'current_app_company_id() 0-arg missing';
+    ELSE
+      blockers := blockers || '; current_app_company_id() 0-arg missing';
+    END IF;
+  END IF;
 
-  IF NOT can_rewrite THEN
+  IF blockers <> '' THEN
     PERFORM pg_temp.v3_harden_grants('save_stage5_live_bundle', ident);
     UPDATE _v3_actions
-      SET detail = 'grants+search_path only (stage5 supporting schema incomplete; body unchanged)'
+      SET detail = 'grants+search_path only — body rewrite skipped: ' || blockers
       WHERE proname = 'save_stage5_live_bundle' AND kind = 'canonical';
     RETURN;
   END IF;
@@ -656,9 +793,31 @@ DO $$
 DECLARE
   canon oid;
   ident text;
+  skip_reason text := NULL;
 BEGIN
   canon := pg_temp.v3_find_canonical('merge_project_engineering_patch', 'uuid, jsonb, text');
   IF canon IS NULL THEN
+    RETURN;
+  END IF;
+  ident := pg_temp.v3_ident(canon);
+
+  IF NOT pg_temp.v3_has_company_resolver() THEN
+    skip_reason := 'current_app_company_id() 0-arg missing';
+  ELSIF pg_temp.v3_missing_columns(
+    'clients',
+    ARRAY['id', 'company_id', 'pipeline_stage', 'updated_at', 'project_engineering_data']
+  ) <> '' THEN
+    skip_reason := pg_temp.v3_missing_columns(
+      'clients',
+      ARRAY['id', 'company_id', 'pipeline_stage', 'updated_at', 'project_engineering_data']
+    );
+  END IF;
+
+  IF skip_reason IS NOT NULL THEN
+    PERFORM pg_temp.v3_harden_grants('merge_project_engineering_patch', ident);
+    UPDATE _v3_actions
+      SET detail = 'grants+search_path only — body rewrite skipped: ' || skip_reason
+      WHERE proname = 'merge_project_engineering_patch' AND kind = 'canonical';
     RETURN;
   END IF;
 
@@ -721,9 +880,31 @@ DO $$
 DECLARE
   canon oid;
   ident text;
+  skip_reason text := NULL;
 BEGIN
   canon := pg_temp.v3_find_canonical('merge_supervision_report_json', 'uuid, jsonb, text');
   IF canon IS NULL THEN
+    RETURN;
+  END IF;
+  ident := pg_temp.v3_ident(canon);
+
+  IF NOT pg_temp.v3_has_company_resolver() THEN
+    skip_reason := 'current_app_company_id() 0-arg missing';
+  ELSIF pg_temp.v3_missing_columns(
+    'clients',
+    ARRAY['id', 'company_id', 'pipeline_stage', 'updated_at', 'project_engineering_data']
+  ) <> '' THEN
+    skip_reason := pg_temp.v3_missing_columns(
+      'clients',
+      ARRAY['id', 'company_id', 'pipeline_stage', 'updated_at', 'project_engineering_data']
+    );
+  END IF;
+
+  IF skip_reason IS NOT NULL THEN
+    PERFORM pg_temp.v3_harden_grants('merge_supervision_report_json', ident);
+    UPDATE _v3_actions
+      SET detail = 'grants+search_path only — body rewrite skipped: ' || skip_reason
+      WHERE proname = 'merge_supervision_report_json' AND kind = 'canonical';
     RETURN;
   END IF;
 
@@ -787,9 +968,31 @@ DO $$
 DECLARE
   canon oid;
   ident text;
+  skip_reason text := NULL;
 BEGIN
   canon := pg_temp.v3_find_canonical('save_project_engineering_data', 'uuid, jsonb, text');
   IF canon IS NULL THEN
+    RETURN;
+  END IF;
+  ident := pg_temp.v3_ident(canon);
+
+  IF NOT pg_temp.v3_has_company_resolver() THEN
+    skip_reason := 'current_app_company_id() 0-arg missing';
+  ELSIF pg_temp.v3_missing_columns(
+    'clients',
+    ARRAY['id', 'company_id', 'pipeline_stage', 'updated_at', 'project_engineering_data']
+  ) <> '' THEN
+    skip_reason := pg_temp.v3_missing_columns(
+      'clients',
+      ARRAY['id', 'company_id', 'pipeline_stage', 'updated_at', 'project_engineering_data']
+    );
+  END IF;
+
+  IF skip_reason IS NOT NULL THEN
+    PERFORM pg_temp.v3_harden_grants('save_project_engineering_data', ident);
+    UPDATE _v3_actions
+      SET detail = 'grants+search_path only — body rewrite skipped: ' || skip_reason
+      WHERE proname = 'save_project_engineering_data' AND kind = 'canonical';
     RETURN;
   END IF;
 
@@ -851,9 +1054,31 @@ DO $$
 DECLARE
   canon oid;
   ident text;
+  skip_reason text := NULL;
 BEGIN
   canon := pg_temp.v3_find_canonical('slim_project_engineering_data_urls', 'uuid');
   IF canon IS NULL THEN
+    RETURN;
+  END IF;
+  ident := pg_temp.v3_ident(canon);
+
+  IF NOT pg_temp.v3_has_company_resolver() THEN
+    skip_reason := 'current_app_company_id() 0-arg missing';
+  ELSIF pg_temp.v3_missing_columns(
+    'clients',
+    ARRAY['id', 'company_id', 'updated_at', 'project_engineering_data']
+  ) <> '' THEN
+    skip_reason := pg_temp.v3_missing_columns(
+      'clients',
+      ARRAY['id', 'company_id', 'updated_at', 'project_engineering_data']
+    );
+  END IF;
+
+  IF skip_reason IS NOT NULL THEN
+    PERFORM pg_temp.v3_harden_grants('slim_project_engineering_data_urls', ident);
+    UPDATE _v3_actions
+      SET detail = 'grants+search_path only — body rewrite skipped: ' || skip_reason
+      WHERE proname = 'slim_project_engineering_data_urls' AND kind = 'canonical';
     RETURN;
   END IF;
 
@@ -932,9 +1157,33 @@ DO $$
 DECLARE
   canon oid;
   ident text;
+  skip_reason text := NULL;
 BEGIN
   canon := pg_temp.v3_find_canonical('next_document_number', 'text, uuid');
   IF canon IS NULL THEN
+    RETURN;
+  END IF;
+  ident := pg_temp.v3_ident(canon);
+
+  IF NOT pg_temp.v3_has_company_resolver() THEN
+    skip_reason := 'current_app_company_id() 0-arg missing';
+  ELSIF to_regclass('public.document_sequences') IS NULL THEN
+    skip_reason := 'document_sequences table missing';
+  ELSIF pg_temp.v3_missing_columns(
+    'document_sequences',
+    ARRAY['company_id', 'doc_kind', 'year_key', 'last_value', 'updated_at']
+  ) <> '' THEN
+    skip_reason := pg_temp.v3_missing_columns(
+      'document_sequences',
+      ARRAY['company_id', 'doc_kind', 'year_key', 'last_value', 'updated_at']
+    );
+  END IF;
+
+  IF skip_reason IS NOT NULL THEN
+    PERFORM pg_temp.v3_harden_grants('next_document_number', ident);
+    UPDATE _v3_actions
+      SET detail = 'grants+search_path only — body rewrite skipped: ' || skip_reason
+      WHERE proname = 'next_document_number' AND kind = 'canonical';
     RETURN;
   END IF;
 
