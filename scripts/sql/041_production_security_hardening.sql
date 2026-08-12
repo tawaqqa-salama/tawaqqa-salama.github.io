@@ -3,9 +3,15 @@
 -- Additive migration: tighten RLS, Storage, live-store RPCs.
 -- Does NOT drop correct existing policies; replaces open USING(true) on sensitive tables.
 -- Safe to re-run.
+--
+-- NOTE: An earlier draft of this file referenced public.tenant_memberships, which
+-- does NOT exist in production and caused ERROR 42P01 (no changes applied).
+-- For SECURITY DEFINER hardening on the real production schema, prefer:
+--   scripts/sql/20260812_security_definer_hardening_v2.sql
+-- current_app_company_id below uses public.users.company_id only.
 -- ============================================================================
 
--- ─── 1) Stronger company resolver (membership-aware) ─────────────────────────
+-- ─── 1) Company resolver (users.company_id — production tenant link) ─────────
 CREATE OR REPLACE FUNCTION public.current_app_company_id()
 RETURNS uuid
 LANGUAGE sql
@@ -13,34 +19,12 @@ STABLE
 SECURITY DEFINER
 SET search_path = public
 AS $$
-  SELECT COALESCE(
-    (
-      SELECT u.company_id
-      FROM public.users u
-      WHERE u.auth_user_id = auth.uid()
-        AND u.deleted_at IS NULL
-        AND u.is_active = true
-      LIMIT 1
-    ),
-    (
-      SELECT tm.company_id
-      FROM public.tenant_memberships tm
-      JOIN public.users u ON u.id = tm.user_id
-      WHERE u.auth_user_id = auth.uid()
-        AND tm.status = 'active'
-        AND tm.is_default = true
-      LIMIT 1
-    ),
-    (
-      SELECT tm.company_id
-      FROM public.tenant_memberships tm
-      JOIN public.users u ON u.id = tm.user_id
-      WHERE u.auth_user_id = auth.uid()
-        AND tm.status = 'active'
-      ORDER BY tm.created_at ASC
-      LIMIT 1
-    )
-  );
+  SELECT u.company_id
+  FROM public.users u
+  WHERE u.auth_user_id = auth.uid()
+    AND u.deleted_at IS NULL
+    AND u.is_active = true
+  LIMIT 1;
 $$;
 
 REVOKE ALL ON FUNCTION public.current_app_company_id() FROM PUBLIC;
@@ -74,7 +58,8 @@ SET search_path = public
 AS $$
   SELECT COALESCE(
     (
-      SELECT (u.is_platform_admin = true OR u.role_code = 'super_admin')
+      -- Production users has no is_platform_admin column; super_admin only.
+      SELECT u.role_code = 'super_admin'
       FROM public.users u
       WHERE u.auth_user_id = auth.uid()
         AND u.deleted_at IS NULL
@@ -726,6 +711,6 @@ BEGIN
 END $$;
 
 COMMENT ON FUNCTION public.current_app_company_id() IS
-  '041: Resolves tenant company for RLS from auth.uid() → users / memberships';
+  '041: Resolves tenant company for RLS from auth.uid() → public.users.company_id';
 COMMENT ON FUNCTION public.assert_client_tenant_access(uuid) IS
   '041: Blocks cross-tenant live-save RPC writes';

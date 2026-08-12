@@ -1,12 +1,79 @@
 -- ============================================================================
--- 044 — Block tenant privilege escalation to platform admin
--- Additive / idempotent. No data deletion.
--- Fixes: tenant_admin/admin could INSERT/UPDATE users with role_code=super_admin
---        or is_platform_admin=true, which is_platform_admin() treats as platform power.
--- Also hardens SECURITY DEFINER search_path to pg_catalog, public.
+-- Users privilege-escalation lock (042 helpers + 044 gates)
+-- Production schema: users.company_id + role_code only
+-- NO is_platform_admin column — platform power = role_code = 'super_admin'
+-- No tenant_memberships.
+-- Idempotent.
 -- ============================================================================
 
--- ─── Helpers (SECURITY DEFINER, locked search_path) ──────────────────────────
+CREATE OR REPLACE FUNCTION public.is_platform_admin()
+RETURNS boolean
+LANGUAGE sql
+STABLE
+SECURITY DEFINER
+SET search_path = pg_catalog, public
+AS $$
+  SELECT COALESCE(
+    (
+      SELECT u.role_code = 'super_admin'
+      FROM public.users u
+      WHERE u.auth_user_id = auth.uid()
+        AND u.deleted_at IS NULL
+        AND u.is_active = true
+      LIMIT 1
+    ),
+    false
+  );
+$$;
+
+CREATE OR REPLACE FUNCTION public.current_app_role_code()
+RETURNS text
+LANGUAGE sql
+STABLE
+SECURITY DEFINER
+SET search_path = pg_catalog, public
+AS $$
+  SELECT COALESCE(
+    (
+      SELECT u.role_code
+      FROM public.users u
+      WHERE u.auth_user_id = auth.uid()
+        AND u.deleted_at IS NULL
+        AND u.is_active = true
+      LIMIT 1
+    ),
+    'staff'
+  );
+$$;
+
+CREATE OR REPLACE FUNCTION public.app_role_in(allowed text[])
+RETURNS boolean
+LANGUAGE sql
+STABLE
+SECURITY DEFINER
+SET search_path = pg_catalog, public
+AS $$
+  SELECT public.is_platform_admin()
+    OR public.current_app_role_code() = ANY (allowed)
+    OR (
+      public.current_app_role_code() = 'admin'
+      AND 'tenant_admin' = ANY (allowed)
+    )
+    OR (
+      public.current_app_role_code() = 'tenant_admin'
+      AND 'admin' = ANY (allowed)
+    );
+$$;
+
+CREATE OR REPLACE FUNCTION public.app_can_manage_users()
+RETURNS boolean
+LANGUAGE sql
+STABLE
+SECURITY DEFINER
+SET search_path = pg_catalog, public
+AS $$
+  SELECT public.app_role_in(ARRAY['super_admin', 'tenant_admin', 'admin']);
+$$;
 
 CREATE OR REPLACE FUNCTION public.app_is_platform_privilege_role(p_role_code text)
 RETURNS boolean
@@ -25,7 +92,6 @@ IMMUTABLE
 SECURITY DEFINER
 SET search_path = pg_catalog, public
 AS $$
-  -- Roles a tenant_admin/admin may assign. Never includes super_admin.
   SELECT COALESCE(p_role_code, 'staff') = ANY (ARRAY[
     'tenant_admin',
     'admin',
@@ -59,7 +125,6 @@ AS $$
       AND u.role_code IS NOT DISTINCT FROM p_role_code
       AND u.company_id IS NOT DISTINCT FROM p_company_id
   )
-  -- Production has no is_platform_admin column; param must stay false
   AND COALESCE(p_is_platform_admin, false) = false;
 $$;
 
@@ -76,17 +141,13 @@ SET search_path = pg_catalog, public
 AS $$
   SELECT
     CASE
-      -- Platform admin may create any user (including super_admin / platform flag)
       WHEN public.is_platform_admin() THEN true
-
-      -- Tenant admin/admin: same company only; never platform privileges
       WHEN public.app_can_manage_users()
            AND p_company_id IS NOT DISTINCT FROM public.current_app_company_id()
            AND COALESCE(p_is_platform_admin, false) = false
            AND NOT public.app_is_platform_privilege_role(COALESCE(p_role_code, 'staff'))
            AND public.app_is_tenant_assignable_role(COALESCE(p_role_code, 'staff'))
         THEN true
-
       ELSE false
     END;
 $$;
@@ -105,11 +166,7 @@ SET search_path = pg_catalog, public
 AS $$
   SELECT
     CASE
-      -- Platform admin retains full rights
       WHEN public.is_platform_admin() THEN true
-
-      -- Tenant admin/admin: manage peers in-company only; never grant platform power;
-      -- never edit an existing platform-privileged user; never move company.
       WHEN public.app_can_manage_users()
            AND p_new_company_id IS NOT DISTINCT FROM public.current_app_company_id()
            AND COALESCE(p_new_is_platform_admin, false) = false
@@ -123,8 +180,6 @@ AS $$
                AND NOT public.app_is_platform_privilege_role(t.role_code)
            )
         THEN true
-
-      -- Self-update: personal fields only — privileged columns must be unchanged
       WHEN p_target_id IS NOT DISTINCT FROM public.current_app_user_id()
            AND public.app_users_self_update_ok(
              p_new_role_code,
@@ -132,48 +187,8 @@ AS $$
              p_new_is_platform_admin
            )
         THEN true
-
       ELSE false
     END;
-$$;
-
-REVOKE ALL ON FUNCTION public.app_is_platform_privilege_role(text) FROM PUBLIC;
-REVOKE ALL ON FUNCTION public.app_is_tenant_assignable_role(text) FROM PUBLIC;
-REVOKE ALL ON FUNCTION public.app_users_self_update_ok(text, uuid, boolean) FROM PUBLIC;
-REVOKE ALL ON FUNCTION public.app_can_insert_user_row(uuid, text, boolean) FROM PUBLIC;
-REVOKE ALL ON FUNCTION public.app_can_update_user_row(uuid, text, uuid, boolean) FROM PUBLIC;
-
-GRANT EXECUTE ON FUNCTION public.app_is_platform_privilege_role(text)
-  TO authenticated, service_role;
-GRANT EXECUTE ON FUNCTION public.app_is_tenant_assignable_role(text)
-  TO authenticated, service_role;
-GRANT EXECUTE ON FUNCTION public.app_users_self_update_ok(text, uuid, boolean)
-  TO authenticated, service_role;
-GRANT EXECUTE ON FUNCTION public.app_can_insert_user_row(uuid, text, boolean)
-  TO authenticated, service_role;
-GRANT EXECUTE ON FUNCTION public.app_can_update_user_row(uuid, text, uuid, boolean)
-  TO authenticated, service_role;
-
--- Harden search_path on related helpers from 041/042 (idempotent replace)
-CREATE OR REPLACE FUNCTION public.is_platform_admin()
-RETURNS boolean
-LANGUAGE sql
-STABLE
-SECURITY DEFINER
-SET search_path = pg_catalog, public
-AS $$
-  SELECT COALESCE(
-    (
-      -- Production users has no is_platform_admin column; super_admin only.
-      SELECT u.role_code = 'super_admin'
-      FROM public.users u
-      WHERE u.auth_user_id = auth.uid()
-        AND u.deleted_at IS NULL
-        AND u.is_active = true
-      LIMIT 1
-    ),
-    false
-  );
 $$;
 
 CREATE OR REPLACE FUNCTION public.current_app_user_id()
@@ -190,7 +205,6 @@ AS $$
   LIMIT 1;
 $$;
 
--- Production tenant link is public.users.company_id (no tenant_memberships table).
 CREATE OR REPLACE FUNCTION public.current_app_company_id()
 RETURNS uuid
 LANGUAGE sql
@@ -206,63 +220,34 @@ AS $$
   LIMIT 1;
 $$;
 
-CREATE OR REPLACE FUNCTION public.app_can_manage_users()
-RETURNS boolean
-LANGUAGE sql
-STABLE
-SECURITY DEFINER
-SET search_path = pg_catalog, public
-AS $$
-  SELECT public.app_role_in(ARRAY['super_admin', 'tenant_admin', 'admin']);
-$$;
+REVOKE ALL ON FUNCTION public.is_platform_admin() FROM PUBLIC;
+REVOKE ALL ON FUNCTION public.current_app_role_code() FROM PUBLIC;
+REVOKE ALL ON FUNCTION public.app_role_in(text[]) FROM PUBLIC;
+REVOKE ALL ON FUNCTION public.app_can_manage_users() FROM PUBLIC;
+REVOKE ALL ON FUNCTION public.app_is_platform_privilege_role(text) FROM PUBLIC;
+REVOKE ALL ON FUNCTION public.app_is_tenant_assignable_role(text) FROM PUBLIC;
+REVOKE ALL ON FUNCTION public.app_users_self_update_ok(text, uuid, boolean) FROM PUBLIC;
+REVOKE ALL ON FUNCTION public.app_can_insert_user_row(uuid, text, boolean) FROM PUBLIC;
+REVOKE ALL ON FUNCTION public.app_can_update_user_row(uuid, text, uuid, boolean) FROM PUBLIC;
+REVOKE ALL ON FUNCTION public.current_app_user_id() FROM PUBLIC;
+REVOKE ALL ON FUNCTION public.current_app_company_id() FROM PUBLIC;
 
--- Ensure app_role_in also uses a locked search_path (used by manage-users gate)
-CREATE OR REPLACE FUNCTION public.app_role_in(allowed text[])
-RETURNS boolean
-LANGUAGE sql
-STABLE
-SECURITY DEFINER
-SET search_path = pg_catalog, public
-AS $$
-  SELECT public.is_platform_admin()
-    OR public.current_app_role_code() = ANY (allowed)
-    OR (
-      public.current_app_role_code() = 'admin'
-      AND 'tenant_admin' = ANY (allowed)
-    )
-    OR (
-      public.current_app_role_code() = 'tenant_admin'
-      AND 'admin' = ANY (allowed)
-    );
-$$;
+GRANT EXECUTE ON FUNCTION public.is_platform_admin() TO authenticated, service_role;
+GRANT EXECUTE ON FUNCTION public.current_app_role_code() TO authenticated, service_role;
+GRANT EXECUTE ON FUNCTION public.app_role_in(text[]) TO authenticated, service_role;
+GRANT EXECUTE ON FUNCTION public.app_can_manage_users() TO authenticated, service_role;
+GRANT EXECUTE ON FUNCTION public.app_is_platform_privilege_role(text) TO authenticated, service_role;
+GRANT EXECUTE ON FUNCTION public.app_is_tenant_assignable_role(text) TO authenticated, service_role;
+GRANT EXECUTE ON FUNCTION public.app_users_self_update_ok(text, uuid, boolean) TO authenticated, service_role;
+GRANT EXECUTE ON FUNCTION public.app_can_insert_user_row(uuid, text, boolean) TO authenticated, service_role;
+GRANT EXECUTE ON FUNCTION public.app_can_update_user_row(uuid, text, uuid, boolean) TO authenticated, service_role;
+GRANT EXECUTE ON FUNCTION public.current_app_user_id() TO authenticated, service_role;
+GRANT EXECUTE ON FUNCTION public.current_app_company_id() TO authenticated, service_role;
 
-CREATE OR REPLACE FUNCTION public.current_app_role_code()
-RETURNS text
-LANGUAGE sql
-STABLE
-SECURITY DEFINER
-SET search_path = pg_catalog, public
-AS $$
-  SELECT COALESCE(
-    (
-      SELECT u.role_code
-      FROM public.users u
-      WHERE u.auth_user_id = auth.uid()
-        AND u.deleted_at IS NULL
-        AND u.is_active = true
-      LIMIT 1
-    ),
-    'staff'
-  );
-$$;
-
--- ─── Recreate users INSERT / UPDATE policies with privileged-field gates ─────
 DO $$
 BEGIN
-  IF to_regclass('public.users') IS NULL THEN
-    RETURN;
-  END IF;
-
+  DROP POLICY IF EXISTS users_insert_tenant ON public.users;
+  DROP POLICY IF EXISTS users_update_tenant ON public.users;
   DROP POLICY IF EXISTS users_insert_admin ON public.users;
   DROP POLICY IF EXISTS users_update_admin ON public.users;
 
@@ -285,11 +270,11 @@ BEGIN
     WITH CHECK (
       public.app_can_update_user_row(id, role_code, company_id, false)
     );
+
+  RAISE NOTICE 'users: privilege-escalation locks applied (super_admin only; no is_platform_admin col)';
 END $$;
 
-COMMENT ON FUNCTION public.app_can_insert_user_row(uuid, text, boolean) IS
-  '044: tenant admins cannot insert super_admin (no is_platform_admin column in prod)';
-COMMENT ON FUNCTION public.app_can_update_user_row(uuid, text, uuid, boolean) IS
-  '044: tenant admins cannot promote to super_admin; platform admin only';
-COMMENT ON FUNCTION public.app_is_platform_privilege_role(text) IS
-  '044: role_code=super_admin is a platform privilege';
+SELECT policyname, cmd, roles
+FROM pg_policies
+WHERE schemaname = 'public' AND tablename = 'users'
+ORDER BY policyname;
