@@ -51,6 +51,7 @@ function projectDensityRow(partial: Partial<Nfpa13EncodedRow> = {}): Nfpa13Encod
     minimum: 10,
     applicability: { hazard: 'ordinary_1' },
     source: 'project_fixture:engineer_attested_mapping',
+    version: '1.0.0-test',
     explanation_ar: 'صف مشروع موثّق لكثافة OH-1 — ليس جدولاً منصّة.',
     explanation_en: 'Project-attested OH-1 density row — not a platform table cell.',
     encoding_source: 'project_adopted_mapping',

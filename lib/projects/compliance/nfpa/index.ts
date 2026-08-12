@@ -52,10 +52,13 @@ export {
   NFPA13_PLATFORM_EDITION,
   NFPA13_PLATFORM_THRESHOLDS,
   NFPA13_RULE_DEFINITIONS,
+  REQUIRED_NFPA13_ENCODED_ROW_FIELDS,
   getNfpa13RuleDefinition,
   listNfpa13RuleIds,
   resolveNfpa13EncodedRow,
   isCompleteNfpa13EncodedRow,
+  isCompleteNfpa13MappingForRule,
+  rowHasThresholdForMode,
 } from '@/lib/projects/compliance/nfpa/nfpa13-tables';
 export type {
   Nfpa13EncodedRow,

@@ -5,11 +5,13 @@
  * - Platform does NOT encode remembered/estimated NFPA table cells.
  * - `NFPA13_PLATFORM_EDITION` is null until a verified licensed edition is entered.
  * - `NFPA13_PLATFORM_THRESHOLDS` stays empty until then.
- * - PASS/FAIL is possible only when a complete project_adopted_mapping row
- *   is supplied with edition + section + parameter + unit + value/range + source.
+ * - PASS/FAIL is possible only when a COMPLETE project_adopted_mapping row
+ *   is supplied (see REQUIRED_NFPA13_ENCODED_ROW_FIELDS + threshold).
+ * - Partial mappings never resolve → RULE_NOT_CONFIGURED (never PASS).
  *
- * Reuses the DocumentedCodeLimit provenance model (code-database), not DI seed
- * numerics and not a new Supabase table.
+ * Authority: findings feed lib/projects/compliance only (same engine as SBC).
+ * DI `di_engineering_rules` remains advisory UX cascade — not authoritative
+ * NFPA PASS/FAIL (lacks structured edition/section/unit/threshold provenance).
  */
 
 export const NFPA13_CODE = 'NFPA-13' as const;
@@ -47,6 +49,25 @@ export type Nfpa13Applicability = {
 };
 
 /**
+ * Required provenance fields on every future numeric/categorical NFPA 13 row.
+ * Threshold/value completeness is mode-specific (see rowHasThresholdForMode).
+ */
+export const REQUIRED_NFPA13_ENCODED_ROW_FIELDS = [
+  'code',
+  'edition',
+  'section',
+  'rule_id',
+  'applicability',
+  'parameter', // input field
+  'unit',
+  'source',
+  'version',
+  'explanation_ar',
+  'explanation_en',
+  'encoding_source',
+] as const;
+
+/**
  * One encoded threshold / categorical row with full provenance.
  * Platform rows must never be invented; project_adopted_mapping rows are
  * engineer-attested for that project only.
@@ -57,6 +78,7 @@ export type Nfpa13EncodedRow = {
   rule_id: string;
   section: string;
   table?: string | null;
+  /** Input field key on Nfpa13Context */
   parameter: string;
   unit: string | null;
   /** Exact value (eq) or presence sentinel */
@@ -66,6 +88,8 @@ export type Nfpa13EncodedRow = {
   allowed_values?: string[] | null;
   applicability: Nfpa13Applicability;
   source: string;
+  /** Mapping/row version — required for PASS eligibility */
+  version: string;
   explanation_ar: string;
   explanation_en: string;
   encoding_source: 'platform_code_table' | 'project_adopted_mapping';
@@ -236,6 +260,7 @@ export const NFPA13_RULE_DEFINITIONS: Nfpa13RuleDefinition[] = [
  * Platform-encoded numeric/categorical cells.
  * EMPTY — standards catalog marks NFPA-13 edition_not_verified.
  * Do not copy DI DEN-* / vision heuristics here.
+ * Empty platform table MUST NOT produce PASS.
  */
 export const NFPA13_PLATFORM_THRESHOLDS: Nfpa13EncodedRow[] = [];
 
@@ -247,6 +272,37 @@ export function listNfpa13RuleIds(): string[] {
   return NFPA13_RULE_DEFINITIONS.map((r) => r.rule_id);
 }
 
+/** Threshold/value present for the rule compare mode. */
+export function rowHasThresholdForMode(
+  row: Nfpa13EncodedRow,
+  compare: Nfpa13CompareMode
+): boolean {
+  if (compare === 'numeric_min') {
+    const v = row.minimum ?? (typeof row.value === 'number' ? row.value : null);
+    return v != null && Number.isFinite(v);
+  }
+  if (compare === 'numeric_max') {
+    const v = row.maximum ?? (typeof row.value === 'number' ? row.value : null);
+    return v != null && Number.isFinite(v);
+  }
+  if (compare === 'numeric_eq') {
+    return (
+      row.value != null &&
+      row.value !== '' &&
+      (typeof row.value !== 'number' || Number.isFinite(row.value))
+    );
+  }
+  if (compare === 'categorical_in') {
+    return Boolean(row.allowed_values?.length) || typeof row.value === 'string';
+  }
+  if (compare === 'presence_true') return true;
+  return false;
+}
+
+/**
+ * Provenance completeness (edition, section, source, version, explanations, …).
+ * Does NOT invent defaults. Incomplete → false → cannot PASS.
+ */
 export function isCompleteNfpa13EncodedRow(row: Nfpa13EncodedRow | null | undefined): boolean {
   if (!row) return false;
   if (row.code !== NFPA13_CODE) return false;
@@ -255,14 +311,35 @@ export function isCompleteNfpa13EncodedRow(row: Nfpa13EncodedRow | null | undefi
   if (!String(row.section || '').trim()) return false;
   if (!String(row.parameter || '').trim()) return false;
   if (!String(row.source || '').trim()) return false;
+  if (!String(row.version || '').trim()) return false;
   if (!String(row.explanation_ar || '').trim() || !String(row.explanation_en || '').trim()) {
     return false;
   }
   if (row.encoding_source !== 'platform_code_table' && row.encoding_source !== 'project_adopted_mapping') {
     return false;
   }
-  // Mode-specific completeness checked by resolver against rule definition
+  if (row.applicability == null || typeof row.applicability !== 'object') return false;
+  // unit may be null only for categorical/presence rules — checked with definition
   return true;
+}
+
+/**
+ * Full PASS/FAIL eligibility: provenance + unit (when required) + threshold for mode.
+ * Partial mappings return false → resolver yields none → RULE_NOT_CONFIGURED.
+ */
+export function isCompleteNfpa13MappingForRule(
+  ruleId: string,
+  row: Nfpa13EncodedRow | null | undefined
+): boolean {
+  if (!isCompleteNfpa13EncodedRow(row) || !row) return false;
+  const def = getNfpa13RuleDefinition(ruleId);
+  if (!def) return false;
+  if (row.rule_id !== def.rule_id) return false;
+  if (row.parameter !== def.parameter) return false;
+  if (def.unit != null) {
+    if (!String(row.unit || '').trim()) return false;
+  }
+  return rowHasThresholdForMode(row, def.compare);
 }
 
 function applicabilityMatches(
@@ -291,9 +368,9 @@ function norm(s: string): string {
 
 /**
  * Resolve a conditional NFPA 13 row:
- * 1) platform thresholds matching edition + applicability
+ * 1) platform thresholds matching edition + applicability (currently empty)
  * 2) project_adopted_mapping rows (same match)
- * Never invents a fallback.
+ * Incomplete rows are ignored. Never invents a fallback.
  */
 export function resolveNfpa13EncodedRow(params: {
   rule_id: string;
@@ -305,8 +382,7 @@ export function resolveNfpa13EncodedRow(params: {
   if (!edition) return { row: null, reason: 'none' };
 
   const match = (row: Nfpa13EncodedRow): boolean => {
-    if (!isCompleteNfpa13EncodedRow(row)) return false;
-    if (row.rule_id !== params.rule_id) return false;
+    if (!isCompleteNfpa13MappingForRule(params.rule_id, row)) return false;
     if (String(row.edition).trim() !== edition) return false;
     return applicabilityMatches(row, params.applicability);
   };
