@@ -87,7 +87,7 @@ BEGIN
         'CREATE TRIGGER trg_stamp_company_id
            BEFORE INSERT OR UPDATE ON public.%I
            FOR EACH ROW
-           EXECUTE FUNCTION public.tg_stamp_company_id()',
+           EXECUTE PROCEDURE public.tg_stamp_company_id()',
         t
       );
     END IF;
