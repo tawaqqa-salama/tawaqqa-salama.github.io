@@ -16,7 +16,7 @@ export async function GET(request: Request) {
   let companyId = session.companyId;
   if (!companyId) {
     const memberships = await getUserMemberships(session.userId);
-    companyId = memberships[0] ? String((memberships[0] as { company_id: string }).company_id) : undefined;
+    companyId = memberships[0] ? String(memberships[0].company_id) : undefined;
   }
   if (!companyId) {
     return NextResponse.json({ ok: false, error: 'No tenant' }, { status: 400 });
