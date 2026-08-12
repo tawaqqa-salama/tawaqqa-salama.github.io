@@ -4,6 +4,24 @@
 -- Hardens ONLY canonical signatures confirmed by the overload audit.
 -- Does NOT create a function/overload when that exact signature is absent.
 --
+-- In scope (canonical only):
+--   current_app_company_id()
+--   save_project_engineering_live(uuid, jsonb, text)
+--   save_stage4_live_bundle(uuid, jsonb, jsonb, jsonb, text)
+--   save_stage5_live_bundle(uuid, jsonb, jsonb, jsonb, text)
+--   merge_project_engineering_patch(uuid, jsonb, text)
+--   merge_supervision_report_json(uuid, jsonb, text)
+--   save_project_engineering_data(uuid, jsonb, text)
+--   slim_project_engineering_data_urls(uuid)
+--   next_document_number(text, uuid)
+--   format_document_number(text, integer, integer)
+--
+-- Explicitly OUT of scope (do NOT touch 042–044 helpers):
+--   current_app_role_code, app_role_in, app_can_manage_users,
+--   app_can_read_finance, app_can_write_finance, app_can_manage_tenant_settings,
+--   app_users_self_update_ok, app_can_update_user_row, app_can_insert_user_row,
+--   app_is_platform_privilege_role, app_is_tenant_assignable_role
+--
 -- Tenant link: auth.uid() → public.users.company_id
 -- Role column: public.users.role_code (never users.role)
 -- No tenant_memberships / compatibility DDL / SBC-NFPA / unrelated RLS.
