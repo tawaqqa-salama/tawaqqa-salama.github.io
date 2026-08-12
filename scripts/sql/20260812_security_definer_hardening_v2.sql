@@ -1,6 +1,11 @@
 -- ============================================================================
 -- 20260812 — SECURITY DEFINER hardening v2 (production-schema compatible)
 -- ============================================================================
+-- SUPERSEDED FOR EXECUTION by:
+--   scripts/sql/20260812_security_definer_hardening_v3.sql
+-- v2 can leave non-canonical SECURITY DEFINER overloads executable (P0).
+-- Keep this file for history; run v3 instead.
+--
 -- Replaces the failed 041 approach that referenced public.tenant_memberships
 -- (relation does not exist in production).
 --
