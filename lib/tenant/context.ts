@@ -17,7 +17,7 @@ import {
 import { hasPermission } from '@/lib/auth/permissions';
 import type { PermissionCode } from '@/lib/auth/types';
 import { hasModule as checkModule, getTenant, getUserMemberships } from '@/lib/tenant/service';
-import type { PlatformModuleCode, TenantRecord } from '@/lib/tenant/types';
+import type { PlatformModuleCode, TenantMembership, TenantRecord } from '@/lib/tenant/types';
 import { isTenantAdminRole, isSuperAdminRole } from '@/lib/tenant/rbac';
 
 export type TenantContext = {
@@ -69,12 +69,11 @@ async function buildTenantContext(
   let tenantId = actor.companyId || null;
 
   if (!tenantId) {
-    const memberships = actor.memberships.length
-      ? actor.memberships
+    const memberships: TenantMembership[] = actor.memberships.length
+      ? (actor.memberships as TenantMembership[])
       : await getUserMemberships(actor.user.id);
-    const def =
-      memberships.find((m) => (m as { is_default?: boolean }).is_default) || memberships[0];
-    tenantId = def ? String((def as { company_id: string }).company_id) : null;
+    const def = memberships.find((m) => m.is_default) || memberships[0];
+    tenantId = def ? String(def.company_id) : null;
   }
 
   const requested = opts?.companyIdFromRequest;
@@ -89,11 +88,11 @@ async function buildTenantContext(
   if (!tenantId) throw new TenantAccessError('No tenant context', 400);
 
   if (!isPlatform) {
-    const memberships = actor.memberships.length
-      ? actor.memberships
+    const memberships: TenantMembership[] = actor.memberships.length
+      ? (actor.memberships as TenantMembership[])
       : await getUserMemberships(actor.user.id);
     const ok =
-      memberships.some((m) => String((m as { company_id: string }).company_id) === tenantId) ||
+      memberships.some((m) => String(m.company_id) === tenantId) ||
       actor.user.company_id === tenantId;
     if (!ok) throw new TenantAccessError('Not a member of this tenant');
   }

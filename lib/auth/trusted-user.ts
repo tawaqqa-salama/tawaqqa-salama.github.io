@@ -23,8 +23,9 @@ export type TrustedUserRow = {
   auth_user_id?: string | null;
 };
 
+// Production users has no is_platform_admin column — derive platform power from role_code.
 const USER_SELECT =
-  'id, email, full_name, role_code, company_id, is_active, deleted_at, is_platform_admin, auth_user_id';
+  'id, email, full_name, role_code, company_id, is_active, deleted_at, auth_user_id';
 
 function asUser(data: unknown): TrustedUserRow | null {
   if (!data || typeof data !== 'object') return null;
