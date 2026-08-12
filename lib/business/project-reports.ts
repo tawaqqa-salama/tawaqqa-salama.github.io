@@ -128,6 +128,9 @@ export function parseProjectEngineeringData(raw: ClientRecord['project_engineeri
           approved_snapshot: data.compliance.approved_snapshot ?? null,
           nfpa13_numeric: data.compliance.nfpa13_numeric
             ? {
+                edition_adoption: data.compliance.nfpa13_numeric.edition_adoption
+                  ? { ...data.compliance.nfpa13_numeric.edition_adoption }
+                  : undefined,
                 adopted_rows: Array.isArray(data.compliance.nfpa13_numeric.adopted_rows)
                   ? data.compliance.nfpa13_numeric.adopted_rows
                   : [],

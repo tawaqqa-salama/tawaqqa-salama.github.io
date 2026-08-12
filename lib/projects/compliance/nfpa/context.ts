@@ -32,6 +32,10 @@ import type {
   Nfpa72Context,
   NfpaEngineeringContext,
 } from '@/lib/projects/compliance/nfpa/types';
+import {
+  isValidNfpa13EditionAdoption,
+  parseNfpa13EditionAdoption,
+} from '@/lib/projects/compliance/nfpa/nfpa13-edition';
 
 /** Local FP merge — avoid circular import with compliance/context.ts */
 function resolveFireProtectionDesign(
@@ -80,16 +84,28 @@ function numField(
   return field('VALID', n);
 }
 
-/** Edition: only from explicit compliance notes CODE=NFPA-*;EDITION=* — never invent. */
+/** Edition: prefer structured project adoption metadata, then notes/snapshot — never invent. */
 function resolveNfpaEdition(
   data: ProjectEngineeringData,
   code: string
-): { state: ResolverState; value: string | null } {
+): {
+  state: ResolverState;
+  value: string | null;
+  adoption: ReturnType<typeof parseNfpa13EditionAdoption>;
+} {
+  if (code === 'NFPA-13') {
+    const adoption = parseNfpa13EditionAdoption(data.compliance?.nfpa13_numeric?.edition_adoption);
+    if (adoption && isValidNfpa13EditionAdoption(adoption)) {
+      // Cover/adoption records edition for project scope only — not platform official
+      return { state: 'VALID', value: adoption.edition, adoption };
+    }
+  }
+
   const notes = String(data.compliance?.notes || '');
   const snap = data.compliance?.approved_snapshot;
   if (snap?.source_code && snap.code_edition) {
     if (String(snap.source_code).toUpperCase().includes(code.replace('-', ' '))) {
-      return field('VALID', snap.code_edition);
+      return { state: 'VALID', value: snap.code_edition, adoption: null };
     }
   }
   const re = new RegExp(
@@ -97,8 +113,8 @@ function resolveNfpaEdition(
     'i'
   );
   const m = notes.match(re);
-  if (m?.[1]?.trim()) return field('VALID', m[1].trim());
-  return field('MISSING', null);
+  if (m?.[1]?.trim()) return { state: 'VALID', value: m[1].trim(), adoption: null };
+  return { state: 'MISSING', value: null, adoption: null };
 }
 
 export function buildNfpaEngineeringContext(params: {
@@ -113,6 +129,7 @@ export function buildNfpaEngineeringContext(params: {
 
   const numeric = data.compliance?.nfpa13_numeric;
   const nInputs = numeric?.inputs || {};
+  const editionResolved = resolveNfpaEdition(data, 'NFPA-13');
 
   const nfpa13: Nfpa13Context = {
     occupancy: fromResolved(resolved.occupancy),
@@ -153,7 +170,8 @@ export function buildNfpaEngineeringContext(params: {
       null
     ), // set below after hyd check via design fields
     available_water_supply: textField(fp.water_supply?.water_source),
-    nfpa13_edition: resolveNfpaEdition(data, 'NFPA-13'),
+    nfpa13_edition: field(editionResolved.state, editionResolved.value),
+    edition_adoption: editionResolved.adoption,
     project_rule_rows: Array.isArray(numeric?.adopted_rows)
       ? numeric!.adopted_rows!.filter((r) => r && r.encoding_source === 'project_adopted_mapping')
       : [],

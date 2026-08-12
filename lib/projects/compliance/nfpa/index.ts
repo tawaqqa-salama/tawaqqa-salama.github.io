@@ -65,6 +65,19 @@ export type {
   Nfpa13RuleDefinition,
   Nfpa13RuleDomain,
 } from '@/lib/projects/compliance/nfpa/nfpa13-tables';
+export {
+  NFPA13_2025_PROJECT_ADOPTION_TEMPLATE,
+  buildNfpa13_2025ProjectAdoption,
+  isValidNfpa13EditionAdoption,
+  parseNfpa13EditionAdoption,
+} from '@/lib/projects/compliance/nfpa/nfpa13-edition';
+export type {
+  Nfpa13EditionAdoption,
+  Nfpa13AdoptionStatus,
+  Nfpa13SourceType,
+  Nfpa13VerificationStatus,
+  Nfpa13PlatformVerificationStatus,
+} from '@/lib/projects/compliance/nfpa/nfpa13-edition';
 
 export function mapNfpaStatusToCompliance(status: NfpaRuleStatus): ComplianceResultStatus {
   if (status === 'CONFLICT') return 'CONFLICT';

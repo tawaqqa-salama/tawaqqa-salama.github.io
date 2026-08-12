@@ -19,6 +19,7 @@ export const NFPA13_CODE = 'NFPA-13' as const;
 /**
  * Platform-adopted NFPA 13 edition for numeric encoding.
  * null = edition_not_verified (see standards/catalog.ts).
+ * Project may adopt 2025 via edition_adoption metadata without changing this.
  */
 export const NFPA13_PLATFORM_EDITION: string | null = null;
 

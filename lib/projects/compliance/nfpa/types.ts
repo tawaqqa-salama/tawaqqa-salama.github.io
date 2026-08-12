@@ -76,6 +76,8 @@ export type Nfpa13Context = {
   available_water_supply: { state: ResolverState; value: string | null };
   /** Documented NFPA 13 edition — never invented */
   nfpa13_edition: { state: ResolverState; value: string | null };
+  /** Project edition adoption metadata (cover/traceability) — not platform official */
+  edition_adoption: import('@/lib/projects/compliance/nfpa/nfpa13-edition').Nfpa13EditionAdoption | null;
   /**
    * Project-adopted encoded rows (complete provenance). Platform table is empty
    * until a verified edition is encoded.

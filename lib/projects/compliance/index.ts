@@ -130,6 +130,10 @@ export {
   resolveNfpa13EncodedRow,
   isCompleteNfpa13EncodedRow,
   isCompleteNfpa13MappingForRule,
+  NFPA13_2025_PROJECT_ADOPTION_TEMPLATE,
+  buildNfpa13_2025ProjectAdoption,
+  isValidNfpa13EditionAdoption,
+  parseNfpa13EditionAdoption,
 } from '@/lib/projects/compliance/nfpa';
 export type {
   NfpaEngineeringContext,
@@ -138,4 +142,5 @@ export type {
   NfpaStandardCode,
   Nfpa13EncodedRow,
   Nfpa13RuleDefinition,
+  Nfpa13EditionAdoption,
 } from '@/lib/projects/compliance/nfpa';

@@ -592,11 +592,17 @@ export type ProjectComplianceState = {
    */
   approved_snapshot?: ApprovedComplianceSnapshot | null;
   /**
-   * NFPA 13 numeric encoding — project-adopted rows + design inputs.
+   * NFPA 13 numeric encoding — project-adopted rows + design inputs + edition metadata.
    * Not a new DB table; lives in existing engineering JSON payload.
    * Platform thresholds remain empty until a verified edition is encoded.
+   * Never stores copyrighted NFPA document bodies — metadata/traceability only.
    */
   nfpa13_numeric?: {
+    /**
+     * Project-adopted edition identity (cover). Does NOT make platform
+     * VERIFIED_OFFICIAL. Tables stay RULE_NOT_CONFIGURED until section cells verified.
+     */
+    edition_adoption?: import('@/lib/projects/compliance/nfpa/nfpa13-edition').Nfpa13EditionAdoption | null;
     adopted_rows?: import('@/lib/projects/compliance/nfpa/nfpa13-tables').Nfpa13EncodedRow[];
     inputs?: {
       design_area_m2?: number | null;
