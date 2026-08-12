@@ -23,10 +23,17 @@ export type DesignJobStatus =
   | 'queued'
   | 'running'
   | 'completed'
+  | 'estimated'
   | 'failed'
   | 'unavailable'
   | 'not_available'
   | 'needs_engineer_review';
+
+/**
+ * Calculation authority — estimates must never create authoritative compliance PASS.
+ * Only `verified` (after engineer review + compliance context) may feed gate PASS.
+ */
+export type CalcAuthority = 'estimate' | 'advisory' | 'engineer_input' | 'verified';
 
 /** Drawing file version — stored on the project record */
 export type DesignDrawingVersion = {
@@ -143,7 +150,28 @@ export type EngineeringCalcResult = {
   values?: Record<string, number | string> | null;
   /** Dynamic standards for this calc’s linked system (not project-wide dump) */
   standards?: import('@/lib/projects/design-center/standards/types').SystemStandardsSnapshot | null;
+  /**
+   * Authority of this calc result.
+   * `estimate` / `advisory` must NOT produce authoritative compliance PASS.
+   */
+  authority?: CalcAuthority | null;
 };
+
+/** True only when a calc may feed authoritative compliance measured inputs. */
+export function isAuthoritativeCalcResult(
+  calc: Pick<EngineeringCalcResult, 'status' | 'authority' | 'values'> | null | undefined
+): boolean {
+  if (!calc) return false;
+  if (calc.status === 'estimated') return false;
+  if (calc.authority === 'estimate' || calc.authority === 'advisory') return false;
+  if (calc.values) {
+    if (calc.values.estimated_demand_lpm != null || calc.values.estimated_volume_m3 != null) {
+      return false;
+    }
+    if (String(calc.values.estimate_label_ar || '').trim()) return false;
+  }
+  return calc.authority === 'verified';
+}
 
 export type ComplianceFinding = {
   id: string;
@@ -210,6 +238,11 @@ export type DesignComplianceState = {
   error_code?: string | null;
   /** Citations from company knowledge base (Civil Defense uploads) */
   knowledge_citations?: DesignKnowledgeCitation[];
+  /**
+   * Always false for Design Center / DI soft compliance.
+   * Must NEVER unlock workflow stages or override lib/projects/compliance.
+   */
+  authoritative?: false;
 };
 
 export type DesignExportKind =

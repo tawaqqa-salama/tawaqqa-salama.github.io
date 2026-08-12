@@ -119,6 +119,25 @@ export function parseProjectEngineeringData(raw: ClientRecord['project_engineeri
     fire_protection_design: data.fire_protection_design
       ? mergeFireProtectionDesign(data.fire_protection_design)
       : { ...EMPTY_FIRE_PROTECTION_DESIGN },
+    compliance: data.compliance
+      ? {
+          overrides: Array.isArray(data.compliance.overrides) ? data.compliance.overrides : [],
+          last_run_at: data.compliance.last_run_at ?? null,
+          last_gate: data.compliance.last_gate ?? null,
+          notes: data.compliance.notes,
+          approved_snapshot: data.compliance.approved_snapshot ?? null,
+        }
+      : undefined,
+    engineering_meta: data.engineering_meta
+      ? {
+          canonical_source: data.engineering_meta.canonical_source || 'legacy_project_engineering_data',
+          revision: data.engineering_meta.revision ?? null,
+          updated_at: data.engineering_meta.updated_at ?? null,
+          conflicts: Array.isArray(data.engineering_meta.conflicts)
+            ? data.engineering_meta.conflicts
+            : [],
+        }
+      : undefined,
     report_pdf_archive: Array.isArray(data.report_pdf_archive) ? data.report_pdf_archive : [],
     workflow: { ...(data.workflow || {}) },
   };

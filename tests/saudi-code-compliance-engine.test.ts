@@ -107,8 +107,11 @@ describe('Saudi Code Compliance Engine — final citation audit', () => {
           },
         },
       });
-      expect(ctx.building.building_area_m2).toBe(1800);
+      // Site area must never become building area. CRM building_area alone is not
+      // canonical for compliance (Phase 2.3) — requires FP area or zone sum.
+      expect(ctx.building.building_area_m2).toBeNull();
       expect(ctx.building.total_site_area_m2).toBe(9000);
+      expect(ctx.building.building_area_m2).not.toBe(9000);
     });
   });
 

@@ -26,6 +26,7 @@ import {
   complianceStatusLabelAr,
   runProjectCompliance,
 } from '@/lib/projects/compliance';
+import { resolveComplianceRunForReport } from '@/lib/projects/compliance/snapshot';
 import { EMPTY_PROJECT_ENGINEERING_DATA } from '@/lib/types/project-reports';
 
 function missing(locale: ReportLocale): EngineeringStudyParagraph {
@@ -630,11 +631,20 @@ const generators: Partial<Record<EngineeringStudySectionId, Gen>> = {
       technical_report: ctx.report,
       building_plan: ctx.buildingPlan || ctx.engineeringData?.building_plan || EMPTY_PROJECT_ENGINEERING_DATA.building_plan,
     };
-    const run = runProjectCompliance({ client: ctx.client, data });
+    const liveRun = runProjectCompliance({ client: ctx.client, data });
+    const { run, fromFreeze } = resolveComplianceRunForReport({ data, liveRun });
+    const freezeNote =
+      locale === 'ar'
+        ? fromFreeze
+          ? ' (لقطة معتمدة عند اعتماد المرحلة — لا يُعاد حسابها من تقديرات لاحقة)'
+          : ''
+        : fromFreeze
+          ? ' (frozen at stage approval — not recomputed from later estimates)'
+          : '';
     const sbcText =
       locale === 'ar'
-        ? `تقييم المطابقة بناءً على البيانات والقواعد الكودية الموثقة (SBC 201/801): «${complianceStatusLabelAr(run)}» — البوابة ${run.gate}. PASS/FAIL/NEEDS_DATA مفصّلة في الملحق. ليس إعلانًا مطلقًا بمطابقة SBC/الدفاع المدني.`
-        : `Compliance assessment based on documented rules/data (SBC 201/801): «${complianceStatusLabelAr(run)}» — gate ${run.gate}. PASS/FAIL/NEEDS_DATA in appendix. Not an absolute SBC/Civil Defense compliance claim.`;
+        ? `تقييم المطابقة بناءً على البيانات والقواعد الكودية الموثقة (SBC 201/801)${freezeNote}: «${complianceStatusLabelAr(run)}» — البوابة ${run.gate}. PASS/FAIL/NEEDS_DATA مفصّلة في الملحق. ليس إعلانًا مطلقًا بمطابقة SBC/الدفاع المدني.`
+        : `Compliance assessment based on documented rules/data (SBC 201/801)${freezeNote}: «${complianceStatusLabelAr(run)}» — gate ${run.gate}. PASS/FAIL/NEEDS_DATA in appendix. Not an absolute SBC/Civil Defense compliance claim.`;
     paragraphs.push(p(sbcText, ['SBC 201', 'SBC 801'], ctx.allowedCitations));
 
     return { paragraphs };

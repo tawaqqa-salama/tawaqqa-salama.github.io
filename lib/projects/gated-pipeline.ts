@@ -35,6 +35,11 @@ import {
   isComplianceGatedStage,
   runProjectCompliance,
 } from '@/lib/projects/compliance';
+import {
+  attachFrozenComplianceSnapshot,
+  freezeComplianceSnapshot,
+} from '@/lib/projects/compliance/snapshot';
+import { AUTHORITATIVE_COMPLIANCE_MODULE } from '@/lib/projects/canonical-engineering';
 
 export const WORKFLOW_STAGE_IDS = [
   'contract',
@@ -334,9 +339,12 @@ export function stageApprovalBlockers(
       break;
   }
 
-  // Saudi Code Compliance Engine gate (additive): Engineering Delivery, Final Inspection,
-  // Completion Certificate, and Technical Report approval require mandatory PASS.
+  // Saudi Code Compliance Engine gate (AUTHORITATIVE ONLY — lib/projects/compliance).
+  // Design Center / DI / vision / lib/compliance advisory findings MUST NOT unlock stages.
   if (isComplianceGatedStage(stageId)) {
+    // Explicitly ignore advisory payloads on design_center.compliance
+    void data.design_center?.compliance;
+    void AUTHORITATIVE_COMPLIANCE_MODULE;
     const run = runProjectCompliance({ client, data });
     if (run.gate === 'BLOCKED') {
       blockers.push(...gateBlockerMessages(run));
@@ -425,6 +433,21 @@ export function approveWorkflowStage(params: {
       break;
   }
 
+  // Freeze authoritative compliance snapshot on compliance-gated approvals
+  if (isComplianceGatedStage(stageId)) {
+    const run = runProjectCompliance({ client, data });
+    data = attachFrozenComplianceSnapshot(
+      data,
+      freezeComplianceSnapshot({
+        run,
+        stageId,
+        datasetRevision: data.engineering_meta?.revision ?? null,
+        sourceCode: 'SBC 201/801',
+        codeEdition: data.compliance?.approved_snapshot?.code_edition ?? null,
+      })
+    );
+  }
+
   data = applyPipelineInheritance(client, data, company);
   data.workflow = {
     ...(data.workflow || {}),
@@ -494,7 +517,7 @@ export function applyPipelineInheritance(
   data: ProjectEngineeringData,
   company?: CompanyProfile | null
 ): ProjectEngineeringData {
-  let next: ProjectEngineeringData = { ...data };
+  const next: ProjectEngineeringData = { ...data };
 
   // Stage 1 → 2 / 4 / 7 / 9: client & project meta — always refresh from Sales
   const identity = getClientIdentitySnapshot(client);

@@ -307,7 +307,8 @@ describe('calculation cards use per-calc system binding (not one shared dump)', 
       kind: 'battery',
       context: { client: client(), data: data() },
     });
-    expect(result.status).toBe('completed');
+    expect(result.status).toBe('needs_engineer_review');
+    expect(result.authority).toBe('advisory');
     expect(result.standards?.system).toBe('fire_alarm');
     expect(result.standards?.primary.some((p) => p.code === 'NFPA-72')).toBe(true);
     expect(result.standards?.primary.some((p) => p.code === 'NFPA-13')).toBe(false);

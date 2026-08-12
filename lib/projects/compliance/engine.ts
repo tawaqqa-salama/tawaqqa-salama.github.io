@@ -1,6 +1,9 @@
 /**
  * Central Saudi Code Compliance Engine runner.
- * Deterministic rules only — AI outputs are never final authority.
+ * Deterministic rules only — AI / DI / vision outputs are never final authority.
+ *
+ * THIS MODULE IS THE ONLY AUTHORITATIVE PASS/FAIL/NEEDS_DATA/BLOCKED ENGINE
+ * for workflow gates and approved engineering reports (Phase 2.3).
  */
 
 import { buildComplianceContext } from '@/lib/projects/compliance/context';
@@ -15,6 +18,9 @@ import type {
 } from '@/lib/projects/compliance/types';
 import type { ClientRecord } from '@/lib/types/client';
 import type { ProjectEngineeringData } from '@/lib/types/project-reports';
+
+/** Marker for gate/report code — advisory stacks must not claim this. */
+export const COMPLIANCE_AUTHORITY = 'lib/projects/compliance' as const;
 
 export function evaluateRule(
   rule: ComplianceRule,

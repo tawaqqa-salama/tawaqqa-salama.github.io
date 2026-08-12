@@ -45,6 +45,7 @@ export {
   isFullyCompliant,
   complianceStatusLabelAr,
   COMPLIANCE_ASSESSMENT_DISCLAIMER_AR,
+  COMPLIANCE_AUTHORITY,
 } from '@/lib/projects/compliance/engine';
 export {
   RULE_CODE_REFS,
@@ -80,3 +81,27 @@ export {
 export { SBC201_EGRESS_COMPLIANCE_RULES } from '@/lib/projects/compliance/sbc201-egress-rules';
 export { buildComplianceMatrixHtml } from '@/lib/projects/compliance/matrix-html';
 export { appendComplianceMatrixToReportHtml } from '@/lib/projects/compliance/pdf-appendix';
+export {
+  resolveEngineeringFields,
+  resolveOccupancy,
+  resolveBuildingType,
+  resolveFloorAreas,
+  resolveZones,
+  resolveNumberOfFloors,
+  resolveBuildingHeightM,
+  resolveFireAreaM2,
+  resolvePump,
+  resolveTank,
+  resolveEgressData,
+  resolveApplicableCodes,
+  resolveCodeEdition,
+  resolverBlocksAuthoritativePass,
+} from '@/lib/projects/compliance/resolvers';
+export type { ResolverState, ResolvedField, EngineeringResolverBundle } from '@/lib/projects/compliance/resolvers';
+export {
+  freezeComplianceSnapshot,
+  attachFrozenComplianceSnapshot,
+  complianceRunFromFrozenSnapshot,
+  resolveComplianceRunForReport,
+} from '@/lib/projects/compliance/snapshot';
+export { buildSbc201EgressFromCanonical } from '@/lib/projects/compliance/context';

@@ -1,6 +1,11 @@
 /**
  * All-stages engineering live store.
- * NEVER reads/writes clients.project_engineering_data (avoids statement timeout).
+ *
+ * CANONICAL PHYSICAL WRITE STORE: project_engineering_live.payload
+ * NEVER reads/writes clients.project_engineering_data on save (avoids statement timeout).
+ *
+ * Read path: live payload is canonical; legacy JSON is compatibility fallback only
+ * via resolveCanonicalEngineeringDataset (conflicts recorded, not silently preferred).
  */
 
 import { supabase } from '@/lib/supabase';
@@ -10,8 +15,8 @@ import { sanitizeEngineeringDataForPersist } from '@/lib/projects/sanitize-engin
 import {
   hydrateTechnicalReportPhotosForDisplay,
   persistTechnicalReportPhotosToStorage,
-  preferTechnicalReportPhoto,
 } from '@/lib/projects/technical-report-photos';
+import { resolveCanonicalEngineeringDataset } from '@/lib/projects/canonical-engineering';
 
 function isMissing(message: string): boolean {
   return /relation|does not exist|Could not find|schema cache|function/i.test(message);
@@ -35,6 +40,14 @@ export async function saveEngineeringLive(params: {
       params.clientId,
       params.data.technical_report
     ),
+    engineering_meta: {
+      ...(params.data.engineering_meta || {
+        canonical_source: 'project_engineering_live',
+      }),
+      canonical_source: 'project_engineering_live',
+      revision: params.data.engineering_meta?.revision || new Date().toISOString(),
+      updated_at: new Date().toISOString(),
+    },
   };
   const payload = sanitizeEngineeringDataForPersist(withStoredPhotos, { aggressive: true });
 
@@ -91,67 +104,22 @@ export async function loadEngineeringLive(
   return {
     ...parsed,
     technical_report: await hydrateTechnicalReportPhotosForDisplay(parsed.technical_report),
+    engineering_meta: {
+      ...(parsed.engineering_meta || { canonical_source: 'project_engineering_live' }),
+      canonical_source: 'project_engineering_live',
+    },
   };
 }
 
 /**
- * Prefer live payload (current saves) over legacy fat column.
- * Live wins key-by-key where it has content; base fills gaps.
+ * Prefer live payload (canonical) over legacy fat column via explicit compatibility layer.
+ * Conflicts are recorded on engineering_meta — never silently chosen for compliance.
  */
 export function hydrateEngineeringWithLive(
   base: ProjectEngineeringData,
   live: ProjectEngineeringData | null
 ): ProjectEngineeringData {
-  if (!live) return base;
-  const baseTr = base.technical_report;
-  const liveTr = live.technical_report;
-  return {
-    ...base,
-    ...live,
-    technical_report: {
-      ...baseTr,
-      ...liveTr,
-      earth_photo: preferTechnicalReportPhoto(baseTr.earth_photo, liveTr.earth_photo),
-      facade_photo: preferTechnicalReportPhoto(baseTr.facade_photo, liveTr.facade_photo),
-      site_photo: preferTechnicalReportPhoto(baseTr.site_photo, liveTr.site_photo),
-      code_proof_photos:
-        (liveTr.code_proof_photos || []).length > 0
-          ? liveTr.code_proof_photos
-          : baseTr.code_proof_photos,
-      code_proofs_by_key: {
-        ...(baseTr.code_proofs_by_key || {}),
-        ...(liveTr.code_proofs_by_key || {}),
-      },
-      floor_uses: liveTr.floor_uses?.length ? liveTr.floor_uses : baseTr.floor_uses,
-      firefighting_items: liveTr.firefighting_items?.length
-        ? liveTr.firefighting_items
-        : baseTr.firefighting_items,
-      ventilation_items: liveTr.ventilation_items?.length
-        ? liveTr.ventilation_items
-        : baseTr.ventilation_items,
-      alarm_items: liveTr.alarm_items?.length ? liveTr.alarm_items : baseTr.alarm_items,
-      exits_items: liveTr.exits_items?.length ? liveTr.exits_items : baseTr.exits_items,
-    },
-    building_plan: { ...base.building_plan, ...live.building_plan },
-    fire_protection_design: live.fire_protection_design || base.fire_protection_design,
-    design_center: live.design_center || base.design_center,
-    plan_attachments: live.plan_attachments || base.plan_attachments,
-    safety_blueprints: live.safety_blueprints || base.safety_blueprints,
-    field_visits: live.field_visits?.length ? live.field_visits : base.field_visits,
-    supervision_report: live.supervision_report || base.supervision_report,
-    report_pdf_archive: live.report_pdf_archive?.length
-      ? live.report_pdf_archive
-      : base.report_pdf_archive,
-    workflow: { ...(base.workflow || {}), ...(live.workflow || {}) },
-    contract_onboarding: live.contract_onboarding || base.contract_onboarding,
-    boq: live.boq || base.boq,
-    timeline: live.timeline || base.timeline,
-    engineering_delivery: live.engineering_delivery || base.engineering_delivery,
-    cd_cover_letter: live.cd_cover_letter || base.cd_cover_letter,
-    final_inspection: live.final_inspection || base.final_inspection,
-    completion_certificate: live.completion_certificate || base.completion_certificate,
-    technical_notes: live.technical_notes || base.technical_notes,
-  };
+  return resolveCanonicalEngineeringDataset({ live, legacy: base });
 }
 
 /** Attach live engineering onto a client record (for fetchers / modals). */
@@ -159,10 +127,23 @@ export async function attachEngineeringLiveToClient<
   T extends { id: string; project_engineering_data?: unknown },
 >(client: T): Promise<T> {
   const live = await loadEngineeringLive(client.id);
-  if (!live) return client;
   const base = parseProjectEngineeringData(
     client.project_engineering_data as ProjectEngineeringData | null | undefined
   );
+  if (!live) {
+    return {
+      ...client,
+      project_engineering_data: {
+        ...base,
+        engineering_meta: {
+          canonical_source: 'legacy_project_engineering_data',
+          revision: null,
+          updated_at: new Date().toISOString(),
+          conflicts: [],
+        },
+      },
+    };
+  }
   return {
     ...client,
     project_engineering_data: hydrateEngineeringWithLive(base, live),
