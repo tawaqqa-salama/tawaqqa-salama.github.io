@@ -142,7 +142,8 @@ export function buildSbc201EgressFromCanonical(params: {
   sprinklerStatus: 'sprinklered' | 'non_sprinklered' | null;
 }): Sbc201EgressInputs {
   const { resolved } = params;
-  const bp = params.data.building_plan || {};
+  // Egress measurements ONLY from resolved.egress when VALID.
+  // MISSING / INVALID / CONFLICT → all egress measurements stay null (no bp/FP/legacy fallback).
   const egress = resolved.egress.state === 'VALID' ? resolved.egress.value : null;
   const occupancy = resolved.occupancy.state === 'VALID' ? resolved.occupancy.value : null;
   const zones = resolved.zones.state === 'VALID' ? resolved.zones.value : null;
@@ -167,8 +168,8 @@ export function buildSbc201EgressFromCanonical(params: {
     storyLevel: null,
     story: null,
     sprinklerStatus: params.sprinklerStatus,
-    exitsProvided: egress?.exits_count ?? parseNumber(bp.exits_count),
-    exitAccessDoorways: egress?.exits_count ?? parseNumber(bp.exits_count),
+    exitsProvided: egress?.exits_count ?? null,
+    exitAccessDoorways: egress?.exits_count ?? null,
     specialOccupancyCondition: null,
     numberOfExitsMapping: null,
     travelDistance: egress?.travel_distance_m ?? null,
@@ -207,7 +208,7 @@ export function buildSbc201EgressFromCanonical(params: {
     panicHardware: null,
     fireExitHardware: null,
     panicHardwareMapping: null,
-    stairCount: egress?.stairs_count ?? parseNumber(bp.stairs_count),
+    stairCount: egress?.stairs_count ?? null,
     stairClearWidth: egress?.stair_width_m ?? null,
     stairWidthMapping: null,
     // Attachment presence alone never implies MoE completeness (rules enforce this)
@@ -286,18 +287,20 @@ export function buildComplianceContext(params: {
   const kFactor = parseNumber(fp.sprinkler.k_factor);
   const designPressure = parseNumber(fp.sprinkler.design_pressure);
 
-  const metrics =
-    resolved.egress.state === 'VALID' ? resolved.egress.value?.metrics || fp.egress?.metrics || [] : fp.egress?.metrics || [];
-  const accessMetrics = metrics;
+  // Egress measurement bag — ONLY when egress resolver is VALID (no raw FP fallback).
+  const egressResolved = resolved.egress.state === 'VALID' ? resolved.egress.value : null;
+  const egressMetrics = egressResolved?.metrics || [];
+  // Hydraulic network fields may still read FP metric labels (unrelated to MoE gate inputs).
+  const hydraulicMetrics = fp.egress?.metrics || [];
 
   const pipeDiameter =
-    metricValue(metrics, [/pipe\s*diam|قطر\s*الأنبوب|قطر\s*الأنابيب/i]) ?? null;
-  const pipeLength = metricValue(metrics, [/pipe\s*length|طول\s*الأنبوب|طول\s*الأنابيب/i]);
-  const elevation = metricValue(metrics, [/elevation|منسوب|ارتفاع\s*هيدرول/i]);
-  const friction = metricValue(metrics, [/friction|فاقد|loss/i]);
-  const remoteArea = metricValue(metrics, [/remote\s*area|منطقة\s*نائية|remote/i]);
-  const nodeDemand = metricValue(metrics, [/node\s*demand|طلب\s*العقدة/i]);
-  const residual = metricValue(metrics, [/residual|ضغط\s*متبقي|required\s*residual/i]);
+    metricValue(hydraulicMetrics, [/pipe\s*diam|قطر\s*الأنبوب|قطر\s*الأنابيب/i]) ?? null;
+  const pipeLength = metricValue(hydraulicMetrics, [/pipe\s*length|طول\s*الأنبوب|طول\s*الأنابيب/i]);
+  const elevation = metricValue(hydraulicMetrics, [/elevation|منسوب|ارتفاع\s*هيدرول/i]);
+  const friction = metricValue(hydraulicMetrics, [/friction|فاقد|loss/i]);
+  const remoteArea = metricValue(hydraulicMetrics, [/remote\s*area|منطقة\s*نائية|remote/i]);
+  const nodeDemand = metricValue(hydraulicMetrics, [/node\s*demand|طلب\s*العقدة/i]);
+  const residual = metricValue(hydraulicMetrics, [/residual|ضغط\s*متبقي|required\s*residual/i]);
 
   const hydraulicAttachments = data.plan_attachments?.hydraulic_calculations || [];
   const hasHydNetwork = Boolean(
@@ -430,57 +433,59 @@ export function buildComplianceContext(params: {
     }),
     egress: {
       occupant_load_total: hasOccupantRows ? occupantTotal : null,
-      exits_count:
+      // MoE measurements: resolved VALID only — never raw bp / FP fallback.
+      exits_count: egressResolved?.exits_count ?? null,
+      stairs_count: egressResolved?.stairs_count ?? null,
+      emergency_exit_doors:
+        resolved.egress.state === 'VALID' ? bp.emergency_exits_doors || null : null,
+      travel_distance_m: egressResolved?.travel_distance_m ?? null,
+      common_path_m: egressResolved?.common_path_m ?? null,
+      dead_end_m: egressResolved?.dead_end_m ?? null,
+      exit_capacity_persons:
         resolved.egress.state === 'VALID'
-          ? resolved.egress.value?.exits_count ?? null
-          : parseNumber(bp.exits_count),
-      stairs_count:
+          ? metricValue(egressMetrics, [/capacity|سعة\s*المخرج|طاقة\s*الاستيعاب/i])
+          : null,
+      exit_separation_m:
         resolved.egress.state === 'VALID'
-          ? resolved.egress.value?.stairs_count ?? null
-          : parseNumber(bp.stairs_count),
-      emergency_exit_doors: bp.emergency_exits_doors || null,
-      travel_distance_m:
+          ? metricValue(egressMetrics, [/^(?!.*required).*separation|تباعد|فصل\s*المخارج/i])
+          : null,
+      required_exit_separation_m:
         resolved.egress.state === 'VALID'
-          ? resolved.egress.value?.travel_distance_m ?? null
-          : metricValue(metrics, [/travel|مسافة\s*السفر|مسافة السفر/i]),
-      common_path_m:
+          ? metricValue(egressMetrics, [
+              /required\s*(exit\s*)?separation|الحد\s*الأدنى\s*(لتباعد|لفصل)\s*المخارج/i,
+            ])
+          : null,
+      corridor_width_m: egressResolved?.corridor_width_m ?? null,
+      required_corridor_width_m:
         resolved.egress.state === 'VALID'
-          ? resolved.egress.value?.common_path_m ?? null
-          : metricValue(metrics, [/common\s*path|مسار\s*مشترك/i]),
-      dead_end_m:
+          ? metricValue(egressMetrics, [
+              /required\s*corridor|الحد\s*الأدنى\s*لعرض\s*الممر|corridor.*required/i,
+            ])
+          : null,
+      door_width_m: egressResolved?.door_width_m ?? null,
+      required_door_width_m:
         resolved.egress.state === 'VALID'
-          ? resolved.egress.value?.dead_end_m ?? null
-          : metricValue(metrics, [/dead\s*end|طريق\s*مسدود/i]),
-      exit_capacity_persons: metricValue(metrics, [/capacity|سعة\s*المخرج|طاقة\s*الاستيعاب/i]),
-      exit_separation_m: metricValue(metrics, [/^(?!.*required).*separation|تباعد|فصل\s*المخارج/i]),
-      required_exit_separation_m: metricValue(metrics, [
-        /required\s*(exit\s*)?separation|الحد\s*الأدنى\s*(لتباعد|لفصل)\s*المخارج/i,
-      ]),
-      corridor_width_m:
+          ? metricValue(egressMetrics, [
+              /required\s*door|الحد\s*الأدنى\s*لعرض\s*الباب|door.*required/i,
+            ])
+          : null,
+      stair_width_m: egressResolved?.stair_width_m ?? null,
+      required_stair_width_m:
         resolved.egress.state === 'VALID'
-          ? resolved.egress.value?.corridor_width_m ?? null
-          : metricValue(metrics, [/^(?!.*required).*corridor|عرض\s*الممر(?!.*مطلوب)/i]),
-      required_corridor_width_m: metricValue(metrics, [
-        /required\s*corridor|الحد\s*الأدنى\s*لعرض\s*الممر|corridor.*required/i,
-      ]),
-      door_width_m:
+          ? metricValue(egressMetrics, [
+              /required\s*stair|الحد\s*الأدنى\s*لعرض\s*الدرج|stair.*required/i,
+            ])
+          : null,
+      exit_discharge_ok:
         resolved.egress.state === 'VALID'
-          ? resolved.egress.value?.door_width_m ?? null
-          : metricValue(metrics, [/^(?!.*required).*door\s*width|عرض\s*الباب(?!.*مطلوب)/i]),
-      required_door_width_m: metricValue(metrics, [
-        /required\s*door|الحد\s*الأدنى\s*لعرض\s*الباب|door.*required/i,
-      ]),
-      stair_width_m:
+          ? boolMetric(egressMetrics, [/discharge|تصريف\s*الخروج|مخرج\s*نهائي/i])
+          : null,
+      exit_access_ok:
         resolved.egress.state === 'VALID'
-          ? resolved.egress.value?.stair_width_m ?? null
-          : metricValue(metrics, [/^(?!.*required).*stair\s*width|عرض\s*الدرج(?!.*مطلوب)/i]),
-      required_stair_width_m: metricValue(metrics, [
-        /required\s*stair|الحد\s*الأدنى\s*لعرض\s*الدرج|stair.*required/i,
-      ]),
-      exit_discharge_ok: boolMetric(metrics, [/discharge|تصريف\s*الخروج|مخرج\s*نهائي/i]),
-      exit_access_ok: boolMetric(metrics, [/exit\s*access|مسار\s*الوصول/i]),
-      notes: fp.egress?.notes || null,
-      metrics: metrics.map((m) => ({ label: m.label, value: m.value })),
+          ? boolMetric(egressMetrics, [/exit\s*access|مسار\s*الوصول/i])
+          : null,
+      notes: resolved.egress.state === 'VALID' ? fp.egress?.notes || null : null,
+      metrics: egressMetrics.map((m) => ({ label: m.label, value: m.value })),
       sprinkler_status: sprinklerStatus,
     },
     fireAccess: {
@@ -488,10 +493,10 @@ export function buildComplianceContext(params: {
       fire_road: fp.fire_truck_access?.fire_road || null,
       road_width_m: parseNumber(fp.fire_truck_access?.road_width_m),
       required_road_width_m:
-        metricValue(accessMetrics, [/required\s*(access|road)\s*width|الحد\s*الأدنى\s*لعرض\s*(الطريق|الوصول)/i]) ??
+        metricValue(hydraulicMetrics, [/required\s*(access|road)\s*width|الحد\s*الأدنى\s*لعرض\s*(الطريق|الوصول)/i]) ??
         null,
       required_road_width_code_ref:
-        metricText(accessMetrics, [/access\s*width\s*(code|ref)|مرجع.*عرض\s*(الطريق|الوصول)|FAC.*code/i]) ??
+        metricText(hydraulicMetrics, [/access\s*width\s*(code|ref)|مرجع.*عرض\s*(الطريق|الوصول)|FAC.*code/i]) ??
         null,
       building_access: fp.fire_truck_access?.building_access || null,
       staging_area: fp.fire_truck_access?.staging_area || null,

@@ -421,6 +421,19 @@ export function resolveEgressData(params: {
   stair_width_m: number | null;
   metrics: Array<{ label: string; value: string }>;
 }> {
+  const sources = ['building_plan.exits_*', 'fire_protection_design.egress'];
+
+  if (
+    metaConflicts(params.data).some((f) =>
+      /exits_count|stairs_count|egress|travel_distance|corridor_width|door_width|stair_width/i.test(f)
+    )
+  ) {
+    return conflict(
+      [...sources, 'engineering_meta.conflicts'],
+      'Egress field conflict recorded in engineering_meta — measurements must not be used'
+    );
+  }
+
   const bp = params.data.building_plan || {};
   const fp = fpFromData(params.data);
   const metrics = fp.egress?.metrics || [];
@@ -444,6 +457,15 @@ export function resolveEgressData(params: {
   const door = metricValue([/^(?!.*required).*door\s*width|عرض\s*الباب(?!.*مطلوب)/i]);
   const stairW = metricValue([/^(?!.*required).*stair\s*width|عرض\s*الدرج(?!.*مطلوب)/i]);
 
+  const rawExits = text(bp.exits_count);
+  const rawStairs = text(bp.stairs_count);
+  if (rawExits && exits == null) {
+    return invalid(sources, `Invalid exits_count: ${rawExits}`);
+  }
+  if (rawStairs && stairs == null) {
+    return invalid(sources, `Invalid stairs_count: ${rawStairs}`);
+  }
+
   if (
     exits == null &&
     stairs == null &&
@@ -456,10 +478,7 @@ export function resolveEgressData(params: {
     !metrics.length &&
     !text(bp.emergency_exits_doors)
   ) {
-    return missing(
-      ['building_plan.exits_*', 'fire_protection_design.egress'],
-      'Egress measurements missing'
-    );
+    return missing(sources, 'Egress measurements missing');
   }
 
   return valid(
@@ -474,7 +493,7 @@ export function resolveEgressData(params: {
       stair_width_m: stairW,
       metrics: metrics.map((m) => ({ label: m.label, value: m.value })),
     },
-    ['building_plan', 'fire_protection_design.egress'],
+    sources,
     { unit: 'm|count' }
   );
 }

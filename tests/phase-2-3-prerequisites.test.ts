@@ -11,15 +11,18 @@ import {
 import {
   attachFrozenComplianceSnapshot,
   buildComplianceContext,
+  buildSbc201EgressFromCanonical,
   freezeComplianceSnapshot,
   resolveComplianceRunForReport,
   resolveEngineeringFields,
+  resolveEgressData,
   resolveOccupancy,
   resolveNumberOfFloors,
   resolveFireAreaM2,
   runProjectCompliance,
   COMPLIANCE_GATED_STAGES,
 } from '@/lib/projects/compliance';
+import type { EngineeringResolverBundle } from '@/lib/projects/compliance/resolvers';
 import { COMPLIANCE_AUTHORITY } from '@/lib/projects/compliance/engine';
 import { isAuthoritativeCalcResult } from '@/lib/projects/design-center/types';
 import { runKnowledgeBackedCalculation } from '@/lib/projects/design-center/knowledge-engine';
@@ -210,6 +213,150 @@ describe('Phase 2.3 prerequisites', () => {
       const ctx = buildComplianceContext({ client: baseClient(), data });
       expect(ctx.sbc201Egress?.travelDistance ?? null).toBeNull();
       expect(ctx.fireProtection.sprinkler_demand_lpm ?? null).toBeNull();
+    });
+
+    it('MISSING egress => sbc201Egress measurements stay null (no bp/FP raw fallback)', () => {
+      const data: ProjectEngineeringData = {
+        ...EMPTY_PROJECT_ENGINEERING_DATA,
+        // Intentionally empty egress — resolver MISSING. Raw-looking values must not
+        // be injected via context fallbacks after a non-VALID resolve.
+        building_plan: {
+          ...EMPTY_PROJECT_ENGINEERING_DATA.building_plan,
+          occupancy_classification: 'Business',
+        },
+      };
+      expect(resolveEgressData({ data }).state).toBe('MISSING');
+      const ctx = buildComplianceContext({ client: baseClient(), data });
+      expect(ctx.sbc201Egress?.exitsProvided ?? null).toBeNull();
+      expect(ctx.sbc201Egress?.stairCount ?? null).toBeNull();
+      expect(ctx.sbc201Egress?.travelDistance ?? null).toBeNull();
+      expect(ctx.sbc201Egress?.commonPath ?? null).toBeNull();
+      expect(ctx.sbc201Egress?.corridorClearWidth ?? null).toBeNull();
+      expect(ctx.sbc201Egress?.clearOpeningWidth ?? null).toBeNull();
+      expect(ctx.sbc201Egress?.stairClearWidth ?? null).toBeNull();
+      expect(ctx.egress.exits_count ?? null).toBeNull();
+      expect(ctx.egress.stairs_count ?? null).toBeNull();
+      expect(ctx.egress.travel_distance_m ?? null).toBeNull();
+    });
+
+    it('CONFLICT egress => measurements null even when raw bp/FP values exist', () => {
+      const data: ProjectEngineeringData = {
+        ...EMPTY_PROJECT_ENGINEERING_DATA,
+        building_plan: {
+          ...EMPTY_PROJECT_ENGINEERING_DATA.building_plan,
+          exits_count: '4',
+          stairs_count: '2',
+        },
+        fire_protection_design: {
+          ...EMPTY_FIRE_PROTECTION_DESIGN,
+          egress: {
+            metrics: [
+              { label: 'travel distance', value: '30' },
+              { label: 'corridor width', value: '1.2' },
+            ],
+            notes: 'raw note',
+          },
+        },
+        engineering_meta: {
+          canonical_source: 'combined_with_conflicts',
+          conflicts: [
+            {
+              field: 'building_plan.exits_count',
+              sources: ['project_engineering_live.payload', 'clients.project_engineering_data'],
+              live_value: '4',
+              legacy_value: '2',
+              message: 'exits conflict',
+            },
+          ],
+        },
+      };
+      expect(resolveEgressData({ data }).state).toBe('CONFLICT');
+      const ctx = buildComplianceContext({ client: baseClient(), data });
+      expect(ctx.sbc201Egress?.exitsProvided ?? null).toBeNull();
+      expect(ctx.sbc201Egress?.stairCount ?? null).toBeNull();
+      expect(ctx.sbc201Egress?.travelDistance ?? null).toBeNull();
+      expect(ctx.sbc201Egress?.corridorClearWidth ?? null).toBeNull();
+      expect(ctx.egress.exits_count ?? null).toBeNull();
+      expect(ctx.egress.travel_distance_m ?? null).toBeNull();
+      expect(ctx.egress.metrics).toEqual([]);
+    });
+
+    it('VALID egress => measurements preserved from resolved canonical fields', () => {
+      const data: ProjectEngineeringData = {
+        ...EMPTY_PROJECT_ENGINEERING_DATA,
+        building_plan: {
+          ...EMPTY_PROJECT_ENGINEERING_DATA.building_plan,
+          exits_count: '3',
+          stairs_count: '2',
+        },
+        fire_protection_design: {
+          ...EMPTY_FIRE_PROTECTION_DESIGN,
+          egress: {
+            metrics: [
+              { label: 'travel distance m', value: '40' },
+              { label: 'corridor width', value: '1.5' },
+              { label: 'door width', value: '0.9' },
+            ],
+          },
+        },
+      };
+      expect(resolveEgressData({ data }).state).toBe('VALID');
+      const ctx = buildComplianceContext({ client: baseClient(), data });
+      expect(ctx.sbc201Egress?.exitsProvided).toBe(3);
+      expect(ctx.sbc201Egress?.stairCount).toBe(2);
+      expect(ctx.sbc201Egress?.travelDistance).toBe(40);
+      expect(ctx.sbc201Egress?.corridorClearWidth).toBe(1.5);
+      expect(ctx.sbc201Egress?.clearOpeningWidth).toBe(0.9);
+      expect(ctx.egress.exits_count).toBe(3);
+      expect(ctx.egress.travel_distance_m).toBe(40);
+    });
+
+    it('no raw fallback can create PASS-capable egress input after non-VALID resolve', () => {
+      const baseResolved = resolveEngineeringFields({
+        client: baseClient(),
+        data: { ...EMPTY_PROJECT_ENGINEERING_DATA },
+      });
+      const withRawInData: ProjectEngineeringData = {
+        ...EMPTY_PROJECT_ENGINEERING_DATA,
+        building_plan: {
+          ...EMPTY_PROJECT_ENGINEERING_DATA.building_plan,
+          exits_count: '8',
+          stairs_count: '4',
+        },
+        fire_protection_design: {
+          ...EMPTY_FIRE_PROTECTION_DESIGN,
+          egress: {
+            metrics: [{ label: 'travel distance', value: '25' }],
+          },
+        },
+      };
+      // Force non-VALID egress on the resolver bundle while raw values sit on data.
+      for (const state of ['MISSING', 'INVALID', 'CONFLICT'] as const) {
+        const resolved: EngineeringResolverBundle = {
+          ...baseResolved,
+          egress: {
+            state,
+            value: null,
+            sources: ['test'],
+            message: `forced ${state}`,
+          },
+        };
+        const sbc = buildSbc201EgressFromCanonical({
+          data: withRawInData,
+          resolved,
+          occupantLoadTotal: 100,
+          sprinklerStatus: 'sprinklered',
+        });
+        expect(sbc.exitsProvided ?? null, state).toBeNull();
+        expect(sbc.exitAccessDoorways ?? null, state).toBeNull();
+        expect(sbc.stairCount ?? null, state).toBeNull();
+        expect(sbc.travelDistance ?? null, state).toBeNull();
+        expect(sbc.commonPath ?? null, state).toBeNull();
+        expect(sbc.corridorClearWidth ?? null, state).toBeNull();
+        expect(sbc.clearOpeningWidth ?? null, state).toBeNull();
+        expect(sbc.stairClearWidth ?? null, state).toBeNull();
+        expect(sbc.clearWidth ?? null, state).toBeNull();
+      }
     });
   });
 
