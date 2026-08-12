@@ -64,7 +64,8 @@ BEGIN
     RAISE NOTICE 'projects: applied company_id tenant isolation';
 
   ELSIF has_client_id THEN
-    -- Legacy: scope through clients.company_id when client_id stores clients.id as text/uuid
+    -- Legacy (prod): no company_id — scope via clients.company_id
+    -- projects.client_id is uuid matching clients.id
     CREATE POLICY projects_tenant_via_client ON public.projects
       FOR ALL
       TO authenticated
@@ -72,7 +73,7 @@ BEGIN
         public.is_platform_admin()
         OR EXISTS (
           SELECT 1 FROM public.clients c
-          WHERE c.id::text = projects.client_id::text
+          WHERE c.id = projects.client_id
             AND c.company_id = public.current_app_company_id()
         )
       )
@@ -80,7 +81,7 @@ BEGIN
         public.is_platform_admin()
         OR EXISTS (
           SELECT 1 FROM public.clients c
-          WHERE c.id::text = projects.client_id::text
+          WHERE c.id = projects.client_id
             AND c.company_id = public.current_app_company_id()
         )
       );
