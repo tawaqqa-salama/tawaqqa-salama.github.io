@@ -109,6 +109,9 @@ BEGIN
 END $$;
 
 DO $$
+DECLARE
+  je_has_company_id boolean := false;
+  je_has_client_id boolean := false;
 BEGIN
   -- payment_milestones → clients
   IF to_regclass('public.payment_milestones') IS NOT NULL THEN
@@ -142,14 +145,30 @@ BEGIN
     RAISE NOTICE 'payment_milestones: table missing — skipped';
   END IF;
 
-  -- journal_entry_lines → journal_entries
-  IF to_regclass('public.journal_entry_lines') IS NOT NULL THEN
-    ALTER TABLE public.journal_entry_lines ENABLE ROW LEVEL SECURITY;
-    REVOKE ALL ON public.journal_entry_lines FROM anon;
-    GRANT SELECT, INSERT, UPDATE, DELETE ON public.journal_entry_lines TO authenticated;
-    GRANT ALL ON public.journal_entry_lines TO service_role;
-    DROP POLICY IF EXISTS journal_entry_lines_all ON public.journal_entry_lines;
-    DROP POLICY IF EXISTS journal_entry_lines_tenant ON public.journal_entry_lines;
+  -- journal_entry_lines → journal_entries (schema-aware; prod may lack company_id)
+  IF to_regclass('public.journal_entry_lines') IS NULL THEN
+    RAISE NOTICE 'journal_entry_lines: table missing — skipped';
+    RETURN;
+  END IF;
+
+  SELECT EXISTS (
+    SELECT 1 FROM information_schema.columns
+    WHERE table_schema = 'public' AND table_name = 'journal_entries' AND column_name = 'company_id'
+  ) INTO je_has_company_id;
+
+  SELECT EXISTS (
+    SELECT 1 FROM information_schema.columns
+    WHERE table_schema = 'public' AND table_name = 'journal_entries' AND column_name = 'client_id'
+  ) INTO je_has_client_id;
+
+  ALTER TABLE public.journal_entry_lines ENABLE ROW LEVEL SECURITY;
+  REVOKE ALL ON public.journal_entry_lines FROM anon;
+  GRANT SELECT, INSERT, UPDATE, DELETE ON public.journal_entry_lines TO authenticated;
+  GRANT ALL ON public.journal_entry_lines TO service_role;
+  DROP POLICY IF EXISTS journal_entry_lines_all ON public.journal_entry_lines;
+  DROP POLICY IF EXISTS journal_entry_lines_tenant ON public.journal_entry_lines;
+
+  IF je_has_company_id AND je_has_client_id THEN
     CREATE POLICY journal_entry_lines_tenant ON public.journal_entry_lines
       FOR ALL TO authenticated
       USING (
@@ -182,9 +201,58 @@ BEGIN
             )
         )
       );
-    RAISE NOTICE 'journal_entry_lines: via journal_entries tenant';
+    RAISE NOTICE 'journal_entry_lines: via journal company_id OR client_id';
+
+  ELSIF je_has_client_id THEN
+    CREATE POLICY journal_entry_lines_tenant ON public.journal_entry_lines
+      FOR ALL TO authenticated
+      USING (
+        public.is_platform_admin()
+        OR EXISTS (
+          SELECT 1 FROM public.journal_entries j
+          JOIN public.clients c ON c.id::text = j.client_id::text
+          WHERE j.id = journal_entry_lines.journal_entry_id
+            AND c.company_id = public.current_app_company_id()
+        )
+      )
+      WITH CHECK (
+        public.is_platform_admin()
+        OR EXISTS (
+          SELECT 1 FROM public.journal_entries j
+          JOIN public.clients c ON c.id::text = j.client_id::text
+          WHERE j.id = journal_entry_lines.journal_entry_id
+            AND c.company_id = public.current_app_company_id()
+        )
+      );
+    RAISE NOTICE 'journal_entry_lines: via journal client_id → clients.company_id';
+
+  ELSIF je_has_company_id THEN
+    CREATE POLICY journal_entry_lines_tenant ON public.journal_entry_lines
+      FOR ALL TO authenticated
+      USING (
+        public.is_platform_admin()
+        OR EXISTS (
+          SELECT 1 FROM public.journal_entries j
+          WHERE j.id = journal_entry_lines.journal_entry_id
+            AND j.company_id = public.current_app_company_id()
+        )
+      )
+      WITH CHECK (
+        public.is_platform_admin()
+        OR EXISTS (
+          SELECT 1 FROM public.journal_entries j
+          WHERE j.id = journal_entry_lines.journal_entry_id
+            AND j.company_id = public.current_app_company_id()
+        )
+      );
+    RAISE NOTICE 'journal_entry_lines: via journal company_id';
+
   ELSE
-    RAISE NOTICE 'journal_entry_lines: table missing — skipped';
+    CREATE POLICY journal_entry_lines_tenant ON public.journal_entry_lines
+      FOR ALL TO authenticated
+      USING (public.is_platform_admin())
+      WITH CHECK (public.is_platform_admin());
+    RAISE NOTICE 'journal_entry_lines: no tenant key on journal_entries — platform admin only';
   END IF;
 END $$;
 
