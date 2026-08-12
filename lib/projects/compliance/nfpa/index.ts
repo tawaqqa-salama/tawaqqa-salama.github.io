@@ -78,6 +78,18 @@ export type {
   Nfpa13VerificationStatus,
   Nfpa13PlatformVerificationStatus,
 } from '@/lib/projects/compliance/nfpa/nfpa13-edition';
+export {
+  NFPA13_2025_EDITION,
+  NFPA13_2025_PHASE1_SLOTS,
+  NFPA13_2025_PHASE1_VERIFIED_ROWS,
+  listNfpa13_2025Phase1EncodedSections,
+  listNfpa13_2025Phase1PendingSlots,
+  assertNfpa13PlatformNotUpgraded,
+} from '@/lib/projects/compliance/nfpa/nfpa13-2025-phase1';
+export type {
+  Nfpa13_2025Phase1Slot,
+  Nfpa13_2025Phase1Domain,
+} from '@/lib/projects/compliance/nfpa/nfpa13-2025-phase1';
 
 export function mapNfpaStatusToCompliance(status: NfpaRuleStatus): ComplianceResultStatus {
   if (status === 'CONFLICT') return 'CONFLICT';

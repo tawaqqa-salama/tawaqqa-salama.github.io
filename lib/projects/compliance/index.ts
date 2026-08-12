@@ -134,6 +134,12 @@ export {
   buildNfpa13_2025ProjectAdoption,
   isValidNfpa13EditionAdoption,
   parseNfpa13EditionAdoption,
+  NFPA13_2025_EDITION,
+  NFPA13_2025_PHASE1_SLOTS,
+  NFPA13_2025_PHASE1_VERIFIED_ROWS,
+  listNfpa13_2025Phase1EncodedSections,
+  listNfpa13_2025Phase1PendingSlots,
+  assertNfpa13PlatformNotUpgraded,
 } from '@/lib/projects/compliance/nfpa';
 export type {
   NfpaEngineeringContext,
@@ -143,4 +149,5 @@ export type {
   Nfpa13EncodedRow,
   Nfpa13RuleDefinition,
   Nfpa13EditionAdoption,
+  Nfpa13_2025Phase1Slot,
 } from '@/lib/projects/compliance/nfpa';
