@@ -281,6 +281,40 @@ describe('Phase 2.3 prerequisites', () => {
       expect(ctx.egress.metrics).toEqual([]);
     });
 
+    it('INVALID egress => measurements null (no raw bp/FP fallback)', () => {
+      const data: ProjectEngineeringData = {
+        ...EMPTY_PROJECT_ENGINEERING_DATA,
+        building_plan: {
+          ...EMPTY_PROJECT_ENGINEERING_DATA.building_plan,
+          exits_count: 'not-a-number',
+          stairs_count: '2',
+        },
+        fire_protection_design: {
+          ...EMPTY_FIRE_PROTECTION_DESIGN,
+          egress: {
+            metrics: [
+              { label: 'travel distance', value: '45' },
+              { label: 'door width', value: '0.9' },
+            ],
+          },
+        },
+      };
+      expect(resolveEgressData({ data }).state).toBe('INVALID');
+      const ctx = buildComplianceContext({ client: baseClient(), data });
+      expect(ctx.sbc201Egress?.exitsProvided ?? null).toBeNull();
+      expect(ctx.sbc201Egress?.stairCount ?? null).toBeNull();
+      expect(ctx.sbc201Egress?.travelDistance ?? null).toBeNull();
+      expect(ctx.sbc201Egress?.clearOpeningWidth ?? null).toBeNull();
+      expect(ctx.egress.exits_count ?? null).toBeNull();
+      expect(ctx.egress.stairs_count ?? null).toBeNull();
+      expect(ctx.egress.travel_distance_m ?? null).toBeNull();
+      expect(ctx.egress.door_width_m ?? null).toBeNull();
+      expect(ctx.egress.corridor_width_m ?? null).toBeNull();
+      expect(ctx.egress.dead_end_m ?? null).toBeNull();
+      expect(ctx.egress.common_path_m ?? null).toBeNull();
+      expect(ctx.egress.stair_width_m ?? null).toBeNull();
+    });
+
     it('VALID egress => measurements preserved from resolved canonical fields', () => {
       const data: ProjectEngineeringData = {
         ...EMPTY_PROJECT_ENGINEERING_DATA,
