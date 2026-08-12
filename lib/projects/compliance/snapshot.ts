@@ -20,7 +20,55 @@ export function freezeComplianceSnapshot(params: {
   datasetRevision?: string | null;
   sourceCode?: string | null;
   codeEdition?: string | null;
+  sourceDocumentId?: string | null;
+  ruleVersions?: FrozenComplianceSnapshot['rule_versions'];
+  sourceReferences?: FrozenComplianceSnapshot['source_references'];
+  evaluatedInputs?: Record<string, unknown> | null;
+  evaluatedOutputs?: Record<string, unknown> | null;
 }): FrozenComplianceSnapshot {
+  const rule_versions =
+    params.ruleVersions ??
+    params.run.results.map((r) => ({
+      ruleId: r.ruleId,
+      edition: params.codeEdition ?? null,
+      version: null,
+      verification_status: r.effectiveStatus === 'RULE_NOT_CONFIGURED' ? 'RULE_NOT_CONFIGURED' : null,
+      source_document_id: params.sourceDocumentId ?? null,
+      section: r.section || null,
+      table: null,
+    }));
+
+  const source_references =
+    params.sourceReferences ??
+    params.run.results.map((r) => ({
+      ruleId: r.ruleId,
+      code_reference: r.code_reference || r.section || null,
+      section: r.section || null,
+      table: null,
+      page: null,
+      source_verification_status:
+        r.effectiveStatus === 'RULE_NOT_CONFIGURED' ? 'NOT_VERIFIED' : null,
+    }));
+
+  const evaluated_inputs =
+    params.evaluatedInputs ??
+    Object.fromEntries(
+      params.run.results.map((r) => [r.ruleId, r.inputs || {}])
+    );
+
+  const evaluated_outputs =
+    params.evaluatedOutputs ??
+    Object.fromEntries(
+      params.run.results.map((r) => [
+        r.ruleId,
+        {
+          status: r.status,
+          effectiveStatus: r.effectiveStatus,
+          message: r.message,
+        },
+      ])
+    );
+
   return {
     frozen_at: new Date().toISOString(),
     frozen_for_stage: params.stageId,
@@ -35,6 +83,11 @@ export function freezeComplianceSnapshot(params: {
     gateReasons: params.run.gateReasons,
     source_code: params.sourceCode ?? 'SBC 201/801',
     code_edition: params.codeEdition ?? null,
+    source_document_id: params.sourceDocumentId ?? null,
+    rule_versions,
+    source_references,
+    evaluated_inputs,
+    evaluated_outputs,
     results: params.run.results.map((r) => ({
       ruleId: r.ruleId,
       status: r.status,

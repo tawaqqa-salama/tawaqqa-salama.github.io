@@ -571,6 +571,31 @@ export type ApprovedComplianceSnapshot = {
   source_code?: string | null;
   /** Explicit edition when documented — never invented at freeze time. */
   code_edition?: string | null;
+  /** Project-adopted / knowledge source document id at freeze time. */
+  source_document_id?: string | null;
+  /** Edition-specific rule versions frozen with the approval. */
+  rule_versions?: Array<{
+    ruleId: string;
+    edition?: string | null;
+    version?: string | null;
+    verification_status?: string | null;
+    source_document_id?: string | null;
+    section?: string | null;
+    table?: string | null;
+  }> | null;
+  /** Source citations frozen with the run (never rewritten by later KB changes). */
+  source_references?: Array<{
+    ruleId: string;
+    code_reference?: string | null;
+    section?: string | null;
+    table?: string | null;
+    page?: number | null;
+    source_verification_status?: string | null;
+  }> | null;
+  /** Evaluated inputs captured at freeze (immutable replay). */
+  evaluated_inputs?: Record<string, unknown> | null;
+  /** Evaluated outputs / findings summary at freeze. */
+  evaluated_outputs?: Record<string, unknown> | null;
   results: Array<{
     ruleId: string;
     status: ComplianceResultStatus;

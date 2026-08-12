@@ -58,6 +58,7 @@ export {
 } from '@/lib/design-intelligence/decision-engine';
 export type * from '@/lib/design-intelligence/types';
 export type * from '@/lib/design-intelligence/rules-types';
+export * from '@/lib/design-intelligence/code-knowledge';
 export {
   codesFromQuotationServices,
   buildProjectKnowledgeContext,

@@ -41,6 +41,7 @@ import {
   type RagAnswer,
 } from '@/lib/design-intelligence';
 import EngineeringRulesPanel from '@/components/design/EngineeringRulesPanel';
+import CodeKnowledgePanel from '@/components/design/CodeKnowledgePanel';
 import { runBlueprintAiAudit } from '@/lib/compliance/blueprint-audit';
 import type { EngineeringSelection } from '@/lib/design-intelligence/rules-types';
 import type { ClientRecord } from '@/lib/types/client';
@@ -48,6 +49,7 @@ import type { BlueprintAiAuditResult } from '@/lib/types/project-reports';
 
 const TABS: { id: DesignIntelligenceTabId; labelKey: string; fallback: string }[] = [
   { id: 'knowledge', labelKey: 'design.tab.knowledge', fallback: 'Knowledge Base' },
+  { id: 'codes', labelKey: 'design.tab.codes', fallback: 'Code Knowledge' },
   { id: 'rag', labelKey: 'design.tab.rag', fallback: 'AI Knowledge Engine' },
   { id: 'workspace', labelKey: 'design.tab.workspace', fallback: 'Design Workspace' },
   { id: 'rules', labelKey: 'design.tab.rules', fallback: 'Decision Engine' },
@@ -402,6 +404,8 @@ export default function DesignIntelligenceModule() {
         </div>
         </div>
       )}
+
+      {tab === 'codes' && <CodeKnowledgePanel />}
 
       {(tab === 'rag' || tab === 'copilot') && (
         <div className="rounded-xl border bg-white p-4 space-y-3">

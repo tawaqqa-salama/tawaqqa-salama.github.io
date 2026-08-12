@@ -36,6 +36,18 @@ export type DiKnowledgeDocument = {
   chunk_count?: number;
   ocr_used?: boolean;
   extracted_text?: string | null;
+  /** Code knowledge pipeline (additive) */
+  code?: string | null;
+  edition?: string | null;
+  version?: string | null;
+  source_type?: string | null;
+  adoption_status?: string | null;
+  verification_status?: string | null;
+  platform_verification_status?: string | null;
+  source_document_id?: string | null;
+  extract_status?: string | null;
+  ocr_status?: string | null;
+  embedding_status?: string | null;
   created_at?: string;
   updated_at?: string;
 };
@@ -50,6 +62,17 @@ export type DiKnowledgeChunk = {
   content: string;
   embedding?: number[];
   document_title?: string;
+  /** Code knowledge pipeline (additive) */
+  company_id?: string | null;
+  code?: string | null;
+  edition?: string | null;
+  section?: string | null;
+  subsection?: string | null;
+  table_reference?: string | null;
+  figure_reference?: string | null;
+  paragraph_reference?: string | null;
+  source_document_id?: string | null;
+  source_verification_status?: string | null;
 };
 
 export type RagCitation = {
@@ -224,6 +247,7 @@ export const DESIGN_PLANNER_STEPS = [
 
 export type DesignIntelligenceTabId =
   | 'knowledge'
+  | 'codes'
   | 'rag'
   | 'workspace'
   | 'rules'
