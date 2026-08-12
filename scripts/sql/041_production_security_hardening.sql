@@ -58,7 +58,8 @@ SET search_path = public
 AS $$
   SELECT COALESCE(
     (
-      SELECT (u.is_platform_admin = true OR u.role_code = 'super_admin')
+      -- Production users has no is_platform_admin column; super_admin only.
+      SELECT u.role_code = 'super_admin'
       FROM public.users u
       WHERE u.auth_user_id = auth.uid()
         AND u.deleted_at IS NULL

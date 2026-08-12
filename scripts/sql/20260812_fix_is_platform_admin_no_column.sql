@@ -1,8 +1,7 @@
 -- ============================================================================
--- Users privilege-escalation lock (042 helpers + 044 gates)
--- Production schema: users.company_id + role_code only
--- NO is_platform_admin column — platform power = role_code = 'super_admin'
--- No tenant_memberships.
+-- Fix: production public.users has NO is_platform_admin column
+-- Platform power = role_code = 'super_admin' only.
+-- Recreates helpers + users insert/update policies without that column.
 -- Idempotent.
 -- ============================================================================
 
@@ -105,6 +104,7 @@ AS $$
   ]);
 $$;
 
+-- Self-update: role_code + company_id must not change (no is_platform_admin col)
 CREATE OR REPLACE FUNCTION public.app_users_self_update_ok(
   p_role_code text,
   p_company_id uuid,
@@ -125,6 +125,7 @@ AS $$
       AND u.role_code IS NOT DISTINCT FROM p_role_code
       AND u.company_id IS NOT DISTINCT FROM p_company_id
   )
+  -- Ignore p_is_platform_admin when column absent; must stay false/unused
   AND COALESCE(p_is_platform_admin, false) = false;
 $$;
 
@@ -244,6 +245,7 @@ GRANT EXECUTE ON FUNCTION public.app_can_update_user_row(uuid, text, uuid, boole
 GRANT EXECUTE ON FUNCTION public.current_app_user_id() TO authenticated, service_role;
 GRANT EXECUTE ON FUNCTION public.current_app_company_id() TO authenticated, service_role;
 
+-- Policies: never reference missing is_platform_admin column
 DO $$
 BEGIN
   DROP POLICY IF EXISTS users_insert_tenant ON public.users;
@@ -271,10 +273,16 @@ BEGIN
       public.app_can_update_user_row(id, role_code, company_id, false)
     );
 
-  RAISE NOTICE 'users: privilege-escalation locks applied (super_admin only; no is_platform_admin col)';
+  RAISE NOTICE 'users: helpers + policies fixed (no is_platform_admin column; super_admin only)';
 END $$;
 
-SELECT policyname, cmd, roles
+-- Smoke test helpers (should return boolean/uuid, not error)
+SELECT
+  public.is_platform_admin() AS is_platform_admin,
+  public.current_app_role_code() AS role_code,
+  public.current_app_company_id() AS company_id;
+
+SELECT policyname, cmd
 FROM pg_policies
 WHERE schemaname = 'public' AND tablename = 'users'
 ORDER BY policyname;

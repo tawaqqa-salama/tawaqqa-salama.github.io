@@ -58,9 +58,9 @@ AS $$
       AND u.is_active = true
       AND u.role_code IS NOT DISTINCT FROM p_role_code
       AND u.company_id IS NOT DISTINCT FROM p_company_id
-      AND COALESCE(u.is_platform_admin, false)
-            IS NOT DISTINCT FROM COALESCE(p_is_platform_admin, false)
-  );
+  )
+  -- Production has no is_platform_admin column; param must stay false
+  AND COALESCE(p_is_platform_admin, false) = false;
 $$;
 
 CREATE OR REPLACE FUNCTION public.app_can_insert_user_row(
@@ -120,7 +120,6 @@ AS $$
              FROM public.users t
              WHERE t.id = p_target_id
                AND t.company_id = public.current_app_company_id()
-               AND COALESCE(t.is_platform_admin, false) = false
                AND NOT public.app_is_platform_privilege_role(t.role_code)
            )
         THEN true
@@ -165,7 +164,8 @@ SET search_path = pg_catalog, public
 AS $$
   SELECT COALESCE(
     (
-      SELECT (u.is_platform_admin = true OR u.role_code = 'super_admin')
+      -- Production users has no is_platform_admin column; super_admin only.
+      SELECT u.role_code = 'super_admin'
       FROM public.users u
       WHERE u.auth_user_id = auth.uid()
         AND u.deleted_at IS NULL
@@ -269,11 +269,7 @@ BEGIN
   CREATE POLICY users_insert_admin ON public.users
     FOR INSERT TO authenticated
     WITH CHECK (
-      public.app_can_insert_user_row(
-        company_id,
-        role_code,
-        COALESCE(is_platform_admin, false)
-      )
+      public.app_can_insert_user_row(company_id, role_code, false)
     );
 
   CREATE POLICY users_update_admin ON public.users
@@ -287,18 +283,13 @@ BEGIN
       OR id = public.current_app_user_id()
     )
     WITH CHECK (
-      public.app_can_update_user_row(
-        id,
-        role_code,
-        company_id,
-        COALESCE(is_platform_admin, false)
-      )
+      public.app_can_update_user_row(id, role_code, company_id, false)
     );
 END $$;
 
 COMMENT ON FUNCTION public.app_can_insert_user_row(uuid, text, boolean) IS
-  '044: tenant admins cannot insert super_admin or is_platform_admin=true';
+  '044: tenant admins cannot insert super_admin (no is_platform_admin column in prod)';
 COMMENT ON FUNCTION public.app_can_update_user_row(uuid, text, uuid, boolean) IS
-  '044: tenant admins cannot promote to platform privileges; platform admin only';
+  '044: tenant admins cannot promote to super_admin; platform admin only';
 COMMENT ON FUNCTION public.app_is_platform_privilege_role(text) IS
   '044: role_code=super_admin is a platform privilege';
