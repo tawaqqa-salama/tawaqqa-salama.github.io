@@ -836,10 +836,37 @@ export async function uploadAndIndexKnowledgeFile(input: {
 
   // NFPA 13 / code documents must use the Code Knowledge Storage ingest path
   if (nfpa) {
-    const bytes = new Uint8Array(await input.file.arrayBuffer());
+    const { shouldUseResumableUpload } = await import(
+      '@/lib/design-intelligence/code-knowledge/resumable-upload'
+    );
     const { uploadAndIngestCodeKnowledgeDocument } = await import(
       '@/lib/design-intelligence/code-knowledge/storage-ingestion'
     );
+    const large = shouldUseResumableUpload(input.file.size);
+    // Large: do not arrayBuffer() before TUS (Safari/iPhone memory).
+    const bytes = large ? null : new Uint8Array(await input.file.arrayBuffer());
+    const resumeKey = `ck-resume:${companyId}:NFPA-13:2025:${input.file.name}:${input.file.size}:${input.file.lastModified}`;
+    let resumeDocumentId: string | null = null;
+    try {
+      resumeDocumentId =
+        typeof sessionStorage !== 'undefined'
+          ? sessionStorage.getItem(resumeKey)
+          : null;
+    } catch {
+      resumeDocumentId = null;
+    }
+    if (!resumeDocumentId) {
+      resumeDocumentId =
+        typeof crypto !== 'undefined' && 'randomUUID' in crypto
+          ? crypto.randomUUID()
+          : `00000000-0000-4000-8000-${Date.now().toString(16).padStart(12, '0').slice(-12)}`;
+      try {
+        sessionStorage.setItem(resumeKey, resumeDocumentId);
+      } catch {
+        /* ignore */
+      }
+    }
+
     const result = await uploadAndIngestCodeKnowledgeDocument({
       companyId,
       code: 'NFPA-13',
@@ -849,6 +876,7 @@ export async function uploadAndIndexKnowledgeFile(input: {
       mimeType: input.file.type || 'application/pdf',
       bytes,
       file: input.file,
+      resumeDocumentId,
       source_document_id: `kb_upload:NFPA-13-2025:${input.file.name}`,
       source_type: 'PROJECT_PROVIDED_DOCUMENT',
       verification_status: 'PROJECT_COVER_IDENTIFIED',
@@ -859,6 +887,17 @@ export async function uploadAndIndexKnowledgeFile(input: {
       onPhase: input.onPhase,
       registerUploadHandle: input.registerUploadHandle,
     });
+
+    if (
+      (result.status === 'skipped_duplicate' || result.status === 'indexed') &&
+      result.document.persisted
+    ) {
+      try {
+        sessionStorage.removeItem(resumeKey);
+      } catch {
+        /* ignore */
+      }
+    }
 
     const diag = buildKnowledgeUploadDiagnostics({
       authenticated,
@@ -874,12 +913,18 @@ export async function uploadAndIndexKnowledgeFile(input: {
       error:
         result.status === 'failed'
           ? ('error' in result ? result.error : 'ingest_failed') || 'ingest_failed'
-          : !result.document.persisted
-            ? 'not_persisted'
-            : null,
+          : result.status === 'skipped_duplicate' && result.document.persisted
+            ? null
+            : !result.document.persisted
+              ? 'not_persisted'
+              : null,
     });
 
-    if (result.status === 'failed' || !result.document.persisted) {
+    if (
+      result.status === 'failed' ||
+      (result.status !== 'skipped_duplicate' && !result.document.persisted) ||
+      (result.status === 'skipped_duplicate' && !result.document.persisted)
+    ) {
       throw new KnowledgePersistError(
         diag.error || SUPABASE_PERSISTENCE_UNAVAILABLE,
         diag

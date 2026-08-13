@@ -3,6 +3,7 @@
  * Used for large files (≥ 6MB) so iPhone/Safari do not rely on a single PUT.
  *
  * Does not change PDF extraction / RAG — upload-only hardening.
+ * Does not change Storage bucket limits.
  */
 
 import * as tus from 'tus-js-client';
@@ -47,7 +48,7 @@ export type ResumableUploadResult =
 function tusEndpoint(): string {
   const ref = getSupabaseProjectRef();
   if (ref) {
-    // Direct storage hostname — better for large uploads
+    // Direct storage hostname — better for large uploads / Safari
     return `https://${ref}.storage.supabase.co/storage/v1/upload/resumable`;
   }
   const base = (process.env.NEXT_PUBLIC_SUPABASE_URL || '').replace(/\/$/, '');
@@ -66,7 +67,28 @@ export function assertWithinBucketLimit(byteLength: number): string | null {
 }
 
 /**
+ * Stable fingerprint so Safari/iPhone can resume after tab sleep / network drop.
+ * Prefer File identity (name+size+lastModified) over ephemeral Blob wrappers.
+ */
+export function tusFingerprint(
+  file: File | Blob,
+  path: string
+): string {
+  if (typeof File !== 'undefined' && file instanceof File) {
+    return [
+      'tus-ck',
+      file.name,
+      String(file.size),
+      String(file.lastModified || 0),
+      path,
+    ].join('|');
+  }
+  return ['tus-ck', String(file.size), path].join('|');
+}
+
+/**
  * Resumable TUS upload of a browser File/Blob to design-knowledge.
+ * Pass the original File (not an ArrayBuffer-derived Blob) for Safari resume.
  * Call only in browser with an authenticated session.
  */
 export async function uploadKnowledgeFileResumable(input: {
@@ -127,26 +149,37 @@ export async function uploadKnowledgeFileResumable(input: {
         apikey: process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || '',
         'x-upsert': input.upsert === false ? 'false' : 'true',
       },
-      uploadDataDuringCreation: true,
+      // false = create upload URL first, then send chunks — better Safari resume
+      uploadDataDuringCreation: false,
       removeFingerprintOnSuccess: true,
       chunkSize: TUS_CHUNK_SIZE_BYTES,
+      fingerprint: async () => tusFingerprint(input.file, input.path),
       metadata: {
         bucketName: bucket,
         objectName: input.path,
         contentType,
         cacheControl: '3600',
       },
+      onShouldRetry(err, retryAttempt, options) {
+        const status = (err as { originalResponse?: { getStatus?: () => number } })
+          ?.originalResponse?.getStatus?.();
+        // Do not retry permanent client / limit errors
+        if (status === 401 || status === 403 || status === 413 || status === 404) {
+          return false;
+        }
+        const max = options.retryDelays?.length ?? 0;
+        return retryAttempt < max;
+      },
       onError(error) {
         input.onPhase?.('failed');
         const raw = error?.message || String(error) || 'tus_upload_failed';
-        // HTTP 413 from Supabase TUS = bucket and/or Global file size limit too low
         const is413 =
           /\b413\b/.test(raw) ||
           /Maximum size exceeded/i.test(raw) ||
           /EntityTooLarge/i.test(raw);
         const mb = size ? (size / (1024 * 1024)).toFixed(1) : '?';
         const mapped = is413
-          ? `upload_size_limit_exceeded: file is ${mb} MB but Storage rejected it (HTTP 413). Raise design-knowledge file_size_limit (apply scripts/sql/048_design_knowledge_large_upload.sql) AND Dashboard → Storage → Settings → Global file size limit (≥ file size). Then retry — do not re-upload a duplicate if SHA already exists.`
+          ? `upload_size_limit_exceeded: file is ${mb} MB but Storage rejected it (HTTP 413). Confirm design-knowledge file_size_limit=1073741824 and Dashboard Global limit ≥ 1024 MB, then Retry/Resume (same document path).`
           : raw;
         finish({
           ok: false,

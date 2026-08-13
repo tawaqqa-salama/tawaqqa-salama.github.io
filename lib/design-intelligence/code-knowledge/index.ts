@@ -47,7 +47,7 @@ export {
   sanitizeStorageSegment,
   sanitizeKnowledgeFileName,
 } from '@/lib/design-intelligence/code-knowledge/storage-path';
-export { sha256HexFromBytes, sha256HexFromText } from '@/lib/design-intelligence/code-knowledge/sha256';
+export { sha256HexFromBytes, sha256HexFromText, sha256HexFromBlob } from '@/lib/design-intelligence/code-knowledge/sha256';
 export {
   createInMemoryCodeKnowledgeStorage,
   getDefaultCodeKnowledgeStorage,
@@ -70,6 +70,7 @@ export {
   shouldUseResumableUpload,
   assertWithinBucketLimit,
   uploadKnowledgeFileResumable,
+  tusFingerprint,
   type UploadPhase,
   type ResumableUploadProgress,
   type ResumableUploadHandle,
@@ -90,6 +91,8 @@ export {
   listPersistedCodeKnowledgeDocuments,
   verifyPersistedCodeKnowledgeIngestion,
   persistAndVerifyCodeKnowledgeIngestion,
+  findPersistedDuplicateBySha256,
+  verifyStorageObjectExists,
 } from '@/lib/design-intelligence/code-knowledge/persist';
 export {
   ingestPlatformNfpa13_2025AndAdopt,

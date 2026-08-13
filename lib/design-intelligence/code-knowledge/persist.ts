@@ -56,6 +56,69 @@ export async function verifyStorageObjectExists(
   return data.some((f) => f.name === name);
 }
 
+/**
+ * Production SHA-256 dedup against di_knowledge_documents (not session-memory).
+ * Returns an indexed+persisted row when an identical body already exists.
+ */
+export async function findPersistedDuplicateBySha256(input: {
+  companyId: string;
+  code: string;
+  edition: string;
+  sha256: string;
+}): Promise<CodeKnowledgeDocumentMeta | null> {
+  if (!shouldPersistCodeKnowledgeToSupabase()) return null;
+  if (!isUuid(input.companyId) || !input.sha256) return null;
+
+  const { data, error } = await supabase
+    .from('di_knowledge_documents')
+    .select('*')
+    .eq('company_id', input.companyId)
+    .eq('code', input.code)
+    .eq('edition', input.edition)
+    .eq('sha256', input.sha256)
+    .is('deleted_at', null)
+    .neq('status', 'superseded')
+    .order('created_at', { ascending: false })
+    .limit(5);
+
+  if (error || !data?.length) return null;
+
+  const row = data.find(
+    (r) =>
+      r.index_status === 'indexed' &&
+      r.storage_path &&
+      (r.chunk_count || 0) > 0 &&
+      r.ingestion_status !== 'superseded'
+  );
+  if (!row) return null;
+
+  return {
+    id: row.id,
+    company_id: row.company_id,
+    title: row.title,
+    code: row.code || input.code,
+    edition: row.edition || input.edition,
+    status: row.status,
+    index_status: row.index_status,
+    ingestion_status: row.ingestion_status,
+    chunk_count: row.chunk_count,
+    page_count: row.page_count,
+    file_name: row.file_name,
+    file_mime: row.file_mime || row.mime_type,
+    mime_type: row.mime_type || row.file_mime,
+    file_size_bytes: row.file_size_bytes,
+    storage_bucket: row.storage_bucket,
+    storage_path: row.storage_path,
+    sha256: row.sha256,
+    content_sha256: row.content_sha256 || row.sha256,
+    source_document_id: row.source_document_id,
+    persisted: true,
+    persist_error: null,
+    created_at: row.created_at,
+    updated_at: row.updated_at,
+  };
+}
+
 export async function persistCodeKnowledgeDocument(
   doc: CodeKnowledgeDocumentMeta
 ): Promise<{ ok: boolean; error?: string }> {
