@@ -36,6 +36,17 @@ export type DiKnowledgeDocument = {
   chunk_count?: number;
   ocr_used?: boolean;
   extracted_text?: string | null;
+  /** Storage / ingestion diagnostics (additive) */
+  sha256?: string | null;
+  content_sha256?: string | null;
+  mime_type?: string | null;
+  ingestion_status?: string | null;
+  extraction_status?: string | null;
+  page_count?: number | null;
+  pages_extracted?: number | null;
+  pages_ocr?: number | null;
+  last_ingestion_at?: string | null;
+  ingestion_version?: number | null;
   /** Code knowledge pipeline (additive) */
   code?: string | null;
   edition?: string | null;
@@ -57,6 +68,9 @@ export type DiKnowledgeChunk = {
   document_id: string;
   chunk_index: number;
   page_number?: number | null;
+  page_start?: number | null;
+  page_end?: number | null;
+  extraction_method?: string | null;
   paragraph_ref?: string | null;
   code_reference?: string | null;
   content: string;

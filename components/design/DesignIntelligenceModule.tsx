@@ -372,7 +372,11 @@ export default function DesignIntelligenceModule() {
                     <th className="p-3">Title</th>
                     <th className="p-3">Category</th>
                     <th className="p-3">Codes</th>
+                    <th className="p-3">Pages</th>
+                    <th className="p-3">Extracted</th>
+                    <th className="p-3">OCR</th>
                     <th className="p-3">Chunks</th>
+                    <th className="p-3">Ingestion</th>
                     <th className="p-3">Index</th>
                   </tr>
                 </thead>
@@ -387,10 +391,22 @@ export default function DesignIntelligenceModule() {
                         {d.category}
                       </td>
                       <td className="p-3 text-xs" data-label="Codes">
-                        {(d.applicable_codes || []).join(', ') || '—'}
+                        {(d.applicable_codes || []).join(', ') || d.code || '—'}
+                      </td>
+                      <td className="p-3" data-label="Pages">
+                        {d.page_count ?? '—'}
+                      </td>
+                      <td className="p-3" data-label="Extracted">
+                        {d.pages_extracted ?? '—'}
+                      </td>
+                      <td className="p-3" data-label="OCR">
+                        {d.pages_ocr ?? (d.ocr_used ? 'yes' : '—')}
                       </td>
                       <td className="p-3" data-label="Chunks">
                         {d.chunk_count || 0}
+                      </td>
+                      <td className="p-3" data-label="Ingestion">
+                        <span className="text-xs">{d.ingestion_status || '—'}</span>
                       </td>
                       <td className="p-3" data-label="Index">
                         <span className="text-xs font-semibold text-emerald-700">{d.index_status}</span>

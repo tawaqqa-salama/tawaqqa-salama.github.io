@@ -2,6 +2,7 @@ export {
   listKnowledgeDocuments,
   listKnowledgeDocumentsSync,
   uploadAndIndexKnowledgeFile,
+  reingestKnowledgeDocumentFromStorage,
   ragQuery,
   ensureSeedKnowledgeBase,
   knowledgeCategories,

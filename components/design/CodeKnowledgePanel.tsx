@@ -386,13 +386,13 @@ export default function CodeKnowledgePanel({ companyId, clientId }: Props) {
               <th className="py-2 pr-2">Code</th>
               <th className="py-2 pr-2">Edition</th>
               <th className="py-2 pr-2">Document</th>
-              <th className="py-2 pr-2">Ingestion</th>
-              <th className="py-2 pr-2">Extraction</th>
-              <th className="py-2 pr-2">OCR</th>
-              <th className="py-2 pr-2">Indexing</th>
-              <th className="py-2 pr-2">SHA-256</th>
               <th className="py-2 pr-2">Pages</th>
+              <th className="py-2 pr-2">Extracted</th>
+              <th className="py-2 pr-2">OCR</th>
               <th className="py-2 pr-2">Chunks</th>
+              <th className="py-2 pr-2">Ingestion</th>
+              <th className="py-2 pr-2">Index</th>
+              <th className="py-2 pr-2">SHA-256</th>
               <th className="py-2 pr-2">Last ingestion</th>
               <th className="py-2 pr-2">Actions</th>
             </tr>
@@ -406,15 +406,15 @@ export default function CodeKnowledgePanel({ companyId, clientId }: Props) {
                   <div>{d.file_name || d.title}</div>
                   <div className="text-[10px] text-slate-400 break-all">{d.storage_path || '—'}</div>
                 </td>
+                <td className="py-2 pr-2">{d.page_count ?? '—'}</td>
+                <td className="py-2 pr-2">{d.pages_extracted ?? '—'}</td>
+                <td className="py-2 pr-2">{d.pages_ocr ?? (d.ocr_used ? 'yes' : '—')}</td>
+                <td className="py-2 pr-2">{d.chunk_count ?? 0}</td>
                 <td className="py-2 pr-2">{d.ingestion_status || '—'}</td>
-                <td className="py-2 pr-2">{d.extraction_status || d.extract_status || '—'}</td>
-                <td className="py-2 pr-2">{d.ocr_status || '—'}</td>
                 <td className="py-2 pr-2">{d.index_status}</td>
                 <td className="py-2 pr-2 font-mono text-[10px]">
                   {d.sha256 ? `${d.sha256.slice(0, 12)}…` : '—'}
                 </td>
-                <td className="py-2 pr-2">{d.page_count ?? '—'}</td>
-                <td className="py-2 pr-2">{d.chunk_count ?? 0}</td>
                 <td className="py-2 pr-2 whitespace-nowrap">
                   {d.last_ingestion_at || d.indexed_at || '—'}
                 </td>

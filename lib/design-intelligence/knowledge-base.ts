@@ -10,6 +10,13 @@ import type {
 } from '@/lib/design-intelligence/types';
 import { KNOWLEDGE_CATEGORIES } from '@/lib/design-intelligence/types';
 import { isDemoMode, supabase } from '@/lib/supabase';
+import {
+  chunkPagesPreserving,
+  pagesFromPlainText,
+} from '@/lib/design-intelligence/code-knowledge/pdf-page-extract';
+import { detectSourceRefsFromText } from '@/lib/design-intelligence/code-knowledge/source-refs';
+import { sha256HexFromBytes } from '@/lib/design-intelligence/code-knowledge/sha256';
+import { CODE_KNOWLEDGE_STORAGE_BUCKET } from '@/lib/design-intelligence/code-knowledge/storage-path';
 
 const LOCAL_DOCS_KEY = 'tawaqqa_di_knowledge_docs_v1';
 const LOCAL_CHUNKS_KEY = 'tawaqqa_di_knowledge_chunks_v1';
@@ -272,36 +279,97 @@ async function tryUploadToStorage(file: File, docId: string): Promise<{ path: st
 export async function indexDocumentText(
   doc: DiKnowledgeDocument,
   text: string,
-  ocrUsed = false
+  ocrUsed = false,
+  pageMeta?: {
+    page_count?: number | null;
+    pages_extracted?: number | null;
+    pages_ocr?: number | null;
+    page_texts?: string[];
+    extraction_method?: string;
+    sha256?: string | null;
+  }
 ): Promise<{ doc: DiKnowledgeDocument; chunks: DiKnowledgeChunk[]; persistedToCloud: boolean }> {
-  const parts = chunkText(text);
-  const chunks: DiKnowledgeChunk[] = parts.map((part, i) => ({
-    id: uid('chk'),
-    document_id: doc.id,
-    chunk_index: i,
-    page_number: part.pageGuess,
-    paragraph_ref: `§${i + 1}`,
-    code_reference: doc.applicable_codes?.[0] || null,
-    content: part.content,
-    embedding: embedText(part.content),
-    document_title: doc.title,
-  }));
+  const pageTexts = pageMeta?.page_texts?.length
+    ? pageMeta.page_texts.map((t, i) => ({
+        page: i + 1,
+        text: t,
+        extraction_method: (t.trim()
+          ? 'text'
+          : ocrUsed
+            ? 'ocr'
+            : 'empty') as 'text' | 'ocr' | 'empty',
+      }))
+    : pagesFromPlainText(text).pages;
 
+  const pageParts = chunkPagesPreserving(pageTexts, 900);
+  const chunks: DiKnowledgeChunk[] =
+    pageParts.length > 0
+      ? pageParts.map((part) => {
+          const refs = detectSourceRefsFromText(part.content, {
+            pageGuess: part.page_start,
+            allowPageGuess: true,
+          });
+          return {
+            id: uid('chk'),
+            document_id: doc.id,
+            chunk_index: part.index,
+            page_number: refs.page_number ?? part.page_start,
+            page_start: part.page_start,
+            page_end: part.page_end,
+            extraction_method: part.extraction_method,
+            paragraph_ref: refs.paragraph_reference || `§${part.index + 1}`,
+            code_reference: doc.applicable_codes?.[0] || refs.code_reference || null,
+            content: part.content,
+            embedding: embedText(part.content),
+            document_title: doc.title,
+            section: refs.section,
+            subsection: refs.subsection,
+            table_reference: refs.table_reference,
+            figure_reference: refs.figure_reference,
+            source_verification_status: refs.source_verification_status,
+          };
+        })
+      : chunkText(text).map((part, i) => ({
+          id: uid('chk'),
+          document_id: doc.id,
+          chunk_index: i,
+          page_number: part.pageGuess,
+          page_start: part.pageGuess,
+          page_end: part.pageGuess,
+          extraction_method: ocrUsed ? 'ocr' : 'text',
+          paragraph_ref: `§${i + 1}`,
+          code_reference: doc.applicable_codes?.[0] || null,
+          content: part.content,
+          embedding: embedText(part.content),
+          document_title: doc.title,
+        }));
+
+  const now = new Date().toISOString();
   const updated: DiKnowledgeDocument = {
     ...doc,
     extracted_text: text,
-    data_url: null, // never persist file bytes in knowledge JSON / localStorage
+    data_url: null,
     ocr_used: ocrUsed,
     index_status: 'indexed',
-    indexed_at: new Date().toISOString(),
+    indexed_at: now,
     chunk_count: chunks.length,
+    page_count: pageMeta?.page_count ?? pageTexts.length ?? doc.page_count ?? null,
+    pages_extracted: pageMeta?.pages_extracted ?? pageTexts.filter((p) => p.text.trim()).length,
+    pages_ocr: pageMeta?.pages_ocr ?? (ocrUsed ? pageTexts.filter((p) => !p.text.trim()).length : 0),
+    extract_status: 'indexed',
+    extraction_status: 'indexed',
+    ocr_status: ocrUsed ? 'indexed' : 'indexed',
+    embedding_status: chunks.length ? 'indexed' : 'pending',
+    ingestion_status: 'indexed',
+    last_ingestion_at: now,
+    sha256: pageMeta?.sha256 ?? doc.sha256 ?? null,
+    content_sha256: pageMeta?.sha256 ?? doc.content_sha256 ?? null,
     status: (doc.status || 'active') as KnowledgeDocStatus,
-    updated_at: new Date().toISOString(),
+    updated_at: now,
   };
 
   let persistedToCloud = false;
 
-  // Cloud first when available — authoritative store (Supabase plan, not browser quota)
   if (!isDemoMode) {
     const { error: docErr } = await supabase.from('di_knowledge_documents').upsert({
       id: updated.id,
@@ -324,6 +392,7 @@ export async function indexDocumentText(
       notes: updated.notes,
       file_name: updated.file_name,
       file_mime: updated.file_mime,
+      mime_type: updated.mime_type || updated.file_mime,
       file_size_bytes: updated.file_size_bytes,
       storage_bucket: updated.storage_bucket,
       storage_path: updated.storage_path,
@@ -332,13 +401,27 @@ export async function indexDocumentText(
       indexed_at: updated.indexed_at,
       chunk_count: updated.chunk_count,
       ocr_used: updated.ocr_used,
+      sha256: updated.sha256,
+      content_sha256: updated.content_sha256,
+      page_count: updated.page_count,
+      pages_extracted: updated.pages_extracted,
+      pages_ocr: updated.pages_ocr,
+      ingestion_status: updated.ingestion_status,
+      extraction_status: updated.extraction_status,
+      extract_status: updated.extract_status,
+      ocr_status: updated.ocr_status,
+      embedding_status: updated.embedding_status,
+      last_ingestion_at: updated.last_ingestion_at,
+      code: updated.code,
+      edition: updated.edition,
+      source_type: updated.source_type,
+      platform_verification_status: updated.platform_verification_status,
       updated_at: updated.updated_at,
     });
     if (!docErr) {
       persistedToCloud = true;
       await supabase.from('di_knowledge_chunks').delete().eq('document_id', doc.id);
       if (chunks.length) {
-        // Insert in batches to avoid payload limits
         const batchSize = 50;
         for (let i = 0; i < chunks.length; i += batchSize) {
           const batch = chunks.slice(i, i + batchSize);
@@ -348,9 +431,17 @@ export async function indexDocumentText(
               document_id: c.document_id,
               chunk_index: c.chunk_index,
               page_number: c.page_number,
+              page_start: c.page_start,
+              page_end: c.page_end,
+              extraction_method: c.extraction_method,
               paragraph_ref: c.paragraph_ref,
               code_reference: c.code_reference,
               content: c.content,
+              section: c.section,
+              subsection: c.subsection,
+              table_reference: c.table_reference,
+              figure_reference: c.figure_reference,
+              source_verification_status: c.source_verification_status,
               token_estimate: Math.ceil(c.content.length / 4),
               embedding_json: c.embedding,
             }))
@@ -360,7 +451,6 @@ export async function indexDocumentText(
     }
   }
 
-  // Local/memory cache — slim, never throws on quota
   const docs = readLocalDocs().filter((d) => d.id !== doc.id);
   docs.unshift(updated);
   writeLocalDocs(docs);
@@ -379,8 +469,16 @@ export async function uploadAndIndexKnowledgeFile(input: {
   pruneKnowledgeLocalCache();
 
   const id = uid('doc');
-  const { text, ocrUsed } = await extractTextFromFile(input.file);
+  const bytes = new Uint8Array(await input.file.arrayBuffer());
+  const sha256 = await sha256HexFromBytes(bytes);
+  const extracted = await extractTextFromFile(input.file);
   const storage = await tryUploadToStorage(input.file, id);
+
+  const codes = input.meta.applicable_codes || [];
+  const looksNfpa13_2025 =
+    /nfpa\s*-?\s*13/i.test(input.file.name) ||
+    /nfpa\s*-?\s*13/i.test(input.meta.title) ||
+    codes.some((c) => /nfpa\s*-?\s*13/i.test(c));
 
   const draft: DiKnowledgeDocument = {
     id,
@@ -398,25 +496,45 @@ export async function uploadAndIndexKnowledgeFile(input: {
     project_type: input.meta.project_type || '',
     building_type: input.meta.building_type || '',
     hazard_classification: input.meta.hazard_classification || '',
-    applicable_codes: input.meta.applicable_codes || [],
+    applicable_codes: codes,
     status: 'active',
     notes: input.meta.notes || '',
     file_name: input.file.name,
     file_mime: input.file.type,
+    mime_type: input.file.type || null,
     file_size_bytes: input.file.size,
-    storage_bucket: storage.bucket,
+    storage_bucket: storage.bucket || CODE_KNOWLEDGE_STORAGE_BUCKET,
     storage_path: storage.path,
     data_url: null,
     source_kind: 'upload',
     index_status: 'processing',
+    ingestion_status: 'extracting',
     chunk_count: 0,
-    ocr_used: ocrUsed,
+    ocr_used: extracted.ocrUsed,
+    sha256,
+    content_sha256: sha256,
+    page_count: extracted.page_count ?? null,
+    pages_extracted: extracted.pages_extracted ?? null,
+    pages_ocr: extracted.pages_ocr ?? null,
+    code: looksNfpa13_2025 ? 'NFPA-13' : input.meta.code || null,
+    edition: looksNfpa13_2025 ? '2025' : input.meta.edition || null,
+    source_type: looksNfpa13_2025 ? 'PROJECT_PROVIDED_DOCUMENT' : input.meta.source_type || 'upload',
+    platform_verification_status: looksNfpa13_2025
+      ? 'NOT_VERIFIED_OFFICIAL'
+      : input.meta.platform_verification_status || null,
     created_at: new Date().toISOString(),
     updated_at: new Date().toISOString(),
   };
 
   await enqueueIndexingJob({ documentId: id, jobType: 'index' });
-  const { doc, persistedToCloud } = await indexDocumentText(draft, text, ocrUsed);
+  const { doc, persistedToCloud } = await indexDocumentText(draft, extracted.text, extracted.ocrUsed, {
+    page_count: extracted.page_count,
+    pages_extracted: extracted.pages_extracted,
+    pages_ocr: extracted.pages_ocr,
+    page_texts: extracted.page_texts,
+    extraction_method: extracted.extraction_method,
+    sha256,
+  });
 
   void import('@/lib/activity/logger').then(({ logActivity }) =>
     logActivity({
@@ -428,13 +546,97 @@ export async function uploadAndIndexKnowledgeFile(input: {
         chunkCount: doc.chunk_count,
         category: doc.category,
         ocrUsed: doc.ocr_used,
+        pageCount: doc.page_count,
+        pagesExtracted: doc.pages_extracted,
         persistedToCloud,
         storagePath: doc.storage_path,
+        sha256: doc.sha256,
       },
     })
   );
 
   return { ...doc, persistedToCloud };
+}
+
+/**
+ * Re-ingest an existing knowledge document from its private Storage object.
+ * Does NOT create a new document row. Replaces chunks for the same document_id.
+ */
+export async function reingestKnowledgeDocumentFromStorage(
+  documentId: string
+): Promise<{
+  ok: boolean;
+  doc?: DiKnowledgeDocument;
+  chunks_before: number;
+  chunks_after: number;
+  page_count?: number | null;
+  error?: string;
+}> {
+  const existing =
+    readLocalDocs().find((d) => d.id === documentId) ||
+    (await listKnowledgeDocuments()).find((d) => d.id === documentId);
+  if (!existing) {
+    return { ok: false, chunks_before: 0, chunks_after: 0, error: 'document_missing' };
+  }
+  if (!existing.storage_path) {
+    return {
+      ok: false,
+      chunks_before: existing.chunk_count || 0,
+      chunks_after: existing.chunk_count || 0,
+      error: 'storage_path_missing',
+    };
+  }
+
+  const chunks_before =
+    readLocalChunks().filter((c) => c.document_id === documentId).length ||
+    existing.chunk_count ||
+    0;
+
+  if (isDemoMode) {
+    return {
+      ok: false,
+      chunks_before,
+      chunks_after: chunks_before,
+      error: 'supabase_not_configured',
+    };
+  }
+
+  const bucket = existing.storage_bucket || CODE_KNOWLEDGE_STORAGE_BUCKET;
+  const { data, error } = await supabase.storage.from(bucket).download(existing.storage_path);
+  if (error || !data) {
+    return {
+      ok: false,
+      chunks_before,
+      chunks_after: chunks_before,
+      error: error?.message || 'storage_download_failed',
+    };
+  }
+
+  const bytes = new Uint8Array(await data.arrayBuffer());
+  const sha256 = await sha256HexFromBytes(bytes);
+  const file = new File([bytes], existing.file_name || 'document.pdf', {
+    type: existing.file_mime || existing.mime_type || 'application/pdf',
+  });
+  const extracted = await extractTextFromFile(file);
+
+  existing.ingestion_status = 'extracting';
+  existing.ingestion_version = (existing.ingestion_version || 1) + 1;
+  const { doc, chunks } = await indexDocumentText(existing, extracted.text, extracted.ocrUsed, {
+    page_count: extracted.page_count,
+    pages_extracted: extracted.pages_extracted,
+    pages_ocr: extracted.pages_ocr,
+    page_texts: extracted.page_texts,
+    extraction_method: extracted.extraction_method,
+    sha256,
+  });
+
+  return {
+    ok: true,
+    doc,
+    chunks_before,
+    chunks_after: chunks.length,
+    page_count: doc.page_count,
+  };
 }
 
 const CONFIDENCE_FLOOR = 0.18;
