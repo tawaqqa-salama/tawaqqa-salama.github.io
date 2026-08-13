@@ -24,7 +24,7 @@ import { detectSourceRefsFromText } from '@/lib/design-intelligence/code-knowled
 import { sha256HexFromBytes } from '@/lib/design-intelligence/code-knowledge/sha256';
 import {
   CODE_KNOWLEDGE_STORAGE_BUCKET,
-  sanitizeStorageSegment,
+  sanitizeKnowledgeFileName,
 } from '@/lib/design-intelligence/code-knowledge/storage-path';
 import {
   isUuid,
@@ -336,8 +336,7 @@ async function tryUploadToStorage(input: {
   }
 
   try {
-    const safeName =
-      sanitizeStorageSegment(input.file.name) || `doc-${Date.now().toString(36)}.bin`;
+    const safeName = sanitizeKnowledgeFileName(input.file.name);
     // Tenant RLS: first path segment must equal current_app_company_id()
     const path = `${input.companyId}/knowledge/${input.docId}/${safeName}`;
     const { error } = await supabase.storage.from(BUCKET).upload(path, input.file, {
@@ -353,6 +352,61 @@ async function tryUploadToStorage(input: {
       error: err instanceof Error ? err.message : String(err),
     };
   }
+}
+
+/** Insert / upsert a processing stub so di_indexing_jobs FK can reference the document. */
+async function upsertKnowledgeDocumentStub(
+  doc: DiKnowledgeDocument
+): Promise<{ ok: boolean; error?: string }> {
+  if (!isSupabaseConfigured) {
+    return { ok: false, error: SUPABASE_PERSISTENCE_UNAVAILABLE };
+  }
+  if (!isUuid(doc.id)) {
+    return { ok: false, error: 'document_id must be a UUID' };
+  }
+  const companyId = doc.company_id && isUuid(doc.company_id) ? doc.company_id : null;
+  const now = new Date().toISOString();
+  const { error } = await supabase.from('di_knowledge_documents').upsert({
+    id: doc.id,
+    company_id: companyId,
+    title: doc.title,
+    category: doc.category,
+    discipline: doc.discipline,
+    revision: doc.revision,
+    issue_date: doc.issue_date,
+    author_name: doc.author_name,
+    version_label: doc.version_label,
+    version_no: doc.version_no || 1,
+    tags: doc.tags || [],
+    keywords: doc.keywords || [],
+    applicable_codes: doc.applicable_codes || [],
+    status: doc.status || 'active',
+    notes: doc.notes,
+    file_name: doc.file_name,
+    file_mime: doc.file_mime,
+    mime_type: doc.mime_type || doc.file_mime,
+    file_size_bytes: doc.file_size_bytes,
+    storage_bucket: doc.storage_bucket || BUCKET,
+    storage_path: doc.storage_path,
+    source_kind: doc.source_kind || 'upload',
+    index_status: 'processing',
+    ingestion_status: doc.ingestion_status || 'uploaded',
+    chunk_count: 0,
+    ocr_used: Boolean(doc.ocr_used),
+    sha256: doc.sha256,
+    content_sha256: doc.content_sha256 || doc.sha256,
+    page_count: doc.page_count,
+    pages_extracted: doc.pages_extracted,
+    pages_ocr: doc.pages_ocr,
+    code: doc.code,
+    edition: doc.edition,
+    source_type: doc.source_type,
+    platform_verification_status: doc.platform_verification_status,
+    created_at: doc.created_at || now,
+    updated_at: now,
+  });
+  if (error) return { ok: false, error: error.message };
+  return { ok: true };
 }
 
 async function verifyPersistedKnowledgeRows(documentId: string): Promise<{
@@ -858,7 +912,7 @@ export async function uploadAndIndexKnowledgeFile(input: {
     data_url: null,
     source_kind: 'upload',
     index_status: 'processing',
-    ingestion_status: 'extracting',
+    ingestion_status: 'uploaded',
     chunk_count: 0,
     ocr_used: extracted.ocrUsed,
     sha256,
@@ -874,8 +928,52 @@ export async function uploadAndIndexKnowledgeFile(input: {
     updated_at: new Date().toISOString(),
   };
 
-  await enqueueIndexingJob({ documentId: id, jobType: 'index' });
+  // 1) Document row MUST exist before indexing job (FK + correct error surfacing)
+  const stub = await upsertKnowledgeDocumentStub(draft);
+  if (!stub.ok) {
+    throw new KnowledgePersistError(
+      `document_insert_failed: ${stub.error || 'unknown'}`,
+      buildKnowledgeUploadDiagnostics({
+        authenticated,
+        company_id_present: true,
+        storage_upload_attempted: true,
+        db_insert_attempted: true,
+        chunks_insert_attempted: false,
+        storage_path: storage.path,
+        document_id: id,
+        error: stub.error || 'document_insert_failed',
+        handler_path:
+          'onUpload → uploadAndIndexKnowledgeFile → di_knowledge_documents stub',
+      })
+    );
+  }
+
+  // 2) Indexing job with real UUID (never job-*)
+  const queued = await enqueueIndexingJob({
+    documentId: id,
+    jobType: 'index',
+    companyId,
+  });
+  if (!queued.ok) {
+    throw new KnowledgePersistError(
+      queued.error || 'FAILED: indexing_job_create_failed',
+      buildKnowledgeUploadDiagnostics({
+        authenticated,
+        company_id_present: true,
+        storage_upload_attempted: true,
+        db_insert_attempted: true,
+        chunks_insert_attempted: false,
+        storage_path: storage.path,
+        document_id: id,
+        error: queued.error || 'indexing_job_create_failed',
+        handler_path:
+          'onUpload → uploadAndIndexKnowledgeFile → di_indexing_jobs',
+      })
+    );
+  }
+
   try {
+    draft.ingestion_status = 'extracting';
     const { doc, persistedToCloud } = await indexDocumentText(
       draft,
       extracted.text,
@@ -892,6 +990,7 @@ export async function uploadAndIndexKnowledgeFile(input: {
     );
 
     if (!persistedToCloud) {
+      await completeIndexingJob(id, false, SUPABASE_PERSISTENCE_UNAVAILABLE, queued.job.id);
       throw new KnowledgePersistError(
         SUPABASE_PERSISTENCE_UNAVAILABLE,
         buildKnowledgeUploadDiagnostics({
@@ -906,6 +1005,8 @@ export async function uploadAndIndexKnowledgeFile(input: {
         })
       );
     }
+
+    await completeIndexingJob(id, true, undefined, queued.job.id);
 
     const diagnostics = buildKnowledgeUploadDiagnostics({
       authenticated,
@@ -935,15 +1036,28 @@ export async function uploadAndIndexKnowledgeFile(input: {
           persistedToCloud,
           storagePath: doc.storage_path,
           sha256: doc.sha256,
+          indexingJobId: queued.job.id,
         },
       })
     );
 
     return { ...doc, persistedToCloud: true, diagnostics };
   } catch (err) {
-    if (err instanceof KnowledgePersistError) throw err;
+    if (err instanceof KnowledgePersistError) {
+      await completeIndexingJob(id, false, err.message, queued.job.id);
+      throw err;
+    }
+    const msg = err instanceof Error ? err.message : String(err);
+    // Prefer real upstream failure over generic chunks_missing when job/doc failed earlier
+    const primary =
+      /indexing_job_create_failed/i.test(msg)
+        ? msg
+        : /invalid input syntax for type uuid/i.test(msg)
+          ? `indexing_job_create_failed: ${msg}`
+          : msg;
+    await completeIndexingJob(id, false, primary, queued.job.id);
     throw new KnowledgePersistError(
-      err instanceof Error ? err.message : String(err),
+      primary,
       buildKnowledgeUploadDiagnostics({
         authenticated,
         company_id_present: true,
@@ -952,7 +1066,7 @@ export async function uploadAndIndexKnowledgeFile(input: {
         chunks_insert_attempted: true,
         storage_path: storage.path,
         document_id: id,
-        error: err instanceof Error ? err.message : String(err),
+        error: primary,
       })
     );
   }

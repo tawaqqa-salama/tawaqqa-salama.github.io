@@ -45,6 +45,7 @@ export {
   buildCodeKnowledgeObjectPath,
   parseCodeKnowledgeObjectPath,
   sanitizeStorageSegment,
+  sanitizeKnowledgeFileName,
 } from '@/lib/design-intelligence/code-knowledge/storage-path';
 export { sha256HexFromBytes, sha256HexFromText } from '@/lib/design-intelligence/code-knowledge/sha256';
 export {
