@@ -9,8 +9,8 @@ import * as tus from 'tus-js-client';
 import { getSupabaseProjectRef, isSupabaseConfigured, supabase } from '@/lib/supabase';
 import { CODE_KNOWLEDGE_STORAGE_BUCKET } from '@/lib/design-intelligence/code-knowledge/storage-path';
 
-/** Bucket max object size after 048 migration (500 MiB). */
-export const DESIGN_KNOWLEDGE_FILE_SIZE_LIMIT_BYTES = 500 * 1024 * 1024;
+/** Bucket max object size after 048 migration (1 GiB). */
+export const DESIGN_KNOWLEDGE_FILE_SIZE_LIMIT_BYTES = 1024 * 1024 * 1024;
 
 /** Switch to TUS at/above this size (Supabase recommends ≥ 6MB). */
 export const RESUMABLE_UPLOAD_THRESHOLD_BYTES = 6 * 1024 * 1024;
@@ -138,9 +138,19 @@ export async function uploadKnowledgeFileResumable(input: {
       },
       onError(error) {
         input.onPhase?.('failed');
+        const raw = error?.message || String(error) || 'tus_upload_failed';
+        // HTTP 413 from Supabase TUS = bucket and/or Global file size limit too low
+        const is413 =
+          /\b413\b/.test(raw) ||
+          /Maximum size exceeded/i.test(raw) ||
+          /EntityTooLarge/i.test(raw);
+        const mb = size ? (size / (1024 * 1024)).toFixed(1) : '?';
+        const mapped = is413
+          ? `upload_size_limit_exceeded: file is ${mb} MB but Storage rejected it (HTTP 413). Raise design-knowledge file_size_limit (apply scripts/sql/048_design_knowledge_large_upload.sql) AND Dashboard → Storage → Settings → Global file size limit (≥ file size). Then retry — do not re-upload a duplicate if SHA already exists.`
+          : raw;
         finish({
           ok: false,
-          error: error?.message || String(error) || 'tus_upload_failed',
+          error: mapped,
           method: 'tus',
         });
       },
