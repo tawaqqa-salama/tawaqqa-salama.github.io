@@ -290,7 +290,7 @@ export function ensureSeedKnowledgeBase(): { docs: DiKnowledgeDocument[]; chunks
 
 export function listKnowledgeDocumentsSync(): DiKnowledgeDocument[] {
   ensureSeedKnowledgeBase();
-  return readLocalDocs();
+  return readLocalDocs().filter((d) => !d.deleted_at);
 }
 
 export async function listKnowledgeDocuments(): Promise<DiKnowledgeDocument[]> {
@@ -305,12 +305,72 @@ export async function listKnowledgeDocuments(): Promise<DiKnowledgeDocument[]> {
     if (!error && data?.length) {
       const remote = data as DiKnowledgeDocument[];
       // Merge into memory so UI stays consistent without bloating localStorage
-      const local = readLocalDocs().filter((d) => !remote.some((r) => r.id === d.id));
-      writeLocalDocs([...remote, ...local]);
-      return readLocalDocs();
+      const local = readLocalDocs().filter(
+        (d) => !d.deleted_at && !remote.some((r) => r.id === d.id)
+      );
+      writeLocalDocs([
+        ...remote,
+        ...local,
+        ...readLocalDocs().filter((d) => Boolean(d.deleted_at)),
+      ]);
+      return readLocalDocs().filter((d) => !d.deleted_at);
     }
   }
+  return readLocalDocs().filter((d) => !d.deleted_at);
+}
+
+/** Includes soft-deleted rows (delete / duplicate helpers). */
+export function listLocalKnowledgeDocumentsIncludingDeleted(): DiKnowledgeDocument[] {
   return readLocalDocs();
+}
+
+export function findLocalKnowledgeDocument(
+  documentId: string
+): DiKnowledgeDocument | null {
+  return readLocalDocs().find((d) => d.id === documentId) || null;
+}
+
+/**
+ * Soft-delete a Knowledge Base local/session document and optionally only strip chunks.
+ */
+export function applyLocalKnowledgeDocumentSoftDelete(
+  documentId: string,
+  opts?: {
+    companyId?: string;
+    deletedAt?: string;
+    removeChunksOnly?: boolean;
+  }
+): { chunksRemoved: number; softDeleted: boolean } {
+  const docs = readLocalDocs();
+  const chunks = readLocalChunks();
+  const nextChunks = chunks.filter((c) => c.document_id !== documentId);
+  const chunksRemoved = chunks.length - nextChunks.length;
+  writeLocalChunks(nextChunks);
+
+  if (opts?.removeChunksOnly) {
+    return { chunksRemoved, softDeleted: false };
+  }
+
+  const now = opts?.deletedAt || new Date().toISOString();
+  let softDeleted = false;
+  const nextDocs = docs.map((d) => {
+    if (d.id !== documentId) return d;
+    if (opts?.companyId && d.company_id && d.company_id !== opts.companyId) {
+      throw new Error('company_mismatch');
+    }
+    softDeleted = true;
+    return {
+      ...d,
+      deleted_at: now,
+      chunk_count: 0,
+      index_status: 'failed',
+      ingestion_status: 'failed',
+      extracted_text: null,
+      updated_at: now,
+    };
+  });
+  writeLocalDocs(nextDocs);
+  return { chunksRemoved, softDeleted };
 }
 
 async function tryUploadToStorage(input: {

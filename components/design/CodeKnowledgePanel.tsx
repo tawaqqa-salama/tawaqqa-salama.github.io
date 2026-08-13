@@ -34,11 +34,14 @@ import {
   searchCodeKnowledge,
   shouldPersistCodeKnowledgeToSupabase,
   uploadAndIngestCodeKnowledgeDocument,
+  deleteKnowledgeDocument,
+  documentHasSha256Duplicate,
   type CodeKnowledgeDocumentMeta,
   type CodeKnowledgeSearchHit,
   type DiCodeEdition,
   type DiProjectCodeAdoption,
   type EditionComparisonResult,
+  type KnowledgeDeleteResult,
 } from '@/lib/design-intelligence/code-knowledge';
 import { useAuth } from '@/lib/auth/AuthProvider';
 import { useLanguage } from '@/lib/i18n/LanguageProvider';
@@ -295,6 +298,59 @@ export default function CodeKnowledgePanel({ companyId, clientId }: Props) {
     }
   };
 
+  const confirmDeleteMessage = (d: CodeKnowledgeDocumentMeta, duplicate: boolean) => {
+    const title = d.file_name || d.title || d.id;
+    if (duplicate) {
+      return `Delete duplicate document?\n\n${title}\nID: ${d.id}\n\nRemoves Storage object, chunks, and indexing jobs, then soft-deletes this duplicate. Canonical copy is kept.`;
+    }
+    return `Delete document?\n\n${title}\nID: ${d.id}\n\nPermanently removes the Storage file and chunks, then soft-deletes the document. This cannot be undone from the UI.`;
+  };
+
+  const onDeleteDocument = async (
+    d: CodeKnowledgeDocumentMeta,
+    duplicateOnly: boolean
+  ) => {
+    if (!window.confirm(confirmDeleteMessage(d, duplicateOnly))) return;
+    setBusy(true);
+    setMessage(null);
+    try {
+      const result: KnowledgeDeleteResult = await deleteKnowledgeDocument({
+        documentId: d.id,
+        companyId: company,
+        duplicateOnly,
+        confirmed: true,
+      });
+      if (!result.ok) {
+        if (result.code === 'document_in_use') {
+          setMessage(
+            'Document is in use — unlink from project adoption / code edition first.'
+          );
+        } else if (result.code === 'canonical_protected') {
+          setMessage(
+            'Cannot delete canonical document. Use Delete duplicate on a non-canonical copy.'
+          );
+        } else if (result.code === 'company_mismatch') {
+          setMessage(
+            'FAILED: company isolation — cannot delete another company document.'
+          );
+        } else {
+          setMessage(`FAILED: ${result.error}`);
+        }
+      } else {
+        setMessage(
+          duplicateOnly
+            ? `Duplicate soft-deleted. chunks_removed=${result.chunksRemoved} storage_removed=${result.storageRemoved}`
+            : `Document soft-deleted. chunks_removed=${result.chunksRemoved} storage_removed=${result.storageRemoved}`
+        );
+      }
+      await refresh();
+    } catch (err) {
+      setMessage(err instanceof Error ? err.message : String(err));
+    } finally {
+      setBusy(false);
+    }
+  };
+
   const onSearch = () => {
     const edition = adoption?.edition || uploadEdition || '2025';
     const found = searchCodeKnowledge({
@@ -545,6 +601,24 @@ export default function CodeKnowledgePanel({ companyId, clientId }: Props) {
                     >
                       Replace / New Version
                     </button>
+                    <button
+                      type="button"
+                      disabled={busy}
+                      className="block text-rose-700 underline disabled:opacity-40"
+                      onClick={() => void onDeleteDocument(d, false)}
+                    >
+                      Delete
+                    </button>
+                    {documentHasSha256Duplicate(d, company) ? (
+                      <button
+                        type="button"
+                        disabled={busy}
+                        className="block text-amber-700 underline disabled:opacity-40"
+                        onClick={() => void onDeleteDocument(d, true)}
+                      >
+                        Delete duplicate
+                      </button>
+                    ) : null}
                   </td>
                 </tr>
               );

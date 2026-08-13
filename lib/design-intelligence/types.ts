@@ -61,6 +61,8 @@ export type DiKnowledgeDocument = {
   embedding_status?: string | null;
   created_at?: string;
   updated_at?: string;
+  /** Soft-delete timestamp — listed documents must have deleted_at null. */
+  deleted_at?: string | null;
 };
 
 export type DiKnowledgeChunk = {
