@@ -43,6 +43,7 @@ import {
 import { detectSourceRefsFromText } from '@/lib/design-intelligence/code-knowledge/source-refs';
 import { embedText } from '@/lib/design-intelligence/embeddings';
 import {
+  analyzePersistedChunkCoverage,
   findPersistedDuplicateBySha256,
   isUuid,
   listPersistedCodeKnowledgeDocuments,
@@ -657,6 +658,8 @@ export type IngestFromStorageInput = {
   storage?: CodeKnowledgeStorageAdapter;
   preloadedBytes?: Uint8Array;
   onPhase?: UploadCodeKnowledgeInput['onPhase'];
+  /** Persist mode — use `resume` to keep existing chunks and fill gaps. */
+  chunkPersistMode?: 'replace' | 'resume';
 };
 
 /**
@@ -816,7 +819,9 @@ export async function ingestCodeKnowledgeFromStorage(
   );
 
   input.onPhase?.('chunking');
-  const pageParts = chunkPagesPreserving(afterOcr.pages, 700);
+  const pageParts = chunkPagesPreserving(afterOcr.pages, 700, {
+    includeEmptyPagePlaceholders: true,
+  });
   const mustPersist = shouldPersistCodeKnowledgeToSupabase();
   const doc = registerKnowledgeDocument({
     id: input.documentId,
@@ -933,12 +938,14 @@ export async function ingestCodeKnowledgeFromStorage(
     const persisted = await persistAndVerifyCodeKnowledgeIngestion({
       document: doc,
       chunks,
+      chunkPersistMode: input.chunkPersistMode || 'replace',
     });
     if (!persisted.ok || !persisted.persisted) {
       doc.ingestion_status = 'failed';
       doc.index_status = 'failed';
       doc.persisted = false;
       doc.persist_error = persisted.error || 'persist_failed';
+      doc.chunk_count = persisted.chunk_count;
       doc.updated_at = nowIso();
       return {
         status: 'failed',
@@ -1117,6 +1124,8 @@ export async function reingestExistingCodeKnowledgeStorageObject(input: {
   source_document_id?: string;
   storage?: CodeKnowledgeStorageAdapter;
   ocrPageText?: Record<number, string>;
+  chunkPersistMode?: 'replace' | 'resume';
+  onPhase?: UploadCodeKnowledgeInput['onPhase'];
 }): Promise<{
   status: 'indexed' | 'failed';
   document: CodeKnowledgeDocumentMeta;
@@ -1191,7 +1200,210 @@ export async function reingestExistingCodeKnowledgeStorageObject(input: {
     storage,
     preloadedBytes: dl.bytes,
     ocrPageText: input.ocrPageText,
+    chunkPersistMode: input.chunkPersistMode || 'replace',
+    onPhase: input.onPhase,
   });
+}
+
+/**
+ * Resume incomplete chunk persistence for an EXISTING Storage object + document_id.
+ * Does NOT upload. Preserves valid chunks; inserts only missing page/content.
+ */
+export async function resumeIncompleteCodeKnowledgeIngestion(input: {
+  companyId: string;
+  documentId: string;
+  storagePath?: string;
+  storageBucket?: string;
+  code?: string;
+  edition?: string;
+  title?: string;
+  fileName?: string;
+  mimeType?: string;
+  ocrPageText?: Record<number, string>;
+  storage?: CodeKnowledgeStorageAdapter;
+  onPhase?: UploadCodeKnowledgeInput['onPhase'];
+}): Promise<{
+  status: 'indexed' | 'failed';
+  document: CodeKnowledgeDocumentMeta;
+  sha256: string;
+  storage_path: string;
+  chunk_count: number;
+  page_count: number;
+  inserted?: number;
+  skipped?: number;
+  coverage_before?: Awaited<ReturnType<typeof analyzePersistedChunkCoverage>>;
+  coverage_after?: Awaited<ReturnType<typeof analyzePersistedChunkCoverage>>;
+  missing_pages?: number[];
+  error?: string;
+}> {
+  if (!isUuid(input.documentId) || !isUuid(input.companyId)) {
+    return {
+      status: 'failed',
+      document: {
+        id: input.documentId,
+        company_id: input.companyId,
+        title: input.title || 'resume',
+        code: input.code || '',
+        edition: input.edition || '',
+        status: 'failed',
+        index_status: 'failed',
+        persisted: false,
+        persist_error: 'company_id and document_id must be UUIDs',
+      },
+      sha256: '',
+      storage_path: input.storagePath || '',
+      chunk_count: 0,
+      page_count: 0,
+      error: 'company_id and document_id must be UUIDs',
+    };
+  }
+
+  // Load metadata from Supabase when available
+  let storagePath = input.storagePath || '';
+  let code = input.code || 'NFPA-13';
+  let edition = input.edition || '2025';
+  let title = input.title || `${code} ${edition}`;
+  let fileName = input.fileName || 'document.pdf';
+  let mimeType = input.mimeType || 'application/pdf';
+  let pageCountHint = 0;
+  let shaHint = '';
+
+  if (shouldPersistCodeKnowledgeToSupabase()) {
+    const { supabase } = await import('@/lib/supabase');
+    const { data: row } = await supabase
+      .from('di_knowledge_documents')
+      .select(
+        'id, company_id, title, code, edition, storage_path, storage_bucket, file_name, mime_type, file_mime, page_count, sha256, content_sha256, source_document_id'
+      )
+      .eq('id', input.documentId)
+      .eq('company_id', input.companyId)
+      .maybeSingle();
+    if (row) {
+      storagePath = storagePath || row.storage_path || '';
+      code = row.code || code;
+      edition = row.edition || edition;
+      title = row.title || title;
+      fileName = row.file_name || fileName;
+      mimeType = row.mime_type || row.file_mime || mimeType;
+      pageCountHint = row.page_count || 0;
+      shaHint = row.sha256 || row.content_sha256 || '';
+    }
+  }
+
+  if (!storagePath) {
+    return {
+      status: 'failed',
+      document: {
+        id: input.documentId,
+        company_id: input.companyId,
+        title,
+        code,
+        edition,
+        status: 'failed',
+        index_status: 'failed',
+        persisted: false,
+        persist_error: 'storage_path_missing',
+      },
+      sha256: shaHint,
+      storage_path: '',
+      chunk_count: 0,
+      page_count: pageCountHint,
+      error: 'storage_path_missing',
+    };
+  }
+
+  const coverage_before = await analyzePersistedChunkCoverage(
+    input.documentId,
+    pageCountHint || undefined
+  );
+
+  const result = await reingestExistingCodeKnowledgeStorageObject({
+    companyId: input.companyId,
+    documentId: input.documentId,
+    storagePath,
+    storageBucket: input.storageBucket,
+    code,
+    edition,
+    title,
+    fileName,
+    mimeType,
+    storage: input.storage,
+    ocrPageText: input.ocrPageText,
+    chunkPersistMode: 'resume',
+    onPhase: input.onPhase,
+  });
+
+  const coverage_after = await analyzePersistedChunkCoverage(
+    input.documentId,
+    result.page_count || pageCountHint || undefined
+  );
+
+  const gapsRemain =
+    coverage_after.missing_pages.length > 0 ||
+    (result.page_count > 0 &&
+      (coverage_after.max_page_end || 0) < result.page_count) ||
+    coverage_after.empty_chunk_count > 0;
+
+  if (result.status === 'indexed' && !gapsRemain && shouldPersistCodeKnowledgeToSupabase()) {
+    const { supabase } = await import('@/lib/supabase');
+    await supabase
+      .from('di_knowledge_documents')
+      .update({
+        ingestion_status: 'indexed',
+        index_status: 'indexed',
+        extraction_status: 'indexed',
+        extract_status: 'indexed',
+        embedding_status: 'indexed',
+        chunk_count: coverage_after.chunk_count,
+        page_count: result.page_count,
+        updated_at: nowIso(),
+      })
+      .eq('id', input.documentId)
+      .eq('company_id', input.companyId);
+
+    return {
+      ...result,
+      status: 'indexed',
+      chunk_count: coverage_after.chunk_count,
+      coverage_before,
+      coverage_after,
+      missing_pages: coverage_after.missing_pages,
+    };
+  }
+
+  if (gapsRemain || result.status === 'failed') {
+    if (shouldPersistCodeKnowledgeToSupabase()) {
+      const { supabase } = await import('@/lib/supabase');
+      await supabase
+        .from('di_knowledge_documents')
+        .update({
+          ingestion_status: 'failed',
+          index_status: 'failed',
+          chunk_count: coverage_after.chunk_count,
+          updated_at: nowIso(),
+        })
+        .eq('id', input.documentId)
+        .eq('company_id', input.companyId);
+    }
+    return {
+      ...result,
+      status: 'failed',
+      chunk_count: coverage_after.chunk_count,
+      coverage_before,
+      coverage_after,
+      missing_pages: coverage_after.missing_pages,
+      error:
+        result.error ||
+        `chunk_coverage_incomplete: missing=${coverage_after.missing_pages.slice(0, 20).join(',')} max_page_end=${coverage_after.max_page_end}`,
+    };
+  }
+
+  return {
+    ...result,
+    coverage_before,
+    coverage_after,
+    missing_pages: coverage_after.missing_pages,
+  };
 }
 
 /**

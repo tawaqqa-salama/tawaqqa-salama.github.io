@@ -28,6 +28,11 @@ export function newKnowledgeChunkId(): string {
   return newKnowledgeDocumentId();
 }
 
+/** Smaller batches for large NFPA PDFs (embedding_json payload). */
+export const CHUNK_PERSIST_BATCH_SIZE = 8;
+export const CHUNK_PERSIST_MAX_RETRIES = 4;
+export const CHUNK_PERSIST_BASE_DELAY_MS = 400;
+
 export type PersistVerification = {
   ok: boolean;
   persisted: boolean;
@@ -182,8 +187,26 @@ export async function persistCodeKnowledgeDocument(
 
 export async function persistCodeKnowledgeChunks(
   documentId: string,
-  chunks: CodeKnowledgeChunk[]
-): Promise<{ ok: boolean; error?: string }> {
+  chunks: CodeKnowledgeChunk[],
+  opts?: {
+    /**
+     * `replace` — delete all then insert (fresh ingest).
+     * `resume` — keep existing rows; insert only missing page/content (default for recovery).
+     */
+    mode?: 'replace' | 'resume';
+    /** Override batch size (default 8 for large docs). */
+    batchSize?: number;
+    /** Insert retries per batch (default 4). */
+    maxRetries?: number;
+  }
+): Promise<{
+  ok: boolean;
+  error?: string;
+  inserted?: number;
+  skipped?: number;
+  mode?: 'replace' | 'resume';
+  coverage?: ChunkCoverageReport;
+}> {
   if (!shouldPersistCodeKnowledgeToSupabase()) {
     return { ok: false, error: 'supabase_not_configured' };
   }
@@ -191,49 +214,287 @@ export async function persistCodeKnowledgeChunks(
     return { ok: false, error: 'document_id_must_be_uuid' };
   }
 
-  const { error: delErr } = await supabase
-    .from('di_knowledge_chunks')
-    .delete()
-    .eq('document_id', documentId);
-  if (delErr) return { ok: false, error: delErr.message };
+  const mode = opts?.mode || 'replace';
+  const batchSize = Math.max(1, opts?.batchSize ?? CHUNK_PERSIST_BATCH_SIZE);
+  const maxRetries = Math.max(1, opts?.maxRetries ?? CHUNK_PERSIST_MAX_RETRIES);
 
-  if (!chunks.length) return { ok: true };
+  if (mode === 'replace') {
+    const { error: delErr } = await supabase
+      .from('di_knowledge_chunks')
+      .delete()
+      .eq('document_id', documentId);
+    if (delErr) return { ok: false, error: delErr.message, mode };
+  }
+
+  if (!chunks.length) {
+    const coverage = await analyzePersistedChunkCoverage(documentId);
+    return { ok: true, inserted: 0, skipped: 0, mode, coverage };
+  }
 
   const companyId =
     chunks[0]?.company_id && isUuid(chunks[0].company_id) ? chunks[0].company_id : null;
 
-  const batchSize = 40;
-  for (let i = 0; i < chunks.length; i += batchSize) {
-    const batch = chunks.slice(i, i + batchSize);
-    const { error } = await supabase.from('di_knowledge_chunks').insert(
-      batch.map((c) => ({
-        id: isUuid(c.id) ? c.id : newKnowledgeDocumentId(),
-        company_id: companyId,
-        document_id: documentId,
-        chunk_index: c.chunk_index,
-        page_number: c.page_number ?? c.page_start ?? null,
-        page_start: c.page_start ?? null,
-        page_end: c.page_end ?? null,
-        extraction_method: c.extraction_method ?? null,
-        paragraph_ref: c.paragraph_reference || null,
-        code_reference: c.code_reference || null,
-        content: c.content,
-        code: c.code,
-        edition: c.edition,
-        section: c.section,
-        subsection: c.subsection,
-        table_reference: c.table_reference,
-        figure_reference: c.figure_reference,
-        source_document_id: c.source_document_id,
-        source_verification_status: c.source_verification_status,
-        edition_id: isUuid(c.edition_id || undefined) ? c.edition_id : null,
-        token_estimate: Math.ceil(c.content.length / 4),
-        embedding_json: c.embedding || null,
-      }))
-    );
-    if (error) return { ok: false, error: error.message };
+  let toInsert = chunks;
+  let skipped = 0;
+  if (mode === 'resume') {
+    const existing = await listPersistedChunkFingerprints(documentId);
+    const existingKeys = new Set(existing.map((e) => e.fingerprint));
+    toInsert = chunks.filter((c) => {
+      const fp = chunkContentFingerprint(c.page_start, c.content);
+      if (existingKeys.has(fp)) {
+        skipped += 1;
+        return false;
+      }
+      return true;
+    });
+    // Assign fresh chunk_index after max existing to avoid colliding with
+    // historically indexed rows when page-1 placeholders shift indices.
+    let nextIndex =
+      existing.reduce((m, e) => Math.max(m, e.chunk_index), -1) + 1;
+    toInsert = toInsert.map((c) => {
+      const copy = { ...c, chunk_index: nextIndex };
+      nextIndex += 1;
+      return copy;
+    });
   }
-  return { ok: true };
+
+  const rows = toInsert.map((c) => ({
+    id: isUuid(c.id) ? c.id : newKnowledgeDocumentId(),
+    company_id: companyId,
+    document_id: documentId,
+    chunk_index: c.chunk_index,
+    page_number: c.page_number ?? c.page_start ?? null,
+    page_start: c.page_start ?? null,
+    page_end: c.page_end ?? null,
+    extraction_method: c.extraction_method ?? null,
+    paragraph_ref: c.paragraph_reference || null,
+    code_reference: c.code_reference || null,
+    content: c.content,
+    code: c.code,
+    edition: c.edition,
+    section: c.section,
+    subsection: c.subsection,
+    table_reference: c.table_reference,
+    figure_reference: c.figure_reference,
+    source_document_id: c.source_document_id,
+    source_verification_status: c.source_verification_status,
+    edition_id: isUuid(c.edition_id || undefined) ? c.edition_id : null,
+    token_estimate: Math.ceil(c.content.length / 4),
+    embedding_json: c.embedding || null,
+  }));
+
+  for (let i = 0; i < rows.length; i += batchSize) {
+    let batch = rows.slice(i, i + batchSize);
+    let attempt = 0;
+    while (true) {
+      attempt += 1;
+      const { error } = await supabase.from('di_knowledge_chunks').insert(batch);
+      if (!error) break;
+
+      const transient = isTransientPersistError(error.message);
+      if (!transient || attempt >= maxRetries) {
+        // Bisect oversized / stubborn batches once before failing
+        if (batch.length > 1 && attempt >= maxRetries) {
+          const mid = Math.ceil(batch.length / 2);
+          const left = batch.slice(0, mid);
+          const right = batch.slice(mid);
+          for (const half of [left, right]) {
+            let halfAttempt = 0;
+            while (true) {
+              halfAttempt += 1;
+              const { error: halfErr } = await supabase
+                .from('di_knowledge_chunks')
+                .insert(half);
+              if (!halfErr) break;
+              if (
+                !isTransientPersistError(halfErr.message) ||
+                halfAttempt >= maxRetries
+              ) {
+                const coverage = await analyzePersistedChunkCoverage(documentId);
+                return {
+                  ok: false,
+                  error: halfErr.message,
+                  inserted: i,
+                  skipped,
+                  mode,
+                  coverage,
+                };
+              }
+              await sleepMs(CHUNK_PERSIST_BASE_DELAY_MS * 2 ** (halfAttempt - 1));
+            }
+          }
+          break;
+        }
+        const coverage = await analyzePersistedChunkCoverage(documentId);
+        return {
+          ok: false,
+          error: error.message,
+          inserted: i,
+          skipped,
+          mode,
+          coverage,
+        };
+      }
+      await sleepMs(CHUNK_PERSIST_BASE_DELAY_MS * 2 ** (attempt - 1));
+    }
+  }
+
+  const coverage = await analyzePersistedChunkCoverage(documentId);
+  return {
+    ok: true,
+    inserted: toInsert.length,
+    skipped,
+    mode,
+    coverage,
+  };
+}
+
+function sleepMs(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+function isTransientPersistError(message: string): boolean {
+  return /timeout|57014|57P01|502|503|504|429|fetch failed|network|ECONNRESET|ETIMEDOUT|cloudflare|statement timeout|serializing|too large|payload/i.test(
+    message
+  );
+}
+
+export function chunkContentFingerprint(
+  pageStart: number | null | undefined,
+  content: string
+): string {
+  const page = pageStart ?? 0;
+  const body = String(content || '').trim();
+  // Stable short fingerprint — enough to skip duplicates on resume
+  let h = 2166136261;
+  const s = `${page}|${body.length}|${body.slice(0, 160)}|${body.slice(-80)}`;
+  for (let i = 0; i < s.length; i += 1) {
+    h ^= s.charCodeAt(i);
+    h = Math.imul(h, 16777619);
+  }
+  return `${page}:${body.length}:${(h >>> 0).toString(16)}`;
+}
+
+export type PersistedChunkFingerprint = {
+  chunk_index: number;
+  page_start: number | null;
+  page_end: number | null;
+  fingerprint: string;
+};
+
+export async function listPersistedChunkFingerprints(
+  documentId: string
+): Promise<PersistedChunkFingerprint[]> {
+  if (!shouldPersistCodeKnowledgeToSupabase() || !isUuid(documentId)) return [];
+
+  const out: PersistedChunkFingerprint[] = [];
+  const pageSize = 1000;
+  let from = 0;
+  while (true) {
+    const { data, error } = await supabase
+      .from('di_knowledge_chunks')
+      .select('chunk_index, page_start, page_end, content')
+      .eq('document_id', documentId)
+      .order('chunk_index', { ascending: true })
+      .range(from, from + pageSize - 1);
+    if (error || !data?.length) break;
+    for (const row of data) {
+      out.push({
+        chunk_index: row.chunk_index ?? 0,
+        page_start: row.page_start ?? null,
+        page_end: row.page_end ?? null,
+        fingerprint: chunkContentFingerprint(row.page_start, row.content || ''),
+      });
+    }
+    if (data.length < pageSize) break;
+    from += pageSize;
+  }
+  return out;
+}
+
+export type ChunkCoverageReport = {
+  chunk_count: number;
+  min_page: number | null;
+  max_page_end: number | null;
+  covered_pages: number[];
+  empty_chunk_count: number;
+  duplicate_fingerprint_count: number;
+};
+
+export async function analyzePersistedChunkCoverage(
+  documentId: string,
+  expectedPageCount?: number
+): Promise<ChunkCoverageReport & { missing_pages: number[] }> {
+  const empty: ChunkCoverageReport & { missing_pages: number[] } = {
+    chunk_count: 0,
+    min_page: null,
+    max_page_end: null,
+    covered_pages: [],
+    empty_chunk_count: 0,
+    duplicate_fingerprint_count: 0,
+    missing_pages: [],
+  };
+  if (!shouldPersistCodeKnowledgeToSupabase() || !isUuid(documentId)) return empty;
+
+  const covered = new Set<number>();
+  const fingerprints = new Map<string, number>();
+  let chunk_count = 0;
+  let empty_chunk_count = 0;
+  let min_page: number | null = null;
+  let max_page_end: number | null = null;
+
+  const pageSize = 1000;
+  let from = 0;
+  while (true) {
+    const { data, error } = await supabase
+      .from('di_knowledge_chunks')
+      .select('chunk_index, page_start, page_end, content')
+      .eq('document_id', documentId)
+      .order('chunk_index', { ascending: true })
+      .range(from, from + pageSize - 1);
+    if (error || !data?.length) break;
+    for (const row of data) {
+      chunk_count += 1;
+      const content = String(row.content || '').trim();
+      if (!content) empty_chunk_count += 1;
+      const start = row.page_start ?? row.page_end ?? null;
+      const end = row.page_end ?? row.page_start ?? null;
+      if (typeof start === 'number') {
+        min_page = min_page == null ? start : Math.min(min_page, start);
+        for (let p = start; p <= (end ?? start); p += 1) covered.add(p);
+      }
+      if (typeof end === 'number') {
+        max_page_end = max_page_end == null ? end : Math.max(max_page_end, end);
+      }
+      const fp = chunkContentFingerprint(row.page_start, content);
+      fingerprints.set(fp, (fingerprints.get(fp) || 0) + 1);
+    }
+    if (data.length < pageSize) break;
+    from += pageSize;
+  }
+
+  let duplicate_fingerprint_count = 0;
+  for (const n of fingerprints.values()) {
+    if (n > 1) duplicate_fingerprint_count += n - 1;
+  }
+
+  const covered_pages = Array.from(covered).sort((a, b) => a - b);
+  const missing_pages: number[] = [];
+  if (expectedPageCount && expectedPageCount > 0) {
+    for (let p = 1; p <= expectedPageCount; p += 1) {
+      if (!covered.has(p)) missing_pages.push(p);
+    }
+  }
+
+  return {
+    chunk_count,
+    min_page,
+    max_page_end,
+    covered_pages,
+    empty_chunk_count,
+    duplicate_fingerprint_count,
+    missing_pages,
+  };
 }
 
 export async function verifyPersistedCodeKnowledgeIngestion(input: {
@@ -402,12 +663,16 @@ export async function listPersistedCodeKnowledgeDocuments(opts?: {
 export async function persistAndVerifyCodeKnowledgeIngestion(input: {
   document: CodeKnowledgeDocumentMeta;
   chunks: CodeKnowledgeChunk[];
+  /** Default `replace` for fresh ingest; use `resume` to keep existing chunks. */
+  chunkPersistMode?: 'replace' | 'resume';
 }): Promise<{
   ok: boolean;
   persisted: boolean;
   chunk_count: number;
   error?: string;
   verification?: PersistVerification;
+  inserted?: number;
+  skipped?: number;
 }> {
   const doc = input.document;
   if (!shouldPersistCodeKnowledgeToSupabase()) {
@@ -442,6 +707,9 @@ export async function persistAndVerifyCodeKnowledgeIngestion(input: {
   // Write statuses that verification requires
   doc.index_status = 'indexed';
   doc.ingestion_status = 'indexed';
+  doc.embedding_status = 'indexed';
+  doc.extract_status = doc.extract_status || 'indexed';
+  doc.extraction_status = doc.extraction_status || 'indexed';
   doc.chunk_count = input.chunks.length;
   doc.updated_at = new Date().toISOString();
 
@@ -454,14 +722,25 @@ export async function persistAndVerifyCodeKnowledgeIngestion(input: {
     return { ok: false, persisted: false, chunk_count: 0, error: doc.persist_error };
   }
 
-  const chunkPersist = await persistCodeKnowledgeChunks(doc.id, input.chunks);
+  const chunkPersist = await persistCodeKnowledgeChunks(doc.id, input.chunks, {
+    mode: input.chunkPersistMode || 'replace',
+  });
   if (!chunkPersist.ok) {
+    const actual = chunkPersist.coverage?.chunk_count ?? 0;
     doc.persisted = false;
     doc.persist_error = chunkPersist.error || 'chunk_persist_failed';
     doc.index_status = 'failed';
     doc.ingestion_status = 'failed';
+    doc.chunk_count = actual;
     await persistCodeKnowledgeDocument(doc);
-    return { ok: false, persisted: false, chunk_count: 0, error: doc.persist_error };
+    return {
+      ok: false,
+      persisted: false,
+      chunk_count: actual,
+      error: doc.persist_error,
+      inserted: chunkPersist.inserted,
+      skipped: chunkPersist.skipped,
+    };
   }
 
   const verification = await verifyPersistedCodeKnowledgeIngestion({
@@ -475,6 +754,7 @@ export async function persistAndVerifyCodeKnowledgeIngestion(input: {
     doc.persist_error = verification.error || 'persistence_verification_failed';
     doc.index_status = 'failed';
     doc.ingestion_status = 'failed';
+    doc.chunk_count = verification.chunk_count;
     await persistCodeKnowledgeDocument(doc);
     return {
       ok: false,
@@ -482,16 +762,24 @@ export async function persistAndVerifyCodeKnowledgeIngestion(input: {
       chunk_count: verification.chunk_count,
       error: doc.persist_error,
       verification,
+      inserted: chunkPersist.inserted,
+      skipped: chunkPersist.skipped,
     };
   }
 
   doc.persisted = true;
   doc.persist_error = null;
   doc.chunk_count = verification.chunk_count;
+  doc.ingestion_status = 'indexed';
+  doc.index_status = 'indexed';
+  doc.embedding_status = 'indexed';
+  await persistCodeKnowledgeDocument(doc);
   return {
     ok: true,
     persisted: true,
     chunk_count: verification.chunk_count,
     verification,
+    inserted: chunkPersist.inserted,
+    skipped: chunkPersist.skipped,
   };
 }
