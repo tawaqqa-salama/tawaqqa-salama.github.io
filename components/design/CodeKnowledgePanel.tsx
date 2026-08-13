@@ -117,6 +117,9 @@ export default function CodeKnowledgePanel({ companyId, clientId }: Props) {
   const [uploadHandle, setUploadHandle] = useState<ResumableUploadHandle | null>(
     null
   );
+  /** Stable document UUID across Retry/Resume for the same File (no duplicate paths). */
+  const [resumeDocumentId, setResumeDocumentId] = useState<string | null>(null);
+  const [lastUploadError, setLastUploadError] = useState<string | null>(null);
 
   const [sourceText, setSourceText] = useState(
     'Section 8.1 general requirements.\n\nTable 8.2.1 design criteria placeholder text for indexing tests only.\n\nPage 12 discusses spacing. Figure 8.3 shows coverage layout.'
@@ -192,7 +195,8 @@ export default function CodeKnowledgePanel({ companyId, clientId }: Props) {
    * Primary Production path: always calls uploadAndIngestCodeKnowledgeDocument
    * (Storage → di_knowledge_documents → extract/OCR → chunks → verify).
    * Large files use TUS resumable upload with real 0–100% progress; ingestion
-   * never starts before upload reaches 100%.
+   * never starts before upload reaches 100% and Storage object is verified.
+   * Large files are NOT fully arrayBuffer()'d before TUS (Safari/iPhone).
    */
   const onUploadAndIndex = async () => {
     if (!uploadFile) {
@@ -212,14 +216,43 @@ export default function CodeKnowledgePanel({ companyId, clientId }: Props) {
     setUploadPercent(0);
     setUploadPhase('uploading');
     setUploadHandle(null);
+    setLastUploadError(null);
     try {
-      const bytes = new Uint8Array(await uploadFile.arrayBuffer());
       const large = shouldUseResumableUpload(uploadFile.size);
+      const resumeKey = `ck-resume:${company}:${uploadCode}:${uploadEdition}:${uploadFile.name}:${uploadFile.size}:${uploadFile.lastModified}`;
+      let docId = resumeDocumentId;
+      if (!docId && typeof sessionStorage !== 'undefined') {
+        try {
+          docId = sessionStorage.getItem(resumeKey);
+        } catch {
+          docId = null;
+        }
+      }
+      if (!docId) {
+        docId =
+          typeof crypto !== 'undefined' && 'randomUUID' in crypto
+            ? crypto.randomUUID()
+            : `00000000-0000-4000-8000-${Date.now().toString(16).padStart(12, '0').slice(-12)}`;
+        setResumeDocumentId(docId);
+        try {
+          sessionStorage.setItem(resumeKey, docId);
+        } catch {
+          /* ignore quota */
+        }
+      }
+
       setMessage(
         large
           ? `Uploading large file via resumable TUS (${(uploadFile.size / (1024 * 1024)).toFixed(1)} MB)…`
           : 'Uploading…'
       );
+
+      // Small files: load bytes once (unchanged successful path).
+      // Large files: pass File only — stream SHA + TUS without full ArrayBuffer first.
+      const bytes = large
+        ? null
+        : new Uint8Array(await uploadFile.arrayBuffer());
+
       const result = await uploadAndIngestCodeKnowledgeDocument({
         companyId: company,
         code: uploadCode.trim() || 'NFPA-13',
@@ -229,6 +262,7 @@ export default function CodeKnowledgePanel({ companyId, clientId }: Props) {
         mimeType: uploadFile.type || undefined,
         bytes,
         file: uploadFile,
+        resumeDocumentId: docId,
         source_document_id: `platform_upload:${uploadCode}-${uploadEdition}:${uploadFile.name}`,
         source_type: 'PROJECT_PROVIDED_DOCUMENT',
         verification_status: 'PROJECT_COVER_IDENTIFIED',
@@ -246,9 +280,12 @@ export default function CodeKnowledgePanel({ companyId, clientId }: Props) {
       if (result.status === 'failed') {
         setIndexStatus('failed');
         setUploadPhase('failed');
+        const err =
+          ('error' in result ? result.error : null) || 'ingestion_failed';
+        setLastUploadError(err);
         await refresh();
         setMessage(
-          `FAILED: ${'error' in result ? result.error : 'ingestion_failed'}. No silent session-memory fallback.`
+          `FAILED: ${err}. Use Retry to resume the same Storage path (no duplicate document). No silent session-memory fallback.`
         );
         return;
       }
@@ -259,6 +296,12 @@ export default function CodeKnowledgePanel({ companyId, clientId }: Props) {
         );
         setUploadPhase('idle');
         setUploadPercent(0);
+        setResumeDocumentId(null);
+        try {
+          sessionStorage.removeItem(resumeKey);
+        } catch {
+          /* ignore */
+        }
         await refresh();
         setMessage(
           result.document.persisted
@@ -272,12 +315,22 @@ export default function CodeKnowledgePanel({ companyId, clientId }: Props) {
       if (persistedMode && !result.document.persisted) {
         setIndexStatus('failed');
         setUploadPhase('failed');
+        const err = result.document.persist_error || 'not_persisted';
+        setLastUploadError(err);
         await refresh();
         setMessage(
-          `FAILED: ${result.document.persist_error || 'not_persisted'}. Storage/DB required.`
+          `FAILED: ${err}. Storage/DB required.`
         );
         return;
       }
+
+      setResumeDocumentId(null);
+      try {
+        sessionStorage.removeItem(resumeKey);
+      } catch {
+        /* ignore */
+      }
+      setLastUploadError(null);
 
       if (
         uploadCode.trim() === 'NFPA-13' &&
@@ -292,8 +345,8 @@ export default function CodeKnowledgePanel({ companyId, clientId }: Props) {
         registerNfpa13_2025RuleShells();
       }
 
-      setIndexStatus(result.document.index_status);
       setUploadPhase('indexed');
+      setIndexStatus(result.document.index_status || 'indexed');
       setUploadPercent(100);
       await refresh();
       const method =
@@ -305,10 +358,12 @@ export default function CodeKnowledgePanel({ companyId, clientId }: Props) {
           ? `SUPABASE / PERSISTED · upload=${method} · document_id=${result.document.id} · path=${result.storage_path} · pages=${result.document.page_count} extracted=${result.document.pages_extracted} ocr=${result.document.pages_ocr} chunks=${result.chunk_count}`
           : `LOCAL / NOT SAVED · pages=${result.document.page_count} chunks=${result.chunk_count}`
       );
-    } catch (err) {
+    } catch (e) {
+      const err = e instanceof Error ? e.message : String(e);
+      setLastUploadError(err);
       setIndexStatus('failed');
       setUploadPhase('failed');
-      setMessage(`FAILED: ${err instanceof Error ? err.message : String(err)}`);
+      setMessage(`FAILED: ${err}. No silent session-memory fallback.`);
     } finally {
       setBusy(false);
       setUploadHandle(null);
@@ -542,7 +597,13 @@ export default function CodeKnowledgePanel({ companyId, clientId }: Props) {
               type="file"
               accept=".pdf,.txt,.md,application/pdf,text/plain"
               className="mt-1 w-full text-sm"
-              onChange={(e) => setUploadFile(e.target.files?.[0] || null)}
+              onChange={(e) => {
+                setUploadFile(e.target.files?.[0] || null);
+                setResumeDocumentId(null);
+                setLastUploadError(null);
+                setUploadPhase('idle');
+                setUploadPercent(0);
+              }}
             />
           </label>
         </div>
@@ -573,11 +634,23 @@ export default function CodeKnowledgePanel({ companyId, clientId }: Props) {
               Resume upload
             </button>
           ) : null}
+          {uploadPhase === 'failed' && uploadFile && !busy ? (
+            <button
+              type="button"
+              className="rounded-lg border border-rose-400 px-3 py-2 text-sm text-rose-800"
+              onClick={() => void onUploadAndIndex()}
+            >
+              Retry / Resume
+            </button>
+          ) : null}
           <span className="self-center text-xs text-slate-500">
             Path: {'{company}'}/code-knowledge/{'{code}'}/{'{edition}'}/{'{documentId}'}/file
             · large files (≥6MB) use resumable TUS
           </span>
         </div>
+        {lastUploadError ? (
+          <p className="mt-2 text-xs text-rose-700 font-mono break-all">{lastUploadError}</p>
+        ) : null}
         {(busy || uploadPercent > 0) && uploadPhase !== 'idle' ? (
           <div className="mt-3 rounded-lg border border-slate-200 bg-slate-50 p-3">
             <div className="flex items-center justify-between text-xs text-slate-600">

@@ -516,6 +516,15 @@ export default function DesignIntelligenceModule() {
                 Resume upload
               </button>
             ) : null}
+            {kbUploadPhase === 'failed' && file && !busy ? (
+              <button
+                type="button"
+                className="w-full rounded-xl border border-rose-400 px-3 py-2 text-sm text-rose-800"
+                onClick={() => void onUpload()}
+              >
+                Retry / Resume
+              </button>
+            ) : null}
             {(busy || kbUploadPercent > 0) && kbUploadPhase !== 'idle' ? (
               <div className="rounded-lg border border-slate-200 bg-slate-50 p-3">
                 <div className="flex items-center justify-between text-xs text-slate-600">

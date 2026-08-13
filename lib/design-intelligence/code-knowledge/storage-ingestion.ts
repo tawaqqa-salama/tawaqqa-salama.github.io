@@ -6,7 +6,10 @@
  * Never invents NFPA numeric values. Never uses Cursor/ChatGPT/web PDFs.
  */
 
-import { sha256HexFromBytes } from '@/lib/design-intelligence/code-knowledge/sha256';
+import {
+  sha256HexFromBlob,
+  sha256HexFromBytes,
+} from '@/lib/design-intelligence/code-knowledge/sha256';
 import {
   applyOcrFallbackToPages,
   chunkPagesPreserving,
@@ -40,12 +43,14 @@ import {
 import { detectSourceRefsFromText } from '@/lib/design-intelligence/code-knowledge/source-refs';
 import { embedText } from '@/lib/design-intelligence/embeddings';
 import {
+  findPersistedDuplicateBySha256,
   isUuid,
   listPersistedCodeKnowledgeDocuments,
   newKnowledgeChunkId,
   newKnowledgeDocumentId,
   persistAndVerifyCodeKnowledgeIngestion,
   shouldPersistCodeKnowledgeToSupabase,
+  verifyStorageObjectExists,
 } from '@/lib/design-intelligence/code-knowledge/persist';
 import type {
   CodeKnowledgeChunk,
@@ -59,12 +64,22 @@ export type UploadCodeKnowledgeInput = {
   title?: string;
   fileName: string;
   mimeType?: string | null;
-  bytes: Uint8Array;
+  /**
+   * Required for small / standard uploads and tests.
+   * For large TUS uploads, prefer omitting this and passing `file` so Safari
+   * does not hold a second full-file ArrayBuffer during upload.
+   */
+  bytes?: Uint8Array | null;
   /**
    * Prefer passing the original File for large uploads so TUS can stream
    * chunks without a single Safari/iPhone PUT of the whole body.
    */
   file?: File | Blob | null;
+  /**
+   * Reuse the same document UUID / Storage path on Retry so TUS fingerprint
+   * can resume and SHA dedup does not create a second document.
+   */
+  resumeDocumentId?: string | null;
   source_document_id?: string;
   source_type?: string;
   verification_status?: string;
@@ -195,21 +210,46 @@ function linkEdition(input: {
  *
  * When Supabase is configured (Production): Storage + DB persistence is required.
  * Session-memory alone is never a final success — failures surface as FAILED.
+ *
+ * Large files (≥6 MiB): TUS from original File, stream SHA-256, verify object
+ * exists, then download for extract (no double ArrayBuffer during upload).
  */
 export async function uploadAndIngestCodeKnowledgeDocument(
   input: UploadCodeKnowledgeInput
 ): Promise<UploadCodeKnowledgeResult> {
   const mustPersist = shouldPersistCodeKnowledgeToSupabase();
   const storage = input.storage || getDefaultCodeKnowledgeStorage();
-  const sha256 = await sha256HexFromBytes(input.bytes);
+  const fileSize =
+    (typeof input.file?.size === 'number' ? input.file.size : 0) ||
+    input.bytes?.byteLength ||
+    0;
   const mime =
     input.mimeType ||
     (input.fileName.toLowerCase().endsWith('.pdf')
       ? 'application/pdf'
       : 'application/octet-stream');
 
+  if (!input.bytes && !input.file) {
+    throw new Error('upload_requires_bytes_or_file');
+  }
+
+  // Large Production path: hash File in chunks — do not arrayBuffer() the whole PDF first.
+  const useLargeTus =
+    Boolean(input.file) &&
+    typeof window !== 'undefined' &&
+    mustPersist &&
+    shouldUseResumableUpload(fileSize) &&
+    !input.storage;
+
+  const sha256 = input.bytes
+    ? await sha256HexFromBytes(input.bytes)
+    : await sha256HexFromBlob(input.file as Blob);
+
   if (mustPersist && !isUuid(input.companyId)) {
-    const failedId = newKnowledgeDocumentId();
+    const failedId =
+      (input.resumeDocumentId && isUuid(input.resumeDocumentId)
+        ? input.resumeDocumentId
+        : null) || newKnowledgeDocumentId();
     const failed = registerKnowledgeDocument({
       id: failedId,
       companyId: input.companyId,
@@ -221,7 +261,7 @@ export async function uploadAndIngestCodeKnowledgeDocument(
       file_name: input.fileName,
       file_mime: mime,
       mime_type: mime,
-      file_size_bytes: input.bytes.byteLength,
+      file_size_bytes: fileSize,
       storage_bucket: CODE_KNOWLEDGE_STORAGE_BUCKET,
       sha256,
       created_by: input.created_by,
@@ -242,6 +282,24 @@ export async function uploadAndIngestCodeKnowledgeDocument(
     };
   }
 
+  // Production: SHA dedup against Supabase first (not session-memory).
+  if (mustPersist) {
+    const persistedDup = await findPersistedDuplicateBySha256({
+      companyId: input.companyId,
+      code: input.code,
+      edition: input.edition,
+      sha256,
+    });
+    if (persistedDup) {
+      return {
+        status: 'skipped_duplicate',
+        document: persistedDup,
+        sha256,
+        reason: 'identical_sha256',
+      };
+    }
+  }
+
   const dup = findActiveDuplicateBySha({
     companyId: input.companyId,
     code: input.code,
@@ -249,7 +307,6 @@ export async function uploadAndIngestCodeKnowledgeDocument(
     sha256,
   });
   if (dup) {
-    // Production: only skip when prior row was actually persisted
     if (!mustPersist || dup.persisted) {
       return {
         status: 'skipped_duplicate',
@@ -260,6 +317,8 @@ export async function uploadAndIngestCodeKnowledgeDocument(
     }
   }
 
+  // Collect priors but do NOT supersede until indexed — failed uploads must not
+  // leave the prior active document marked superseded.
   let superseded: CodeKnowledgeDocumentMeta | null = null;
   const prior = findActiveDocsForEdition({
     companyId: input.companyId,
@@ -267,15 +326,11 @@ export async function uploadAndIngestCodeKnowledgeDocument(
     edition: input.edition,
   });
   const parent = prior[0] || null;
-  if (input.replaceIfChanged !== false && prior.length) {
-    for (const p of prior) {
-      // Historical rows kept; only mark superseded — never mutate extracted body of history
-      supersedeDocument(p);
-      superseded = p;
-    }
-  }
 
-  const documentId = mustPersist ? newKnowledgeDocumentId() : uid('kdoc');
+  const documentId =
+    (input.resumeDocumentId && isUuid(input.resumeDocumentId)
+      ? input.resumeDocumentId
+      : null) || (mustPersist ? newKnowledgeDocumentId() : uid('kdoc'));
   const source_document_id =
     input.source_document_id ||
     `storage:${input.code}/${input.edition}/${documentId}`;
@@ -299,7 +354,7 @@ export async function uploadAndIngestCodeKnowledgeDocument(
     fileName: input.fileName,
   });
 
-  const sizeLimitErr = assertWithinBucketLimit(input.bytes.byteLength);
+  const sizeLimitErr = assertWithinBucketLimit(fileSize);
   if (sizeLimitErr) {
     const failed = registerKnowledgeDocument({
       id: documentId,
@@ -311,7 +366,7 @@ export async function uploadAndIngestCodeKnowledgeDocument(
       file_name: input.fileName,
       file_mime: mime,
       mime_type: mime,
-      file_size_bytes: input.bytes.byteLength,
+      file_size_bytes: fileSize,
       storage_bucket: bucket,
       storage_path: path,
       sha256,
@@ -342,16 +397,9 @@ export async function uploadAndIngestCodeKnowledgeDocument(
   let uploadedPath: string | null = null;
   let uploadError: string | undefined;
 
-  const useTus =
-    Boolean(input.file) &&
-    typeof window !== 'undefined' &&
-    mustPersist &&
-    shouldUseResumableUpload(input.bytes.byteLength) &&
-    !input.storage; // injectable test adapters stay on standard upload
-
   input.onPhase?.('uploading');
 
-  if (useTus && input.file) {
+  if (useLargeTus && input.file) {
     uploadMethod = 'tus';
     const tusResult = await uploadKnowledgeFileResumable({
       file: input.file,
@@ -368,20 +416,25 @@ export async function uploadAndIngestCodeKnowledgeDocument(
       uploadError = tusResult.error;
     } else {
       uploadedPath = tusResult.path;
-      input.onUploadProgress?.(100, input.bytes.byteLength, input.bytes.byteLength);
+      input.onUploadProgress?.(100, fileSize, fileSize);
     }
   } else {
-    input.onUploadProgress?.(0, 0, input.bytes.byteLength);
-    const uploaded = await storage.upload(bucket, path, input.bytes, {
-      contentType: mime,
-      upsert: false,
-    });
-    if (!uploaded.ok || !uploaded.path) {
-      uploadError = uploaded.error || 'upload_failed';
+    const body = input.bytes;
+    if (!body) {
+      uploadError = 'standard_upload_requires_bytes';
     } else {
-      uploadedPath = uploaded.path;
-      input.onUploadProgress?.(100, input.bytes.byteLength, input.bytes.byteLength);
-      input.onPhase?.('uploaded');
+      input.onUploadProgress?.(0, 0, body.byteLength);
+      const uploaded = await storage.upload(bucket, path, body, {
+        contentType: mime,
+        upsert: false,
+      });
+      if (!uploaded.ok || !uploaded.path) {
+        uploadError = uploaded.error || 'upload_failed';
+      } else {
+        uploadedPath = uploaded.path;
+        input.onUploadProgress?.(100, body.byteLength, body.byteLength);
+        input.onPhase?.('uploaded');
+      }
     }
   }
 
@@ -396,7 +449,7 @@ export async function uploadAndIngestCodeKnowledgeDocument(
       file_name: input.fileName,
       file_mime: mime,
       mime_type: mime,
-      file_size_bytes: input.bytes.byteLength,
+      file_size_bytes: fileSize,
       storage_bucket: bucket,
       storage_path: path,
       sha256,
@@ -424,7 +477,96 @@ export async function uploadAndIngestCodeKnowledgeDocument(
     };
   }
 
-  // Ingestion starts only after Storage upload is 100% complete
+  // —— Gate: object must exist in Storage before PDF extraction ——
+  if (mustPersist && !input.storage) {
+    const exists = await verifyStorageObjectExists(bucket, uploadedPath);
+    if (!exists) {
+      const signed = await storage.createSignedUrl(bucket, uploadedPath, 60);
+      if (!signed.ok || !signed.signedUrl) {
+        const err =
+          signed.error ||
+          'storage_object_missing_after_upload: extraction blocked until object exists';
+        const failed = registerKnowledgeDocument({
+          id: documentId,
+          companyId: input.companyId,
+          title: input.title || `${input.code} ${input.edition}`,
+          code: input.code,
+          edition: input.edition,
+          source_document_id,
+          file_name: input.fileName,
+          file_mime: mime,
+          mime_type: mime,
+          file_size_bytes: fileSize,
+          storage_bucket: bucket,
+          storage_path: uploadedPath,
+          sha256,
+          created_by: input.created_by,
+          code_edition_id: editionId,
+          edition_id: editionId,
+          parent_document_id: parent?.id ?? null,
+        });
+        failed.ingestion_status = 'failed';
+        failed.index_status = 'failed';
+        failed.persisted = false;
+        failed.persist_error = err;
+        input.onPhase?.('failed');
+        return {
+          status: 'failed',
+          document: failed,
+          sha256,
+          storage_path: uploadedPath,
+          chunk_count: 0,
+          page_count: 0,
+          error: err,
+          superseded,
+          upload_method: uploadMethod,
+        };
+      }
+    }
+  } else {
+    const signed = await storage.createSignedUrl(bucket, uploadedPath, 60);
+    if (!signed.ok) {
+      // In-memory adapter: createSignedUrl fails only if missing
+      const err = signed.error || 'storage_object_missing_after_upload';
+      input.onPhase?.('failed');
+      const failed = registerKnowledgeDocument({
+        id: documentId,
+        companyId: input.companyId,
+        title: input.title || `${input.code} ${input.edition}`,
+        code: input.code,
+        edition: input.edition,
+        source_document_id,
+        file_name: input.fileName,
+        file_mime: mime,
+        mime_type: mime,
+        file_size_bytes: fileSize,
+        storage_bucket: bucket,
+        storage_path: uploadedPath,
+        sha256,
+        created_by: input.created_by,
+        code_edition_id: editionId,
+        edition_id: editionId,
+        parent_document_id: parent?.id ?? null,
+      });
+      failed.ingestion_status = 'failed';
+      failed.index_status = 'failed';
+      failed.persisted = false;
+      failed.persist_error = err;
+      return {
+        status: 'failed',
+        document: failed,
+        sha256,
+        storage_path: uploadedPath,
+        chunk_count: 0,
+        page_count: 0,
+        error: err,
+        superseded,
+        upload_method: uploadMethod,
+      };
+    }
+  }
+
+  // Ingestion starts only after Storage upload is 100% complete + object verified
   input.onPhase?.('extracting');
 
   const ingest = await ingestCodeKnowledgeFromStorage({
@@ -437,7 +579,7 @@ export async function uploadAndIngestCodeKnowledgeDocument(
     fileName: input.fileName,
     mimeType: mime,
     sha256,
-    fileSize: input.bytes.byteLength,
+    fileSize,
     storagePath: uploadedPath,
     storageBucket: bucket,
     source_document_id,
@@ -451,13 +593,41 @@ export async function uploadAndIngestCodeKnowledgeDocument(
     created_by: input.created_by,
     ocrPageText: input.ocrPageText,
     storage,
-    /** Prefer already-held bytes to avoid a second round-trip in tests */
-    preloadedBytes: input.bytes,
+    // Large TUS: download from Storage (no browser double-buffer during upload).
+    // Small path: reuse already-held bytes.
+    preloadedBytes: useLargeTus ? undefined : input.bytes || undefined,
     onPhase: input.onPhase,
   });
 
-  if (ingest.status === 'indexed') input.onPhase?.('indexed');
-  else input.onPhase?.('failed');
+  if (ingest.status === 'indexed') {
+    if (input.replaceIfChanged !== false && prior.length) {
+      for (const p of prior) {
+        if (p.id === documentId) continue;
+        supersedeDocument(p);
+        superseded = p;
+        if (mustPersist && isUuid(p.id)) {
+          try {
+            const { supabase } = await import('@/lib/supabase');
+            await supabase
+              .from('di_knowledge_documents')
+              .update({
+                status: 'superseded',
+                ingestion_status: 'superseded',
+                index_status: 'superseded',
+                updated_at: nowIso(),
+              })
+              .eq('id', p.id)
+              .eq('company_id', input.companyId);
+          } catch {
+            // Non-fatal: indexed success already verified
+          }
+        }
+      }
+    }
+    input.onPhase?.('indexed');
+  } else {
+    input.onPhase?.('failed');
+  }
 
   return { ...ingest, superseded, upload_method: uploadMethod };
 }
@@ -508,6 +678,36 @@ export async function ingestCodeKnowledgeFromStorage(
 
   let bytes = input.preloadedBytes || null;
   if (!bytes) {
+    // Prefer authenticated download after Storage verification (large TUS path).
+    const signed = await storage.createSignedUrl(bucket, input.storagePath, 600);
+    if (!signed.ok || !signed.signedUrl) {
+      const doc = registerKnowledgeDocument({
+        companyId: input.companyId,
+        title: input.title,
+        code: input.code,
+        edition: input.edition,
+        source_document_id: input.source_document_id,
+        file_name: input.fileName,
+        file_mime: input.mimeType,
+        file_size_bytes: input.fileSize ?? null,
+        storage_path: input.storagePath,
+        created_by: input.created_by,
+        parent_document_id: input.parent_document_id,
+      });
+      applyStorageMeta(doc, input, bucket);
+      doc.ingestion_status = 'failed';
+      doc.persist_error =
+        signed.error || 'storage_object_missing: cannot start extraction';
+      return {
+        status: 'failed',
+        document: doc,
+        sha256: input.sha256,
+        storage_path: input.storagePath,
+        chunk_count: 0,
+        page_count: 0,
+        error: doc.persist_error,
+      };
+    }
     const dl = await storage.download(bucket, input.storagePath);
     if (!dl.ok || !dl.bytes) {
       const doc = registerKnowledgeDocument({
@@ -536,10 +736,38 @@ export async function ingestCodeKnowledgeFromStorage(
       };
     }
     bytes = dl.bytes;
+  } else {
+    // Authenticated signed URL availability check (never use public URL)
+    const signed = await storage.createSignedUrl(bucket, input.storagePath, 600);
+    if (!signed.ok || !signed.signedUrl) {
+      const doc = registerKnowledgeDocument({
+        companyId: input.companyId,
+        title: input.title,
+        code: input.code,
+        edition: input.edition,
+        source_document_id: input.source_document_id,
+        file_name: input.fileName,
+        file_mime: input.mimeType,
+        file_size_bytes: input.fileSize ?? bytes.byteLength,
+        storage_path: input.storagePath,
+        created_by: input.created_by,
+        parent_document_id: input.parent_document_id,
+      });
+      applyStorageMeta(doc, input, bucket);
+      doc.ingestion_status = 'failed';
+      doc.persist_error =
+        signed.error || 'storage_object_missing: cannot start extraction';
+      return {
+        status: 'failed',
+        document: doc,
+        sha256: input.sha256,
+        storage_path: input.storagePath,
+        chunk_count: 0,
+        page_count: 0,
+        error: doc.persist_error,
+      };
+    }
   }
-
-  // Authenticated signed URL availability check (never use public URL)
-  await storage.createSignedUrl(bucket, input.storagePath, 600);
 
   const editionId =
     input.editionId ||
