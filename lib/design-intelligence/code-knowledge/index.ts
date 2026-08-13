@@ -26,6 +26,10 @@ export {
 export {
   detectSourceRefsFromText,
   assertCitationPresentInText,
+  toPgInt4,
+  toSafePageNumber,
+  PG_INT4_MAX,
+  MAX_REASONABLE_PAGE_NUMBER,
 } from '@/lib/design-intelligence/code-knowledge/source-refs';
 export {
   registerKnowledgeDocument,
@@ -60,6 +64,7 @@ export {
   ingestCodeKnowledgeFromStorage,
   reingestCodeKnowledgeDocument,
   reingestExistingCodeKnowledgeStorageObject,
+  resumeIncompleteCodeKnowledgeIngestion,
   markCodeKnowledgeDuplicateForCleanup,
   listCodeKnowledgeDocumentsForUi,
 } from '@/lib/design-intelligence/code-knowledge/storage-ingestion';
@@ -91,8 +96,14 @@ export {
   listPersistedCodeKnowledgeDocuments,
   verifyPersistedCodeKnowledgeIngestion,
   persistAndVerifyCodeKnowledgeIngestion,
+  persistCodeKnowledgeChunks,
   findPersistedDuplicateBySha256,
   verifyStorageObjectExists,
+  analyzePersistedChunkCoverage,
+  chunkContentFingerprint,
+  CHUNK_PERSIST_BATCH_SIZE,
+  dedupePersistedChunksByFingerprint,
+  finalizeCodeKnowledgeDocumentIfComplete,
 } from '@/lib/design-intelligence/code-knowledge/persist';
 export {
   ingestPlatformNfpa13_2025AndAdopt,

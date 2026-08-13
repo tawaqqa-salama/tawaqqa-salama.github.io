@@ -122,7 +122,14 @@ export function pagesFromPlainText(text: string): PdfPageExtractResult {
 
 export function chunkPagesPreserving(
   pages: ExtractedPdfPage[],
-  maxChars = 700
+  maxChars = 700,
+  opts?: {
+    /**
+     * Emit a non-empty placeholder for pages with no extractable text so
+     * coverage includes page 1 / OCR-empty pages without inventing NFPA body.
+     */
+    includeEmptyPagePlaceholders?: boolean;
+  }
 ): Array<{
   content: string;
   index: number;
@@ -138,10 +145,24 @@ export function chunkPagesPreserving(
     extraction_method: ExtractionMethod;
   }> = [];
   let index = 0;
+  const includeEmpty = Boolean(opts?.includeEmptyPagePlaceholders);
 
   for (const page of pages) {
     const text = page.text.trim();
-    if (!text) continue;
+    if (!text) {
+      if (includeEmpty) {
+        out.push({
+          content: `[Page ${page.page} — no extractable text]`,
+          index,
+          page_start: page.page,
+          page_end: page.page,
+          extraction_method:
+            page.extraction_method === 'ocr' ? 'ocr' : 'empty',
+        });
+        index += 1;
+      }
+      continue;
+    }
     if (text.length <= maxChars) {
       out.push({
         content: text,
@@ -154,8 +175,10 @@ export function chunkPagesPreserving(
       continue;
     }
     for (let i = 0; i < text.length; i += maxChars) {
+      const slice = text.slice(i, i + maxChars).trim();
+      if (!slice) continue;
       out.push({
-        content: text.slice(i, i + maxChars).trim(),
+        content: slice,
         index,
         page_start: page.page,
         page_end: page.page,
