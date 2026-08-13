@@ -447,7 +447,11 @@ export async function ingestCodeKnowledgeFromStorage(
       pages = pagesFromPlainText(text).pages;
     }
   } catch (err) {
-    extractError = err instanceof Error ? err.message : String(err);
+    const raw = err instanceof Error ? err.message : String(err);
+    // Keep PDF stage distinct from chunks_missing / no_chunks_produced
+    extractError = raw.startsWith('pdf_extraction_failed')
+      ? raw
+      : `pdf_extraction_failed: ${raw}`;
     pages = [];
   }
 

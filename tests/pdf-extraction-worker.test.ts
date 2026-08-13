@@ -71,6 +71,8 @@ describe('PDF extraction worker + pages', () => {
     expect(runtime).not.toMatch(/https?:\/\/[^\s'"`]*cdnjs/);
     expect(runtime).not.toMatch(/https?:\/\/[^\s'"`]*unpkg\.com/);
     expect(runtime).toMatch(/pdf\.worker\.min\.mjs/);
+    // pdfjs-dist@4.10.38 removed disableWorker — must not rely on obsolete API
+    expect(runtime).toMatch(/disableWorker was removed|does not support `disableWorker`/);
     expect(existsSync(join(root, 'public/pdfjs/pdf.worker.min.mjs'))).toBe(true);
 
     const nodeSrc = await resolveNodePdfWorkerSrc();
@@ -86,6 +88,19 @@ describe('PDF extraction worker + pages', () => {
     };
     await ensurePdfJsWorkerConfigured(pdfjs as never);
     expect(pdfjs.GlobalWorkerOptions.workerSrc).not.toMatch(/cdnjs|unpkg/);
+    expect(pdfjs.GlobalWorkerOptions.workerSrc.startsWith('file:')).toBe(true);
+  });
+
+  it('G: build scripts sync local worker (no CDN) for production', () => {
+    const pkg = JSON.parse(readFileSync(join(root, 'package.json'), 'utf8')) as {
+      scripts: Record<string, string>;
+    };
+    expect(pkg.scripts.postinstall).toMatch(/sync-pdfjs-worker/);
+    expect(pkg.scripts.build).toMatch(/sync-pdfjs-worker/);
+    expect(existsSync(join(root, 'scripts/sync-pdfjs-worker.mjs'))).toBe(true);
+    const sync = readFileSync(join(root, 'scripts/sync-pdfjs-worker.mjs'), 'utf8');
+    expect(sync).not.toMatch(/https?:\/\/[^\s'"`]*(cdnjs|unpkg)/);
+    expect(sync).toMatch(/node_modules\/pdfjs-dist/);
   });
 
   it('C+D: extraction returns page text with page metadata', async () => {

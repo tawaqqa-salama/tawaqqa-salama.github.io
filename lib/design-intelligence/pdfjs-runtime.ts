@@ -1,15 +1,18 @@
 /**
  * Single intentional pdfjs-dist worker strategy for Knowledge / DI PDF extraction.
  *
- * Runtime note:
- * Knowledge Base upload currently runs in the browser (`DesignIntelligenceModule`
- * is a client component; GitHub Pages static export has no API Route Handlers).
- * Node/vitest also call the same extractor — configure both without CDN.
+ * Versions: pdfjs-dist@4.10.38 — `disableWorker` was removed from DocumentInitParameters.
+ * Do NOT pass `disableWorker: true` (obsolete; silently ignored).
  *
- * Strategy:
- * - Browser: serve worker from `/pdfjs/pdf.worker.min.mjs` (copied from pdfjs-dist)
- * - Node: file:// URL to the installed package worker
- * - Never unpkg / cdnjs
+ * Runtime:
+ * - Node / vitest / server scripts: legacy build + fake worker via package-local workerSrc
+ *   (pdfjs sets #isWorkerDisabled on Node; we still set an absolute file:// workerSrc so
+ *   fake-worker `import(workerSrc)` resolves reliably — never CDN).
+ * - Browser (Knowledge Base client upload on static Pages): same-origin
+ *   `/pdfjs/pdf.worker.min.mjs` synced from the installed package by
+ *   `scripts/sync-pdfjs-worker.mjs` (postinstall + build).
+ *
+ * Do not add `import 'server-only'` here: extractors are shared with client components.
  */
 
 import type { PDFDocumentProxy } from 'pdfjs-dist';
@@ -20,7 +23,12 @@ type PdfJsModule = {
   version?: string;
 };
 
+type PdfWorkerModule = {
+  WorkerMessageHandler?: unknown;
+};
+
 let configuredFor: string | null = null;
+let nodeWorkerPreloaded = false;
 
 function isBrowser(): boolean {
   return typeof window !== 'undefined' && typeof document !== 'undefined';
@@ -54,12 +62,56 @@ export async function resolveNodePdfWorkerSrc(): Promise<string> {
 }
 
 /**
+ * Prefetch WorkerMessageHandler onto globalThis.pdfjsWorker so Node fake-worker
+ * setup does not depend on a brittle relative `./pdf.worker.mjs` path.
+ */
+async function preloadNodePdfWorkerModule(): Promise<void> {
+  if (nodeWorkerPreloaded) return;
+  const g = globalThis as typeof globalThis & {
+    pdfjsWorker?: PdfWorkerModule;
+  };
+  if (g.pdfjsWorker?.WorkerMessageHandler) {
+    nodeWorkerPreloaded = true;
+    return;
+  }
+  try {
+    const { createRequire } = await import('node:module');
+    const { pathToFileURL } = await import('node:url');
+    const require = createRequire(import.meta.url);
+    const candidates = [
+      'pdfjs-dist/legacy/build/pdf.worker.min.mjs',
+      'pdfjs-dist/legacy/build/pdf.worker.mjs',
+      'pdfjs-dist/build/pdf.worker.min.mjs',
+    ];
+    for (const spec of candidates) {
+      try {
+        const href = pathToFileURL(require.resolve(spec)).href;
+        const workerMod = (await import(href)) as PdfWorkerModule;
+        if (workerMod?.WorkerMessageHandler) {
+          g.pdfjsWorker = workerMod;
+          break;
+        }
+      } catch {
+        /* try next candidate */
+      }
+    }
+  } catch {
+    /* fall through — workerSrc file:// still required below */
+  }
+  nodeWorkerPreloaded = true;
+}
+
+/**
  * Configure GlobalWorkerOptions.workerSrc once per runtime.
- * Safe to call repeatedly.
+ * Safe to call repeatedly. Never uses CDN (cdnjs / unpkg).
  */
 export async function ensurePdfJsWorkerConfigured(
   pdfjs: PdfJsModule
 ): Promise<void> {
+  if (!isBrowser()) {
+    await preloadNodePdfWorkerModule();
+  }
+
   const target = isBrowser()
     ? getBrowserPdfWorkerSrc()
     : await resolveNodePdfWorkerSrc();
@@ -75,6 +127,9 @@ export async function ensurePdfJsWorkerConfigured(
 /**
  * Load PDF document from bytes with a production-safe worker configuration.
  * Always passes a Uint8Array (not Node Buffer).
+ *
+ * Note: pdfjs-dist@4.10.38 does not support `disableWorker` — Node uses the
+ * built-in fake worker; browser uses the local `/pdfjs/` worker asset.
  */
 export async function openPdfDocumentFromBytes(
   bytes: ArrayBuffer | Uint8Array
@@ -112,4 +167,5 @@ export async function openPdfDocumentFromBytes(
 /** Test helper — reset memo so workerSrc can be re-asserted. */
 export function resetPdfJsWorkerConfigForTests(): void {
   configuredFor = null;
+  nodeWorkerPreloaded = false;
 }
