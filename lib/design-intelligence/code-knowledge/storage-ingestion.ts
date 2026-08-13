@@ -19,6 +19,11 @@ import {
   resolveCodeKnowledgeUploadPath,
   type CodeKnowledgeStorageAdapter,
 } from '@/lib/design-intelligence/code-knowledge/storage-client';
+import {
+  assertWithinBucketLimit,
+  shouldUseResumableUpload,
+  uploadKnowledgeFileResumable,
+} from '@/lib/design-intelligence/code-knowledge/resumable-upload';
 import { CODE_KNOWLEDGE_STORAGE_BUCKET } from '@/lib/design-intelligence/code-knowledge/storage-path';
 import {
   getCodeKnowledgeStore,
@@ -55,6 +60,11 @@ export type UploadCodeKnowledgeInput = {
   fileName: string;
   mimeType?: string | null;
   bytes: Uint8Array;
+  /**
+   * Prefer passing the original File for large uploads so TUS can stream
+   * chunks without a single Safari/iPhone PUT of the whole body.
+   */
+  file?: File | Blob | null;
   source_document_id?: string;
   source_type?: string;
   verification_status?: string;
@@ -66,6 +76,26 @@ export type UploadCodeKnowledgeInput = {
   /** Optional OCR text keyed by page number (never invented by pipeline). */
   ocrPageText?: Record<number, string>;
   storage?: CodeKnowledgeStorageAdapter;
+  /** Upload progress 0–100 (TUS or standard). */
+  onUploadProgress?: (percent: number, bytesUploaded: number, bytesTotal: number) => void;
+  /** High-level pipeline phase for UI status chips. */
+  onPhase?: (
+    phase:
+      | 'uploading'
+      | 'upload_paused'
+      | 'uploaded'
+      | 'extracting'
+      | 'chunking'
+      | 'indexing'
+      | 'indexed'
+      | 'failed'
+  ) => void;
+  /** Receive pause/resume/abort handle for large TUS uploads. */
+  registerUploadHandle?: (handle: {
+    pause: () => void;
+    resume: () => void;
+    abort: () => void;
+  }) => void;
 };
 
 export type UploadCodeKnowledgeResult =
@@ -84,6 +114,7 @@ export type UploadCodeKnowledgeResult =
       chunk_count: number;
       page_count: number;
       error?: string;
+      upload_method?: 'tus' | 'standard' | 'skipped';
     };
 
 function findActiveDuplicateBySha(input: {
@@ -268,11 +299,8 @@ export async function uploadAndIngestCodeKnowledgeDocument(
     fileName: input.fileName,
   });
 
-  const uploaded = await storage.upload(bucket, path, input.bytes, {
-    contentType: mime,
-    upsert: false,
-  });
-  if (!uploaded.ok || !uploaded.path) {
+  const sizeLimitErr = assertWithinBucketLimit(input.bytes.byteLength);
+  if (sizeLimitErr) {
     const failed = registerKnowledgeDocument({
       id: documentId,
       companyId: input.companyId,
@@ -295,8 +323,8 @@ export async function uploadAndIngestCodeKnowledgeDocument(
     failed.ingestion_status = 'failed';
     failed.index_status = 'failed';
     failed.persisted = false;
-    failed.persist_error = uploaded.error || 'upload_failed';
-    failed.ingestion_version = (parent?.ingestion_version || 0) + 1;
+    failed.persist_error = sizeLimitErr;
+    input.onPhase?.('failed');
     return {
       status: 'failed',
       document: failed,
@@ -304,10 +332,100 @@ export async function uploadAndIngestCodeKnowledgeDocument(
       storage_path: path,
       chunk_count: 0,
       page_count: 0,
-      error: uploaded.error || 'upload_failed',
+      error: sizeLimitErr,
       superseded,
+      upload_method: 'skipped',
     };
   }
+
+  let uploadMethod: 'tus' | 'standard' = 'standard';
+  let uploadedPath: string | null = null;
+  let uploadError: string | undefined;
+
+  const useTus =
+    Boolean(input.file) &&
+    typeof window !== 'undefined' &&
+    mustPersist &&
+    shouldUseResumableUpload(input.bytes.byteLength) &&
+    !input.storage; // injectable test adapters stay on standard upload
+
+  input.onPhase?.('uploading');
+
+  if (useTus && input.file) {
+    uploadMethod = 'tus';
+    const tusResult = await uploadKnowledgeFileResumable({
+      file: input.file,
+      path,
+      bucket,
+      contentType: mime,
+      upsert: true,
+      onProgress: (p) =>
+        input.onUploadProgress?.(p.percent, p.bytesUploaded, p.bytesTotal),
+      onPhase: (phase) => input.onPhase?.(phase),
+      registerHandle: input.registerUploadHandle,
+    });
+    if (!tusResult.ok) {
+      uploadError = tusResult.error;
+    } else {
+      uploadedPath = tusResult.path;
+      input.onUploadProgress?.(100, input.bytes.byteLength, input.bytes.byteLength);
+    }
+  } else {
+    input.onUploadProgress?.(0, 0, input.bytes.byteLength);
+    const uploaded = await storage.upload(bucket, path, input.bytes, {
+      contentType: mime,
+      upsert: false,
+    });
+    if (!uploaded.ok || !uploaded.path) {
+      uploadError = uploaded.error || 'upload_failed';
+    } else {
+      uploadedPath = uploaded.path;
+      input.onUploadProgress?.(100, input.bytes.byteLength, input.bytes.byteLength);
+      input.onPhase?.('uploaded');
+    }
+  }
+
+  if (!uploadedPath) {
+    const failed = registerKnowledgeDocument({
+      id: documentId,
+      companyId: input.companyId,
+      title: input.title || `${input.code} ${input.edition}`,
+      code: input.code,
+      edition: input.edition,
+      source_document_id,
+      file_name: input.fileName,
+      file_mime: mime,
+      mime_type: mime,
+      file_size_bytes: input.bytes.byteLength,
+      storage_bucket: bucket,
+      storage_path: path,
+      sha256,
+      created_by: input.created_by,
+      code_edition_id: editionId,
+      edition_id: editionId,
+      parent_document_id: parent?.id ?? null,
+    });
+    failed.ingestion_status = 'failed';
+    failed.index_status = 'failed';
+    failed.persisted = false;
+    failed.persist_error = uploadError || 'upload_failed';
+    failed.ingestion_version = (parent?.ingestion_version || 0) + 1;
+    input.onPhase?.('failed');
+    return {
+      status: 'failed',
+      document: failed,
+      sha256,
+      storage_path: path,
+      chunk_count: 0,
+      page_count: 0,
+      error: uploadError || 'upload_failed',
+      superseded,
+      upload_method: uploadMethod,
+    };
+  }
+
+  // Ingestion starts only after Storage upload is 100% complete
+  input.onPhase?.('extracting');
 
   const ingest = await ingestCodeKnowledgeFromStorage({
     companyId: input.companyId,
@@ -320,7 +438,7 @@ export async function uploadAndIngestCodeKnowledgeDocument(
     mimeType: mime,
     sha256,
     fileSize: input.bytes.byteLength,
-    storagePath: uploaded.path,
+    storagePath: uploadedPath,
     storageBucket: bucket,
     source_document_id,
     source_type: input.source_type || 'PROJECT_PROVIDED_DOCUMENT',
@@ -335,9 +453,13 @@ export async function uploadAndIngestCodeKnowledgeDocument(
     storage,
     /** Prefer already-held bytes to avoid a second round-trip in tests */
     preloadedBytes: input.bytes,
+    onPhase: input.onPhase,
   });
 
-  return { ...ingest, superseded };
+  if (ingest.status === 'indexed') input.onPhase?.('indexed');
+  else input.onPhase?.('failed');
+
+  return { ...ingest, superseded, upload_method: uploadMethod };
 }
 
 export type IngestFromStorageInput = {
@@ -364,6 +486,7 @@ export type IngestFromStorageInput = {
   ocrPageText?: Record<number, string>;
   storage?: CodeKnowledgeStorageAdapter;
   preloadedBytes?: Uint8Array;
+  onPhase?: UploadCodeKnowledgeInput['onPhase'];
 };
 
 /**
@@ -438,6 +561,7 @@ export async function ingestCodeKnowledgeFromStorage(
     (input.mimeType || '').includes('pdf') ||
     input.fileName.toLowerCase().endsWith('.pdf');
 
+  input.onPhase?.('extracting');
   try {
     if (isPdf) {
       const extracted = await extractPdfPagesFromBytes(bytes);
@@ -463,6 +587,7 @@ export async function ingestCodeKnowledgeFromStorage(
     input.ocrPageText
   );
 
+  input.onPhase?.('chunking');
   const pageParts = chunkPagesPreserving(afterOcr.pages, 700);
   const mustPersist = shouldPersistCodeKnowledgeToSupabase();
   const doc = registerKnowledgeDocument({
@@ -541,6 +666,7 @@ export async function ingestCodeKnowledgeFromStorage(
   doc.chunk_count = chunks.length;
   doc.embedding_status = chunks.length ? 'indexed' : 'pending';
   doc.ingestion_status = 'indexing';
+  input.onPhase?.('indexing');
 
   if (extractError && chunks.length === 0 && !input.ocrPageText) {
     doc.ingestion_status = 'failed';

@@ -64,6 +64,17 @@ export {
   listCodeKnowledgeDocumentsForUi,
 } from '@/lib/design-intelligence/code-knowledge/storage-ingestion';
 export {
+  DESIGN_KNOWLEDGE_FILE_SIZE_LIMIT_BYTES,
+  RESUMABLE_UPLOAD_THRESHOLD_BYTES,
+  TUS_CHUNK_SIZE_BYTES,
+  shouldUseResumableUpload,
+  assertWithinBucketLimit,
+  uploadKnowledgeFileResumable,
+  type UploadPhase,
+  type ResumableUploadProgress,
+  type ResumableUploadHandle,
+} from '@/lib/design-intelligence/code-knowledge/resumable-upload';
+export {
   deleteKnowledgeDocument,
   documentHasSha256Duplicate,
   findKnowledgeDocumentUsage,
