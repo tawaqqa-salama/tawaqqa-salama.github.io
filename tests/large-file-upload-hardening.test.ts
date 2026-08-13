@@ -25,8 +25,8 @@ describe('Large file upload hardening', () => {
     resetInMemoryCodeKnowledgeStorage();
   });
 
-  it('bucket limit is 500 MiB and TUS threshold is 6 MiB', () => {
-    expect(DESIGN_KNOWLEDGE_FILE_SIZE_LIMIT_BYTES).toBe(500 * 1024 * 1024);
+  it('bucket limit is 1 GiB and TUS threshold is 6 MiB', () => {
+    expect(DESIGN_KNOWLEDGE_FILE_SIZE_LIMIT_BYTES).toBe(1024 * 1024 * 1024);
     expect(RESUMABLE_UPLOAD_THRESHOLD_BYTES).toBe(6 * 1024 * 1024);
     expect(TUS_CHUNK_SIZE_BYTES).toBe(6 * 1024 * 1024);
     expect(shouldUseResumableUpload(6 * 1024 * 1024 - 1)).toBe(false);
@@ -37,14 +37,28 @@ describe('Large file upload hardening', () => {
     );
   });
 
-  it('048 SQL raises design-knowledge file_size_limit to 500 MiB', () => {
+  it('048 SQL forces design-knowledge file_size_limit to 1 GiB (fixes TUS 413)', () => {
     const sql = readFileSync(
       join(root, 'scripts/sql/048_design_knowledge_large_upload.sql'),
       'utf8'
     );
-    expect(sql).toMatch(/524288000/);
+    expect(sql).toMatch(/1073741824/);
     expect(sql).toMatch(/design-knowledge/);
+    expect(sql).toMatch(/413|Maximum size/i);
+    expect(sql).toMatch(/Global/);
+    expect(sql).toMatch(/file_size_limit = 1073741824/);
+    expect(sql).not.toMatch(/file_size_limit = COALESCE/);
     expect(sql).not.toMatch(/numeric_value|NFPA.?13.*density/i);
+  });
+
+  it('maps TUS 413 to actionable upload_size_limit_exceeded', () => {
+    const src = readFileSync(
+      join(root, 'lib/design-intelligence/code-knowledge/resumable-upload.ts'),
+      'utf8'
+    );
+    expect(src).toMatch(/upload_size_limit_exceeded/);
+    expect(src).toMatch(/Maximum size exceeded/);
+    expect(src).toMatch(/048_design_knowledge_large_upload/);
   });
 
   it('resumable module uses tus-js-client and storage hostname', () => {

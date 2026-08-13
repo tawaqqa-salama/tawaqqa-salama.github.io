@@ -1,9 +1,15 @@
 -- ============================================================================
 -- 048 — Raise design-knowledge Storage file_size_limit for large code PDFs
 --
--- Previous default in 047: 100 MiB (104857600).
--- Large NFPA / code PDFs + Safari single-PUT failures need headroom and
--- resumable (TUS) client uploads — this migration only raises the bucket cap.
+-- CRITICAL: TUS returns HTTP 413 "Maximum size exceeded" when the object
+-- Upload-Length exceeds EITHER:
+--   1) storage.buckets.file_size_limit for design-knowledge, OR
+--   2) the project Global file size limit (Dashboard → Storage → Settings)
+--
+-- 047 used COALESCE(file_size_limit, 100MiB) which does NOT raise an existing
+-- smaller limit (e.g. Studio default 50MiB). This migration FORCES the bucket
+-- cap to 1 GiB (must still be ≤ Global limit — raise Global first if needed).
+--
 -- Does NOT change NFPA numeric rules or RLS semantics.
 -- ============================================================================
 
@@ -22,12 +28,13 @@ BEGIN
   UPDATE storage.buckets
   SET
     public = false,
-    -- 500 MiB — enough for large code PDFs; client still uses TUS ≥ 6 MiB
-    file_size_limit = 524288000
+    -- 1 GiB — force raise (do not COALESCE). Global Dashboard limit must be ≥ this.
+    file_size_limit = 1073741824
   WHERE id = 'design-knowledge';
 
-  RAISE NOTICE 'design-knowledge file_size_limit set to 524288000 (500 MiB)';
+  RAISE NOTICE 'design-knowledge file_size_limit set to 1073741824 (1 GiB)';
+  RAISE NOTICE 'Also set Dashboard → Storage → Settings → Global file size limit ≥ 1 GiB (or remove restrict)';
 END $$;
 
 COMMENT ON COLUMN storage.buckets.file_size_limit IS
-  'Per-object max bytes. design-knowledge target 500 MiB after 048; large uploads use TUS.';
+  'Per-object max bytes. design-knowledge target 1 GiB after 048; TUS 413 means bucket or Global limit too low.';
