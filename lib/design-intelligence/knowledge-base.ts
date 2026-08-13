@@ -859,7 +859,28 @@ export async function uploadAndIndexKnowledgeFile(input: {
   const id = newKnowledgeDocumentId();
   const bytes = new Uint8Array(await input.file.arrayBuffer());
   const sha256 = await sha256HexFromBytes(bytes);
-  const extracted = await extractTextFromFile(input.file);
+  let extracted: Awaited<ReturnType<typeof extractTextFromFile>>;
+  try {
+    extracted = await extractTextFromFile(input.file);
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err);
+    throw new KnowledgePersistError(
+      message.startsWith('pdf_extraction_failed')
+        ? `FAILED: ${message}`
+        : `FAILED: pdf_extraction_failed: ${message}`,
+      buildKnowledgeUploadDiagnostics({
+        authenticated,
+        company_id_present: true,
+        storage_upload_attempted: false,
+        db_insert_attempted: false,
+        chunks_insert_attempted: false,
+        document_id: id,
+        error: message,
+        handler_path:
+          'onUpload → uploadAndIndexKnowledgeFile → extractTextFromFile',
+      })
+    );
+  }
   const storage = await tryUploadToStorage({
     file: input.file,
     docId: id,
@@ -1050,11 +1071,15 @@ export async function uploadAndIndexKnowledgeFile(input: {
     const msg = err instanceof Error ? err.message : String(err);
     // Prefer real upstream failure over generic chunks_missing when job/doc failed earlier
     const primary =
-      /indexing_job_create_failed/i.test(msg)
-        ? msg
-        : /invalid input syntax for type uuid/i.test(msg)
-          ? `indexing_job_create_failed: ${msg}`
-          : msg;
+      /pdf_extraction_failed/i.test(msg)
+        ? msg.startsWith('FAILED:')
+          ? msg
+          : `FAILED: ${msg}`
+        : /indexing_job_create_failed/i.test(msg)
+          ? msg
+          : /invalid input syntax for type uuid/i.test(msg)
+            ? `indexing_job_create_failed: ${msg}`
+            : msg;
     await completeIndexingJob(id, false, primary, queued.job.id);
     throw new KnowledgePersistError(
       primary,

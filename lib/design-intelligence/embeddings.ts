@@ -158,16 +158,14 @@ export async function extractTextFromFile(file: File): Promise<{
         page_texts: extracted.pages.map((p) => p.text),
         extraction_method: extracted.extraction_method,
       };
-    } catch {
-      return {
-        text: '',
-        ocrUsed: true,
-        page_count: 0,
-        pages_extracted: 0,
-        pages_ocr: 0,
-        page_texts: [],
-        extraction_method: 'ocr',
-      };
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
+      // Surface truthful PDF stage failure — never silently become chunks_missing
+      throw new Error(
+        message.startsWith('pdf_extraction_failed:')
+          ? message
+          : `pdf_extraction_failed: ${message}`
+      );
     }
   }
 

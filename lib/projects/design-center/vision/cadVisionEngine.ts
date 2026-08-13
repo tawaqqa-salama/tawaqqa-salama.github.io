@@ -157,9 +157,10 @@ async function rasterizePdf(
     'Rasterizing PDF page locally...'
   );
   const pdfjs = await import('pdfjs-dist');
-  const version = (pdfjs as { version?: string }).version || '4.10.38';
-  // Worker from same package CDN — processing still runs in-browser
-  pdfjs.GlobalWorkerOptions.workerSrc = `https://unpkg.com/pdfjs-dist@${version}/build/pdf.worker.min.mjs`;
+  const { ensurePdfJsWorkerConfigured } = await import(
+    '@/lib/design-intelligence/pdfjs-runtime'
+  );
+  await ensurePdfJsWorkerConfigured(pdfjs as never);
 
   const doc = await pdfjs.getDocument({ data: new Uint8Array(data) }).promise;
   const page = await doc.getPage(1);

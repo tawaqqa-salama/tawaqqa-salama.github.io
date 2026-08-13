@@ -8,6 +8,9 @@ export NEXT_PUBLIC_STATIC_EXPORT=true
 export NEXT_PUBLIC_USER_PAGES=true
 export NEXT_PUBLIC_ALLOW_DEMO_MODE=true
 
+# Keep pdfjs worker in public/ (no CDN) for Knowledge Base browser extraction
+node scripts/sync-pdfjs-worker.mjs
+
 # Route Handlers + middleware غير مدعومة مع output:export
 API_TMP=""
 MW_TMP=""
