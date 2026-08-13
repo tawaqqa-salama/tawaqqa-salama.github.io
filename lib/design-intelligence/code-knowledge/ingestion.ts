@@ -13,6 +13,11 @@ import {
 } from '@/lib/design-intelligence/code-knowledge/store';
 import { detectSourceRefsFromText } from '@/lib/design-intelligence/code-knowledge/source-refs';
 import { registerCodeEdition } from '@/lib/design-intelligence/code-knowledge/registry';
+import {
+  chunkPagesPreserving,
+  pagesFromPlainText,
+} from '@/lib/design-intelligence/code-knowledge/pdf-page-extract';
+import { CODE_KNOWLEDGE_STORAGE_BUCKET } from '@/lib/design-intelligence/code-knowledge/storage-path';
 import type {
   CodeKnowledgeChunk,
   CodeKnowledgeDocumentMeta,
@@ -25,6 +30,8 @@ export type RegisterKnowledgeDocumentInput = {
   title: string;
   code: string;
   edition: string;
+  /** Optional stable id (e.g. already used in Storage object path). */
+  id?: string;
   version?: string | null;
   revision?: string | null;
   source_type?: string;
@@ -34,11 +41,16 @@ export type RegisterKnowledgeDocumentInput = {
   source_document_id: string;
   file_name?: string | null;
   file_mime?: string | null;
+  mime_type?: string | null;
   file_size_bytes?: number | null;
+  storage_bucket?: string | null;
   storage_path?: string | null;
+  sha256?: string | null;
   extracted_text?: string | null;
   parent_document_id?: string | null;
   created_by?: string | null;
+  code_edition_id?: string | null;
+  edition_id?: string | null;
 };
 
 const PIPELINE_STAGES: PipelineJobType[] = ['extract', 'ocr', 'chunk', 'embed', 'index'];
@@ -84,13 +96,26 @@ export function registerKnowledgeDocument(
     idempotent: true,
   });
 
+  const editionRow = getCodeKnowledgeStore().editions.find(
+    (e) =>
+      !e.deleted_at &&
+      e.code === input.code &&
+      e.edition === input.edition &&
+      (e.company_id ?? null) === input.companyId
+  );
+  const editionId =
+    input.edition_id || input.code_edition_id || editionRow?.id || null;
+
   const now = nowIso();
+  const mime = input.mime_type ?? input.file_mime ?? null;
   const doc: CodeKnowledgeDocumentMeta = {
-    id: uid('kdoc'),
+    id: input.id || uid('kdoc'),
     company_id: input.companyId,
     title: input.title,
     code: input.code,
     edition: input.edition,
+    code_edition_id: editionId,
+    edition_id: editionId,
     version: input.version ?? '1',
     revision: input.revision ?? null,
     source_type: input.source_type || 'PROJECT_PROVIDED_DOCUMENT',
@@ -102,14 +127,24 @@ export function registerKnowledgeDocument(
     status: 'draft',
     index_status: 'pending',
     extract_status: 'pending',
+    extraction_status: 'pending',
     ocr_status: 'pending',
     embedding_status: 'pending',
+    ingestion_status: 'pending',
     chunk_count: 0,
+    page_count: null,
+    pages_extracted: null,
+    pages_ocr: null,
+    ingestion_version: 1,
     parent_document_id: input.parent_document_id ?? null,
     file_name: input.file_name ?? null,
-    file_mime: input.file_mime ?? null,
+    file_mime: mime,
+    mime_type: mime,
     file_size_bytes: input.file_size_bytes ?? null,
+    storage_bucket: input.storage_bucket ?? CODE_KNOWLEDGE_STORAGE_BUCKET,
     storage_path: input.storage_path ?? null,
+    sha256: input.sha256 ?? null,
+    content_sha256: input.sha256 ?? null,
     extracted_text: input.extracted_text ?? null,
     ocr_used: false,
     created_by: input.created_by ?? null,
@@ -118,6 +153,9 @@ export function registerKnowledgeDocument(
     deleted_at: null,
   };
   store.documents.push(doc);
+  if (editionRow) {
+    editionRow.knowledge_document_id = doc.id;
+  }
 
   for (const stage of PIPELINE_STAGES) {
     enqueueJob(doc.id, stage, input.companyId);
@@ -236,25 +274,36 @@ export function runDocumentPipeline(documentId: string): {
 
 function runExtract(doc: CodeKnowledgeDocumentMeta): void {
   if (doc.extract_status === 'indexed' && doc.extracted_text) return;
+  doc.ingestion_status = 'extracting';
   const text = String(doc.extracted_text || '').trim();
   if (!text) {
     // No body available — mark extract complete with empty (OCR may fill later)
     doc.extracted_text = '';
     doc.extract_status = 'indexed';
+    doc.extraction_status = 'indexed';
     doc.updated_at = nowIso();
     return;
   }
+  if (!doc.page_texts?.length) {
+    const pages = pagesFromPlainText(text);
+    doc.page_texts = pages.pages.map((p) => p.text);
+    doc.page_count = pages.page_count;
+    doc.pages_extracted = pages.pages_extracted;
+  }
   doc.extract_status = 'indexed';
+  doc.extraction_status = 'indexed';
   doc.updated_at = nowIso();
 }
 
 function runOcr(doc: CodeKnowledgeDocumentMeta): void {
   if (doc.ocr_status === 'indexed') return;
+  doc.ingestion_status = 'ocr';
   const text = String(doc.extracted_text || '').trim();
   // Heuristic: binary-ish / empty → OCR required flag; we do not invent body text
   if (!text) {
     doc.ocr_used = true;
     doc.ocr_status = 'indexed';
+    doc.pages_ocr = doc.page_count || 0;
     doc.updated_at = nowIso();
     return;
   }
@@ -272,34 +321,85 @@ function runChunk(doc: CodeKnowledgeDocumentMeta): void {
   }
   // Replace prior chunks for this document on re-chunk
   store.chunks = store.chunks.filter((c) => c.document_id !== doc.id);
+  doc.ingestion_status = 'chunking';
 
-  const text = String(doc.extracted_text || '').trim();
-  const parts = text ? chunkText(text, 700) : [];
-  const chunks: CodeKnowledgeChunk[] = parts.map((p) => {
-    const refs = detectSourceRefsFromText(p.content, {
-      pageGuess: p.pageGuess,
-      allowPageGuess: false, // never fabricate page without explicit "Page N" in text
-    });
-    return {
-      id: uid('kchk'),
-      company_id: doc.company_id,
-      document_id: doc.id,
-      chunk_index: p.index,
-      content: p.content,
-      code: doc.code,
-      edition: doc.edition,
-      section: refs.section,
-      subsection: refs.subsection,
-      table_reference: refs.table_reference,
-      figure_reference: refs.figure_reference,
-      page_number: refs.page_number,
-      paragraph_reference: refs.paragraph_reference,
-      code_reference: refs.code_reference,
-      source_document_id: doc.source_document_id,
-      source_verification_status: refs.source_verification_status,
-      document_title: doc.title,
-    };
-  });
+  const pageTexts = doc.page_texts?.length
+    ? doc.page_texts.map((t, i) => ({
+        page: i + 1,
+        text: t,
+        extraction_method: (t.trim()
+          ? 'text'
+          : doc.ocr_used
+            ? 'ocr'
+            : 'empty') as 'text' | 'ocr' | 'empty',
+      }))
+    : pagesFromPlainText(String(doc.extracted_text || '')).pages;
+
+  const pageParts = chunkPagesPreserving(pageTexts, 700);
+  const chunks: CodeKnowledgeChunk[] =
+    pageParts.length > 0
+      ? pageParts.map((p) => {
+          const refs = detectSourceRefsFromText(p.content, {
+            pageGuess: p.page_start,
+            allowPageGuess: Boolean(doc.page_texts?.length),
+          });
+          return {
+            id: uid('kchk'),
+            company_id: doc.company_id,
+            document_id: doc.id,
+            edition_id: doc.edition_id || doc.code_edition_id || null,
+            chunk_index: p.index,
+            content: p.content,
+            code: doc.code,
+            edition: doc.edition,
+            section: refs.section,
+            subsection: refs.subsection,
+            table_reference: refs.table_reference,
+            figure_reference: refs.figure_reference,
+            page_number: refs.page_number ?? p.page_start,
+            page_start: p.page_start,
+            page_end: p.page_end,
+            extraction_method: p.extraction_method,
+            paragraph_reference: refs.paragraph_reference,
+            code_reference: refs.code_reference,
+            source_document_id: doc.source_document_id,
+            source_verification_status: refs.source_verification_status,
+            document_title: doc.title,
+          };
+        })
+      : (() => {
+          const text = String(doc.extracted_text || '').trim();
+          const parts = text ? chunkText(text, 700) : [];
+          return parts.map((p) => {
+            const refs = detectSourceRefsFromText(p.content, {
+              pageGuess: p.pageGuess,
+              allowPageGuess: false,
+            });
+            return {
+              id: uid('kchk'),
+              company_id: doc.company_id,
+              document_id: doc.id,
+              edition_id: doc.edition_id || doc.code_edition_id || null,
+              chunk_index: p.index,
+              content: p.content,
+              code: doc.code,
+              edition: doc.edition,
+              section: refs.section,
+              subsection: refs.subsection,
+              table_reference: refs.table_reference,
+              figure_reference: refs.figure_reference,
+              page_number: refs.page_number,
+              page_start: refs.page_number,
+              page_end: refs.page_number,
+              extraction_method: 'text' as const,
+              paragraph_reference: refs.paragraph_reference,
+              code_reference: refs.code_reference,
+              source_document_id: doc.source_document_id,
+              source_verification_status: refs.source_verification_status,
+              document_title: doc.title,
+            };
+          });
+        })();
   store.chunks.push(...chunks);
   doc.chunk_count = chunks.length;
   doc.updated_at = nowIso();
@@ -330,7 +430,9 @@ function runEmbed(doc: CodeKnowledgeDocumentMeta): void {
 function runIndex(doc: CodeKnowledgeDocumentMeta): void {
   doc.index_status = 'indexed';
   doc.status = 'active';
+  doc.ingestion_status = 'indexed';
   doc.indexed_at = nowIso();
+  doc.last_ingestion_at = doc.last_ingestion_at || nowIso();
   doc.updated_at = nowIso();
 }
 

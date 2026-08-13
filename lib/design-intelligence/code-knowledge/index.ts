@@ -39,6 +39,33 @@ export {
   companyCanAccessDocument,
 } from '@/lib/design-intelligence/code-knowledge/ingestion';
 export {
+  CODE_KNOWLEDGE_STORAGE_BUCKET,
+  CODE_KNOWLEDGE_LOGICAL_PREFIX,
+  buildCodeKnowledgeLogicalPath,
+  buildCodeKnowledgeObjectPath,
+  parseCodeKnowledgeObjectPath,
+  sanitizeStorageSegment,
+} from '@/lib/design-intelligence/code-knowledge/storage-path';
+export { sha256HexFromBytes, sha256HexFromText } from '@/lib/design-intelligence/code-knowledge/sha256';
+export {
+  createInMemoryCodeKnowledgeStorage,
+  getDefaultCodeKnowledgeStorage,
+  getSharedInMemoryCodeKnowledgeStorage,
+  resetInMemoryCodeKnowledgeStorage,
+  resolveCodeKnowledgeUploadPath,
+} from '@/lib/design-intelligence/code-knowledge/storage-client';
+export {
+  uploadAndIngestCodeKnowledgeDocument,
+  ingestCodeKnowledgeFromStorage,
+  reingestCodeKnowledgeDocument,
+} from '@/lib/design-intelligence/code-knowledge/storage-ingestion';
+export {
+  extractPdfPagesFromBytes,
+  applyOcrFallbackToPages,
+  pagesFromPlainText,
+  chunkPagesPreserving,
+} from '@/lib/design-intelligence/code-knowledge/pdf-page-extract';
+export {
   searchCodeKnowledge,
   explainCodeKnowledgeHits,
 } from '@/lib/design-intelligence/code-knowledge/search';

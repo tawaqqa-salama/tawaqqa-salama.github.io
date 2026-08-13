@@ -1,0 +1,614 @@
+/**
+ * Storage-backed Code Knowledge ingestion:
+ * Storage → authenticated download → PDF parse → page extract → OCR fallback
+ * → chunks → source refs → index → RAG
+ *
+ * Never invents NFPA numeric values. Never uses Cursor/ChatGPT/web PDFs.
+ */
+
+import { sha256HexFromBytes } from '@/lib/design-intelligence/code-knowledge/sha256';
+import {
+  applyOcrFallbackToPages,
+  chunkPagesPreserving,
+  extractPdfPagesFromBytes,
+  pagesFromPlainText,
+  type ExtractedPdfPage,
+} from '@/lib/design-intelligence/code-knowledge/pdf-page-extract';
+import {
+  getDefaultCodeKnowledgeStorage,
+  resolveCodeKnowledgeUploadPath,
+  type CodeKnowledgeStorageAdapter,
+} from '@/lib/design-intelligence/code-knowledge/storage-client';
+import { CODE_KNOWLEDGE_STORAGE_BUCKET } from '@/lib/design-intelligence/code-knowledge/storage-path';
+import {
+  getCodeKnowledgeStore,
+  nowIso,
+  uid,
+} from '@/lib/design-intelligence/code-knowledge/store';
+import { getCodeEdition, registerCodeEdition } from '@/lib/design-intelligence/code-knowledge/registry';
+import {
+  listChunksForDocument,
+  registerKnowledgeDocument,
+  runDocumentPipeline,
+} from '@/lib/design-intelligence/code-knowledge/ingestion';
+import { detectSourceRefsFromText } from '@/lib/design-intelligence/code-knowledge/source-refs';
+import { embedText } from '@/lib/design-intelligence/embeddings';
+import type {
+  CodeKnowledgeChunk,
+  CodeKnowledgeDocumentMeta,
+} from '@/lib/design-intelligence/code-knowledge/types';
+
+export type UploadCodeKnowledgeInput = {
+  companyId: string;
+  code: string;
+  edition: string;
+  title?: string;
+  fileName: string;
+  mimeType?: string | null;
+  bytes: Uint8Array;
+  source_document_id?: string;
+  source_type?: string;
+  verification_status?: string;
+  platform_verification_status?: string;
+  adoption_status?: string;
+  created_by?: string | null;
+  /** When true and SHA differs, supersede prior active doc for same code/edition. */
+  replaceIfChanged?: boolean;
+  /** Optional OCR text keyed by page number (never invented by pipeline). */
+  ocrPageText?: Record<number, string>;
+  storage?: CodeKnowledgeStorageAdapter;
+};
+
+export type UploadCodeKnowledgeResult =
+  | {
+      status: 'skipped_duplicate';
+      document: CodeKnowledgeDocumentMeta;
+      sha256: string;
+      reason: 'identical_sha256';
+    }
+  | {
+      status: 'indexed' | 'failed';
+      document: CodeKnowledgeDocumentMeta;
+      sha256: string;
+      superseded?: CodeKnowledgeDocumentMeta | null;
+      storage_path: string;
+      chunk_count: number;
+      page_count: number;
+      error?: string;
+    };
+
+function findActiveDuplicateBySha(input: {
+  companyId: string;
+  code: string;
+  edition: string;
+  sha256: string;
+}): CodeKnowledgeDocumentMeta | null {
+  return (
+    getCodeKnowledgeStore().documents.find(
+      (d) =>
+        !d.deleted_at &&
+        d.company_id === input.companyId &&
+        d.code === input.code &&
+        d.edition === input.edition &&
+        d.sha256 === input.sha256 &&
+        d.ingestion_status !== 'superseded' &&
+        d.status !== 'superseded'
+    ) || null
+  );
+}
+
+function findActiveDocsForEdition(input: {
+  companyId: string;
+  code: string;
+  edition: string;
+}): CodeKnowledgeDocumentMeta[] {
+  return getCodeKnowledgeStore().documents.filter(
+    (d) =>
+      !d.deleted_at &&
+      d.company_id === input.companyId &&
+      d.code === input.code &&
+      d.edition === input.edition &&
+      d.ingestion_status !== 'superseded' &&
+      d.status !== 'superseded'
+  );
+}
+
+function supersedeDocument(doc: CodeKnowledgeDocumentMeta): void {
+  doc.status = 'superseded';
+  doc.ingestion_status = 'superseded';
+  doc.index_status = 'superseded';
+  doc.updated_at = nowIso();
+}
+
+function linkEdition(input: {
+  companyId: string;
+  code: string;
+  edition: string;
+  title?: string;
+  source_document_id: string;
+  source_type?: string;
+  verification_status?: string;
+  platform_verification_status?: string;
+  adoption_status?: string;
+}): string {
+  const reg = registerCodeEdition({
+    companyId: input.companyId,
+    code: input.code,
+    edition: input.edition,
+    title: input.title,
+    source_document_id: input.source_document_id,
+    source_type: input.source_type,
+    verification_status: input.verification_status,
+    platform_verification_status:
+      input.platform_verification_status || 'NOT_VERIFIED_OFFICIAL',
+    adoption_status: input.adoption_status,
+    status: 'draft',
+    idempotent: true,
+  });
+  if (reg.ok) return reg.edition.id;
+  const existing = getCodeEdition(input.code, input.edition, input.companyId);
+  return existing?.id || uid('ced');
+}
+
+/**
+ * Upload bytes to private design-knowledge bucket and ingest from Storage.
+ */
+export async function uploadAndIngestCodeKnowledgeDocument(
+  input: UploadCodeKnowledgeInput
+): Promise<UploadCodeKnowledgeResult> {
+  const storage = input.storage || getDefaultCodeKnowledgeStorage();
+  const sha256 = await sha256HexFromBytes(input.bytes);
+  const mime =
+    input.mimeType ||
+    (input.fileName.toLowerCase().endsWith('.pdf')
+      ? 'application/pdf'
+      : 'application/octet-stream');
+
+  const dup = findActiveDuplicateBySha({
+    companyId: input.companyId,
+    code: input.code,
+    edition: input.edition,
+    sha256,
+  });
+  if (dup) {
+    return {
+      status: 'skipped_duplicate',
+      document: dup,
+      sha256,
+      reason: 'identical_sha256',
+    };
+  }
+
+  let superseded: CodeKnowledgeDocumentMeta | null = null;
+  const prior = findActiveDocsForEdition({
+    companyId: input.companyId,
+    code: input.code,
+    edition: input.edition,
+  });
+  const parent = prior[0] || null;
+  if (input.replaceIfChanged !== false && prior.length) {
+    for (const p of prior) {
+      // Historical rows kept; only mark superseded — never mutate extracted body of history
+      supersedeDocument(p);
+      superseded = p;
+    }
+  }
+
+  const documentId = uid('kdoc');
+  const source_document_id =
+    input.source_document_id ||
+    `storage:${input.code}/${input.edition}/${documentId}`;
+  const editionId = linkEdition({
+    companyId: input.companyId,
+    code: input.code,
+    edition: input.edition,
+    title: input.title,
+    source_document_id,
+    source_type: input.source_type,
+    verification_status: input.verification_status,
+    platform_verification_status: input.platform_verification_status,
+    adoption_status: input.adoption_status,
+  });
+
+  const { bucket, path } = resolveCodeKnowledgeUploadPath({
+    companyId: input.companyId,
+    code: input.code,
+    edition: input.edition,
+    documentId,
+    fileName: input.fileName,
+  });
+
+  const uploaded = await storage.upload(bucket, path, input.bytes, {
+    contentType: mime,
+    upsert: false,
+  });
+  if (!uploaded.ok || !uploaded.path) {
+    const failed = registerKnowledgeDocument({
+      id: documentId,
+      companyId: input.companyId,
+      title: input.title || `${input.code} ${input.edition}`,
+      code: input.code,
+      edition: input.edition,
+      source_document_id,
+      file_name: input.fileName,
+      file_mime: mime,
+      mime_type: mime,
+      file_size_bytes: input.bytes.byteLength,
+      storage_bucket: bucket,
+      storage_path: path,
+      sha256,
+      created_by: input.created_by,
+      code_edition_id: editionId,
+      edition_id: editionId,
+      parent_document_id: parent?.id ?? null,
+    });
+    failed.ingestion_status = 'failed';
+    failed.ingestion_version = (parent?.ingestion_version || 0) + 1;
+    return {
+      status: 'failed',
+      document: failed,
+      sha256,
+      storage_path: path,
+      chunk_count: 0,
+      page_count: 0,
+      error: uploaded.error || 'upload_failed',
+      superseded,
+    };
+  }
+
+  const ingest = await ingestCodeKnowledgeFromStorage({
+    companyId: input.companyId,
+    code: input.code,
+    edition: input.edition,
+    editionId,
+    documentId,
+    title: input.title || `${input.code} ${input.edition}`,
+    fileName: input.fileName,
+    mimeType: mime,
+    sha256,
+    fileSize: input.bytes.byteLength,
+    storagePath: uploaded.path,
+    storageBucket: bucket,
+    source_document_id,
+    source_type: input.source_type || 'PROJECT_PROVIDED_DOCUMENT',
+    verification_status: input.verification_status || 'UNVERIFIED',
+    platform_verification_status:
+      input.platform_verification_status || 'NOT_VERIFIED_OFFICIAL',
+    adoption_status: input.adoption_status,
+    parent_document_id: parent?.id ?? null,
+    ingestion_version: (parent?.ingestion_version || 0) + 1,
+    created_by: input.created_by,
+    ocrPageText: input.ocrPageText,
+    storage,
+    /** Prefer already-held bytes to avoid a second round-trip in tests */
+    preloadedBytes: input.bytes,
+  });
+
+  return { ...ingest, superseded };
+}
+
+export type IngestFromStorageInput = {
+  companyId: string;
+  code: string;
+  edition: string;
+  editionId?: string;
+  documentId?: string;
+  title: string;
+  fileName: string;
+  mimeType?: string | null;
+  sha256: string;
+  fileSize?: number;
+  storagePath: string;
+  storageBucket?: string;
+  source_document_id: string;
+  source_type?: string;
+  verification_status?: string;
+  platform_verification_status?: string;
+  adoption_status?: string;
+  parent_document_id?: string | null;
+  ingestion_version?: number;
+  created_by?: string | null;
+  ocrPageText?: Record<number, string>;
+  storage?: CodeKnowledgeStorageAdapter;
+  preloadedBytes?: Uint8Array;
+};
+
+/**
+ * Download (or use preloaded bytes) from Storage and run page-preserving pipeline.
+ */
+export async function ingestCodeKnowledgeFromStorage(
+  input: IngestFromStorageInput
+): Promise<{
+  status: 'indexed' | 'failed';
+  document: CodeKnowledgeDocumentMeta;
+  sha256: string;
+  storage_path: string;
+  chunk_count: number;
+  page_count: number;
+  error?: string;
+}> {
+  const storage = input.storage || getDefaultCodeKnowledgeStorage();
+  const bucket = input.storageBucket || CODE_KNOWLEDGE_STORAGE_BUCKET;
+
+  let bytes = input.preloadedBytes || null;
+  if (!bytes) {
+    const dl = await storage.download(bucket, input.storagePath);
+    if (!dl.ok || !dl.bytes) {
+      const doc = registerKnowledgeDocument({
+        companyId: input.companyId,
+        title: input.title,
+        code: input.code,
+        edition: input.edition,
+        source_document_id: input.source_document_id,
+        file_name: input.fileName,
+        file_mime: input.mimeType,
+        file_size_bytes: input.fileSize ?? null,
+        storage_path: input.storagePath,
+        created_by: input.created_by,
+        parent_document_id: input.parent_document_id,
+      });
+      applyStorageMeta(doc, input, bucket);
+      doc.ingestion_status = 'failed';
+      return {
+        status: 'failed',
+        document: doc,
+        sha256: input.sha256,
+        storage_path: input.storagePath,
+        chunk_count: 0,
+        page_count: 0,
+        error: dl.error || 'download_failed',
+      };
+    }
+    bytes = dl.bytes;
+  }
+
+  // Authenticated signed URL availability check (never use public URL)
+  await storage.createSignedUrl(bucket, input.storagePath, 600);
+
+  const editionId =
+    input.editionId ||
+    linkEdition({
+      companyId: input.companyId,
+      code: input.code,
+      edition: input.edition,
+      title: input.title,
+      source_document_id: input.source_document_id,
+      source_type: input.source_type,
+      verification_status: input.verification_status,
+      platform_verification_status: input.platform_verification_status,
+      adoption_status: input.adoption_status,
+    });
+
+  let pages: ExtractedPdfPage[] = [];
+  let extractError: string | undefined;
+  const isPdf =
+    (input.mimeType || '').includes('pdf') ||
+    input.fileName.toLowerCase().endsWith('.pdf');
+
+  try {
+    if (isPdf) {
+      const extracted = await extractPdfPagesFromBytes(bytes);
+      pages = extracted.pages;
+    } else {
+      const text = new TextDecoder('utf-8').decode(bytes);
+      pages = pagesFromPlainText(text).pages;
+    }
+  } catch (err) {
+    extractError = err instanceof Error ? err.message : String(err);
+    pages = [];
+  }
+
+  const needsOcr = pages.length === 0 || pages.every((p) => !p.text.trim());
+  const afterOcr = applyOcrFallbackToPages(
+    pages.length
+      ? pages
+      : [{ page: 1, text: '', extraction_method: 'empty' }],
+    input.ocrPageText
+  );
+
+  const pageParts = chunkPagesPreserving(afterOcr.pages, 700);
+  const doc = registerKnowledgeDocument({
+    id: input.documentId,
+    companyId: input.companyId,
+    title: input.title,
+    code: input.code,
+    edition: input.edition,
+    source_document_id: input.source_document_id,
+    source_type: input.source_type,
+    verification_status: input.verification_status,
+    platform_verification_status: input.platform_verification_status,
+    adoption_status: input.adoption_status,
+    file_name: input.fileName,
+    file_mime: input.mimeType,
+    mime_type: input.mimeType,
+    file_size_bytes: input.fileSize ?? bytes.byteLength,
+    storage_bucket: bucket,
+    storage_path: input.storagePath,
+    sha256: input.sha256,
+    extracted_text: afterOcr.combined_text,
+    parent_document_id: input.parent_document_id,
+    created_by: input.created_by,
+    code_edition_id: editionId,
+    edition_id: editionId,
+  });
+
+  applyStorageMeta(doc, input, bucket, editionId);
+  doc.page_count = afterOcr.page_count;
+  doc.pages_extracted = afterOcr.pages_extracted;
+  doc.pages_ocr = afterOcr.pages_ocr;
+  doc.page_texts = afterOcr.pages.map((p) => p.text);
+  doc.ocr_used = afterOcr.ocr_used || needsOcr;
+  doc.extract_status = extractError ? 'failed' : 'indexed';
+  doc.extraction_status = doc.extract_status;
+  doc.ocr_status = afterOcr.ocr_used || needsOcr ? 'indexed' : 'indexed';
+  doc.ingestion_status = 'chunking';
+  doc.last_ingestion_at = nowIso();
+
+  // Replace default text chunker with page-preserving chunks
+  const store = getCodeKnowledgeStore();
+  store.chunks = store.chunks.filter((c) => c.document_id !== doc.id);
+  const chunks: CodeKnowledgeChunk[] = pageParts.map((p) => {
+    const refs = detectSourceRefsFromText(p.content, {
+      pageGuess: p.page_start,
+      allowPageGuess: true,
+    });
+    return {
+      id: uid('kchk'),
+      company_id: doc.company_id,
+      document_id: doc.id,
+      edition_id: editionId,
+      chunk_index: p.index,
+      content: p.content,
+      code: doc.code,
+      edition: doc.edition,
+      section: refs.section,
+      subsection: refs.subsection,
+      table_reference: refs.table_reference,
+      figure_reference: refs.figure_reference,
+      page_number: refs.page_number ?? p.page_start,
+      page_start: p.page_start,
+      page_end: p.page_end,
+      extraction_method: p.extraction_method,
+      paragraph_reference: refs.paragraph_reference,
+      code_reference: refs.code_reference,
+      source_document_id: doc.source_document_id,
+      source_verification_status: refs.source_verification_status,
+      embedding: embedText(p.content),
+      document_title: doc.title,
+    };
+  });
+  store.chunks.push(...chunks);
+  doc.chunk_count = chunks.length;
+  doc.embedding_status = chunks.length ? 'indexed' : 'pending';
+  doc.ingestion_status = 'indexing';
+
+  // Mark pipeline jobs complete for this document (storage path already extracted)
+  for (const job of store.jobs.filter((j) => j.document_id === doc.id)) {
+    job.status = 'indexed';
+    job.finished_at = nowIso();
+    job.updated_at = nowIso();
+  }
+  doc.index_status = 'indexed';
+  doc.status = 'active';
+  doc.indexed_at = nowIso();
+  doc.ingestion_status = 'indexed';
+  doc.updated_at = nowIso();
+
+  // Link edition → knowledge document
+  const edition = getCodeEdition(doc.code, doc.edition, input.companyId);
+  if (edition) {
+    edition.knowledge_document_id = doc.id;
+    edition.source_document_id = doc.source_document_id;
+    edition.status = edition.status === 'draft' ? 'indexed' : edition.status;
+    edition.updated_at = nowIso();
+  }
+
+  if (extractError && chunks.length === 0 && !input.ocrPageText) {
+    doc.ingestion_status = 'failed';
+    doc.index_status = 'failed';
+    return {
+      status: 'failed',
+      document: doc,
+      sha256: input.sha256,
+      storage_path: input.storagePath,
+      chunk_count: 0,
+      page_count: afterOcr.page_count,
+      error: extractError,
+    };
+  }
+
+  return {
+    status: 'indexed',
+    document: doc,
+    sha256: input.sha256,
+    storage_path: input.storagePath,
+    chunk_count: chunks.length,
+    page_count: afterOcr.page_count,
+  };
+}
+
+/**
+ * Re-ingest existing Storage object (same path). Does not replace historical versions.
+ */
+export async function reingestCodeKnowledgeDocument(
+  documentId: string,
+  opts?: {
+    storage?: CodeKnowledgeStorageAdapter;
+    ocrPageText?: Record<number, string>;
+  }
+): Promise<UploadCodeKnowledgeResult | { status: 'failed'; error: string }> {
+  const doc = getCodeKnowledgeStore().documents.find(
+    (d) => d.id === documentId && !d.deleted_at
+  );
+  if (!doc) return { status: 'failed', error: 'document_missing' };
+  if (!doc.storage_path || !doc.company_id || !doc.sha256) {
+    return { status: 'failed', error: 'storage_metadata_missing' };
+  }
+
+  const storage = opts?.storage || getDefaultCodeKnowledgeStorage();
+  const dl = await storage.download(
+    doc.storage_bucket || CODE_KNOWLEDGE_STORAGE_BUCKET,
+    doc.storage_path
+  );
+  if (!dl.ok || !dl.bytes) {
+    return { status: 'failed', error: dl.error || 'download_failed' };
+  }
+
+  const sha = await sha256HexFromBytes(dl.bytes);
+  if (sha === doc.sha256 && doc.index_status === 'indexed' && (doc.chunk_count || 0) > 0) {
+    return {
+      status: 'skipped_duplicate',
+      document: doc,
+      sha256: sha,
+      reason: 'identical_sha256',
+    };
+  }
+
+  // Content changed at same path → new ingestion version (do not mutate history body of old)
+  return uploadAndIngestCodeKnowledgeDocument({
+    companyId: doc.company_id,
+    code: doc.code,
+    edition: doc.edition,
+    title: doc.title,
+    fileName: doc.file_name || 'document.pdf',
+    mimeType: doc.mime_type || doc.file_mime,
+    bytes: dl.bytes,
+    source_document_id: doc.source_document_id || undefined,
+    source_type: doc.source_type || undefined,
+    verification_status: doc.verification_status || undefined,
+    platform_verification_status: doc.platform_verification_status || undefined,
+    adoption_status: doc.adoption_status || undefined,
+    created_by: doc.created_by,
+    replaceIfChanged: true,
+    ocrPageText: opts?.ocrPageText,
+    storage,
+  });
+}
+
+function applyStorageMeta(
+  doc: CodeKnowledgeDocumentMeta,
+  input: {
+    sha256: string;
+    mimeType?: string | null;
+    ingestion_version?: number;
+    source_type?: string;
+  },
+  bucket: string,
+  editionId?: string
+): void {
+  doc.sha256 = input.sha256;
+  doc.content_sha256 = input.sha256;
+  doc.mime_type = input.mimeType || doc.file_mime || null;
+  doc.file_mime = doc.mime_type;
+  doc.storage_bucket = bucket;
+  doc.ingestion_version = input.ingestion_version ?? 1;
+  doc.ingestion_status = 'uploaded';
+  if (editionId) {
+    doc.code_edition_id = editionId;
+    doc.edition_id = editionId;
+  }
+  if (input.source_type) doc.source_type = input.source_type;
+}
+
+/** Test helper: run text-only register pipeline still available. */
+export { runDocumentPipeline, listChunksForDocument };

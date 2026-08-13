@@ -26,9 +26,15 @@ export function searchCodeKnowledge(
   const store = getCodeKnowledgeStore();
   const includePlatform = params.includePlatformDocuments === true;
 
+  const documentId = params.documentId ? String(params.documentId).trim() : '';
+  const sectionFilter = params.section ? String(params.section).trim() : '';
+  const pageFilter = typeof params.page === 'number' ? params.page : null;
+
   const docs = store.documents.filter((d) => {
     if (d.deleted_at) return false;
+    if (d.status === 'superseded' || d.ingestion_status === 'superseded') return false;
     if (d.code !== code || d.edition !== edition) return false;
+    if (documentId && d.id !== documentId) return false;
     if (d.company_id === companyId) return true;
     if (includePlatform && d.company_id == null) return true;
     return false;
@@ -48,6 +54,13 @@ export function searchCodeKnowledge(
     }
     if (chunk.code && chunk.code !== code) continue;
     if (chunk.edition && chunk.edition !== edition) continue;
+    if (sectionFilter && chunk.section !== sectionFilter) continue;
+    if (pageFilter != null) {
+      const start = chunk.page_start ?? chunk.page_number;
+      const end = chunk.page_end ?? chunk.page_number;
+      if (start == null || end == null) continue;
+      if (pageFilter < start || pageFilter > end) continue;
+    }
 
     const emb = chunk.embedding?.length ? chunk.embedding : embedText(chunk.content);
     const cos = cosineSimilarity(qVec, emb);

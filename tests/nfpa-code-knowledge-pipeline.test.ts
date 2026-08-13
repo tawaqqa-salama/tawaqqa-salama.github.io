@@ -6,21 +6,29 @@ import { beforeEach, describe, expect, it } from 'vitest';
 import {
   adoptNfpa13_2025ForProject,
   applyAdoptionToEngineeringData,
+  applyOcrFallbackToPages,
   assertCitationPresentInText,
+  buildCodeKnowledgeObjectPath,
   canAuthoritativePass,
+  chunkPagesPreserving,
+  CODE_KNOWLEDGE_STORAGE_BUCKET,
   companyCanAccessDocument,
   compareCodeEditions,
+  createInMemoryCodeKnowledgeStorage,
   detectSourceRefsFromText,
   evaluateAdvisoryComplianceAttempt,
   explainCodeKnowledgeHits,
   getEditionRule,
   getKnowledgeDocument,
   getProjectAdoptedEdition,
+  ingestCodeKnowledgeFromStorage,
   listChunksForDocument,
   listEditionRules,
   listPipelineJobs,
   mapComplianceBlockerStatus,
   NFPA13_PIPELINE_RULE_IDS,
+  pagesFromPlainText,
+  parseCodeKnowledgeObjectPath,
   processNextPipelineJob,
   ragHitsCannotProducePass,
   registerCodeEdition,
@@ -30,10 +38,14 @@ import {
   registerNfpa13_2025ProjectEdition,
   registerNfpa13_2025RuleShells,
   resetCodeKnowledgeStore,
+  resetInMemoryCodeKnowledgeStorage,
   resolveProjectCodeEdition,
   retryFailedJob,
   runDocumentPipeline,
   searchCodeKnowledge,
+  sha256HexFromBytes,
+  sha256HexFromText,
+  uploadAndIngestCodeKnowledgeDocument,
 } from '@/lib/design-intelligence/code-knowledge';
 import {
   attachFrozenComplianceSnapshot,
@@ -77,6 +89,7 @@ function sampleText(): string {
 
 beforeEach(() => {
   resetCodeKnowledgeStore();
+  resetInMemoryCodeKnowledgeStorage();
 });
 
 describe('A. Document registration', () => {
@@ -572,5 +585,274 @@ describe('Pipeline job processNext', () => {
       (j) => j.status === 'queued' || j.status === 'pending'
     );
     expect(remaining.length).toBeGreaterThan(0);
+  });
+});
+
+describe('I. Supabase Storage ingestion', () => {
+  const storage = () => createInMemoryCodeKnowledgeStorage();
+
+  function pageBytes(text: string): Uint8Array {
+    return new TextEncoder().encode(text);
+  }
+
+  it('builds tenant storage path from code/edition/documentId (not file name alone)', () => {
+    const path = buildCodeKnowledgeObjectPath({
+      companyId: COMPANY_A,
+      code: 'NFPA-13',
+      edition: '2025',
+      documentId: 'doc-1',
+      fileName: 'anything.pdf',
+    });
+    expect(path).toBe(
+      `${COMPANY_A}/code-knowledge/NFPA-13/2025/doc-1/anything.pdf`
+    );
+    expect(CODE_KNOWLEDGE_STORAGE_BUCKET).toBe('design-knowledge');
+    const parsed = parseCodeKnowledgeObjectPath(path);
+    expect(parsed?.code).toBe('NFPA-13');
+    expect(parsed?.edition).toBe('2025');
+    expect(parsed?.documentId).toBe('doc-1');
+  });
+
+  it('upload metadata + SHA-256 deduplication skips identical re-ingest', async () => {
+    const adapter = storage();
+    const body = pageBytes(
+      'Section 8.1\fTable 8.2.1 ordinary hazard notes.\fPage 3 spacing.'
+    );
+    const sha = await sha256HexFromBytes(body);
+    const first = await uploadAndIngestCodeKnowledgeDocument({
+      companyId: COMPANY_A,
+      code: 'NFPA-13',
+      edition: '2025',
+      fileName: 'nfpa13-2025.txt',
+      mimeType: 'text/plain',
+      bytes: body,
+      storage: adapter,
+    });
+    expect(first.status).toBe('indexed');
+    if (first.status !== 'indexed') return;
+    expect(first.document.sha256).toBe(sha);
+    expect(first.document.storage_bucket).toBe('design-knowledge');
+    expect(first.document.storage_path).toContain('/code-knowledge/NFPA-13/2025/');
+    expect(first.document.mime_type).toBe('text/plain');
+    expect(first.document.ingestion_status).toBe('indexed');
+    expect(first.document.edition_id).toBeTruthy();
+
+    const second = await uploadAndIngestCodeKnowledgeDocument({
+      companyId: COMPANY_A,
+      code: 'NFPA-13',
+      edition: '2025',
+      fileName: 'nfpa13-2025-copy.txt',
+      mimeType: 'text/plain',
+      bytes: body,
+      storage: adapter,
+    });
+    expect(second.status).toBe('skipped_duplicate');
+    if (second.status === 'skipped_duplicate') {
+      expect(second.document.id).toBe(first.document.id);
+      expect(second.sha256).toBe(sha);
+    }
+  });
+
+  it('changed bytes create a new ingestion version without mutating history', async () => {
+    const adapter = storage();
+    const v1 = await uploadAndIngestCodeKnowledgeDocument({
+      companyId: COMPANY_A,
+      code: 'NFPA-13',
+      edition: '2025',
+      fileName: 'v1.txt',
+      mimeType: 'text/plain',
+      bytes: pageBytes('Section 1.1 version one body.'),
+      storage: adapter,
+    });
+    expect(v1.status).toBe('indexed');
+    if (v1.status !== 'indexed') return;
+    const historicText = v1.document.extracted_text;
+    const historicId = v1.document.id;
+
+    const v2 = await uploadAndIngestCodeKnowledgeDocument({
+      companyId: COMPANY_A,
+      code: 'NFPA-13',
+      edition: '2025',
+      fileName: 'v2.txt',
+      mimeType: 'text/plain',
+      bytes: pageBytes('Section 1.1 version two replacement body.'),
+      storage: adapter,
+      replaceIfChanged: true,
+    });
+    expect(v2.status).toBe('indexed');
+    if (v2.status !== 'indexed') return;
+    expect(v2.document.id).not.toBe(historicId);
+    expect(v2.document.parent_document_id).toBe(historicId);
+    expect(v2.document.ingestion_version).toBeGreaterThan(1);
+    expect(getKnowledgeDocument(historicId)?.status).toBe('superseded');
+    expect(getKnowledgeDocument(historicId)?.extracted_text).toBe(historicText);
+    expect(getKnowledgeDocument(historicId)?.sha256).not.toBe(v2.document.sha256);
+  });
+
+  it('ingests from Storage download stream with page preservation + OCR fallback', async () => {
+    const adapter = storage();
+    const path = `${COMPANY_A}/code-knowledge/NFPA-13/2025/preloaded/doc.txt`;
+    const bytes = pageBytes('Section 9.1 page one text.');
+    await adapter.upload('design-knowledge', path, bytes, {
+      contentType: 'text/plain',
+    });
+    const sha = await sha256HexFromBytes(bytes);
+
+    const result = await ingestCodeKnowledgeFromStorage({
+      companyId: COMPANY_A,
+      code: 'NFPA-13',
+      edition: '2025',
+      title: 'From Storage',
+      fileName: 'doc.txt',
+      mimeType: 'text/plain',
+      sha256: sha,
+      storagePath: path,
+      source_document_id: 'storage:test',
+      storage: adapter,
+    });
+    expect(result.status).toBe('indexed');
+    expect(result.page_count).toBeGreaterThan(0);
+    const chunks = listChunksForDocument(result.document.id);
+    expect(chunks.length).toBeGreaterThan(0);
+    expect(chunks.every((c) => c.page_start != null && c.page_end != null)).toBe(true);
+    expect(chunks.every((c) => c.document_id === result.document.id)).toBe(true);
+    expect(chunks.every((c) => c.edition_id)).toBeTruthy();
+    expect(chunks.every((c) => c.extraction_method)).toBeTruthy();
+
+    // OCR fallback: empty pages marked ocr without inventing NFPA numbers
+    const empty = applyOcrFallbackToPages([
+      { page: 1, text: '', extraction_method: 'empty' },
+    ]);
+    expect(empty.ocr_used).toBe(true);
+    expect(empty.pages[0]?.extraction_method).toBe('ocr');
+    expect(empty.pages[0]?.text).toBe('');
+
+    const withOcr = applyOcrFallbackToPages(
+      [{ page: 1, text: '', extraction_method: 'empty' }],
+      { 1: 'Section 2.2 OCR recovered text.' }
+    );
+    expect(withOcr.pages[0]?.text).toContain('Section 2.2');
+    expect(withOcr.extraction_method).toBe('ocr');
+  });
+
+  it('page-preserving chunker keeps page_start/page_end', () => {
+    const pages = pagesFromPlainText('Alpha page\fBeta page with Section 3.1\fGamma');
+    const chunks = chunkPagesPreserving(pages.pages, 700);
+    expect(chunks.length).toBe(3);
+    expect(chunks[0].page_start).toBe(1);
+    expect(chunks[1].page_start).toBe(2);
+    expect(chunks[2].page_end).toBe(3);
+  });
+
+  it('edition isolation: 2025 RAG never returns 2028 chunks', async () => {
+    const adapter = storage();
+    await uploadAndIngestCodeKnowledgeDocument({
+      companyId: COMPANY_A,
+      code: 'NFPA-13',
+      edition: '2025',
+      fileName: '2025.txt',
+      mimeType: 'text/plain',
+      bytes: pageBytes('Section 5.1 unique-token-2025-edition density notes.'),
+      storage: adapter,
+    });
+    await uploadAndIngestCodeKnowledgeDocument({
+      companyId: COMPANY_A,
+      code: 'NFPA-13',
+      edition: '2028',
+      fileName: '2028.txt',
+      mimeType: 'text/plain',
+      bytes: pageBytes('Section 5.1 unique-token-2028-edition density notes.'),
+      storage: adapter,
+    });
+
+    const hits2025 = searchCodeKnowledge({
+      companyId: COMPANY_A,
+      code: 'NFPA-13',
+      edition: '2025',
+      query: 'unique-token density',
+      topK: 10,
+    });
+    expect(hits2025.length).toBeGreaterThan(0);
+    expect(hits2025.every((h) => h.edition === '2025')).toBe(true);
+    expect(hits2025.every((h) => !h.chunk.content.includes('2028-edition'))).toBe(true);
+
+    const byDoc = searchCodeKnowledge({
+      companyId: COMPANY_A,
+      code: 'NFPA-13',
+      edition: '2025',
+      documentId: hits2025[0].document.id,
+      query: 'density',
+      topK: 5,
+    });
+    expect(byDoc.every((h) => h.document.id === hits2025[0].document.id)).toBe(true);
+  });
+
+  it('tenant isolation across Storage ingestions', async () => {
+    const adapter = storage();
+    await uploadAndIngestCodeKnowledgeDocument({
+      companyId: COMPANY_A,
+      code: 'NFPA-13',
+      edition: '2025',
+      fileName: 'a.txt',
+      mimeType: 'text/plain',
+      bytes: pageBytes('Section 1.1 tenant-A-secret-storage-token'),
+      storage: adapter,
+    });
+    await uploadAndIngestCodeKnowledgeDocument({
+      companyId: COMPANY_B,
+      code: 'NFPA-13',
+      edition: '2025',
+      fileName: 'b.txt',
+      mimeType: 'text/plain',
+      bytes: pageBytes('Section 1.1 tenant-B-secret-storage-token'),
+      storage: adapter,
+    });
+    const hits = searchCodeKnowledge({
+      companyId: COMPANY_A,
+      code: 'NFPA-13',
+      edition: '2025',
+      query: 'secret-storage-token',
+    });
+    expect(hits.every((h) => h.document.company_id === COMPANY_A)).toBe(true);
+    expect(hits.every((h) => !h.chunk.content.includes('tenant-B'))).toBe(true);
+  });
+
+  it('RAG cannot PASS; RULE_NOT_CONFIGURED still blocks compliance', async () => {
+    const adapter = storage();
+    const up = await uploadAndIngestCodeKnowledgeDocument({
+      companyId: COMPANY_A,
+      code: 'NFPA-13',
+      edition: '2025',
+      fileName: 'adv.txt',
+      mimeType: 'text/plain',
+      bytes: pageBytes('Section 8.1 advisory density discussion without numeric activation.'),
+      storage: adapter,
+    });
+    expect(up.status).toBe('indexed');
+    if (up.status !== 'indexed') return;
+    const hits = searchCodeKnowledge({
+      companyId: COMPANY_A,
+      code: 'NFPA-13',
+      edition: '2025',
+      query: 'density Section 8.1',
+    });
+    expect(ragHitsCannotProducePass(hits)).toBe(true);
+    const explained = explainCodeKnowledgeHits(hits);
+    expect(explained.can_produce_pass).toBe(false);
+
+    registerNfpa13_2025RuleShells();
+    expect(mapComplianceBlockerStatus('RULE_NOT_CONFIGURED').blocks).toBe(true);
+    const attempt = evaluateAdvisoryComplianceAttempt({
+      source: 'rag',
+      rule_id: 'NFPA13-DENSITY',
+      code: 'NFPA-13',
+      claimed_status: 'PASS',
+      hits,
+    });
+    expect(attempt.status).not.toBe('PASS');
+    expect(attempt.can_produce_pass).toBe(false);
+
+    // SHA helper still works
+    expect((await sha256HexFromText('x')).length).toBe(64);
   });
 });
