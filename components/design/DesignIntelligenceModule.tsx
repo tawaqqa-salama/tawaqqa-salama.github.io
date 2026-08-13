@@ -5,7 +5,14 @@ import ModuleSubNavSlot from '@/components/layout/ModuleSubNavSlot';
 import ModuleTabBar from '@/components/layout/ModuleTabBar';
 import ResponsiveTable from '@/components/ui/ResponsiveTable';
 import { useLanguage } from '@/lib/i18n/LanguageProvider';
-import { supabase } from '@/lib/supabase';
+import {
+  EXPECTED_PRODUCTION_SUPABASE_REF,
+  getSupabaseProjectRef,
+  getSupabaseRuntimeDiagnostics,
+  isSupabaseConfigured,
+  SUPABASE_PERSISTENCE_UNAVAILABLE,
+  supabase,
+} from '@/lib/supabase';
 import {
   analyticsSnapshot,
   assertEngineeringDecision,
@@ -31,6 +38,8 @@ import {
   updateWorkspace,
   addWorkspaceNote,
   uploadAndIndexKnowledgeFile,
+  KnowledgePersistError,
+  buildKnowledgeUploadDiagnostics,
   addLesson,
   type DesignIntelligenceTabId,
   type DiDesignChecklist,
@@ -38,11 +47,13 @@ import {
   type DiDesignWorkspace,
   type DiKnowledgeDocument,
   type EngineeringFormState,
+  type KnowledgeUploadDiagnostics,
   type RagAnswer,
 } from '@/lib/design-intelligence';
 import EngineeringRulesPanel from '@/components/design/EngineeringRulesPanel';
 import CodeKnowledgePanel from '@/components/design/CodeKnowledgePanel';
 import { runBlueprintAiAudit } from '@/lib/compliance/blueprint-audit';
+import { useAuth } from '@/lib/auth/AuthProvider';
 import type { EngineeringSelection } from '@/lib/design-intelligence/rules-types';
 import type { ClientRecord } from '@/lib/types/client';
 import type { BlueprintAiAuditResult } from '@/lib/types/project-reports';
@@ -66,6 +77,9 @@ const TABS: { id: DesignIntelligenceTabId; labelKey: string; fallback: string }[
 
 export default function DesignIntelligenceModule() {
   const { t, lang } = useLanguage();
+  const { session, profile } = useAuth();
+  const tenantCompanyId =
+    session?.companyId || profile?.company_id || undefined;
   const [tab, setTab] = useState<DesignIntelligenceTabId>('knowledge');
   const [docs, setDocs] = useState<DiKnowledgeDocument[]>([]);
   const [clients, setClients] = useState<ClientRecord[]>([]);
@@ -75,6 +89,12 @@ export default function DesignIntelligenceModule() {
   const [checklists, setChecklists] = useState<DiDesignChecklist[]>([]);
   const [message, setMessage] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  const [kbDiag, setKbDiag] = useState<KnowledgeUploadDiagnostics>(() =>
+    buildKnowledgeUploadDiagnostics({
+      authenticated: Boolean(session),
+      company_id_present: Boolean(tenantCompanyId),
+    })
+  );
 
   // Knowledge upload form
   const [title, setTitle] = useState('');
@@ -154,9 +174,35 @@ export default function DesignIntelligenceModule() {
     }
     setBusy(true);
     setMessage(null);
+    const authenticated = Boolean(session);
     try {
+      if (!isSupabaseConfigured) {
+        const d = buildKnowledgeUploadDiagnostics({
+          authenticated,
+          company_id_present: Boolean(tenantCompanyId),
+          error: SUPABASE_PERSISTENCE_UNAVAILABLE,
+        });
+        setKbDiag(d);
+        throw new KnowledgePersistError(SUPABASE_PERSISTENCE_UNAVAILABLE, d);
+      }
+      const companyUuid = tenantCompanyId;
+      if (!companyUuid) {
+        const d = buildKnowledgeUploadDiagnostics({
+          authenticated,
+          company_id_present: false,
+          error: 'company_uuid_missing',
+        });
+        setKbDiag(d);
+        throw new KnowledgePersistError(
+          'Supabase persistence unavailable: sign in with a company UUID.',
+          d
+        );
+      }
+
       const doc = await uploadAndIndexKnowledgeFile({
         file,
+        companyId: companyUuid,
+        authenticated,
         meta: {
           title: title.trim(),
           category,
@@ -170,27 +216,43 @@ export default function DesignIntelligenceModule() {
           keywords: tagsMeta.split(/[,،]/).map((s) => s.trim()).filter(Boolean),
           notes: notesMeta,
           applicable_codes: codes.split(/[,،]/).map((s) => s.trim()).filter(Boolean),
+          company_id: companyUuid,
         },
       });
+      setKbDiag(doc.diagnostics);
       setTitle('');
       setFile(null);
       setNotesMeta('');
       setDocs(await listKnowledgeDocuments());
-      if (doc.persistedToCloud) {
-        setMessage(
-          lang === 'en'
-            ? 'Document indexed and saved to Supabase (browser cache kept lightweight).'
-            : 'تم فهرسة المستند وحفظه في Supabase — التخزين المحلي للمتصفح لم يعد يمتلئ بالنصوص الكبيرة.'
-        );
-      } else {
-        setMessage(
-          lang === 'en'
-            ? 'Document indexed in session memory. Connect Supabase tables/bucket for durable cloud storage.'
-            : 'تمت الفهرسة في ذاكرة الجلسة. اربط جداول/سلة Supabase للحفظ الدائم على السحابة.'
+      if (!doc.persistedToCloud) {
+        throw new KnowledgePersistError(
+          SUPABASE_PERSISTENCE_UNAVAILABLE,
+          doc.diagnostics
         );
       }
+      const ref = getSupabaseProjectRef() || 'unknown';
+      setMessage(
+        `SUPABASE / PERSISTED · project=${ref} · document_id=${doc.id} · path=${doc.storage_path} · chunks=${doc.chunk_count}`
+      );
     } catch (e) {
-      setMessage(e instanceof Error ? e.message : 'Upload failed');
+      if (e instanceof KnowledgePersistError) {
+        setKbDiag(e.diagnostics);
+        setMessage(`FAILED: ${e.message}`);
+      } else {
+        const raw = e instanceof Error ? e.message : 'Upload failed';
+        setKbDiag(
+          buildKnowledgeUploadDiagnostics({
+            authenticated,
+            company_id_present: Boolean(tenantCompanyId),
+            error: raw,
+          })
+        );
+        setMessage(
+          raw.includes('Supabase persistence unavailable')
+            ? `FAILED: ${SUPABASE_PERSISTENCE_UNAVAILABLE}`
+            : `FAILED: ${raw}`
+        );
+      }
     } finally {
       setBusy(false);
     }
@@ -300,7 +362,13 @@ export default function DesignIntelligenceModule() {
       </ModuleSubNavSlot>
 
       {message ? (
-        <div className="rounded-xl border border-emerald-100 bg-emerald-50 px-3 py-2 text-sm text-emerald-900">
+        <div
+          className={`rounded-xl border px-3 py-2 text-sm ${
+            message.includes('FAILED') || message.includes('Supabase persistence unavailable')
+              ? 'border-rose-200 bg-rose-50 text-rose-900'
+              : 'border-emerald-100 bg-emerald-50 text-emerald-900'
+          }`}
+        >
           {message}
         </div>
       ) : null}
@@ -361,8 +429,49 @@ export default function DesignIntelligenceModule() {
               {busy ? '…' : label('design.kb.index', 'Upload & Index')}
             </button>
             <p className="text-[11px] text-gray-400">
-              Pipeline: OCR → extract → chunk → embed → index · jobs: {listIndexingJobs().filter((j) => j.status === 'queued').length} queued
+              Pipeline: Storage → DB → OCR/chunk/embed/index · jobs:{' '}
+              {listIndexingJobs().filter((j) => j.status === 'queued').length} queued
             </p>
+            <div className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-[11px] text-slate-700 space-y-0.5 font-mono">
+              {(() => {
+                const rt = getSupabaseRuntimeDiagnostics();
+                const authYes = Boolean(session);
+                const companyYes = Boolean(tenantCompanyId);
+                return (
+                  <>
+                    <div>runtime mode: {rt.runtime_mode}</div>
+                    <div>
+                      project ref: {rt.project_ref || '—'}
+                      {rt.project_ref && !rt.project_ref_matches_expected
+                        ? ` (expected ${EXPECTED_PRODUCTION_SUPABASE_REF})`
+                        : ''}
+                    </div>
+                    <div>authenticated: {authYes ? 'YES' : 'NO'}</div>
+                    <div>companyId present: {companyYes ? 'YES' : 'NO'}</div>
+                    <div>
+                      storage upload attempted:{' '}
+                      {kbDiag.storage_upload_attempted ? 'YES' : 'NO'}
+                    </div>
+                    <div>
+                      DB insert attempted: {kbDiag.db_insert_attempted ? 'YES' : 'NO'}
+                    </div>
+                    <div>
+                      chunks insert attempted:{' '}
+                      {kbDiag.chunks_insert_attempted ? 'YES' : 'NO'}
+                    </div>
+                    {kbDiag.storage_path ? (
+                      <div className="break-all">storage path: {kbDiag.storage_path}</div>
+                    ) : null}
+                    {kbDiag.document_id ? (
+                      <div className="break-all">document id: {kbDiag.document_id}</div>
+                    ) : null}
+                    {kbDiag.error ? (
+                      <div className="text-rose-700 break-all">error: {kbDiag.error}</div>
+                    ) : null}
+                  </>
+                );
+              })()}
+            </div>
           </div>
           <div className="xl:col-span-3">
             <ResponsiveTable className="bg-white rounded-xl border">
@@ -372,7 +481,11 @@ export default function DesignIntelligenceModule() {
                     <th className="p-3">Title</th>
                     <th className="p-3">Category</th>
                     <th className="p-3">Codes</th>
+                    <th className="p-3">Pages</th>
+                    <th className="p-3">Extracted</th>
+                    <th className="p-3">OCR</th>
                     <th className="p-3">Chunks</th>
+                    <th className="p-3">Ingestion</th>
                     <th className="p-3">Index</th>
                   </tr>
                 </thead>
@@ -387,10 +500,22 @@ export default function DesignIntelligenceModule() {
                         {d.category}
                       </td>
                       <td className="p-3 text-xs" data-label="Codes">
-                        {(d.applicable_codes || []).join(', ') || '—'}
+                        {(d.applicable_codes || []).join(', ') || d.code || '—'}
+                      </td>
+                      <td className="p-3" data-label="Pages">
+                        {d.page_count ?? '—'}
+                      </td>
+                      <td className="p-3" data-label="Extracted">
+                        {d.pages_extracted ?? '—'}
+                      </td>
+                      <td className="p-3" data-label="OCR">
+                        {d.pages_ocr ?? (d.ocr_used ? 'yes' : '—')}
                       </td>
                       <td className="p-3" data-label="Chunks">
                         {d.chunk_count || 0}
+                      </td>
+                      <td className="p-3" data-label="Ingestion">
+                        <span className="text-xs">{d.ingestion_status || '—'}</span>
                       </td>
                       <td className="p-3" data-label="Index">
                         <span className="text-xs font-semibold text-emerald-700">{d.index_status}</span>
@@ -407,7 +532,7 @@ export default function DesignIntelligenceModule() {
 
       {tab === 'codes' && (
         <CodeKnowledgePanel
-          companyId="demo-company"
+          companyId={tenantCompanyId}
           clientId={activeWs?.client_id || clients[0]?.id || 'demo-client'}
         />
       )}

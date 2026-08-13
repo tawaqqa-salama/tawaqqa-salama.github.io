@@ -87,8 +87,16 @@ export function chunkText(text: string, maxChars = 900): { content: string; inde
   return chunks;
 }
 
-/** Extract text from uploaded files (plain / pseudo-OCR for binary). Offline only. */
-export async function extractTextFromFile(file: File): Promise<{ text: string; ocrUsed: boolean }> {
+/** Extract text from uploaded files. PDFs use real page-by-page extraction (no invented body). */
+export async function extractTextFromFile(file: File): Promise<{
+  text: string;
+  ocrUsed: boolean;
+  page_count?: number;
+  pages_extracted?: number;
+  pages_ocr?: number;
+  page_texts?: string[];
+  extraction_method?: string;
+}> {
   const name = file.name.toLowerCase();
   const mime = file.type || '';
 
@@ -98,14 +106,72 @@ export async function extractTextFromFile(file: File): Promise<{ text: string; o
     name.endsWith('.csv') ||
     name.endsWith('.md')
   ) {
-    return { text: await file.text(), ocrUsed: false };
+    const text = await file.text();
+    const { pagesFromPlainText } = await import(
+      '@/lib/design-intelligence/code-knowledge/pdf-page-extract'
+    );
+    const pages = pagesFromPlainText(text);
+    return {
+      text: pages.combined_text || text,
+      ocrUsed: false,
+      page_count: pages.page_count || 1,
+      pages_extracted: pages.pages_extracted,
+      pages_ocr: 0,
+      page_texts: pages.pages.map((p) => p.text),
+      extraction_method: 'text',
+    };
   }
 
   if (name.endsWith('.json')) {
-    return { text: await file.text(), ocrUsed: false };
+    const text = await file.text();
+    return {
+      text,
+      ocrUsed: false,
+      page_count: 1,
+      pages_extracted: 1,
+      pages_ocr: 0,
+      page_texts: [text],
+      extraction_method: 'text',
+    };
   }
 
-  // Images / PDF / Office / CAD: store metadata + filename heuristics (full OCR = worker job)
+  if (mime.includes('pdf') || name.endsWith('.pdf')) {
+    const { extractPdfPagesFromBytes, applyOcrFallbackToPages } = await import(
+      '@/lib/design-intelligence/code-knowledge/pdf-page-extract'
+    );
+    const bytes = new Uint8Array(await file.arrayBuffer());
+    try {
+      let extracted = await extractPdfPagesFromBytes(bytes);
+      const needsOcr =
+        extracted.page_count === 0 ||
+        extracted.pages.every((p) => !p.text.trim());
+      if (needsOcr || extracted.pages.some((p) => !p.text.trim())) {
+        // OCR fallback marks empty pages; does not invent NFPA body text
+        extracted = applyOcrFallbackToPages(extracted.pages);
+      }
+      return {
+        text: extracted.combined_text,
+        ocrUsed: extracted.ocr_used,
+        page_count: extracted.page_count,
+        pages_extracted: extracted.pages_extracted,
+        pages_ocr: extracted.pages_ocr,
+        page_texts: extracted.pages.map((p) => p.text),
+        extraction_method: extracted.extraction_method,
+      };
+    } catch {
+      return {
+        text: '',
+        ocrUsed: true,
+        page_count: 0,
+        pages_extracted: 0,
+        pages_ocr: 0,
+        page_texts: [],
+        extraction_method: 'ocr',
+      };
+    }
+  }
+
+  // Images / Office / CAD: metadata only until dedicated parsers exist — never invent standards text
   const meta = [
     `File: ${file.name}`,
     `MIME: ${mime || 'unknown'}`,
@@ -114,5 +180,13 @@ export async function extractTextFromFile(file: File): Promise<{ text: string; o
     'Indexed keywords from filename for offline semantic search.',
     name.replace(/[_\-.]+/g, ' '),
   ].join('\n');
-  return { text: meta, ocrUsed: true };
+  return {
+    text: meta,
+    ocrUsed: true,
+    page_count: 1,
+    pages_extracted: 0,
+    pages_ocr: 1,
+    page_texts: [meta],
+    extraction_method: 'ocr',
+  };
 }

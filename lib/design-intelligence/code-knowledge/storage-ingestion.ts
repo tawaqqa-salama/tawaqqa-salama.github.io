@@ -28,11 +28,20 @@ import {
 import { getCodeEdition, registerCodeEdition } from '@/lib/design-intelligence/code-knowledge/registry';
 import {
   listChunksForDocument,
+  listKnowledgeDocumentsForCompany,
   registerKnowledgeDocument,
   runDocumentPipeline,
 } from '@/lib/design-intelligence/code-knowledge/ingestion';
 import { detectSourceRefsFromText } from '@/lib/design-intelligence/code-knowledge/source-refs';
 import { embedText } from '@/lib/design-intelligence/embeddings';
+import {
+  isUuid,
+  listPersistedCodeKnowledgeDocuments,
+  newKnowledgeChunkId,
+  newKnowledgeDocumentId,
+  persistAndVerifyCodeKnowledgeIngestion,
+  shouldPersistCodeKnowledgeToSupabase,
+} from '@/lib/design-intelligence/code-knowledge/persist';
 import type {
   CodeKnowledgeChunk,
   CodeKnowledgeDocumentMeta,
@@ -152,10 +161,14 @@ function linkEdition(input: {
 
 /**
  * Upload bytes to private design-knowledge bucket and ingest from Storage.
+ *
+ * When Supabase is configured (Production): Storage + DB persistence is required.
+ * Session-memory alone is never a final success — failures surface as FAILED.
  */
 export async function uploadAndIngestCodeKnowledgeDocument(
   input: UploadCodeKnowledgeInput
 ): Promise<UploadCodeKnowledgeResult> {
+  const mustPersist = shouldPersistCodeKnowledgeToSupabase();
   const storage = input.storage || getDefaultCodeKnowledgeStorage();
   const sha256 = await sha256HexFromBytes(input.bytes);
   const mime =
@@ -164,6 +177,40 @@ export async function uploadAndIngestCodeKnowledgeDocument(
       ? 'application/pdf'
       : 'application/octet-stream');
 
+  if (mustPersist && !isUuid(input.companyId)) {
+    const failedId = newKnowledgeDocumentId();
+    const failed = registerKnowledgeDocument({
+      id: failedId,
+      companyId: input.companyId,
+      title: input.title || `${input.code} ${input.edition}`,
+      code: input.code,
+      edition: input.edition,
+      source_document_id:
+        input.source_document_id || `storage:${input.code}/${input.edition}/${failedId}`,
+      file_name: input.fileName,
+      file_mime: mime,
+      mime_type: mime,
+      file_size_bytes: input.bytes.byteLength,
+      storage_bucket: CODE_KNOWLEDGE_STORAGE_BUCKET,
+      sha256,
+      created_by: input.created_by,
+    });
+    failed.ingestion_status = 'failed';
+    failed.index_status = 'failed';
+    failed.persisted = false;
+    failed.persist_error =
+      'company_id must be a UUID for Production Supabase Storage/DB persistence';
+    return {
+      status: 'failed',
+      document: failed,
+      sha256,
+      storage_path: '',
+      chunk_count: 0,
+      page_count: 0,
+      error: failed.persist_error,
+    };
+  }
+
   const dup = findActiveDuplicateBySha({
     companyId: input.companyId,
     code: input.code,
@@ -171,12 +218,15 @@ export async function uploadAndIngestCodeKnowledgeDocument(
     sha256,
   });
   if (dup) {
-    return {
-      status: 'skipped_duplicate',
-      document: dup,
-      sha256,
-      reason: 'identical_sha256',
-    };
+    // Production: only skip when prior row was actually persisted
+    if (!mustPersist || dup.persisted) {
+      return {
+        status: 'skipped_duplicate',
+        document: dup,
+        sha256,
+        reason: 'identical_sha256',
+      };
+    }
   }
 
   let superseded: CodeKnowledgeDocumentMeta | null = null;
@@ -194,7 +244,7 @@ export async function uploadAndIngestCodeKnowledgeDocument(
     }
   }
 
-  const documentId = uid('kdoc');
+  const documentId = mustPersist ? newKnowledgeDocumentId() : uid('kdoc');
   const source_document_id =
     input.source_document_id ||
     `storage:${input.code}/${input.edition}/${documentId}`;
@@ -243,6 +293,9 @@ export async function uploadAndIngestCodeKnowledgeDocument(
       parent_document_id: parent?.id ?? null,
     });
     failed.ingestion_status = 'failed';
+    failed.index_status = 'failed';
+    failed.persisted = false;
+    failed.persist_error = uploaded.error || 'upload_failed';
     failed.ingestion_version = (parent?.ingestion_version || 0) + 1;
     return {
       status: 'failed',
@@ -407,6 +460,7 @@ export async function ingestCodeKnowledgeFromStorage(
   );
 
   const pageParts = chunkPagesPreserving(afterOcr.pages, 700);
+  const mustPersist = shouldPersistCodeKnowledgeToSupabase();
   const doc = registerKnowledgeDocument({
     id: input.documentId,
     companyId: input.companyId,
@@ -443,6 +497,8 @@ export async function ingestCodeKnowledgeFromStorage(
   doc.ocr_status = afterOcr.ocr_used || needsOcr ? 'indexed' : 'indexed';
   doc.ingestion_status = 'chunking';
   doc.last_ingestion_at = nowIso();
+  doc.persisted = false;
+  doc.persist_error = null;
 
   // Replace default text chunker with page-preserving chunks
   const store = getCodeKnowledgeStore();
@@ -453,7 +509,7 @@ export async function ingestCodeKnowledgeFromStorage(
       allowPageGuess: true,
     });
     return {
-      id: uid('kchk'),
+      id: mustPersist ? newKnowledgeChunkId() : uid('kchk'),
       company_id: doc.company_id,
       document_id: doc.id,
       edition_id: editionId,
@@ -482,6 +538,65 @@ export async function ingestCodeKnowledgeFromStorage(
   doc.embedding_status = chunks.length ? 'indexed' : 'pending';
   doc.ingestion_status = 'indexing';
 
+  if (extractError && chunks.length === 0 && !input.ocrPageText) {
+    doc.ingestion_status = 'failed';
+    doc.index_status = 'failed';
+    doc.persisted = false;
+    doc.persist_error = extractError;
+    return {
+      status: 'failed',
+      document: doc,
+      sha256: input.sha256,
+      storage_path: input.storagePath,
+      chunk_count: 0,
+      page_count: afterOcr.page_count,
+      error: extractError,
+    };
+  }
+
+  if (chunks.length === 0) {
+    doc.ingestion_status = 'failed';
+    doc.index_status = 'failed';
+    doc.persisted = false;
+    doc.persist_error = 'no_chunks_produced';
+    return {
+      status: 'failed',
+      document: doc,
+      sha256: input.sha256,
+      storage_path: input.storagePath,
+      chunk_count: 0,
+      page_count: afterOcr.page_count,
+      error: 'no_chunks_produced',
+    };
+  }
+
+  // —— Production: require Storage + DB persistence before indexed ——
+  if (mustPersist) {
+    const persisted = await persistAndVerifyCodeKnowledgeIngestion({
+      document: doc,
+      chunks,
+    });
+    if (!persisted.ok || !persisted.persisted) {
+      doc.ingestion_status = 'failed';
+      doc.index_status = 'failed';
+      doc.persisted = false;
+      doc.persist_error = persisted.error || 'persist_failed';
+      doc.updated_at = nowIso();
+      return {
+        status: 'failed',
+        document: doc,
+        sha256: input.sha256,
+        storage_path: input.storagePath,
+        chunk_count: persisted.chunk_count,
+        page_count: afterOcr.page_count,
+        error: doc.persist_error,
+      };
+    }
+  } else {
+    doc.persisted = false;
+    doc.persist_error = null;
+  }
+
   // Mark pipeline jobs complete for this document (storage path already extracted)
   for (const job of store.jobs.filter((j) => j.document_id === doc.id)) {
     job.status = 'indexed';
@@ -503,20 +618,6 @@ export async function ingestCodeKnowledgeFromStorage(
     edition.updated_at = nowIso();
   }
 
-  if (extractError && chunks.length === 0 && !input.ocrPageText) {
-    doc.ingestion_status = 'failed';
-    doc.index_status = 'failed';
-    return {
-      status: 'failed',
-      document: doc,
-      sha256: input.sha256,
-      storage_path: input.storagePath,
-      chunk_count: 0,
-      page_count: afterOcr.page_count,
-      error: extractError,
-    };
-  }
-
   return {
     status: 'indexed',
     document: doc,
@@ -524,6 +625,37 @@ export async function ingestCodeKnowledgeFromStorage(
     storage_path: input.storagePath,
     chunk_count: chunks.length,
     page_count: afterOcr.page_count,
+  };
+}
+
+/**
+ * UI document list: Production reads Supabase only; Demo uses session-memory.
+ */
+export async function listCodeKnowledgeDocumentsForUi(options?: {
+  companyId?: string | null;
+}): Promise<{
+  documents: CodeKnowledgeDocumentMeta[];
+  source: 'supabase' | 'session-memory';
+  persistedMode: boolean;
+}> {
+  if (shouldPersistCodeKnowledgeToSupabase()) {
+    const listed = await listPersistedCodeKnowledgeDocuments({
+      companyId: options?.companyId,
+    });
+    return {
+      documents: listed.ok ? listed.documents : [],
+      source: 'supabase',
+      persistedMode: true,
+    };
+  }
+
+  return {
+    documents: listKnowledgeDocumentsForCompany(options?.companyId || '').map((d) => ({
+      ...d,
+      persisted: false,
+    })),
+    source: 'session-memory',
+    persistedMode: false,
   };
 }
 

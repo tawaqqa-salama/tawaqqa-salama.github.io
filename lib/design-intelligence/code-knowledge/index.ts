@@ -58,7 +58,14 @@ export {
   uploadAndIngestCodeKnowledgeDocument,
   ingestCodeKnowledgeFromStorage,
   reingestCodeKnowledgeDocument,
+  listCodeKnowledgeDocumentsForUi,
 } from '@/lib/design-intelligence/code-knowledge/storage-ingestion';
+export {
+  shouldPersistCodeKnowledgeToSupabase,
+  listPersistedCodeKnowledgeDocuments,
+  verifyPersistedCodeKnowledgeIngestion,
+  persistAndVerifyCodeKnowledgeIngestion,
+} from '@/lib/design-intelligence/code-knowledge/persist';
 export {
   ingestPlatformNfpa13_2025AndAdopt,
   adoptNfpa13_2025AcrossProjects,

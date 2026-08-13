@@ -32,6 +32,7 @@ import {
 import type { CodeKnowledgeStorageAdapter } from '@/lib/design-intelligence/code-knowledge/storage-client';
 import { CODE_KNOWLEDGE_STORAGE_BUCKET } from '@/lib/design-intelligence/code-knowledge/storage-path';
 import { getCodeKnowledgeStore } from '@/lib/design-intelligence/code-knowledge/store';
+import { shouldPersistCodeKnowledgeToSupabase } from '@/lib/design-intelligence/code-knowledge/persist';
 import type {
   CodeKnowledgeDocumentMeta,
   DiProjectCodeAdoption,
@@ -212,6 +213,41 @@ export async function ingestPlatformNfpa13_2025AndAdopt(
 
   const document =
     ingest.status === 'skipped_duplicate' ? ingest.document : ingest.document;
+
+  // Production must not treat session-memory as success
+  if (
+    shouldPersistCodeKnowledgeToSupabase() &&
+    ingest.status === 'indexed' &&
+    !document.persisted
+  ) {
+    return {
+      ok: false,
+      blocked: 'ingest_failed',
+      message:
+        document.persist_error ||
+        'Storage/DB persistence required — session-memory is not a Production success',
+      bucket,
+      ingest: {
+        status: 'failed' as const,
+        document,
+        sha256: ingest.sha256,
+        storage_path:
+          'storage_path' in ingest ? ingest.storage_path : document.storage_path || '',
+        chunk_count: document.chunk_count ?? 0,
+        page_count: document.page_count ?? 0,
+        error:
+          document.persist_error ||
+          'persistence_required',
+      },
+      document,
+      adoptions: [],
+      pages_extracted: document.pages_extracted ?? 0,
+      pages_ocr: document.pages_ocr ?? 0,
+      chunk_count: document.chunk_count ?? 0,
+      active_numeric_rules: countActiveNfpa13_2025NumericRules(),
+      shells,
+    };
+  }
 
   // Enforce document metadata invariants
   document.code = PLATFORM_NFPA13_CODE;
