@@ -59,6 +59,18 @@ describe('Large file upload hardening', () => {
     expect(src).toMatch(/upload_size_limit_exceeded/);
     expect(src).toMatch(/Maximum size exceeded/);
     expect(src).toMatch(/048_design_knowledge_large_upload/);
+    expect(src).toMatch(/1073741824/);
+    // Never suggest overflow values in user-facing copy (operators paste them).
+    expect(src).not.toMatch(/7777777777/);
+  });
+
+  it('048b copy-paste SQL uses only safe integer 1 GiB', () => {
+    const sql = readFileSync(
+      join(root, 'scripts/sql/048b_design_knowledge_limit_copy_paste.sql'),
+      'utf8'
+    );
+    expect(sql).toMatch(/file_size_limit = 1073741824/);
+    expect(sql).not.toMatch(/7777777777/);
   });
 
   it('resumable module uses tus-js-client and storage hostname', () => {

@@ -146,7 +146,7 @@ export async function uploadKnowledgeFileResumable(input: {
           /EntityTooLarge/i.test(raw);
         const mb = size ? (size / (1024 * 1024)).toFixed(1) : '?';
         const mapped = is413
-          ? `upload_size_limit_exceeded: file is ${mb} MB but Storage rejected it (HTTP 413). Set design-knowledge file_size_limit=1073741824 (1 GiB) via scripts/sql/048 — never use 7777777777 (overflows integer; max 2147483647). Also raise Dashboard → Storage → Settings → Global file size limit to at least 1024 MB. Then retry.`
+          ? `upload_size_limit_exceeded: file is ${mb} MB but Storage rejected it (HTTP 413). Run scripts/sql/048_design_knowledge_large_upload.sql (sets file_size_limit to 1073741824 = 1 GiB). In Dashboard → Storage → Settings set Global file size limit to 1024 (MB). Then retry.`
           : raw;
         finish({
           ok: false,

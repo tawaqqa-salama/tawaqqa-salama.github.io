@@ -10,8 +10,8 @@
 -- smaller limit (e.g. Studio default 50MiB). This migration FORCES the bucket
 -- cap to 1 GiB (must still be ≤ Global limit — raise Global first if needed).
 --
--- DO NOT use values like 7777777777 — PostgreSQL integer max is 2147483647.
--- Safe value for a ~191 MB code PDF: 1073741824 (1 GiB) or 524288000 (500 MiB).
+-- file_size_limit is PostgreSQL integer (max 2147483647 ≈ 2 GiB).
+-- Use ONLY 1073741824 (1 GiB). Do not type larger byte values.
 --
 -- Does NOT change NFPA numeric rules or RLS semantics.
 -- ============================================================================
