@@ -7,6 +7,9 @@ export {
   ensureSeedKnowledgeBase,
   knowledgeCategories,
   indexDocumentText,
+  KnowledgePersistError,
+  buildKnowledgeUploadDiagnostics,
+  type KnowledgeUploadDiagnostics,
 } from '@/lib/design-intelligence/knowledge-base';
 export {
   buildDefaultDesignPlan,

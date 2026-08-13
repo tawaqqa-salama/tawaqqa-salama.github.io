@@ -49,18 +49,31 @@ describe('Knowledge Base Production persistence gate', () => {
       uploadAndIndexKnowledgeFile({
         file,
         companyId: '00000000-0000-4000-8000-000000000001',
+        authenticated: true,
         meta: { title: 'NFPA 13-2025', applicable_codes: ['NFPA 13'] },
       })
-    ).rejects.toThrow(SUPABASE_PERSISTENCE_UNAVAILABLE);
+    ).rejects.toMatchObject({
+      message: SUPABASE_PERSISTENCE_UNAVAILABLE,
+      name: 'KnowledgePersistError',
+    });
   });
 
-  it('exposes project ref helper without leaking keys', () => {
-    expect(EXPECTED_PRODUCTION_SUPABASE_REF).toBe('ezmdkwgziyencejfevso');
-    const ref = getSupabaseProjectRef();
-    // Agent env typically has no URL → null; never a JWT-looking key
-    if (ref) {
-      expect(ref).toMatch(/^[a-z0-9]+$/i);
-      expect(ref.length).toBeLessThan(40);
-    }
+  it('deploy-pages requires Production Supabase secrets and expected project ref', () => {
+    const src = readFileSync(join(root, '.github/workflows/deploy-pages.yml'), 'utf8');
+    expect(src).toMatch(/EXPECTED_REF="ezmdkwgziyencejfevso"/);
+    expect(src).toMatch(/exit 1/);
+    expect(src).toMatch(/ALLOW_DEMO_MODE=false/);
+    expect(src).not.toMatch(/ALLOW_DEMO_MODE: "true"/);
+  });
+
+  it('main still had session-memory copy before this PR — branch must not', () => {
+    const src = readFileSync(
+      join(root, 'components/design/DesignIntelligenceModule.tsx'),
+      'utf8'
+    );
+    expect(src).not.toMatch(/تمت الفهرسة في ذاكرة الجلسة/);
+    expect(src).toMatch(/runtime mode:/);
+    expect(src).toMatch(/storage upload attempted/);
+    expect(src).toMatch(/DB insert attempted/);
   });
 });

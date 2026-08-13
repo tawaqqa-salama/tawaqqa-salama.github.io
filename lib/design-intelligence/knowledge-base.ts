@@ -10,6 +10,7 @@ import type {
 } from '@/lib/design-intelligence/types';
 import { KNOWLEDGE_CATEGORIES } from '@/lib/design-intelligence/types';
 import {
+  getSupabaseRuntimeDiagnostics,
   isDemoMode,
   isSupabaseConfigured,
   SUPABASE_PERSISTENCE_UNAVAILABLE,
@@ -30,6 +31,47 @@ import {
   newKnowledgeChunkId,
   newKnowledgeDocumentId,
 } from '@/lib/design-intelligence/code-knowledge/persist';
+
+export type KnowledgeUploadDiagnostics = {
+  runtime_mode: 'production-supabase' | 'demo-local' | 'misconfigured';
+  project_ref: string | null;
+  expected_project_ref: string;
+  supabase_configured: boolean;
+  authenticated: boolean;
+  company_id_present: boolean;
+  storage_upload_attempted: boolean;
+  db_insert_attempted: boolean;
+  chunks_insert_attempted: boolean;
+  storage_path: string | null;
+  document_id: string | null;
+  chunk_count: number;
+  handler_path: string;
+  error?: string | null;
+};
+
+export function buildKnowledgeUploadDiagnostics(
+  partial?: Partial<KnowledgeUploadDiagnostics>
+): KnowledgeUploadDiagnostics {
+  const rt = getSupabaseRuntimeDiagnostics();
+  return {
+    runtime_mode: rt.runtime_mode,
+    project_ref: rt.project_ref,
+    expected_project_ref: rt.expected_project_ref,
+    supabase_configured: rt.supabase_configured,
+    authenticated: Boolean(partial?.authenticated),
+    company_id_present: Boolean(partial?.company_id_present),
+    storage_upload_attempted: Boolean(partial?.storage_upload_attempted),
+    db_insert_attempted: Boolean(partial?.db_insert_attempted),
+    chunks_insert_attempted: Boolean(partial?.chunks_insert_attempted),
+    storage_path: partial?.storage_path ?? null,
+    document_id: partial?.document_id ?? null,
+    chunk_count: partial?.chunk_count ?? 0,
+    handler_path:
+      partial?.handler_path ||
+      'DesignIntelligenceModule.onUpload → uploadAndIndexKnowledgeFile',
+    error: partial?.error ?? null,
+  };
+}
 
 const LOCAL_DOCS_KEY = 'tawaqqa_di_knowledge_docs_v1';
 const LOCAL_CHUNKS_KEY = 'tawaqqa_di_knowledge_chunks_v1';
@@ -596,23 +638,61 @@ function looksLikeNfpa13_2025(input: {
   );
 }
 
+export class KnowledgePersistError extends Error {
+  diagnostics: KnowledgeUploadDiagnostics;
+  constructor(message: string, diagnostics: KnowledgeUploadDiagnostics) {
+    super(message);
+    this.name = 'KnowledgePersistError';
+    this.diagnostics = diagnostics;
+  }
+}
+
 export async function uploadAndIndexKnowledgeFile(input: {
   file: File;
   meta: Partial<DiKnowledgeDocument> & { title: string };
   companyId?: string | null;
-}): Promise<DiKnowledgeDocument & { persistedToCloud?: boolean }> {
+  /** True when caller has an authenticated session (never a secret). */
+  authenticated?: boolean;
+}): Promise<
+  DiKnowledgeDocument & {
+    persistedToCloud: boolean;
+    diagnostics: KnowledgeUploadDiagnostics;
+  }
+> {
   // Free space before large uploads if legacy cache is bloated
   pruneKnowledgeLocalCache();
 
-  // Production / any live Supabase host: never succeed via session-memory alone
+  const authenticated = Boolean(input.authenticated);
+  const companyId = input.companyId || input.meta.company_id || null;
+  const companyOk = Boolean(companyId && isUuid(companyId));
+
+  const baseDiag = (): KnowledgeUploadDiagnostics =>
+    buildKnowledgeUploadDiagnostics({
+      authenticated,
+      company_id_present: companyOk,
+      handler_path:
+        'DesignIntelligenceModule.onUpload → uploadAndIndexKnowledgeFile',
+    });
+
+  // Production / any live host: never succeed via session-memory alone
   if (!isSupabaseConfigured) {
-    throw new Error(SUPABASE_PERSISTENCE_UNAVAILABLE);
+    throw new KnowledgePersistError(
+      SUPABASE_PERSISTENCE_UNAVAILABLE,
+      buildKnowledgeUploadDiagnostics({
+        ...baseDiag(),
+        error: SUPABASE_PERSISTENCE_UNAVAILABLE,
+      })
+    );
   }
 
-  const companyId = input.companyId || input.meta.company_id || null;
-  if (!companyId || !isUuid(companyId)) {
-    throw new Error(
-      'Supabase persistence unavailable: authenticated company UUID required for Storage RLS'
+  if (!companyOk || !companyId) {
+    throw new KnowledgePersistError(
+      'Supabase persistence unavailable: authenticated company UUID required for Storage RLS',
+      buildKnowledgeUploadDiagnostics({
+        authenticated,
+        company_id_present: false,
+        error: 'company_uuid_missing',
+      })
     );
   }
 
@@ -645,18 +725,37 @@ export async function uploadAndIndexKnowledgeFile(input: {
       replaceIfChanged: true,
     });
 
-    if (result.status === 'failed') {
-      throw new Error(
-        ('error' in result && result.error) ||
-          'Code Knowledge ingest FAILED — Storage/DB persistence required'
+    const diag = buildKnowledgeUploadDiagnostics({
+      authenticated,
+      company_id_present: true,
+      storage_upload_attempted: true,
+      db_insert_attempted: true,
+      chunks_insert_attempted: true,
+      storage_path: result.document.storage_path || null,
+      document_id: result.document.id,
+      chunk_count: result.document.chunk_count || 0,
+      handler_path:
+        'onUpload → uploadAndIndexKnowledgeFile → uploadAndIngestCodeKnowledgeDocument',
+      error:
+        result.status === 'failed'
+          ? ('error' in result ? result.error : 'ingest_failed') || 'ingest_failed'
+          : !result.document.persisted
+            ? 'not_persisted'
+            : null,
+    });
+
+    if (result.status === 'failed' || !result.document.persisted) {
+      throw new KnowledgePersistError(
+        diag.error || SUPABASE_PERSISTENCE_UNAVAILABLE,
+        diag
       );
-    }
-    if (result.status === 'indexed' && !result.document.persisted) {
-      throw new Error(SUPABASE_PERSISTENCE_UNAVAILABLE);
     }
 
     const d = result.document;
-    const mapped: DiKnowledgeDocument & { persistedToCloud: boolean } = {
+    const mapped: DiKnowledgeDocument & {
+      persistedToCloud: boolean;
+      diagnostics: KnowledgeUploadDiagnostics;
+    } = {
       id: d.id,
       company_id: d.company_id,
       title: d.title,
@@ -670,7 +769,7 @@ export async function uploadAndIndexKnowledgeFile(input: {
       storage_bucket: d.storage_bucket || BUCKET,
       storage_path: d.storage_path,
       source_kind: 'upload',
-      index_status: d.persisted ? 'indexed' : 'failed',
+      index_status: 'indexed',
       indexed_at: d.indexed_at,
       chunk_count: d.chunk_count,
       ocr_used: d.ocr_used,
@@ -692,14 +791,10 @@ export async function uploadAndIndexKnowledgeFile(input: {
       applicable_codes: codes.length ? codes : ['NFPA 13'],
       created_at: d.created_at,
       updated_at: d.updated_at,
-      persistedToCloud: Boolean(d.persisted),
+      persistedToCloud: true,
+      diagnostics: diag,
     };
 
-    if (!mapped.persistedToCloud) {
-      throw new Error(SUPABASE_PERSISTENCE_UNAVAILABLE);
-    }
-
-    // Refresh local list mirror from successful cloud row
     const docs = readLocalDocs().filter((x) => x.id !== mapped.id);
     docs.unshift(mapped);
     writeLocalDocs(docs);
@@ -718,8 +813,19 @@ export async function uploadAndIndexKnowledgeFile(input: {
   });
 
   if (!storage.path) {
-    throw new Error(
-      `Storage upload failed: ${storage.error || 'no_path'} — no local indexed fallback`
+    throw new KnowledgePersistError(
+      `Storage upload failed: ${storage.error || 'no_path'} — no local indexed fallback`,
+      buildKnowledgeUploadDiagnostics({
+        authenticated,
+        company_id_present: true,
+        storage_upload_attempted: true,
+        db_insert_attempted: false,
+        chunks_insert_attempted: false,
+        document_id: id,
+        error: storage.error || 'storage_upload_failed',
+        handler_path:
+          'onUpload → uploadAndIndexKnowledgeFile → design-knowledge Storage',
+      })
     );
   }
 
@@ -769,45 +875,87 @@ export async function uploadAndIndexKnowledgeFile(input: {
   };
 
   await enqueueIndexingJob({ documentId: id, jobType: 'index' });
-  const { doc, persistedToCloud } = await indexDocumentText(
-    draft,
-    extracted.text,
-    extracted.ocrUsed,
-    {
-      page_count: extracted.page_count,
-      pages_extracted: extracted.pages_extracted,
-      pages_ocr: extracted.pages_ocr,
-      page_texts: extracted.page_texts,
-      extraction_method: extracted.extraction_method,
-      sha256,
-    },
-    { requireCloudPersist: true }
-  );
-
-  if (!persistedToCloud) {
-    throw new Error(SUPABASE_PERSISTENCE_UNAVAILABLE);
-  }
-
-  void import('@/lib/activity/logger').then(({ logActivity }) =>
-    logActivity({
-      actionType: 'CREATE',
-      module: 'design',
-      details: `Knowledge document indexed: ${doc.title}`,
-      metadata: {
-        documentId: doc.id,
-        chunkCount: doc.chunk_count,
-        category: doc.category,
-        ocrUsed: doc.ocr_used,
-        pageCount: doc.page_count,
-        pagesExtracted: doc.pages_extracted,
-        persistedToCloud,
-        storagePath: doc.storage_path,
-        sha256: doc.sha256,
+  try {
+    const { doc, persistedToCloud } = await indexDocumentText(
+      draft,
+      extracted.text,
+      extracted.ocrUsed,
+      {
+        page_count: extracted.page_count,
+        pages_extracted: extracted.pages_extracted,
+        pages_ocr: extracted.pages_ocr,
+        page_texts: extracted.page_texts,
+        extraction_method: extracted.extraction_method,
+        sha256,
       },
-    })
-  );
+      { requireCloudPersist: true }
+    );
 
-  return { ...doc, persistedToCloud };
+    if (!persistedToCloud) {
+      throw new KnowledgePersistError(
+        SUPABASE_PERSISTENCE_UNAVAILABLE,
+        buildKnowledgeUploadDiagnostics({
+          authenticated,
+          company_id_present: true,
+          storage_upload_attempted: true,
+          db_insert_attempted: true,
+          chunks_insert_attempted: true,
+          storage_path: storage.path,
+          document_id: id,
+          error: SUPABASE_PERSISTENCE_UNAVAILABLE,
+        })
+      );
+    }
+
+    const diagnostics = buildKnowledgeUploadDiagnostics({
+      authenticated,
+      company_id_present: true,
+      storage_upload_attempted: true,
+      db_insert_attempted: true,
+      chunks_insert_attempted: true,
+      storage_path: doc.storage_path || storage.path,
+      document_id: doc.id,
+      chunk_count: doc.chunk_count || 0,
+      handler_path:
+        'onUpload → uploadAndIndexKnowledgeFile → Storage + di_knowledge_documents/chunks',
+    });
+
+    void import('@/lib/activity/logger').then(({ logActivity }) =>
+      logActivity({
+        actionType: 'CREATE',
+        module: 'design',
+        details: `Knowledge document indexed: ${doc.title}`,
+        metadata: {
+          documentId: doc.id,
+          chunkCount: doc.chunk_count,
+          category: doc.category,
+          ocrUsed: doc.ocr_used,
+          pageCount: doc.page_count,
+          pagesExtracted: doc.pages_extracted,
+          persistedToCloud,
+          storagePath: doc.storage_path,
+          sha256: doc.sha256,
+        },
+      })
+    );
+
+    return { ...doc, persistedToCloud: true, diagnostics };
+  } catch (err) {
+    if (err instanceof KnowledgePersistError) throw err;
+    throw new KnowledgePersistError(
+      err instanceof Error ? err.message : String(err),
+      buildKnowledgeUploadDiagnostics({
+        authenticated,
+        company_id_present: true,
+        storage_upload_attempted: true,
+        db_insert_attempted: true,
+        chunks_insert_attempted: true,
+        storage_path: storage.path,
+        document_id: id,
+        error: err instanceof Error ? err.message : String(err),
+      })
+    );
+  }
 }
 
 /**

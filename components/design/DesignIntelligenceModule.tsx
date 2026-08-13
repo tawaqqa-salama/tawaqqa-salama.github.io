@@ -5,7 +5,14 @@ import ModuleSubNavSlot from '@/components/layout/ModuleSubNavSlot';
 import ModuleTabBar from '@/components/layout/ModuleTabBar';
 import ResponsiveTable from '@/components/ui/ResponsiveTable';
 import { useLanguage } from '@/lib/i18n/LanguageProvider';
-import { supabase } from '@/lib/supabase';
+import {
+  EXPECTED_PRODUCTION_SUPABASE_REF,
+  getSupabaseProjectRef,
+  getSupabaseRuntimeDiagnostics,
+  isSupabaseConfigured,
+  SUPABASE_PERSISTENCE_UNAVAILABLE,
+  supabase,
+} from '@/lib/supabase';
 import {
   analyticsSnapshot,
   assertEngineeringDecision,
@@ -31,6 +38,8 @@ import {
   updateWorkspace,
   addWorkspaceNote,
   uploadAndIndexKnowledgeFile,
+  KnowledgePersistError,
+  buildKnowledgeUploadDiagnostics,
   addLesson,
   type DesignIntelligenceTabId,
   type DiDesignChecklist,
@@ -38,18 +47,13 @@ import {
   type DiDesignWorkspace,
   type DiKnowledgeDocument,
   type EngineeringFormState,
+  type KnowledgeUploadDiagnostics,
   type RagAnswer,
 } from '@/lib/design-intelligence';
 import EngineeringRulesPanel from '@/components/design/EngineeringRulesPanel';
 import CodeKnowledgePanel from '@/components/design/CodeKnowledgePanel';
 import { runBlueprintAiAudit } from '@/lib/compliance/blueprint-audit';
 import { useAuth } from '@/lib/auth/AuthProvider';
-import {
-  EXPECTED_PRODUCTION_SUPABASE_REF,
-  getSupabaseProjectRef,
-  isSupabaseConfigured,
-  SUPABASE_PERSISTENCE_UNAVAILABLE,
-} from '@/lib/supabase';
 import type { EngineeringSelection } from '@/lib/design-intelligence/rules-types';
 import type { ClientRecord } from '@/lib/types/client';
 import type { BlueprintAiAuditResult } from '@/lib/types/project-reports';
@@ -85,6 +89,12 @@ export default function DesignIntelligenceModule() {
   const [checklists, setChecklists] = useState<DiDesignChecklist[]>([]);
   const [message, setMessage] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  const [kbDiag, setKbDiag] = useState<KnowledgeUploadDiagnostics>(() =>
+    buildKnowledgeUploadDiagnostics({
+      authenticated: Boolean(session),
+      company_id_present: Boolean(tenantCompanyId),
+    })
+  );
 
   // Knowledge upload form
   const [title, setTitle] = useState('');
@@ -164,22 +174,35 @@ export default function DesignIntelligenceModule() {
     }
     setBusy(true);
     setMessage(null);
+    const authenticated = Boolean(session);
     try {
       if (!isSupabaseConfigured) {
-        throw new Error(SUPABASE_PERSISTENCE_UNAVAILABLE);
+        const d = buildKnowledgeUploadDiagnostics({
+          authenticated,
+          company_id_present: Boolean(tenantCompanyId),
+          error: SUPABASE_PERSISTENCE_UNAVAILABLE,
+        });
+        setKbDiag(d);
+        throw new KnowledgePersistError(SUPABASE_PERSISTENCE_UNAVAILABLE, d);
       }
       const companyUuid = tenantCompanyId;
       if (!companyUuid) {
-        throw new Error(
-          lang === 'en'
-            ? 'Supabase persistence unavailable: sign in with a company UUID.'
-            : 'Supabase persistence unavailable: يلزم تسجيل الدخول بشركة (UUID).'
+        const d = buildKnowledgeUploadDiagnostics({
+          authenticated,
+          company_id_present: false,
+          error: 'company_uuid_missing',
+        });
+        setKbDiag(d);
+        throw new KnowledgePersistError(
+          'Supabase persistence unavailable: sign in with a company UUID.',
+          d
         );
       }
 
       const doc = await uploadAndIndexKnowledgeFile({
         file,
         companyId: companyUuid,
+        authenticated,
         meta: {
           title: title.trim(),
           category,
@@ -196,27 +219,40 @@ export default function DesignIntelligenceModule() {
           company_id: companyUuid,
         },
       });
+      setKbDiag(doc.diagnostics);
       setTitle('');
       setFile(null);
       setNotesMeta('');
       setDocs(await listKnowledgeDocuments());
       if (!doc.persistedToCloud) {
-        throw new Error(SUPABASE_PERSISTENCE_UNAVAILABLE);
+        throw new KnowledgePersistError(
+          SUPABASE_PERSISTENCE_UNAVAILABLE,
+          doc.diagnostics
+        );
       }
       const ref = getSupabaseProjectRef() || 'unknown';
       setMessage(
-        lang === 'en'
-          ? `SUPABASE / PERSISTED · project=${ref} · document_id=${doc.id} · path=${doc.storage_path} · chunks=${doc.chunk_count}`
-          : `SUPABASE / PERSISTED · project=${ref} · document_id=${doc.id} · path=${doc.storage_path} · chunks=${doc.chunk_count}`
+        `SUPABASE / PERSISTED · project=${ref} · document_id=${doc.id} · path=${doc.storage_path} · chunks=${doc.chunk_count}`
       );
     } catch (e) {
-      const raw = e instanceof Error ? e.message : 'Upload failed';
-      const msg = raw.includes('Supabase persistence unavailable')
-        ? SUPABASE_PERSISTENCE_UNAVAILABLE
-        : raw.startsWith('FAILED')
-          ? raw
-          : `FAILED: ${raw}`;
-      setMessage(msg);
+      if (e instanceof KnowledgePersistError) {
+        setKbDiag(e.diagnostics);
+        setMessage(`FAILED: ${e.message}`);
+      } else {
+        const raw = e instanceof Error ? e.message : 'Upload failed';
+        setKbDiag(
+          buildKnowledgeUploadDiagnostics({
+            authenticated,
+            company_id_present: Boolean(tenantCompanyId),
+            error: raw,
+          })
+        );
+        setMessage(
+          raw.includes('Supabase persistence unavailable')
+            ? `FAILED: ${SUPABASE_PERSISTENCE_UNAVAILABLE}`
+            : `FAILED: ${raw}`
+        );
+      }
     } finally {
       setBusy(false);
     }
@@ -393,15 +429,49 @@ export default function DesignIntelligenceModule() {
               {busy ? '…' : label('design.kb.index', 'Upload & Index')}
             </button>
             <p className="text-[11px] text-gray-400">
-              Pipeline: Storage → DB → OCR/chunk/embed/index · supabase=
-              {isSupabaseConfigured ? 'YES' : 'NO'} · project=
-              {getSupabaseProjectRef() || '—'}
-              {getSupabaseProjectRef() &&
-              getSupabaseProjectRef() !== EXPECTED_PRODUCTION_SUPABASE_REF
-                ? ` (expected ${EXPECTED_PRODUCTION_SUPABASE_REF})`
-                : ''}
-              · jobs: {listIndexingJobs().filter((j) => j.status === 'queued').length} queued
+              Pipeline: Storage → DB → OCR/chunk/embed/index · jobs:{' '}
+              {listIndexingJobs().filter((j) => j.status === 'queued').length} queued
             </p>
+            <div className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-[11px] text-slate-700 space-y-0.5 font-mono">
+              {(() => {
+                const rt = getSupabaseRuntimeDiagnostics();
+                const authYes = Boolean(session);
+                const companyYes = Boolean(tenantCompanyId);
+                return (
+                  <>
+                    <div>runtime mode: {rt.runtime_mode}</div>
+                    <div>
+                      project ref: {rt.project_ref || '—'}
+                      {rt.project_ref && !rt.project_ref_matches_expected
+                        ? ` (expected ${EXPECTED_PRODUCTION_SUPABASE_REF})`
+                        : ''}
+                    </div>
+                    <div>authenticated: {authYes ? 'YES' : 'NO'}</div>
+                    <div>companyId present: {companyYes ? 'YES' : 'NO'}</div>
+                    <div>
+                      storage upload attempted:{' '}
+                      {kbDiag.storage_upload_attempted ? 'YES' : 'NO'}
+                    </div>
+                    <div>
+                      DB insert attempted: {kbDiag.db_insert_attempted ? 'YES' : 'NO'}
+                    </div>
+                    <div>
+                      chunks insert attempted:{' '}
+                      {kbDiag.chunks_insert_attempted ? 'YES' : 'NO'}
+                    </div>
+                    {kbDiag.storage_path ? (
+                      <div className="break-all">storage path: {kbDiag.storage_path}</div>
+                    ) : null}
+                    {kbDiag.document_id ? (
+                      <div className="break-all">document id: {kbDiag.document_id}</div>
+                    ) : null}
+                    {kbDiag.error ? (
+                      <div className="text-rose-700 break-all">error: {kbDiag.error}</div>
+                    ) : null}
+                  </>
+                );
+              })()}
+            </div>
           </div>
           <div className="xl:col-span-3">
             <ResponsiveTable className="bg-white rounded-xl border">

@@ -41,6 +41,32 @@ export function isExpectedProductionSupabaseProject(): boolean {
   return getSupabaseProjectRef() === EXPECTED_PRODUCTION_SUPABASE_REF;
 }
 
+/** Safe runtime diagnostics — never includes keys/secrets. */
+export type SupabaseRuntimeDiagnostics = {
+  runtime_mode: 'production-supabase' | 'demo-local' | 'misconfigured';
+  project_ref: string | null;
+  expected_project_ref: string;
+  supabase_configured: boolean;
+  supabase_client_initialized: boolean;
+  project_ref_matches_expected: boolean;
+};
+
+export function getSupabaseRuntimeDiagnostics(): SupabaseRuntimeDiagnostics {
+  const project_ref = getSupabaseProjectRef();
+  const supabase_configured = isSupabaseConfigured;
+  let runtime_mode: SupabaseRuntimeDiagnostics['runtime_mode'] = 'misconfigured';
+  if (supabase_configured) runtime_mode = 'production-supabase';
+  else if (isDemoAllowed()) runtime_mode = 'demo-local';
+  return {
+    runtime_mode,
+    project_ref,
+    expected_project_ref: EXPECTED_PRODUCTION_SUPABASE_REF,
+    supabase_configured,
+    supabase_client_initialized: supabase_configured,
+    project_ref_matches_expected: project_ref === EXPECTED_PRODUCTION_SUPABASE_REF,
+  };
+}
+
 if (
   typeof window === 'undefined' &&
   process.env.NODE_ENV === 'production' &&
