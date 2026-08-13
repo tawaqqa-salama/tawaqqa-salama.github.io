@@ -3,8 +3,9 @@
   "version": "0.1.0",
   "private": true,
   "scripts": {
+    "postinstall": "node scripts/sync-pdfjs-worker.mjs",
     "dev": "next dev",
-    "build": "next build",
+    "build": "node scripts/sync-pdfjs-worker.mjs && next build",
     "build:user-pages": "bash scripts/build-user-pages.sh",
     "start": "next start",
     "lint": "eslint",

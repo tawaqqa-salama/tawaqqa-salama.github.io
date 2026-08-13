@@ -1,9 +1,11 @@
 /**
- * Page-preserving PDF text extraction for Code Knowledge.
- * Reads bytes already obtained from Supabase Storage — never fetches external PDFs.
+ * Page-preserving PDF text extraction for Code Knowledge / Knowledge Base.
+ * Reads bytes already obtained from Supabase Storage / File picker —
+ * never fetches external PDFs. Uses local pdfjs worker (no CDN).
  */
 
 import type { ExtractionMethod } from '@/lib/design-intelligence/code-knowledge/types';
+import { openPdfDocumentFromBytes } from '@/lib/design-intelligence/pdfjs-runtime';
 
 export type ExtractedPdfPage = {
   page: number;
@@ -24,34 +26,51 @@ export type PdfPageExtractResult = {
 const FORM_FEED = '\f';
 
 /**
- * Extract per-page text from PDF bytes via pdfjs (legacy, no remote worker).
+ * Extract per-page text from PDF bytes via pdfjs (legacy + local worker).
  * Empty pages are marked for OCR fallback by the caller — this function does not invent NFPA text.
  */
 export async function extractPdfPagesFromBytes(
   bytes: ArrayBuffer | Uint8Array
 ): Promise<PdfPageExtractResult> {
-  const data =
-    bytes instanceof Uint8Array
-      ? bytes
-      : new Uint8Array(bytes);
+  let pdf;
+  try {
+    ({ pdf } = await openPdfDocumentFromBytes(bytes));
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err);
+    if (message.startsWith('pdf_extraction_failed:')) throw err;
+    throw new Error(`pdf_extraction_failed: ${message}`);
+  }
 
-  const pdfjs = await import('pdfjs-dist/legacy/build/pdf.mjs');
-  const pdf = await pdfjs.getDocument({ data, useSystemFonts: true }).promise;
   const pages: ExtractedPdfPage[] = [];
 
-  for (let i = 1; i <= pdf.numPages; i += 1) {
-    const page = await pdf.getPage(i);
-    const content = await page.getTextContent();
-    const text = content.items
-      .map((it) => (typeof it === 'object' && it && 'str' in it ? String((it as { str: string }).str) : ''))
-      .join(' ')
-      .replace(/\s+/g, ' ')
-      .trim();
-    pages.push({
-      page: i,
-      text,
-      extraction_method: text ? 'text' : 'empty',
-    });
+  try {
+    for (let i = 1; i <= pdf.numPages; i += 1) {
+      const page = await pdf.getPage(i);
+      const content = await page.getTextContent();
+      const text = content.items
+        .map((it) =>
+          typeof it === 'object' && it && 'str' in it
+            ? String((it as { str: string }).str)
+            : ''
+        )
+        .join(' ')
+        .replace(/\s+/g, ' ')
+        .trim();
+      pages.push({
+        page: i,
+        text,
+        extraction_method: text ? 'text' : 'empty',
+      });
+    }
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err);
+    throw new Error(`pdf_extraction_failed: ${message}`);
+  } finally {
+    try {
+      await pdf.destroy();
+    } catch {
+      /* ignore */
+    }
   }
 
   return summarizePages(pages);

@@ -121,8 +121,10 @@ export async function renderPdfFirstPageToJpeg(
   try {
     onProgress?.('جاري تحويل صفحة الرخصة إلى صورة...');
     const pdfjs = await import('pdfjs-dist');
-    const version = (pdfjs as { version?: string }).version || '4.10.38';
-    pdfjs.GlobalWorkerOptions.workerSrc = `https://unpkg.com/pdfjs-dist@${version}/build/pdf.worker.min.mjs`;
+    const { ensurePdfJsWorkerConfigured } = await import(
+      '@/lib/design-intelligence/pdfjs-runtime'
+    );
+    await ensurePdfJsWorkerConfigured(pdfjs as never);
 
     const data = new Uint8Array(await file.arrayBuffer());
     const doc = await pdfjs.getDocument({ data }).promise;
