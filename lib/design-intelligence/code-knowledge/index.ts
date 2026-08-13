@@ -59,6 +59,8 @@ export {
   uploadAndIngestCodeKnowledgeDocument,
   ingestCodeKnowledgeFromStorage,
   reingestCodeKnowledgeDocument,
+  reingestExistingCodeKnowledgeStorageObject,
+  markCodeKnowledgeDuplicateForCleanup,
   listCodeKnowledgeDocumentsForUi,
 } from '@/lib/design-intelligence/code-knowledge/storage-ingestion';
 export {

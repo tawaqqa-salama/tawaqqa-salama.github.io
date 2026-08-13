@@ -746,5 +746,178 @@ function applyStorageMeta(
   if (input.source_type) doc.source_type = input.source_type;
 }
 
+/**
+ * Re-ingest an EXISTING Storage object into di_knowledge_documents/chunks.
+ * Never uploads. Uses the provided documentId + storagePath as canonical.
+ */
+export async function reingestExistingCodeKnowledgeStorageObject(input: {
+  companyId: string;
+  documentId: string;
+  storagePath: string;
+  storageBucket?: string;
+  code: string;
+  edition: string;
+  title?: string;
+  fileName?: string;
+  mimeType?: string;
+  source_document_id?: string;
+  storage?: CodeKnowledgeStorageAdapter;
+  ocrPageText?: Record<number, string>;
+}): Promise<{
+  status: 'indexed' | 'failed';
+  document: CodeKnowledgeDocumentMeta;
+  sha256: string;
+  storage_path: string;
+  chunk_count: number;
+  page_count: number;
+  error?: string;
+}> {
+  const failDoc = (error: string): CodeKnowledgeDocumentMeta => ({
+    id: input.documentId,
+    company_id: input.companyId,
+    title: input.title || `${input.code} ${input.edition}`,
+    code: input.code,
+    edition: input.edition,
+    status: 'failed',
+    index_status: 'failed',
+    storage_path: input.storagePath,
+    storage_bucket: input.storageBucket || CODE_KNOWLEDGE_STORAGE_BUCKET,
+    source_document_id:
+      input.source_document_id || `storage:${input.storagePath}`,
+    persisted: false,
+    persist_error: error,
+  });
+
+  if (!isUuid(input.documentId) || !isUuid(input.companyId)) {
+    return {
+      status: 'failed',
+      document: failDoc('company_id and document_id must be UUIDs'),
+      sha256: '',
+      storage_path: input.storagePath,
+      chunk_count: 0,
+      page_count: 0,
+      error: 'company_id and document_id must be UUIDs',
+    };
+  }
+
+  const storage = input.storage || getDefaultCodeKnowledgeStorage();
+  const bucket = input.storageBucket || CODE_KNOWLEDGE_STORAGE_BUCKET;
+  const dl = await storage.download(bucket, input.storagePath);
+  if (!dl.ok || !dl.bytes) {
+    return {
+      status: 'failed',
+      document: failDoc(dl.error || 'download_failed'),
+      sha256: '',
+      storage_path: input.storagePath,
+      chunk_count: 0,
+      page_count: 0,
+      error: dl.error || 'download_failed',
+    };
+  }
+
+  const sha256 = await sha256HexFromBytes(dl.bytes);
+  return ingestCodeKnowledgeFromStorage({
+    companyId: input.companyId,
+    code: input.code,
+    edition: input.edition,
+    documentId: input.documentId,
+    title: input.title || `${input.code} ${input.edition}`,
+    fileName: input.fileName || 'document.pdf',
+    mimeType: input.mimeType || 'application/pdf',
+    sha256,
+    fileSize: dl.bytes.byteLength,
+    storagePath: input.storagePath,
+    storageBucket: bucket,
+    source_document_id:
+      input.source_document_id ||
+      `storage:${input.code}/${input.edition}/${input.documentId}`,
+    source_type: 'PROJECT_PROVIDED_DOCUMENT',
+    verification_status: 'UNVERIFIED',
+    platform_verification_status: 'NOT_VERIFIED_OFFICIAL',
+    storage,
+    preloadedBytes: dl.bytes,
+    ocrPageText: input.ocrPageText,
+  });
+}
+
+/**
+ * Mark an older Storage duplicate for safe cleanup AFTER canonical is indexed.
+ * Does NOT delete the Storage object.
+ */
+export async function markCodeKnowledgeDuplicateForCleanup(input: {
+  olderDocumentId: string;
+  canonicalDocumentId: string;
+  companyId: string;
+  storagePath?: string | null;
+  sha256?: string | null;
+  noteExtra?: string;
+}): Promise<{ ok: boolean; error?: string }> {
+  const now = nowIso();
+  const note = [
+    'SAFE_CLEANUP_CANDIDATE',
+    `duplicate_of=${input.canonicalDocumentId}`,
+    input.sha256 ? `sha256=${input.sha256}` : null,
+    `marked_at=${now}`,
+    'DO_NOT_DELETE_STORAGE_UNTIL_OPERATOR_APPROVES',
+    input.noteExtra || null,
+  ]
+    .filter(Boolean)
+    .join(' ');
+
+  const store = getCodeKnowledgeStore();
+  const local = store.documents.find((d) => d.id === input.olderDocumentId);
+  if (local) {
+    if (local.company_id && local.company_id !== input.companyId) {
+      return { ok: false, error: 'company_mismatch' };
+    }
+    local.status = 'superseded';
+    local.notes = note;
+    local.updated_at = now;
+  }
+
+  if (shouldPersistCodeKnowledgeToSupabase() && isUuid(input.olderDocumentId)) {
+    const { supabase } = await import('@/lib/supabase');
+    const { data: existing } = await supabase
+      .from('di_knowledge_documents')
+      .select('id')
+      .eq('id', input.olderDocumentId)
+      .maybeSingle();
+
+    if (existing?.id) {
+      const { error } = await supabase
+        .from('di_knowledge_documents')
+        .update({
+          status: 'superseded',
+          notes: note,
+          updated_at: now,
+        })
+        .eq('id', input.olderDocumentId)
+        .eq('company_id', input.companyId);
+      if (error) return { ok: false, error: error.message };
+    } else if (input.storagePath) {
+      const { error } = await supabase.from('di_knowledge_documents').upsert({
+        id: input.olderDocumentId,
+        company_id: input.companyId,
+        title: 'Duplicate — cleanup candidate',
+        status: 'superseded',
+        index_status: 'failed',
+        ingestion_status: 'skipped_duplicate',
+        chunk_count: 0,
+        storage_bucket: CODE_KNOWLEDGE_STORAGE_BUCKET,
+        storage_path: input.storagePath,
+        sha256: input.sha256 || null,
+        content_sha256: input.sha256 || null,
+        notes: note,
+        deleted_at: null,
+        updated_at: now,
+        created_at: now,
+      });
+      if (error) return { ok: false, error: error.message };
+    }
+  }
+
+  return { ok: true };
+}
+
 /** Test helper: run text-only register pipeline still available. */
 export { runDocumentPipeline, listChunksForDocument };
