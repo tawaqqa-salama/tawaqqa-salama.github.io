@@ -43,6 +43,7 @@ import {
 import EngineeringRulesPanel from '@/components/design/EngineeringRulesPanel';
 import CodeKnowledgePanel from '@/components/design/CodeKnowledgePanel';
 import { runBlueprintAiAudit } from '@/lib/compliance/blueprint-audit';
+import { useAuth } from '@/lib/auth/AuthProvider';
 import type { EngineeringSelection } from '@/lib/design-intelligence/rules-types';
 import type { ClientRecord } from '@/lib/types/client';
 import type { BlueprintAiAuditResult } from '@/lib/types/project-reports';
@@ -66,6 +67,9 @@ const TABS: { id: DesignIntelligenceTabId; labelKey: string; fallback: string }[
 
 export default function DesignIntelligenceModule() {
   const { t, lang } = useLanguage();
+  const { session, profile } = useAuth();
+  const tenantCompanyId =
+    session?.companyId || profile?.company_id || undefined;
   const [tab, setTab] = useState<DesignIntelligenceTabId>('knowledge');
   const [docs, setDocs] = useState<DiKnowledgeDocument[]>([]);
   const [clients, setClients] = useState<ClientRecord[]>([]);
@@ -423,7 +427,7 @@ export default function DesignIntelligenceModule() {
 
       {tab === 'codes' && (
         <CodeKnowledgePanel
-          companyId="demo-company"
+          companyId={tenantCompanyId}
           clientId={activeWs?.client_id || clients[0]?.id || 'demo-client'}
         />
       )}

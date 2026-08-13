@@ -148,6 +148,18 @@ export type CodeKnowledgeDocumentMeta = {
   /** Page-preserving body: `\f` form-feed separated pages when from Storage PDF. */
   page_texts?: string[] | null;
   ocr_used?: boolean;
+  /**
+   * True only after Storage object + DB document + chunk rows are verified.
+   * False for session-memory / LOCAL demo mode.
+   */
+  persisted?: boolean;
+  /** Present when Supabase persistence was required but failed. */
+  persist_error?: string | null;
+  /**
+   * Optional local file path for development / agent environments that cannot
+   * upload to Supabase Storage. Production UI upload should prefer Storage.
+   */
+  local_source_path?: string | null;
   created_by?: string | null;
   created_at?: string;
   updated_at?: string;

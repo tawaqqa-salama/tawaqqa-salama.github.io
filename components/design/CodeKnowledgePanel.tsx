@@ -3,6 +3,9 @@
 /**
  * Code Knowledge Manager — editions, adoption, Storage upload/ingest, search, rule status.
  * Advisory only: AI answers never shown as authoritative without citations.
+ *
+ * Production (Supabase): documents listed from DB; indexed only when Storage+DB+chunks verified.
+ * Demo (no Supabase): session-memory with LOCAL / NOT SAVED badge.
  */
 
 import { useCallback, useEffect, useMemo, useState } from 'react';
@@ -13,11 +16,10 @@ import {
   compareCodeEditions,
   explainCodeKnowledgeHits,
   getProjectAdoptedEdition,
-  ingestPlatformNfpa13_2025AndAdopt,
   listAvailableCodes,
   listCodeEditions,
+  listCodeKnowledgeDocumentsForUi,
   listEditionRules,
-  listKnowledgeDocumentsForCompany,
   listPipelineJobs,
   NFPA13_PIPELINE_RULE_IDS,
   registerCodeEdition,
@@ -30,6 +32,7 @@ import {
   resetInMemoryCodeKnowledgeStorage,
   runDocumentPipeline,
   searchCodeKnowledge,
+  shouldPersistCodeKnowledgeToSupabase,
   uploadAndIngestCodeKnowledgeDocument,
   type CodeKnowledgeDocumentMeta,
   type CodeKnowledgeSearchHit,
@@ -37,6 +40,8 @@ import {
   type DiProjectCodeAdoption,
   type EditionComparisonResult,
 } from '@/lib/design-intelligence/code-knowledge';
+import { useAuth } from '@/lib/auth/AuthProvider';
+import { useLanguage } from '@/lib/i18n/LanguageProvider';
 
 type Props = {
   companyId?: string;
@@ -46,14 +51,50 @@ type Props = {
 const DEMO_COMPANY = 'demo-company';
 const DEMO_CLIENT = 'demo-client';
 
+function PersistenceBadge({ persistedMode, docPersisted }: { persistedMode: boolean; docPersisted?: boolean }) {
+  if (persistedMode && docPersisted) {
+    return (
+      <span className="inline-flex rounded border border-emerald-300 bg-emerald-50 px-1.5 py-0.5 text-[10px] font-semibold tracking-wide text-emerald-800">
+        SUPABASE / PERSISTED
+      </span>
+    );
+  }
+  if (persistedMode && docPersisted === false) {
+    return (
+      <span className="inline-flex rounded border border-rose-300 bg-rose-50 px-1.5 py-0.5 text-[10px] font-semibold tracking-wide text-rose-800">
+        FAILED / NOT PERSISTED
+      </span>
+    );
+  }
+  return (
+    <span className="inline-flex rounded border border-amber-300 bg-amber-50 px-1.5 py-0.5 text-[10px] font-semibold tracking-wide text-amber-900">
+      LOCAL / NOT SAVED
+    </span>
+  );
+}
+
 export default function CodeKnowledgePanel({ companyId, clientId }: Props) {
-  const company = companyId || DEMO_COMPANY;
+  const { session, profile } = useAuth();
+  const { t } = useLanguage();
+  const uploadLabel = (() => {
+    const v = t('design.kb.index');
+    return v === 'design.kb.index' ? 'رفع وفهرسة' : v;
+  })();
+
+  const authCompany =
+    session?.companyId || profile?.company_id || companyId || null;
+  const persistedMode = shouldPersistCodeKnowledgeToSupabase();
+  const company =
+    persistedMode && authCompany
+      ? authCompany
+      : companyId || authCompany || DEMO_COMPANY;
   const client = clientId || DEMO_CLIENT;
 
   const [editions, setEditions] = useState<DiCodeEdition[]>([]);
   const [adoption, setAdoption] = useState<DiProjectCodeAdoption | null>(null);
   const [codes, setCodes] = useState<string[]>([]);
   const [docs, setDocs] = useState<CodeKnowledgeDocumentMeta[]>([]);
+  const [listSource, setListSource] = useState<'supabase' | 'session-memory'>('session-memory');
   const [query, setQuery] = useState('sprinkler density Section 5 Table 5.1');
   const [hits, setHits] = useState<CodeKnowledgeSearchHit[]>([]);
   const [selectedHit, setSelectedHit] = useState<CodeKnowledgeSearchHit | null>(null);
@@ -70,17 +111,19 @@ export default function CodeKnowledgePanel({ companyId, clientId }: Props) {
     'Section 8.1 general requirements.\n\nTable 8.2.1 design criteria placeholder text for indexing tests only.\n\nPage 12 discusses spacing. Figure 8.3 shows coverage layout.'
   );
 
-  const refresh = useCallback(() => {
+  const refresh = useCallback(async () => {
     setEditions(listCodeEditions({ companyId: company }));
     setCodes(listAvailableCodes(company));
     setAdoption(getProjectAdoptedEdition(client, 'NFPA-13', company));
-    setDocs(listKnowledgeDocumentsForCompany(company));
+    const listed = await listCodeKnowledgeDocumentsForUi({ companyId: company });
+    setDocs(listed.documents);
+    setListSource(listed.source);
   }, [company, client]);
 
   useEffect(() => {
     registerNfpa13_2025ProjectEdition({ companyId: company });
     registerNfpa13_2025RuleShells();
-    refresh();
+    void refresh();
   }, [company, refresh]);
 
   const rules = useMemo(
@@ -93,13 +136,19 @@ export default function CodeKnowledgePanel({ companyId, clientId }: Props) {
     const a = adoptNfpa13_2025ForProject({ companyId: company, clientId: client });
     registerNfpa13_2025RuleShells();
     setAdoption(a);
-    refresh();
+    void refresh();
     setMessage(
       'NFPA-13 2025 registered & project-adopted. platform_verification_status=NOT_VERIFIED_OFFICIAL. Rules=RULE_NOT_CONFIGURED.'
     );
   };
 
   const onRegisterSource = () => {
+    if (persistedMode) {
+      setMessage(
+        'FAILED: text excerpt is LOCAL / NOT SAVED. Use رفع وفهرسة to upload into Supabase Storage + di_knowledge_documents.'
+      );
+      return;
+    }
     const doc = registerKnowledgeDocument({
       companyId: company,
       title: 'NFPA 13 — 2025 (project-provided excerpt for indexing)',
@@ -115,58 +164,41 @@ export default function CodeKnowledgePanel({ companyId, clientId }: Props) {
       file_mime: 'text/plain',
     });
     const result = runDocumentPipeline(doc.id);
+    doc.persisted = false;
     setIndexStatus(result.document?.index_status || 'failed');
     const jobs = listPipelineJobs(doc.id)
       .map((j) => `${j.job_type}:${j.status}`)
       .join(', ');
-    refresh();
+    void refresh();
     setMessage(
       result.ok
-        ? `Document indexed (${result.document?.chunk_count || 0} chunks). Jobs: ${jobs}`
+        ? `LOCAL / NOT SAVED — indexed in session-memory (${result.document?.chunk_count || 0} chunks). Jobs: ${jobs}`
         : `Indexing incomplete. Jobs: ${jobs}`
     );
   };
 
-  const onUploadDocument = async () => {
+  /**
+   * Primary Production path: always calls uploadAndIngestCodeKnowledgeDocument
+   * (Storage → di_knowledge_documents → extract/OCR → chunks → verify).
+   */
+  const onUploadAndIndex = async () => {
     if (!uploadFile) {
       setMessage(
         'NFPA 13-2025 file is not present. Upload the PDF from this panel (Supabase Storage design-knowledge). Do not use Cursor/ChatGPT/web sources.'
       );
       return;
     }
+    if (persistedMode && !authCompany) {
+      setMessage(
+        'FAILED: no authenticated company UUID — cannot persist to Supabase Storage/DB.'
+      );
+      setIndexStatus('failed');
+      return;
+    }
     setBusy(true);
     try {
       const bytes = new Uint8Array(await uploadFile.arrayBuffer());
-      const isNfpa13_2025 =
-        uploadCode.trim() === 'NFPA-13' && uploadEdition.trim() === '2025';
-
-      if (isNfpa13_2025) {
-        const result = await ingestPlatformNfpa13_2025AndAdopt({
-          companyId: company,
-          bytes,
-          fileName: uploadFile.name,
-          mimeType: uploadFile.type || undefined,
-          adoptForProjects: [{ companyId: company, clientId: client }],
-        });
-        setIndexStatus(
-          result.ok
-            ? result.ingest?.status === 'skipped_duplicate'
-              ? 'skipped_duplicate'
-              : 'indexed'
-            : result.blocked || 'failed'
-        );
-        refresh();
-        if (!result.ok) {
-          setMessage(result.message || 'Ingestion blocked/failed');
-        } else {
-          setMessage(
-            `Storage ${CODE_KNOWLEDGE_STORAGE_BUCKET} OK · pages=${result.pages_extracted} ocr_pages=${result.pages_ocr} chunks=${result.chunk_count} · adopted=${result.adoptions.length} project(s) · active_numeric=${result.active_numeric_rules}`
-          );
-        }
-        return;
-      }
-
-      const generic = await uploadAndIngestCodeKnowledgeDocument({
+      const result = await uploadAndIngestCodeKnowledgeDocument({
         companyId: company,
         code: uploadCode.trim() || 'NFPA-13',
         edition: uploadEdition.trim() || '2025',
@@ -174,29 +206,69 @@ export default function CodeKnowledgePanel({ companyId, clientId }: Props) {
         fileName: uploadFile.name,
         mimeType: uploadFile.type || undefined,
         bytes,
+        source_document_id: `platform_upload:${uploadCode}-${uploadEdition}:${uploadFile.name}`,
         source_type: 'PROJECT_PROVIDED_DOCUMENT',
+        verification_status: 'PROJECT_COVER_IDENTIFIED',
         platform_verification_status: 'NOT_VERIFIED_OFFICIAL',
+        adoption_status: 'PROJECT_ADOPTED',
         replaceIfChanged: true,
       });
-      setIndexStatus(
-        generic.status === 'skipped_duplicate'
-          ? 'skipped_duplicate'
-          : generic.document.index_status
-      );
-      refresh();
-      if (generic.status === 'skipped_duplicate') {
+
+      if (result.status === 'failed') {
+        setIndexStatus('failed');
+        await refresh();
         setMessage(
-          `Identical SHA-256 — ingestion skipped. sha256=${generic.sha256.slice(0, 16)}…`
+          `FAILED: ${'error' in result ? result.error : 'ingestion_failed'}. No silent session-memory fallback.`
         );
-      } else if (generic.status === 'indexed') {
-        setMessage(
-          `Uploaded to ${CODE_KNOWLEDGE_STORAGE_BUCKET} → ${generic.storage_path}. pages=${generic.page_count} chunks=${generic.chunk_count}`
-        );
-      } else {
-        setMessage(`Ingestion failed: ${'error' in generic ? generic.error : 'unknown'}`);
+        return;
       }
+
+      if (result.status === 'skipped_duplicate') {
+        setIndexStatus(
+          result.document.persisted ? 'skipped_duplicate' : 'failed'
+        );
+        await refresh();
+        setMessage(
+          result.document.persisted
+            ? `Identical SHA-256 — already persisted. document_id=${result.document.id}`
+            : `FAILED: duplicate only in session-memory — re-upload required for Supabase persistence.`
+        );
+        return;
+      }
+
+      // Indexed only when Production persistence verified (or demo local mode)
+      if (persistedMode && !result.document.persisted) {
+        setIndexStatus('failed');
+        await refresh();
+        setMessage(
+          `FAILED: ${result.document.persist_error || 'not_persisted'}. Storage/DB required.`
+        );
+        return;
+      }
+
+      if (
+        uploadCode.trim() === 'NFPA-13' &&
+        uploadEdition.trim() === '2025' &&
+        (result.document.persisted || !persistedMode)
+      ) {
+        adoptNfpa13_2025ForProject({
+          companyId: company,
+          clientId: client,
+          source_document_id: result.document.source_document_id || result.document.id,
+        });
+        registerNfpa13_2025RuleShells();
+      }
+
+      setIndexStatus(result.document.index_status);
+      await refresh();
+      setMessage(
+        persistedMode
+          ? `SUPABASE / PERSISTED · document_id=${result.document.id} · path=${result.storage_path} · pages=${result.document.page_count} extracted=${result.document.pages_extracted} ocr=${result.document.pages_ocr} chunks=${result.chunk_count}`
+          : `LOCAL / NOT SAVED · pages=${result.document.page_count} chunks=${result.chunk_count}`
+      );
     } catch (err) {
-      setMessage(err instanceof Error ? err.message : String(err));
+      setIndexStatus('failed');
+      setMessage(`FAILED: ${err instanceof Error ? err.message : String(err)}`);
     } finally {
       setBusy(false);
     }
@@ -206,13 +278,17 @@ export default function CodeKnowledgePanel({ companyId, clientId }: Props) {
     setBusy(true);
     try {
       const result = await reingestCodeKnowledgeDocument(documentId);
-      refresh();
+      await refresh();
       if ('error' in result && result.status === 'failed') {
-        setMessage(`Re-ingest failed: ${result.error}`);
+        setMessage(`FAILED: Re-ingest failed: ${result.error}`);
       } else if (result.status === 'skipped_duplicate') {
         setMessage('Re-ingest skipped — SHA-256 unchanged.');
+      } else if (result.status === 'failed') {
+        setMessage(`FAILED: ${'error' in result ? result.error : 'reingest_failed'}`);
       } else {
-        setMessage(`Re-ingest / new version: status=${result.status}`);
+        setMessage(
+          `Re-ingest: status=${result.status} persisted=${Boolean(result.document.persisted)}`
+        );
       }
     } finally {
       setBusy(false);
@@ -251,7 +327,7 @@ export default function CodeKnowledgePanel({ companyId, clientId }: Props) {
     });
     const result = compareCodeEditions('NFPA-13', '2025', '2028');
     setCompare(result);
-    refresh();
+    void refresh();
     setMessage(
       `Comparison status=${result.status}. new_edition_activated=${result.new_edition_activated}. Project stays on ${adoption?.edition || '2025'}.`
     );
@@ -259,20 +335,28 @@ export default function CodeKnowledgePanel({ companyId, clientId }: Props) {
 
   const onAdvanceReview = (editionId: string) => {
     const row = advanceCodeEditionStatus(editionId, 'pending_engineer_review');
-    refresh();
+    void refresh();
     setMessage(row ? `Edition → ${row.status}` : 'Invalid status transition');
   };
 
   return (
     <div className="space-y-6">
       <div className="rounded-xl border border-slate-200 bg-gradient-to-br from-slate-50 via-white to-cyan-50 p-5">
-        <h2 className="text-xl font-semibold text-slate-900">Code Knowledge Pipeline</h2>
+        <div className="flex flex-wrap items-center gap-2">
+          <h2 className="text-xl font-semibold text-slate-900">Code Knowledge Pipeline</h2>
+          <PersistenceBadge persistedMode={persistedMode} docPersisted={persistedMode} />
+        </div>
         <p className="mt-1 max-w-3xl text-sm text-slate-600">
           Upload NFPA / code documents into private Supabase Storage (
           <code className="text-xs">{CODE_KNOWLEDGE_STORAGE_BUCKET}</code>
           ), ingest with page-preserving extraction, and search with citations. RAG is advisory —
           it cannot produce PASS. Compliance authority remains{' '}
           <code className="text-xs">lib/projects/compliance</code>.
+        </p>
+        <p className="mt-2 text-xs text-slate-500">
+          Mode: {persistedMode ? 'SUPABASE / PERSISTED' : 'LOCAL / NOT SAVED'} · list source=
+          {listSource} · company=
+          <code className="text-[10px]">{company}</code>
         </p>
         <div className="mt-4 flex flex-wrap gap-2">
           <button
@@ -314,22 +398,30 @@ export default function CodeKnowledgePanel({ companyId, clientId }: Props) {
               setSelectedHit(null);
               setIndexStatus('—');
               setMessage('In-memory code knowledge + Storage mock cleared.');
-              refresh();
+              void refresh();
             }}
           >
             Reset session store
           </button>
         </div>
         {message && (
-          <p className="mt-3 rounded-lg bg-white/80 px-3 py-2 text-sm text-slate-700">{message}</p>
+          <p
+            className={`mt-3 rounded-lg px-3 py-2 text-sm ${
+              message.startsWith('FAILED')
+                ? 'bg-rose-50 text-rose-900'
+                : 'bg-white/80 text-slate-700'
+            }`}
+          >
+            {message}
+          </p>
         )}
       </div>
 
       <section className="rounded-xl border border-slate-200 bg-white p-4">
         <h3 className="font-medium text-slate-900">Upload Document</h3>
         <p className="mt-1 text-xs text-slate-500">
-          Source: Tawaqqa Salama → Supabase Storage → di_knowledge_documents. Private bucket; signed /
-          authenticated access only.
+          Browser/File → authenticated Storage → {CODE_KNOWLEDGE_STORAGE_BUCKET} →
+          di_knowledge_documents → extract/OCR → di_knowledge_chunks → UI refresh from Supabase.
         </p>
         <div className="mt-3 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
           <label className="block text-xs text-slate-500">
@@ -365,9 +457,9 @@ export default function CodeKnowledgePanel({ companyId, clientId }: Props) {
             type="button"
             disabled={busy}
             className="rounded-lg bg-cyan-700 px-3 py-2 text-sm text-white disabled:opacity-50"
-            onClick={() => void onUploadDocument()}
+            onClick={() => void onUploadAndIndex()}
           >
-            {busy ? 'Working…' : 'Upload Document'}
+            {busy ? 'Working…' : uploadLabel}
           </button>
           <span className="self-center text-xs text-slate-500">
             Path: {'{company}'}/code-knowledge/{'{code}'}/{'{edition}'}/{'{documentId}'}/file
@@ -378,75 +470,88 @@ export default function CodeKnowledgePanel({ companyId, clientId }: Props) {
       <section className="rounded-xl border border-slate-200 bg-white p-4 overflow-x-auto">
         <h3 className="font-medium text-slate-900">Documents</h3>
         <p className="mt-1 text-xs text-slate-500">
-          Session index status: {indexStatus} · bucket={CODE_KNOWLEDGE_STORAGE_BUCKET}
+          Last status: {indexStatus} · bucket={CODE_KNOWLEDGE_STORAGE_BUCKET} · source={listSource}
         </p>
-        <table className="mt-3 w-full min-w-[960px] text-left text-xs">
+        <table className="mt-3 w-full min-w-[1200px] text-left text-xs">
           <thead className="border-b border-slate-200 text-slate-500">
             <tr>
+              <th className="py-2 pr-2">Persisted</th>
               <th className="py-2 pr-2">Code</th>
               <th className="py-2 pr-2">Edition</th>
               <th className="py-2 pr-2">Document</th>
+              <th className="py-2 pr-2">Document ID</th>
+              <th className="py-2 pr-2">Storage Path</th>
               <th className="py-2 pr-2">Pages</th>
               <th className="py-2 pr-2">Extracted</th>
               <th className="py-2 pr-2">OCR</th>
               <th className="py-2 pr-2">Chunks</th>
               <th className="py-2 pr-2">Ingestion</th>
               <th className="py-2 pr-2">Index</th>
-              <th className="py-2 pr-2">SHA-256</th>
-              <th className="py-2 pr-2">Last ingestion</th>
               <th className="py-2 pr-2">Actions</th>
             </tr>
           </thead>
           <tbody>
-            {docs.map((d) => (
-              <tr key={d.id} className="border-b border-slate-100 align-top">
-                <td className="py-2 pr-2 font-medium">{d.code}</td>
-                <td className="py-2 pr-2">{d.edition}</td>
-                <td className="py-2 pr-2">
-                  <div>{d.file_name || d.title}</div>
-                  <div className="text-[10px] text-slate-400 break-all">{d.storage_path || '—'}</div>
-                </td>
-                <td className="py-2 pr-2">{d.page_count ?? '—'}</td>
-                <td className="py-2 pr-2">{d.pages_extracted ?? '—'}</td>
-                <td className="py-2 pr-2">{d.pages_ocr ?? (d.ocr_used ? 'yes' : '—')}</td>
-                <td className="py-2 pr-2">{d.chunk_count ?? 0}</td>
-                <td className="py-2 pr-2">{d.ingestion_status || '—'}</td>
-                <td className="py-2 pr-2">{d.index_status}</td>
-                <td className="py-2 pr-2 font-mono text-[10px]">
-                  {d.sha256 ? `${d.sha256.slice(0, 12)}…` : '—'}
-                </td>
-                <td className="py-2 pr-2 whitespace-nowrap">
-                  {d.last_ingestion_at || d.indexed_at || '—'}
-                </td>
-                <td className="py-2 pr-2 space-y-1">
-                  <button
-                    type="button"
-                    disabled={busy || !d.storage_path}
-                    className="block text-cyan-700 underline disabled:opacity-40"
-                    onClick={() => void onReingest(d.id)}
-                  >
-                    Re-ingest
-                  </button>
-                  <button
-                    type="button"
-                    disabled={busy}
-                    className="block text-slate-600 underline disabled:opacity-40"
-                    onClick={() => {
-                      setUploadCode(d.code);
-                      setUploadEdition(d.edition);
-                      setMessage(
-                        'Select a new file then Upload Document to Replace / New Version (SHA change required).'
-                      );
-                    }}
-                  >
-                    Replace / New Version
-                  </button>
-                </td>
-              </tr>
-            ))}
+            {docs.map((d) => {
+              const isIndexed =
+                d.index_status === 'indexed' &&
+                (d.chunk_count || 0) > 0 &&
+                Boolean(d.storage_path) &&
+                (persistedMode ? d.persisted === true : true);
+              const displayIndex = isIndexed ? 'indexed' : d.index_status === 'indexed' && !isIndexed ? 'failed' : d.index_status;
+              return (
+                <tr key={d.id} className="border-b border-slate-100 align-top">
+                  <td className="py-2 pr-2">
+                    <div className="font-semibold">
+                      {d.persisted ? 'YES' : 'NO'}
+                    </div>
+                    <PersistenceBadge
+                      persistedMode={persistedMode}
+                      docPersisted={d.persisted}
+                    />
+                  </td>
+                  <td className="py-2 pr-2 font-medium">{d.code}</td>
+                  <td className="py-2 pr-2">{d.edition}</td>
+                  <td className="py-2 pr-2">{d.file_name || d.title}</td>
+                  <td className="py-2 pr-2 font-mono text-[10px] break-all">{d.id}</td>
+                  <td className="py-2 pr-2 font-mono text-[10px] break-all">
+                    {d.storage_path || '—'}
+                  </td>
+                  <td className="py-2 pr-2">{d.page_count ?? '—'}</td>
+                  <td className="py-2 pr-2">{d.pages_extracted ?? '—'}</td>
+                  <td className="py-2 pr-2">{d.pages_ocr ?? (d.ocr_used ? 'yes' : '—')}</td>
+                  <td className="py-2 pr-2">{d.chunk_count ?? 0}</td>
+                  <td className="py-2 pr-2">{d.ingestion_status || '—'}</td>
+                  <td className="py-2 pr-2">{displayIndex}</td>
+                  <td className="py-2 pr-2 space-y-1">
+                    <button
+                      type="button"
+                      disabled={busy || !d.storage_path}
+                      className="block text-cyan-700 underline disabled:opacity-40"
+                      onClick={() => void onReingest(d.id)}
+                    >
+                      Re-ingest
+                    </button>
+                    <button
+                      type="button"
+                      disabled={busy}
+                      className="block text-slate-600 underline disabled:opacity-40"
+                      onClick={() => {
+                        setUploadCode(d.code);
+                        setUploadEdition(d.edition);
+                        setMessage(
+                          'Select a new file then رفع وفهرسة to Replace / New Version (SHA change required).'
+                        );
+                      }}
+                    >
+                      Replace / New Version
+                    </button>
+                  </td>
+                </tr>
+              );
+            })}
             {!docs.length && (
               <tr>
-                <td colSpan={12} className="py-4 text-slate-400">
+                <td colSpan={13} className="py-4 text-slate-400">
                   No documents yet for this company.
                 </td>
               </tr>
@@ -515,7 +620,7 @@ export default function CodeKnowledgePanel({ companyId, clientId }: Props) {
             <p className="mt-2 text-sm text-slate-500">No adopted edition for this project.</p>
           )}
           <label className="mt-4 block text-xs text-slate-500">
-            Optional text excerpt (not a substitute for Storage PDFs)
+            Optional text excerpt (Demo LOCAL only — not Production)
             <textarea
               className="mt-1 w-full rounded-lg border border-slate-200 p-2 text-sm"
               rows={5}
