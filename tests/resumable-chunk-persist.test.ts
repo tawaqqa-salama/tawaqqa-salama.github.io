@@ -88,8 +88,30 @@ describe('Resumable chunk persistence', () => {
       join(root, 'components/design/CodeKnowledgePanel.tsx'),
       'utf8'
     );
+    const kb = readFileSync(
+      join(root, 'components/design/DesignIntelligenceModule.tsx'),
+      'utf8'
+    );
     expect(ck).toMatch(/Resume chunks/);
     expect(ck).toMatch(/resumeIncompleteCodeKnowledgeIngestion/);
     expect(ck).toMatch(/Resuming chunks from Storage \(no re-upload\)/);
+    expect(kb).toMatch(/Resume \/ Repair/);
+    expect(kb).toMatch(/onResumeKnowledgeChunks/);
+  });
+
+  it('dedupe + finalize helpers exist for failed status with many chunks', () => {
+    const src = readFileSync(
+      join(root, 'lib/design-intelligence/code-knowledge/persist.ts'),
+      'utf8'
+    );
+    const ingest = readFileSync(
+      join(root, 'lib/design-intelligence/code-knowledge/storage-ingestion.ts'),
+      'utf8'
+    );
+    expect(src).toMatch(/dedupePersistedChunksByFingerprint/);
+    expect(src).toMatch(/finalizeCodeKnowledgeDocumentIfComplete/);
+    expect(ingest).toMatch(/dedupePersistedChunksByFingerprint/);
+    expect(ingest).toMatch(/alreadyComplete/);
+    expect(ingest).toMatch(/finalizeCodeKnowledgeDocumentIfComplete/);
   });
 });

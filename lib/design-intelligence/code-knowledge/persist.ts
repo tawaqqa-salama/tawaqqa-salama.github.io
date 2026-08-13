@@ -497,6 +497,115 @@ export async function analyzePersistedChunkCoverage(
   };
 }
 
+/**
+ * Remove duplicate chunk rows (same page+content fingerprint), keep lowest chunk_index.
+ * Fixes doubled counts after a failed delete-all + partial re-insert.
+ */
+export async function dedupePersistedChunksByFingerprint(
+  documentId: string
+): Promise<{ ok: boolean; removed: number; error?: string }> {
+  if (!shouldPersistCodeKnowledgeToSupabase() || !isUuid(documentId)) {
+    return { ok: false, removed: 0, error: 'supabase_not_configured' };
+  }
+
+  const pageSize = 1000;
+  let from = 0;
+  const seen = new Map<string, string>(); // fingerprint -> keep id
+  const removeIds: string[] = [];
+
+  while (true) {
+    const { data, error } = await supabase
+      .from('di_knowledge_chunks')
+      .select('id, chunk_index, page_start, content')
+      .eq('document_id', documentId)
+      .order('chunk_index', { ascending: true })
+      .range(from, from + pageSize - 1);
+    if (error) return { ok: false, removed: 0, error: error.message };
+    if (!data?.length) break;
+    for (const row of data) {
+      const fp = chunkContentFingerprint(row.page_start, row.content || '');
+      const keep = seen.get(fp);
+      if (!keep) {
+        seen.set(fp, row.id);
+      } else {
+        removeIds.push(row.id);
+      }
+    }
+    if (data.length < pageSize) break;
+    from += pageSize;
+  }
+
+  const batch = 100;
+  for (let i = 0; i < removeIds.length; i += batch) {
+    const slice = removeIds.slice(i, i + batch);
+    const { error } = await supabase.from('di_knowledge_chunks').delete().in('id', slice);
+    if (error) return { ok: false, removed: i, error: error.message };
+  }
+  return { ok: true, removed: removeIds.length };
+}
+
+/**
+ * If Storage exists and page coverage is complete, flip document to indexed
+ * without re-upload / re-extract. Updates chunk_count to the actual DB count.
+ */
+export async function finalizeCodeKnowledgeDocumentIfComplete(input: {
+  documentId: string;
+  companyId: string;
+  expectedPageCount?: number | null;
+}): Promise<{
+  ok: boolean;
+  finalized: boolean;
+  coverage: Awaited<ReturnType<typeof analyzePersistedChunkCoverage>>;
+  error?: string;
+}> {
+  const coverage = await analyzePersistedChunkCoverage(
+    input.documentId,
+    input.expectedPageCount || undefined
+  );
+  const expected = input.expectedPageCount || coverage.max_page_end || 0;
+  const complete =
+    coverage.chunk_count > 0 &&
+    coverage.empty_chunk_count === 0 &&
+    coverage.duplicate_fingerprint_count === 0 &&
+    expected > 0 &&
+    (coverage.max_page_end || 0) >= expected &&
+    coverage.missing_pages.length === 0;
+
+  if (!complete) {
+    return {
+      ok: true,
+      finalized: false,
+      coverage,
+      error: `coverage_incomplete: max=${coverage.max_page_end} expected=${expected} missing=${coverage.missing_pages.length} dups=${coverage.duplicate_fingerprint_count}`,
+    };
+  }
+
+  if (!shouldPersistCodeKnowledgeToSupabase()) {
+    return { ok: false, finalized: false, coverage, error: 'supabase_not_configured' };
+  }
+
+  const now = new Date().toISOString();
+  const { error } = await supabase
+    .from('di_knowledge_documents')
+    .update({
+      ingestion_status: 'indexed',
+      index_status: 'indexed',
+      extraction_status: 'indexed',
+      extract_status: 'indexed',
+      embedding_status: 'indexed',
+      chunk_count: coverage.chunk_count,
+      page_count: expected,
+      updated_at: now,
+      last_ingestion_at: now,
+      indexed_at: now,
+    })
+    .eq('id', input.documentId)
+    .eq('company_id', input.companyId);
+
+  if (error) return { ok: false, finalized: false, coverage, error: error.message };
+  return { ok: true, finalized: true, coverage };
+}
+
 export async function verifyPersistedCodeKnowledgeIngestion(input: {
   documentId: string;
   storageBucket: string;

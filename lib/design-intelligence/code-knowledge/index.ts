@@ -98,6 +98,8 @@ export {
   analyzePersistedChunkCoverage,
   chunkContentFingerprint,
   CHUNK_PERSIST_BATCH_SIZE,
+  dedupePersistedChunksByFingerprint,
+  finalizeCodeKnowledgeDocumentIfComplete,
 } from '@/lib/design-intelligence/code-knowledge/persist';
 export {
   ingestPlatformNfpa13_2025AndAdopt,

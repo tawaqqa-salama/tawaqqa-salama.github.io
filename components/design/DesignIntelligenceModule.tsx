@@ -42,6 +42,7 @@ import {
   buildKnowledgeUploadDiagnostics,
   deleteKnowledgeDocument,
   documentHasSha256Duplicate,
+  resumeIncompleteCodeKnowledgeIngestion,
   addLesson,
   type DesignIntelligenceTabId,
   type DiDesignChecklist,
@@ -283,6 +284,56 @@ export default function DesignIntelligenceModule() {
     const answer = await ragQuery(question);
     setRag(answer);
     setBusy(false);
+  };
+
+  /**
+   * Repair failed large NFPA ingest: dedupe + fill gaps from existing Storage.
+   * No re-upload. Works from Knowledge Base table (same document_id).
+   */
+  const onResumeKnowledgeChunks = async (d: DiKnowledgeDocument) => {
+    const companyUuid = tenantCompanyId || '';
+    if (!companyUuid) {
+      setMessage('FAILED: company_id required to resume');
+      return;
+    }
+    if (!d.storage_path) {
+      setMessage('FAILED: storage_path_missing');
+      return;
+    }
+    setBusy(true);
+    setMessage(`Resuming / repairing chunks (no re-upload)… ${d.id}`);
+    setKbUploadPhase('chunking');
+    try {
+      const result = await resumeIncompleteCodeKnowledgeIngestion({
+        companyId: companyUuid,
+        documentId: d.id,
+        storagePath: d.storage_path,
+        storageBucket: d.storage_bucket || undefined,
+        code: d.code || 'NFPA-13',
+        edition: d.edition || '2025',
+        title: d.title,
+        fileName: d.file_name || undefined,
+        mimeType: d.mime_type || d.file_mime || undefined,
+        onPhase: (phase) => setKbUploadPhase(phase),
+      });
+      setDocs(await listKnowledgeDocuments());
+      if (result.status === 'failed') {
+        setKbUploadPhase('failed');
+        setMessage(
+          `FAILED: ${result.error || 'resume_failed'} · chunks=${result.chunk_count} · max_page_end=${result.coverage_after?.max_page_end ?? '—'} · missing=${(result.missing_pages || []).length}`
+        );
+        return;
+      }
+      setKbUploadPhase('indexed');
+      setMessage(
+        `SUPABASE / REPAIRED · document_id=${d.id} · chunks=${result.chunk_count} · pages=${result.page_count} · max_page_end=${result.coverage_after?.max_page_end ?? '—'} · dups_cleared`
+      );
+    } catch (err) {
+      setKbUploadPhase('failed');
+      setMessage(`FAILED: ${err instanceof Error ? err.message : String(err)}`);
+    } finally {
+      setBusy(false);
+    }
   };
 
   const onDeleteKnowledgeDoc = async (
@@ -641,9 +692,30 @@ export default function DesignIntelligenceModule() {
                         <span className="text-xs">{d.ingestion_status || '—'}</span>
                       </td>
                       <td className="p-3" data-label="Index">
-                        <span className="text-xs font-semibold text-emerald-700">{d.index_status}</span>
+                        <span
+                          className={`text-xs font-semibold ${
+                            d.index_status === 'indexed'
+                              ? 'text-emerald-700'
+                              : 'text-rose-700'
+                          }`}
+                        >
+                          {d.index_status}
+                        </span>
                       </td>
                       <td className="p-3 space-y-1" data-label="Actions">
+                        {(d.ingestion_status === 'failed' ||
+                          (d.index_status === 'failed' &&
+                            (d.chunk_count || 0) > 0)) &&
+                        d.storage_path ? (
+                          <button
+                            type="button"
+                            disabled={busy}
+                            className="block text-xs font-semibold text-amber-800 underline disabled:opacity-40"
+                            onClick={() => void onResumeKnowledgeChunks(d)}
+                          >
+                            Resume / Repair
+                          </button>
+                        ) : null}
                         <button
                           type="button"
                           disabled={busy}

@@ -52,6 +52,8 @@ import {
   persistAndVerifyCodeKnowledgeIngestion,
   shouldPersistCodeKnowledgeToSupabase,
   verifyStorageObjectExists,
+  dedupePersistedChunksByFingerprint,
+  finalizeCodeKnowledgeDocumentIfComplete,
 } from '@/lib/design-intelligence/code-knowledge/persist';
 import type {
   CodeKnowledgeChunk,
@@ -1317,6 +1319,83 @@ export async function resumeIncompleteCodeKnowledgeIngestion(input: {
     pageCountHint || undefined
   );
 
+  // 1) Strip duplicate rows from prior failed delete-all retries (e.g. 1880→3744).
+  input.onPhase?.('chunking');
+  const deduped = await dedupePersistedChunksByFingerprint(input.documentId);
+  if (!deduped.ok) {
+    return {
+      status: 'failed',
+      document: {
+        id: input.documentId,
+        company_id: input.companyId,
+        title,
+        code,
+        edition,
+        status: 'failed',
+        index_status: 'failed',
+        storage_path: storagePath,
+        persisted: false,
+        persist_error: deduped.error || 'dedupe_failed',
+      },
+      sha256: shaHint,
+      storage_path: storagePath,
+      chunk_count: coverage_before.chunk_count,
+      page_count: pageCountHint,
+      coverage_before,
+      error: deduped.error || 'dedupe_failed',
+    };
+  }
+
+  // 2) If coverage already complete after dedupe, finalize statuses — no re-download.
+  const afterDedupe = await analyzePersistedChunkCoverage(
+    input.documentId,
+    pageCountHint || undefined
+  );
+  const alreadyComplete =
+    pageCountHint > 0 &&
+    afterDedupe.empty_chunk_count === 0 &&
+    afterDedupe.duplicate_fingerprint_count === 0 &&
+    (afterDedupe.max_page_end || 0) >= pageCountHint &&
+    afterDedupe.missing_pages.length === 0 &&
+    afterDedupe.chunk_count > 0;
+
+  if (alreadyComplete) {
+    const finalized = await finalizeCodeKnowledgeDocumentIfComplete({
+      documentId: input.documentId,
+      companyId: input.companyId,
+      expectedPageCount: pageCountHint,
+    });
+    input.onPhase?.(finalized.finalized ? 'indexed' : 'failed');
+    return {
+      status: finalized.finalized ? 'indexed' : 'failed',
+      document: {
+        id: input.documentId,
+        company_id: input.companyId,
+        title,
+        code,
+        edition,
+        status: finalized.finalized ? 'active' : 'failed',
+        index_status: finalized.finalized ? 'indexed' : 'failed',
+        ingestion_status: finalized.finalized ? 'indexed' : 'failed',
+        storage_path: storagePath,
+        chunk_count: finalized.coverage.chunk_count,
+        page_count: pageCountHint,
+        persisted: Boolean(finalized.finalized),
+        persist_error: finalized.finalized ? null : finalized.error || null,
+      },
+      sha256: shaHint,
+      storage_path: storagePath,
+      chunk_count: finalized.coverage.chunk_count,
+      page_count: pageCountHint,
+      skipped: afterDedupe.chunk_count,
+      coverage_before,
+      coverage_after: finalized.coverage,
+      missing_pages: finalized.coverage.missing_pages,
+      error: finalized.finalized ? undefined : finalized.error,
+    };
+  }
+
+  // 3) Gaps remain — download existing Storage object and insert only missing chunks.
   const result = await reingestExistingCodeKnowledgeStorageObject({
     companyId: input.companyId,
     documentId: input.documentId,
@@ -1333,6 +1412,9 @@ export async function resumeIncompleteCodeKnowledgeIngestion(input: {
     onPhase: input.onPhase,
   });
 
+  // Dedupe again in case of race, then finalize or report gaps.
+  await dedupePersistedChunksByFingerprint(input.documentId);
+
   const coverage_after = await analyzePersistedChunkCoverage(
     input.documentId,
     result.page_count || pageCountHint || undefined
@@ -1344,30 +1426,21 @@ export async function resumeIncompleteCodeKnowledgeIngestion(input: {
       (coverage_after.max_page_end || 0) < result.page_count) ||
     coverage_after.empty_chunk_count > 0;
 
-  if (result.status === 'indexed' && !gapsRemain && shouldPersistCodeKnowledgeToSupabase()) {
-    const { supabase } = await import('@/lib/supabase');
-    await supabase
-      .from('di_knowledge_documents')
-      .update({
-        ingestion_status: 'indexed',
-        index_status: 'indexed',
-        extraction_status: 'indexed',
-        extract_status: 'indexed',
-        embedding_status: 'indexed',
-        chunk_count: coverage_after.chunk_count,
-        page_count: result.page_count,
-        updated_at: nowIso(),
-      })
-      .eq('id', input.documentId)
-      .eq('company_id', input.companyId);
-
+  if (!gapsRemain && shouldPersistCodeKnowledgeToSupabase()) {
+    const finalized = await finalizeCodeKnowledgeDocumentIfComplete({
+      documentId: input.documentId,
+      companyId: input.companyId,
+      expectedPageCount: result.page_count || pageCountHint,
+    });
+    input.onPhase?.(finalized.finalized ? 'indexed' : 'failed');
     return {
       ...result,
-      status: 'indexed',
-      chunk_count: coverage_after.chunk_count,
+      status: finalized.finalized ? 'indexed' : 'failed',
+      chunk_count: finalized.coverage.chunk_count,
       coverage_before,
-      coverage_after,
-      missing_pages: coverage_after.missing_pages,
+      coverage_after: finalized.coverage,
+      missing_pages: finalized.coverage.missing_pages,
+      error: finalized.finalized ? undefined : finalized.error,
     };
   }
 
@@ -1385,6 +1458,7 @@ export async function resumeIncompleteCodeKnowledgeIngestion(input: {
         .eq('id', input.documentId)
         .eq('company_id', input.companyId);
     }
+    input.onPhase?.('failed');
     return {
       ...result,
       status: 'failed',
