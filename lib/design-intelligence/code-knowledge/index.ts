@@ -62,6 +62,17 @@ export {
   listCodeKnowledgeDocumentsForUi,
 } from '@/lib/design-intelligence/code-knowledge/storage-ingestion';
 export {
+  deleteKnowledgeDocument,
+  documentHasSha256Duplicate,
+  findKnowledgeDocumentUsage,
+  isDeletableDuplicate,
+  listSha256Duplicates,
+  resolveCanonicalDocumentId,
+  toKnowledgeDocumentRef,
+  type KnowledgeDeleteResult,
+  type KnowledgeDeleteFailureCode,
+} from '@/lib/design-intelligence/knowledge-delete';
+export {
   shouldPersistCodeKnowledgeToSupabase,
   listPersistedCodeKnowledgeDocuments,
   verifyPersistedCodeKnowledgeIngestion,

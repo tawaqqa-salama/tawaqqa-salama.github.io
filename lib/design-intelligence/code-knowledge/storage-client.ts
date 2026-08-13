@@ -28,6 +28,11 @@ export type StorageSignedUrlResult = {
   error?: string;
 };
 
+export type StorageRemoveResult = {
+  ok: boolean;
+  error?: string;
+};
+
 /** Injectable for unit tests (in-memory fake). */
 export type CodeKnowledgeStorageAdapter = {
   upload: (
@@ -42,6 +47,7 @@ export type CodeKnowledgeStorageAdapter = {
     path: string,
     expiresInSeconds?: number
   ) => Promise<StorageSignedUrlResult>;
+  remove: (bucket: string, path: string) => Promise<StorageRemoveResult>;
 };
 
 const memoryBuckets = new Map<string, Map<string, Uint8Array>>();
@@ -67,6 +73,12 @@ export function createInMemoryCodeKnowledgeStorage(): CodeKnowledgeStorageAdapte
         ok: true,
         signedUrl: `memory://${bucket}/${path}?exp=${expiresInSeconds}`,
       };
+    },
+    async remove(bucket, path) {
+      const bucketMap = memoryBuckets.get(bucket);
+      if (!bucketMap?.has(path)) return { ok: false, error: 'not_found' };
+      bucketMap.delete(path);
+      return { ok: true };
     },
   };
 }
@@ -123,6 +135,11 @@ export function getDefaultCodeKnowledgeStorage(): CodeKnowledgeStorageAdapter {
         };
       }
       return { ok: true, signedUrl: data.signedUrl };
+    },
+    async remove(bucket, path) {
+      const { error } = await supabase.storage.from(bucket).remove([path]);
+      if (error) return { ok: false, error: error.message };
+      return { ok: true };
     },
   };
 }

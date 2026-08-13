@@ -40,6 +40,8 @@ import {
   uploadAndIndexKnowledgeFile,
   KnowledgePersistError,
   buildKnowledgeUploadDiagnostics,
+  deleteKnowledgeDocument,
+  documentHasSha256Duplicate,
   addLesson,
   type DesignIntelligenceTabId,
   type DiDesignChecklist,
@@ -48,6 +50,7 @@ import {
   type DiKnowledgeDocument,
   type EngineeringFormState,
   type KnowledgeUploadDiagnostics,
+  type KnowledgeDeleteResult,
   type RagAnswer,
 } from '@/lib/design-intelligence';
 import EngineeringRulesPanel from '@/components/design/EngineeringRulesPanel';
@@ -263,6 +266,56 @@ export default function DesignIntelligenceModule() {
     const answer = await ragQuery(question);
     setRag(answer);
     setBusy(false);
+  };
+
+  const onDeleteKnowledgeDoc = async (
+    d: DiKnowledgeDocument,
+    duplicateOnly: boolean
+  ) => {
+    const companyUuid = tenantCompanyId || '';
+    if (!companyUuid) {
+      setMessage('FAILED: company_id required to delete');
+      return;
+    }
+    const titleLabel = d.title || d.file_name || d.id;
+    const ok = window.confirm(
+      duplicateOnly
+        ? `Delete duplicate document?\n\n${titleLabel}\nID: ${d.id}\n\nRemoves Storage, chunks, jobs; soft-deletes this duplicate. Canonical is kept.`
+        : `Delete document?\n\n${titleLabel}\nID: ${d.id}\n\nRemoves Storage file and chunks, then soft-deletes the document.`
+    );
+    if (!ok) return;
+    setBusy(true);
+    setMessage(null);
+    try {
+      const result: KnowledgeDeleteResult = await deleteKnowledgeDocument({
+        documentId: d.id,
+        companyId: companyUuid,
+        duplicateOnly,
+        confirmed: true,
+      });
+      if (!result.ok) {
+        if (result.code === 'document_in_use') {
+          setMessage(
+            'Document is in use — unlink from project adoption / code edition first.'
+          );
+        } else if (result.code === 'canonical_protected') {
+          setMessage('Cannot delete canonical document.');
+        } else if (result.code === 'company_mismatch') {
+          setMessage('FAILED: cannot delete another company document.');
+        } else {
+          setMessage(`FAILED: ${result.error}`);
+        }
+      } else {
+        setMessage(
+          `Soft-deleted ${duplicateOnly ? 'duplicate' : 'document'} · chunks_removed=${result.chunksRemoved} · storage_removed=${result.storageRemoved}`
+        );
+      }
+      setDocs(await listKnowledgeDocuments());
+    } catch (err) {
+      setMessage(err instanceof Error ? err.message : String(err));
+    } finally {
+      setBusy(false);
+    }
   };
 
   const createWs = (client: ClientRecord) => {
@@ -487,6 +540,7 @@ export default function DesignIntelligenceModule() {
                     <th className="p-3">Chunks</th>
                     <th className="p-3">Ingestion</th>
                     <th className="p-3">Index</th>
+                    <th className="p-3">Actions</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -519,6 +573,27 @@ export default function DesignIntelligenceModule() {
                       </td>
                       <td className="p-3" data-label="Index">
                         <span className="text-xs font-semibold text-emerald-700">{d.index_status}</span>
+                      </td>
+                      <td className="p-3 space-y-1" data-label="Actions">
+                        <button
+                          type="button"
+                          disabled={busy}
+                          className="block text-xs text-rose-700 underline disabled:opacity-40"
+                          onClick={() => void onDeleteKnowledgeDoc(d, false)}
+                        >
+                          Delete
+                        </button>
+                        {tenantCompanyId &&
+                        documentHasSha256Duplicate(d, tenantCompanyId) ? (
+                          <button
+                            type="button"
+                            disabled={busy}
+                            className="block text-xs text-amber-700 underline disabled:opacity-40"
+                            onClick={() => void onDeleteKnowledgeDoc(d, true)}
+                          >
+                            Delete duplicate
+                          </button>
+                        ) : null}
                       </td>
                     </tr>
                   ))}
