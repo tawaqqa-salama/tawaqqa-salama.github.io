@@ -10,6 +10,9 @@
 -- smaller limit (e.g. Studio default 50MiB). This migration FORCES the bucket
 -- cap to 1 GiB (must still be ≤ Global limit — raise Global first if needed).
 --
+-- file_size_limit is PostgreSQL integer (max 2147483647 ≈ 2 GiB).
+-- Use ONLY 1073741824 (1 GiB). Do not type larger byte values.
+--
 -- Does NOT change NFPA numeric rules or RLS semantics.
 -- ============================================================================
 
