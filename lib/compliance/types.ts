@@ -45,6 +45,11 @@ export type ComplianceValidationResult = {
   standards: ComplianceStandard[];
   ekbHints: string[];
   parsedFile?: ParsedEngineeringFile | null;
+  /**
+   * Always false — lib/compliance is advisory only.
+   * Workflow gates must use lib/projects/compliance exclusively.
+   */
+  authoritative?: false;
 };
 
 export type ParsedEngineeringFile = {

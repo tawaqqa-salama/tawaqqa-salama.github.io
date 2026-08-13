@@ -1,9 +1,28 @@
 /**
  * Saudi Code Compliance Engine (SBC 201 / SBC 801) — core types.
- * Deterministic rules only; AI findings are never authoritative.
+ *
+ * AUTHORITATIVE COMPLIANCE (Phase 2.3):
+ *   Only this module family (`lib/projects/compliance`) may produce
+ *   PASS / FAIL / NEEDS_DATA / BLOCKED for workflow gates and approved reports.
+ *
+ * Advisory stacks (`lib/compliance`, Design Intelligence, Design Center vision,
+ * knowledge-engine estimates) may show findings/recommendations only — they
+ * must never unlock stages or override this engine.
+ *
+ * Canonical engineering inputs resolve from ProjectEngineeringData backed by
+ * project_engineering_live.payload (see lib/projects/canonical-engineering.ts).
  */
 
-export type ComplianceResultStatus = 'PASS' | 'FAIL' | 'NEEDS_DATA' | 'N/A' | 'BLOCKED';
+export type ComplianceResultStatus =
+  | 'PASS'
+  | 'FAIL'
+  | 'NEEDS_DATA'
+  | 'N/A'
+  | 'BLOCKED'
+  /** Canonical source conflict — cannot invent a PASS from either side */
+  | 'CONFLICT'
+  /** Edition/table not encoded in-platform — never invent a threshold */
+  | 'RULE_NOT_CONFIGURED';
 
 /** Project-documented adopted code mapping (edition + section required for PASS/FAIL). */
 export type ProjectCodeMapping = {
@@ -294,6 +313,11 @@ export type ComplianceRuleContext = {
    * Never invent defaults — missing fields drive NEEDS_DATA.
    */
   sbc201Egress?: Sbc201EgressInputs | null;
+  /**
+   * NFPA architecture context (canonical inputs only).
+   * Built alongside SBC context — never from vision/DI/estimates.
+   */
+  nfpa?: import('@/lib/projects/compliance/nfpa/types').NfpaEngineeringContext | null;
 };
 
 /** Structured MoE inputs for SBC201-EGR-001..028 */
@@ -530,10 +554,88 @@ export type ComplianceMatrixRow = {
   required_value_source?: string;
 };
 
+/** Immutable compliance freeze captured on compliance-gated stage approval. */
+export type ApprovedComplianceSnapshot = {
+  frozen_at: string;
+  frozen_for_stage: string;
+  dataset_revision?: string | null;
+  gate: ComplianceGateDecision;
+  evaluatedAt: string;
+  matrix: ComplianceMatrixRow[];
+  counts: Record<ComplianceResultStatus, number>;
+  mandatoryFail: number;
+  mandatoryNeedsData: number;
+  allMandatoryPass: boolean;
+  gateReasons: string[];
+  /** Documented code family for the freeze (edition may still be null). */
+  source_code?: string | null;
+  /** Explicit edition when documented — never invented at freeze time. */
+  code_edition?: string | null;
+  /** Project-adopted / knowledge source document id at freeze time. */
+  source_document_id?: string | null;
+  /** Edition-specific rule versions frozen with the approval. */
+  rule_versions?: Array<{
+    ruleId: string;
+    edition?: string | null;
+    version?: string | null;
+    verification_status?: string | null;
+    source_document_id?: string | null;
+    section?: string | null;
+    table?: string | null;
+  }> | null;
+  /** Source citations frozen with the run (never rewritten by later KB changes). */
+  source_references?: Array<{
+    ruleId: string;
+    code_reference?: string | null;
+    section?: string | null;
+    table?: string | null;
+    page?: number | null;
+    source_verification_status?: string | null;
+  }> | null;
+  /** Evaluated inputs captured at freeze (immutable replay). */
+  evaluated_inputs?: Record<string, unknown> | null;
+  /** Evaluated outputs / findings summary at freeze. */
+  evaluated_outputs?: Record<string, unknown> | null;
+  results: Array<{
+    ruleId: string;
+    status: ComplianceResultStatus;
+    effectiveStatus: ComplianceResultStatus;
+    message: string;
+    code_reference?: string | null;
+  }>;
+};
+
 /** Persisted project snapshot (additive on ProjectEngineeringData) */
 export type ProjectComplianceState = {
   overrides?: EngineerOverride[];
   last_run_at?: string | null;
   last_gate?: ComplianceGateDecision | null;
   notes?: string;
+  /**
+   * Immutable/versioned snapshot of the authoritative compliance run at approval.
+   * Approved reports MUST display this result even if later rules/data change.
+   */
+  approved_snapshot?: ApprovedComplianceSnapshot | null;
+  /**
+   * NFPA 13 numeric encoding — project-adopted rows + design inputs + edition metadata.
+   * Not a new DB table; lives in existing engineering JSON payload.
+   * Platform thresholds remain empty until a verified edition is encoded.
+   * Never stores copyrighted NFPA document bodies — metadata/traceability only.
+   */
+  nfpa13_numeric?: {
+    /**
+     * Project-adopted edition identity (cover). Does NOT make platform
+     * VERIFIED_OFFICIAL. Tables stay RULE_NOT_CONFIGURED until section cells verified.
+     */
+    edition_adoption?: import('@/lib/projects/compliance/nfpa/nfpa13-edition').Nfpa13EditionAdoption | null;
+    adopted_rows?: import('@/lib/projects/compliance/nfpa/nfpa13-tables').Nfpa13EncodedRow[];
+    inputs?: {
+      design_area_m2?: number | null;
+      density_lpm_m2?: number | null;
+      sprinkler_spacing_m?: number | null;
+      max_coverage_m2?: number | null;
+      hose_allowance_lpm?: number | null;
+      remote_area_m2?: number | null;
+    };
+  } | null;
 };

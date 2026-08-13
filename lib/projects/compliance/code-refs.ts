@@ -15,6 +15,7 @@ export type StandardFamily =
   | 'NFPA 20'
   | 'NFPA 22'
   | 'NFPA 72'
+  | 'NFPA 101'
   | 'NFPA 10'
   | 'PLATFORM';
 
@@ -498,6 +499,66 @@ export const RULE_CODE_REFS: Record<string, CodeCitation> = {
     hasPlatformNumericTable: false,
   },
 };
+
+/** NFPA architecture rule citations — edition/table not encoded (hasPlatformNumericTable: false). */
+const NFPA_ARCH_CITATIONS: Array<{
+  id: string;
+  primary: StandardFamily;
+  citation: string;
+}> = [
+  { id: 'NFPA13-OCC-HAZARD', primary: 'NFPA 13', citation: 'NFPA 13 — Hazard classification (edition/table not encoded)' },
+  { id: 'NFPA13-SPRINKLER-TYPE', primary: 'NFPA 13', citation: 'NFPA 13 — Sprinkler type (edition/table not encoded)' },
+  { id: 'NFPA13-SYSTEM-TYPE', primary: 'NFPA 13', citation: 'NFPA 13 — System type (edition/table not encoded)' },
+  { id: 'NFPA13-DESIGN-AREA', primary: 'NFPA 13', citation: 'NFPA 13 — Design area (edition/table not encoded)' },
+  { id: 'NFPA13-DENSITY', primary: 'NFPA 13', citation: 'NFPA 13 — Density/area (edition/table not encoded)' },
+  { id: 'NFPA13-SPACING', primary: 'NFPA 13', citation: 'NFPA 13 — Sprinkler spacing (edition/table not encoded)' },
+  { id: 'NFPA13-MAX-COVERAGE', primary: 'NFPA 13', citation: 'NFPA 13 — Maximum coverage area (edition/table not encoded)' },
+  { id: 'NFPA13-WATER-DEMAND', primary: 'NFPA 13', citation: 'NFPA 13 — Water demand (edition/table not encoded)' },
+  { id: 'NFPA13-HOSE-ALLOWANCE', primary: 'NFPA 13', citation: 'NFPA 13 — Hose stream allowance (edition/table not encoded)' },
+  { id: 'NFPA13-REMOTE-AREA', primary: 'NFPA 13', citation: 'NFPA 13 — Remote area (edition/table not encoded)' },
+  { id: 'NFPA13-HYDRAULIC-INPUTS', primary: 'NFPA 13', citation: 'NFPA 13 — Hydraulic design inputs (edition/table not encoded)' },
+  { id: 'NFPA13-WATER-SUPPLY', primary: 'NFPA 13', citation: 'NFPA 13 — Water supply (edition/table not encoded)' },
+  { id: 'NFPA13-K-FACTOR', primary: 'NFPA 13', citation: 'NFPA 13 — K-factor (edition/table not encoded)' },
+  { id: 'NFPA20-PUMP-REQUIRED', primary: 'NFPA 20', citation: 'NFPA 20 — Fire pump requirement (edition/table not encoded)' },
+  { id: 'NFPA20-PUMP-TYPE', primary: 'NFPA 20', citation: 'NFPA 20 — Pump type/listing (edition/table not encoded)' },
+  { id: 'NFPA20-RATED-FLOW', primary: 'NFPA 20', citation: 'NFPA 20 — Rated flow (edition/table not encoded)' },
+  { id: 'NFPA20-RATED-PRESSURE', primary: 'NFPA 20', citation: 'NFPA 20 — Rated pressure (edition/table not encoded)' },
+  { id: 'NFPA20-SUCTION', primary: 'NFPA 20', citation: 'NFPA 20 — Suction condition (edition/table not encoded)' },
+  { id: 'NFPA20-CHURN', primary: 'NFPA 20', citation: 'NFPA 20 — Churn pressure (edition/table not encoded)' },
+  { id: 'NFPA20-CONTROLLER', primary: 'NFPA 20', citation: 'NFPA 20 — Controller (edition/table not encoded)' },
+  { id: 'NFPA20-TEST', primary: 'NFPA 20', citation: 'NFPA 20 — Acceptance testing (edition/table not encoded)' },
+  { id: 'NFPA22-TANK-REQUIRED', primary: 'NFPA 22', citation: 'NFPA 22 — Tank requirement (edition/table not encoded)' },
+  { id: 'NFPA22-CAPACITY', primary: 'NFPA 22', citation: 'NFPA 22 — Tank capacity (edition/table not encoded)' },
+  { id: 'NFPA22-USABLE-VOLUME', primary: 'NFPA 22', citation: 'NFPA 22 — Usable volume (edition/table not encoded)' },
+  { id: 'NFPA22-TANK-TYPE', primary: 'NFPA 22', citation: 'NFPA 22 — Tank type (edition/table not encoded)' },
+  { id: 'NFPA22-DURATION', primary: 'NFPA 22', citation: 'NFPA 22 — Duration basis (edition/table not encoded)' },
+  { id: 'NFPA22-FIRE-DEMAND', primary: 'NFPA 22', citation: 'NFPA 22 — Fire demand dependency (edition/table not encoded)' },
+  { id: 'NFPA72-SYSTEM-CATEGORY', primary: 'NFPA 72', citation: 'NFPA 72 — System category (edition/table not encoded)' },
+  { id: 'NFPA72-INITIATING', primary: 'NFPA 72', citation: 'NFPA 72 — Initiating devices (edition/table not encoded)' },
+  { id: 'NFPA72-NOTIFICATION', primary: 'NFPA 72', citation: 'NFPA 72 — Notification appliances (edition/table not encoded)' },
+  { id: 'NFPA72-PANEL', primary: 'NFPA 72', citation: 'NFPA 72 — Control unit (edition/table not encoded)' },
+  { id: 'NFPA72-SUPERVISION', primary: 'NFPA 72', citation: 'NFPA 72 — Supervision (edition/table not encoded)' },
+  { id: 'NFPA72-MONITORING', primary: 'NFPA 72', citation: 'NFPA 72 — Monitoring (edition/table not encoded)' },
+  { id: 'NFPA72-POWER', primary: 'NFPA 72', citation: 'NFPA 72 — Power supplies (edition/table not encoded)' },
+  { id: 'NFPA72-INTERFACES', primary: 'NFPA 72', citation: 'NFPA 72 — Interfaces (edition/table not encoded)' },
+  { id: 'NFPA101-TRAVEL-DISTANCE', primary: 'NFPA 101', citation: 'NFPA 101 — Travel distance (same canonical input as SBC 201; table not encoded)' },
+  { id: 'NFPA101-COMMON-PATH', primary: 'NFPA 101', citation: 'NFPA 101 — Common path (canonical egress; table not encoded)' },
+  { id: 'NFPA101-DEAD-END', primary: 'NFPA 101', citation: 'NFPA 101 — Dead end (canonical egress; table not encoded)' },
+  { id: 'NFPA101-EXIT-COUNT', primary: 'NFPA 101', citation: 'NFPA 101 — Number of exits (canonical egress; table not encoded)' },
+  { id: 'NFPA101-CORRIDOR-WIDTH', primary: 'NFPA 101', citation: 'NFPA 101 — Corridor width (canonical egress; table not encoded)' },
+  { id: 'NFPA101-DOOR-WIDTH', primary: 'NFPA 101', citation: 'NFPA 101 — Door width (canonical egress; table not encoded)' },
+  { id: 'NFPA101-STAIR-WIDTH', primary: 'NFPA 101', citation: 'NFPA 101 — Stair width (canonical egress; table not encoded)' },
+  { id: 'NFPA101-OCCUPANT-LOAD', primary: 'NFPA 101', citation: 'NFPA 101 — Occupant load (canonical zones; table not encoded)' },
+];
+
+for (const row of NFPA_ARCH_CITATIONS) {
+  RULE_CODE_REFS[row.id] = {
+    primary: row.primary,
+    citation: row.citation,
+    hasPlatformNumericTable: false,
+    notes_ar: 'مرحلة معمارية — لا عتبات رقمية مرمّزة؛ النتيجة RULE_NOT_CONFIGURED أو NEEDS_DATA.',
+  };
+}
 
 export function citationFor(ruleId: string): string {
   return RULE_CODE_REFS[ruleId]?.citation || ruleId;

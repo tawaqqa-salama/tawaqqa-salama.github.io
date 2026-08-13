@@ -1,6 +1,11 @@
 /**
- * Build deterministic ComplianceRuleContext from live project data.
- * Never invents engineering values — missing → null / empty.
+ * Build deterministic ComplianceRuleContext from the canonical engineering dataset.
+ *
+ * Canonical source: ProjectEngineeringData from project_engineering_live.payload
+ * (legacy clients.project_engineering_data is compatibility only — conflicts → CONFLICT).
+ *
+ * Never invents engineering values — MISSING / INVALID / CONFLICT → nulls → NEEDS_DATA.
+ * Does not encode new SBC/NFPA thresholds (Phase 2.3 prerequisite only).
  */
 
 import { getZoneUse } from '@/lib/constants/zone-uses';
@@ -26,12 +31,18 @@ import type {
   ComplianceRuleContext,
   EngineerOverride,
   ProjectComplianceState,
+  Sbc201EgressInputs,
 } from '@/lib/projects/compliance/types';
 import { buildOccupantEgressRows, collectOccupancies } from '@/lib/projects/sbc-classification';
 import {
   normalizeConstructionValue,
   SBC_CONSTRUCTION_TYPE_OPTIONS,
 } from '@/lib/projects/sbc-recommendation';
+import {
+  resolveEngineeringFields,
+  type EngineeringResolverBundle,
+} from '@/lib/projects/compliance/resolvers';
+import { buildNfpaEngineeringContext } from '@/lib/projects/compliance/nfpa/context';
 
 function pressureToBar(m: MeasuredValue<PressureUnit> | null | undefined): number | null {
   if (!m || m.value == null || !Number.isFinite(m.value)) return null;
@@ -104,8 +115,8 @@ export function resolveFireProtectionDesign(
 
 /**
  * Building area only — never falls back to total_site_area_m2.
- * Sources (in order): fire protection occupancy area, client.building_area,
- * sum of floor/zone areas when available.
+ * Prefer explicit FP area or zone sum; do not invent.
+ * @deprecated Prefer resolveEngineeringFields().fireAreaM2 (CONFLICT-aware).
  */
 export function resolveBuildingAreaM2(params: {
   fpArea?: string | null;
@@ -114,11 +125,96 @@ export function resolveBuildingAreaM2(params: {
 }): number | null {
   const fromFp = parseNumber(params.fpArea);
   if (fromFp != null && fromFp > 0) return fromFp;
-  if (params.clientBuildingArea != null && Number(params.clientBuildingArea) > 0) {
-    return Number(params.clientBuildingArea);
-  }
   if (params.zoneAreasSum != null && params.zoneAreasSum > 0) return params.zoneAreasSum;
+  // client.building_area is CRM projection — not silently used as compliance area
+  void params.clientBuildingArea;
   return null;
+}
+
+/**
+ * Build SBC 201 Chapter 10 MoE inputs ONLY from canonical engineering data.
+ * Missing fields stay null → rules return NEEDS_DATA / BLOCKED.
+ * Never assumes defaults, estimates, or vision/DI values.
+ */
+export function buildSbc201EgressFromCanonical(params: {
+  data: ProjectEngineeringData;
+  resolved: EngineeringResolverBundle;
+  occupantLoadTotal: number | null;
+  sprinklerStatus: 'sprinklered' | 'non_sprinklered' | null;
+}): Sbc201EgressInputs {
+  const { resolved } = params;
+  // Egress measurements ONLY from resolved.egress when VALID.
+  // MISSING / INVALID / CONFLICT → all egress measurements stay null (no bp/FP/legacy fallback).
+  const egress = resolved.egress.state === 'VALID' ? resolved.egress.value : null;
+  const occupancy = resolved.occupancy.state === 'VALID' ? resolved.occupancy.value : null;
+  const zones = resolved.zones.state === 'VALID' ? resolved.zones.value : null;
+  const fireArea = resolved.fireAreaM2.state === 'VALID' ? resolved.fireAreaM2.value : null;
+  const hydraulicAttachments = params.data.plan_attachments?.hydraulic_calculations || [];
+
+  const primaryZone = zones?.[0] || null;
+
+  return {
+    occupancyGroup: primaryZone?.occupancy_code || occupancy || null,
+    occupancy: occupancy,
+    spaceUse: primaryZone?.zone_label || null,
+    grossArea: fireArea,
+    netArea: null,
+    applicableAreaBasis: fireArea != null ? 'gross' : null,
+    occupantLoadFactor: primaryZone?.load_factor_m2 ?? null,
+    occupantLoadFactorMapping: null,
+    calculatedOccupantLoad: params.occupantLoadTotal,
+    designOccupantLoad: params.occupantLoadTotal,
+    storyOccupantLoad: params.occupantLoadTotal,
+    buildingOccupantLoad: params.occupantLoadTotal,
+    storyLevel: null,
+    story: null,
+    sprinklerStatus: params.sprinklerStatus,
+    exitsProvided: egress?.exits_count ?? null,
+    exitAccessDoorways: egress?.exits_count ?? null,
+    specialOccupancyCondition: null,
+    numberOfExitsMapping: null,
+    travelDistance: egress?.travel_distance_m ?? null,
+    commonPath: egress?.common_path_m ?? null,
+    applicableTableException: null,
+    singleExitMapping: null,
+    occupantLoadServed: params.occupantLoadTotal,
+    exitComponentType: null,
+    clearWidth: egress?.door_width_m ?? egress?.corridor_width_m ?? null,
+    applicableCapacityFactor: null,
+    sprinklerCondition: params.sprinklerStatus,
+    applicableTableSection: null,
+    capacityMapping: null,
+    requiredExitCount: null,
+    areaDimensions: null,
+    diagonalDimension: null,
+    exitToExitDistance: null,
+    applicableException: null,
+    separationMapping: null,
+    commonPathDistance: egress?.common_path_m ?? null,
+    commonPathMapping: null,
+    specialCondition: null,
+    travelDistanceMapping: null,
+    corridorType: null,
+    corridorClearWidth: egress?.corridor_width_m ?? null,
+    corridorMapping: null,
+    deadEndLength: egress?.dead_end_m ?? null,
+    corridorConfiguration: null,
+    deadEndMapping: null,
+    doorType: null,
+    clearOpeningWidth: egress?.door_width_m ?? null,
+    leafWidth: null,
+    doorClearMapping: null,
+    doorSwingDirection: null,
+    doorSwingMapping: null,
+    panicHardware: null,
+    fireExitHardware: null,
+    panicHardwareMapping: null,
+    stairCount: egress?.stairs_count ?? null,
+    stairClearWidth: egress?.stair_width_m ?? null,
+    stairWidthMapping: null,
+    // Attachment presence alone never implies MoE completeness (rules enforce this)
+    attachmentCount: hydraulicAttachments.length,
+  };
 }
 
 export function buildComplianceContext(params: {
@@ -127,6 +223,8 @@ export function buildComplianceContext(params: {
   overrides?: EngineerOverride[];
 }): ComplianceRuleContext {
   const { client, data } = params;
+  const resolved = resolveEngineeringFields({ client, data });
+
   const bp = data.building_plan || {};
   const tr = data.technical_report || {};
   const fp = resolveFireProtectionDesign(data);
@@ -135,26 +233,17 @@ export function buildComplianceContext(params: {
   const occCodes = collectOccupancies(floors);
   const mixed = new Set(occCodes.map((c) => SBC_OCCUPANCIES[c]?.group_letter).filter(Boolean)).size > 1;
 
-  const height = parseNumber(bp.building_height_m);
-  const stories =
-    parseNumber(bp.floors_description) ??
-    parseNumber(fp.occupancy.floors_count) ??
-    (client.floors_count != null ? Number(client.floors_count) : null);
+  const height = resolved.buildingHeightM.state === 'VALID' ? resolved.buildingHeightM.value : null;
+  const stories = resolved.floorsCount.state === 'VALID' ? resolved.floorsCount.value : null;
   const basement = parseNumber(bp.basement_floors_count);
 
-  const zoneAreasSum = egressRows.reduce((s, r) => s + (r.area_m2 || 0), 0) || null;
-  const buildingArea = resolveBuildingAreaM2({
-    fpArea: fp.occupancy.area_m2,
-    clientBuildingArea: client.building_area,
-    zoneAreasSum,
-  });
+  const buildingArea = resolved.fireAreaM2.state === 'VALID' ? resolved.fireAreaM2.value : null;
   const siteArea = parseNumber(bp.total_site_area_m2);
 
-  // construction_type: only when building_type_code matches construction options
-  // (Stage 2 UI currently stores construction in building_type_code when Type I-A… selected)
-  const constructionType = resolveConstructionType(bp.building_type_code);
-  // building_type_code in context = raw field for traceability; not used as construction substitute in OCC-03
-  const rawBuildingTypeCode = bp.building_type_code?.trim() || null;
+  const constructionType =
+    resolved.constructionType.state === 'VALID' ? resolved.constructionType.value : null;
+  const rawBuildingTypeCode =
+    resolved.buildingType.state === 'VALID' ? resolved.buildingType.value : bp.building_type_code?.trim() || null;
 
   const highRiseExplicit = ynFromYesNoValue(bp.high_rise_building);
   let highRise: boolean | null = null;
@@ -174,30 +263,47 @@ export function buildComplianceContext(params: {
   const groupFromZones = occCodes[0] ? SBC_OCCUPANCIES[occCodes[0]]?.group_letter : null;
   const primaryOccCode = occCodes[0] || null;
 
-  const pumpLpm =
-    flowToLpm(fp.pump.capacity) ??
-    flowToLpm(fp.pump.rated_flow) ??
-    designPumpDemandLpm(fp);
-  const pumpPressure = pressureToBar(fp.pump.pressure) ?? pressureToBar(fp.pump.rated_pressure);
-  const tankRequired = fp.water_tank.calculated_required_volume_m3;
+  // Pump: only use measured FP values — never designPumpDemandLpm estimate as if measured
+  const pumpMeasured =
+    flowToLpm(fp.pump.capacity) ?? flowToLpm(fp.pump.rated_flow) ?? null;
+  const pumpFromResolver =
+    resolved.pump.state === 'VALID' ? resolved.pump.value?.flow_lpm ?? null : null;
+  const pumpLpm = pumpMeasured ?? pumpFromResolver;
+  // Keep designPumpDemandLpm available only as non-authoritative hint (not assigned to pump_flow)
+  void designPumpDemandLpm;
+
+  const pumpPressure =
+    (resolved.pump.state === 'VALID' ? resolved.pump.value?.pressure_bar ?? null : null) ??
+    pressureToBar(fp.pump.pressure) ??
+    pressureToBar(fp.pump.rated_pressure);
+
+  const tankRequired =
+    resolved.tank.state === 'VALID' ? resolved.tank.value?.required_m3 ?? null : fp.water_tank.calculated_required_volume_m3;
+  const tankVolume =
+    resolved.tank.state === 'VALID' ? resolved.tank.value?.capacity_m3 ?? null : fp.water_tank.capacity_m3?.value ?? null;
+  const tankDuration =
+    resolved.tank.state === 'VALID' ? resolved.tank.value?.duration_min ?? null : fp.water_tank.duration_min?.value ?? null;
+
   const sprinklerDemand = parseNumber(fp.sprinkler.design_flow);
   const kFactor = parseNumber(fp.sprinkler.k_factor);
   const designPressure = parseNumber(fp.sprinkler.design_pressure);
 
-  const metrics = fp.egress?.metrics || [];
-  const accessMetrics = metrics; // shared metric bag for optional required widths
+  // Egress measurement bag — ONLY when egress resolver is VALID (no raw FP fallback).
+  const egressResolved = resolved.egress.state === 'VALID' ? resolved.egress.value : null;
+  const egressMetrics = egressResolved?.metrics || [];
+  // Hydraulic network fields may still read FP metric labels (unrelated to MoE gate inputs).
+  const hydraulicMetrics = fp.egress?.metrics || [];
 
   const pipeDiameter =
-    metricValue(metrics, [/pipe\s*diam|قطر\s*الأنبوب|قطر\s*الأنابيب/i]) ?? null;
-  const pipeLength = metricValue(metrics, [/pipe\s*length|طول\s*الأنبوب|طول\s*الأنابيب/i]);
-  const elevation = metricValue(metrics, [/elevation|منسوب|ارتفاع\s*هيدرول/i]);
-  const friction = metricValue(metrics, [/friction|فاقد|loss/i]);
-  const remoteArea = metricValue(metrics, [/remote\s*area|منطقة\s*نائية|remote/i]);
-  const nodeDemand = metricValue(metrics, [/node\s*demand|طلب\s*العقدة/i]);
-  const residual = metricValue(metrics, [/residual|ضغط\s*متبقي|required\s*residual/i]);
+    metricValue(hydraulicMetrics, [/pipe\s*diam|قطر\s*الأنبوب|قطر\s*الأنابيب/i]) ?? null;
+  const pipeLength = metricValue(hydraulicMetrics, [/pipe\s*length|طول\s*الأنبوب|طول\s*الأنابيب/i]);
+  const elevation = metricValue(hydraulicMetrics, [/elevation|منسوب|ارتفاع\s*هيدرول/i]);
+  const friction = metricValue(hydraulicMetrics, [/friction|فاقد|loss/i]);
+  const remoteArea = metricValue(hydraulicMetrics, [/remote\s*area|منطقة\s*نائية|remote/i]);
+  const nodeDemand = metricValue(hydraulicMetrics, [/node\s*demand|طلب\s*العقدة/i]);
+  const residual = metricValue(hydraulicMetrics, [/residual|ضغط\s*متبقي|required\s*residual/i]);
 
   const hydraulicAttachments = data.plan_attachments?.hydraulic_calculations || [];
-  // Attachment count is informational only — NEVER implies complete network data
   const hasHydNetwork = Boolean(
     kFactor != null &&
       sprinklerDemand != null &&
@@ -224,7 +330,10 @@ export function buildComplianceContext(params: {
   const complianceState = (data as { compliance?: ProjectComplianceState }).compliance;
   const overrides = params.overrides ?? complianceState?.overrides ?? [];
 
-  const primaryOcc = bp.occupancy_classification || tr.building_classification || '';
+  const primaryOcc =
+    resolved.occupancy.state === 'VALID'
+      ? resolved.occupancy.value
+      : null;
 
   const sprinklerProvided = ynFromYesNoValue(bp.sprinkler_system);
   const sprinklerVerified = Boolean(
@@ -242,6 +351,31 @@ export function buildComplianceContext(params: {
       hasNonEmpty(fp.fire_alarm?.manual_call_points)
   );
 
+  const sprinklerStatus: 'sprinklered' | 'non_sprinklered' | null =
+    sprinklerProvided === 'yes' ? 'sprinklered' : sprinklerProvided === 'no' ? 'non_sprinklered' : null;
+
+  const applicableCodes =
+    resolved.applicableCodes.state === 'VALID' ? resolved.applicableCodes.value || [] : [];
+
+  // Design-center calculation estimates must NEVER seed measured compliance inputs
+  const calcEstimates = data.design_center?.calculations || [];
+  const hasEstimateAuthority = calcEstimates.some(
+    (c) =>
+      c.status === 'estimated' ||
+      c.authority === 'estimate' ||
+      (c.values && (c.values.estimated_demand_lpm != null || c.values.estimated_volume_m3 != null))
+  );
+  void hasEstimateAuthority; // explicit non-use in measured fields below
+
+  const sbc201Egress = buildSbc201EgressFromCanonical({
+    data,
+    resolved,
+    occupantLoadTotal: hasOccupantRows ? occupantTotal : null,
+    sprinklerStatus,
+  });
+
+  const nfpa = buildNfpaEngineeringContext({ client, data });
+
   return {
     evaluatedAt: new Date().toISOString(),
     client: {
@@ -253,7 +387,7 @@ export function buildComplianceContext(params: {
       land_area: client.land_area,
     },
     building: {
-      occupancy_classification: primaryOcc || null,
+      occupancy_classification: primaryOcc,
       building_type_code: rawBuildingTypeCode,
       group_letter: groupFromZones || null,
       construction_type: constructionType,
@@ -302,46 +436,70 @@ export function buildComplianceContext(params: {
     }),
     egress: {
       occupant_load_total: hasOccupantRows ? occupantTotal : null,
-      exits_count: parseNumber(bp.exits_count),
-      stairs_count: parseNumber(bp.stairs_count),
-      emergency_exit_doors: bp.emergency_exits_doors || null,
-      travel_distance_m: metricValue(metrics, [/travel|مسافة\s*السفر|مسافة السفر/i]),
-      common_path_m: metricValue(metrics, [/common\s*path|مسار\s*مشترك/i]),
-      dead_end_m: metricValue(metrics, [/dead\s*end|طريق\s*مسدود/i]),
-      exit_capacity_persons: metricValue(metrics, [/capacity|سعة\s*المخرج|طاقة\s*الاستيعاب/i]),
-      exit_separation_m: metricValue(metrics, [/^(?!.*required).*separation|تباعد|فصل\s*المخارج/i]),
-      required_exit_separation_m: metricValue(metrics, [
-        /required\s*(exit\s*)?separation|الحد\s*الأدنى\s*(لتباعد|لفصل)\s*المخارج/i,
-      ]),
-      corridor_width_m: metricValue(metrics, [/^(?!.*required).*corridor|عرض\s*الممر(?!.*مطلوب)/i]),
-      required_corridor_width_m: metricValue(metrics, [
-        /required\s*corridor|الحد\s*الأدنى\s*لعرض\s*الممر|corridor.*required/i,
-      ]),
-      door_width_m: metricValue(metrics, [/^(?!.*required).*door\s*width|عرض\s*الباب(?!.*مطلوب)/i]),
-      required_door_width_m: metricValue(metrics, [
-        /required\s*door|الحد\s*الأدنى\s*لعرض\s*الباب|door.*required/i,
-      ]),
-      stair_width_m: metricValue(metrics, [/^(?!.*required).*stair\s*width|عرض\s*الدرج(?!.*مطلوب)/i]),
-      required_stair_width_m: metricValue(metrics, [
-        /required\s*stair|الحد\s*الأدنى\s*لعرض\s*الدرج|stair.*required/i,
-      ]),
-      exit_discharge_ok: boolMetric(metrics, [/discharge|تصريف\s*الخروج|مخرج\s*نهائي/i]),
-      exit_access_ok: boolMetric(metrics, [/exit\s*access|مسار\s*الوصول/i]),
-      notes: fp.egress?.notes || null,
-      metrics: metrics.map((m) => ({ label: m.label, value: m.value })),
-      // Explicit only — never assume sprinklered because an FP package exists
-      sprinkler_status:
-        sprinklerProvided === 'yes' ? 'sprinklered' : sprinklerProvided === 'no' ? 'non_sprinklered' : null,
+      // MoE measurements: resolved VALID only — never raw bp / FP fallback.
+      exits_count: egressResolved?.exits_count ?? null,
+      stairs_count: egressResolved?.stairs_count ?? null,
+      emergency_exit_doors:
+        resolved.egress.state === 'VALID' ? bp.emergency_exits_doors || null : null,
+      travel_distance_m: egressResolved?.travel_distance_m ?? null,
+      common_path_m: egressResolved?.common_path_m ?? null,
+      dead_end_m: egressResolved?.dead_end_m ?? null,
+      exit_capacity_persons:
+        resolved.egress.state === 'VALID'
+          ? metricValue(egressMetrics, [/capacity|سعة\s*المخرج|طاقة\s*الاستيعاب/i])
+          : null,
+      exit_separation_m:
+        resolved.egress.state === 'VALID'
+          ? metricValue(egressMetrics, [/^(?!.*required).*separation|تباعد|فصل\s*المخارج/i])
+          : null,
+      required_exit_separation_m:
+        resolved.egress.state === 'VALID'
+          ? metricValue(egressMetrics, [
+              /required\s*(exit\s*)?separation|الحد\s*الأدنى\s*(لتباعد|لفصل)\s*المخارج/i,
+            ])
+          : null,
+      corridor_width_m: egressResolved?.corridor_width_m ?? null,
+      required_corridor_width_m:
+        resolved.egress.state === 'VALID'
+          ? metricValue(egressMetrics, [
+              /required\s*corridor|الحد\s*الأدنى\s*لعرض\s*الممر|corridor.*required/i,
+            ])
+          : null,
+      door_width_m: egressResolved?.door_width_m ?? null,
+      required_door_width_m:
+        resolved.egress.state === 'VALID'
+          ? metricValue(egressMetrics, [
+              /required\s*door|الحد\s*الأدنى\s*لعرض\s*الباب|door.*required/i,
+            ])
+          : null,
+      stair_width_m: egressResolved?.stair_width_m ?? null,
+      required_stair_width_m:
+        resolved.egress.state === 'VALID'
+          ? metricValue(egressMetrics, [
+              /required\s*stair|الحد\s*الأدنى\s*لعرض\s*الدرج|stair.*required/i,
+            ])
+          : null,
+      exit_discharge_ok:
+        resolved.egress.state === 'VALID'
+          ? boolMetric(egressMetrics, [/discharge|تصريف\s*الخروج|مخرج\s*نهائي/i])
+          : null,
+      exit_access_ok:
+        resolved.egress.state === 'VALID'
+          ? boolMetric(egressMetrics, [/exit\s*access|مسار\s*الوصول/i])
+          : null,
+      notes: resolved.egress.state === 'VALID' ? fp.egress?.notes || null : null,
+      metrics: egressMetrics.map((m) => ({ label: m.label, value: m.value })),
+      sprinkler_status: sprinklerStatus,
     },
     fireAccess: {
       site_entrance: fp.fire_truck_access?.site_entrance || null,
       fire_road: fp.fire_truck_access?.fire_road || null,
       road_width_m: parseNumber(fp.fire_truck_access?.road_width_m),
       required_road_width_m:
-        metricValue(accessMetrics, [/required\s*(access|road)\s*width|الحد\s*الأدنى\s*لعرض\s*(الطريق|الوصول)/i]) ??
+        metricValue(hydraulicMetrics, [/required\s*(access|road)\s*width|الحد\s*الأدنى\s*لعرض\s*(الطريق|الوصول)/i]) ??
         null,
       required_road_width_code_ref:
-        metricText(accessMetrics, [/access\s*width\s*(code|ref)|مرجع.*عرض\s*(الطريق|الوصول)|FAC.*code/i]) ??
+        metricText(hydraulicMetrics, [/access\s*width\s*(code|ref)|مرجع.*عرض\s*(الطريق|الوصول)|FAC.*code/i]) ??
         null,
       building_access: fp.fire_truck_access?.building_access || null,
       staging_area: fp.fire_truck_access?.staging_area || null,
@@ -366,24 +524,30 @@ export function buildComplianceContext(params: {
         fp.standpipe.required === 'yes' || fp.standpipe.required === 'no' || fp.standpipe.required === 'unknown'
           ? fp.standpipe.required
           : null,
-      standpipe_provided: null, // never infer from free-text notes
+      standpipe_provided: null,
       pump_exists:
-        fp.pump.exists === 'yes' || fp.pump.exists === 'no' || fp.pump.exists === 'unknown'
-          ? fp.pump.exists
-          : null,
+        resolved.pump.state === 'VALID'
+          ? (resolved.pump.value?.exists as 'yes' | 'no' | 'unknown' | null) ?? null
+          : fp.pump.exists === 'yes' || fp.pump.exists === 'no' || fp.pump.exists === 'unknown'
+            ? fp.pump.exists
+            : null,
       pump_flow_lpm: pumpLpm,
       pump_pressure_bar: pumpPressure,
       tank_exists:
-        fp.water_tank.exists === 'yes' || fp.water_tank.exists === 'no' || fp.water_tank.exists === 'unknown'
-          ? fp.water_tank.exists
-          : null,
-      tank_volume_m3: fp.water_tank.capacity_m3?.value ?? null,
-      tank_duration_min: fp.water_tank.duration_min?.value ?? null,
+        resolved.tank.state === 'VALID'
+          ? (resolved.tank.value?.exists as 'yes' | 'no' | 'unknown' | null) ?? null
+          : fp.water_tank.exists === 'yes' ||
+              fp.water_tank.exists === 'no' ||
+              fp.water_tank.exists === 'unknown'
+            ? fp.water_tank.exists
+            : null,
+      tank_volume_m3: tankVolume,
+      tank_duration_min: tankDuration,
       tank_required_m3: tankRequired,
       fdc_required: null,
       extinguisher_count:
         (fp.extinguishers || []).reduce((n, e) => n + (parseNumber(e.count) || 0), 0) || null,
-      applicable_codes: fp.applicable_codes || [],
+      applicable_codes: applicableCodes,
     },
     hydraulic: {
       has_network_data: hasHydNetwork,
@@ -400,7 +564,7 @@ export function buildComplianceContext(params: {
       node_demand_lpm: nodeDemand,
       pump_flow_lpm: pumpLpm,
       pump_pressure_bar: pumpPressure,
-      tank_volume_m3: fp.water_tank.capacity_m3?.value ?? null,
+      tank_volume_m3: tankVolume,
     },
     fireAlarm: {
       panel: fp.fire_alarm?.control_panel || null,
@@ -426,5 +590,7 @@ export function buildComplianceContext(params: {
       ventilation_only: ventItems.length > 0 && smokeStatus === 'unknown',
     },
     overrides,
+    sbc201Egress,
+    nfpa,
   };
 }

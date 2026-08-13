@@ -316,7 +316,10 @@ export function syncKnowledgeLinksToDesignCenterSync(
 }
 
 /**
- * Real Design Center compliance: platform SBC/NFPA rules + RAG over company KB uploads.
+ * Design Center compliance assist: platform advisory rules + RAG over company KB.
+ *
+ * ADVISORY ONLY — authoritative: false.
+ * Must never unlock stages or override lib/projects/compliance.
  */
 export async function runProjectKnowledgeCompliance(params: {
   client: ClientRecord;
@@ -414,6 +417,7 @@ export async function runProjectKnowledgeCompliance(params: {
     error: null,
     error_code: null,
     knowledge_citations: citations,
+    authoritative: false,
   };
 }
 

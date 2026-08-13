@@ -550,26 +550,35 @@ export async function runKnowledgeBackedCalculation(params: {
   };
 
   // Deterministic planning estimates only (clearly labeled) — not pump selection
+  // and NEVER authoritative compliance PASS inputs.
   if (params.kind === 'water_demand' && area && area > 0) {
     values.estimate_density_lpm_per_m2 = 0.2;
     values.estimated_demand_lpm = Math.round(area * 0.2 * 10) / 10;
     values.estimate_label_ar = 'تقدير أولي للكثافة — يُراجع وفق NFPA-13 hazard class';
+    values.authority = 'estimate';
   }
   if (params.kind === 'tank_size' && area && area > 0) {
     const demand = area * 0.2;
     values.estimate_duration_min = 30;
     values.estimated_volume_m3 = Math.round(((demand * 30) / 1000) * 100) / 100;
     values.estimate_label_ar = 'تقدير حجم خزاني أولي — يُراجع وفق اشتراطات الدفاع المدني';
+    values.authority = 'estimate';
   }
+
+  const isEstimate =
+    values.estimated_demand_lpm != null ||
+    values.estimated_volume_m3 != null ||
+    values.authority === 'estimate';
 
   return {
     kind: params.kind,
-    status: 'completed',
+    status: isEstimate ? 'estimated' : 'needs_engineer_review',
     updatedAt: new Date().toISOString(),
     error: null,
     error_code: null,
     values,
     standards: snapshot,
+    authority: isEstimate ? 'estimate' : 'advisory',
   };
 }
 

@@ -1,11 +1,15 @@
 /**
- * Phase 2 — egress / travel distance engine (local, heuristic).
+ * Phase 2 — egress / travel distance engine (local, heuristic, ADVISORY ONLY).
  * Conservative estimate: longest diagonal within a room polygon as max travel
  * distance toward the nearest detected exit (or within-room worst case).
  *
  * SBC 801 limits used here are common published travel-distance caps for many
  * occupancies (45 m without sprinklers / 60 m with). Engineer must verify the
  * exact occupancy table in the authority-adopted edition.
+ *
+ * AUTHORITY: within_limit / exceeds_limit are Design Center vision guidance only.
+ * They MUST NOT unlock workflow stages or produce authoritative compliance PASS.
+ * Authoritative egress compliance lives in lib/projects/compliance only.
  */
 
 import type {

@@ -2,11 +2,23 @@ import type { DesignCenterState } from '@/lib/projects/design-center/types';
 import type { ProjectComplianceState } from '@/lib/projects/compliance/types';
 import type { FireProtectionDesign } from '@/lib/types/fire-protection-design';
 import type { ReportPdfSnapshot } from '@/lib/types/report-pdf-snapshot';
+import type { EngineeringMeta } from '@/lib/projects/canonical-engineering';
 
 export type { DesignCenterState };
 export type { FireProtectionDesign };
 export type { ReportPdfSnapshot };
 export type { ProjectComplianceState };
+export type { EngineeringMeta };
+
+/**
+ * Canonical engineering dataset (logical shape).
+ *
+ * PHYSICAL SoT for writes: `project_engineering_live.payload` (SQL 040).
+ * LEGACY read fallback only: `clients.project_engineering_data`.
+ * See `lib/projects/canonical-engineering.ts`.
+ *
+ * Do NOT treat legacy JSON as a second compliance authority.
+ */
 
 export interface ReportMeta {
   status: 'مسودة' | 'قيد الإعداد' | 'مكتمل' | 'معتمد';
@@ -576,9 +588,15 @@ export interface ProjectEngineeringData {
   fire_protection_design?: FireProtectionDesign;
   /**
    * Saudi Code Compliance Engine snapshot (SBC 201/801).
-   * Additive — overrides + last gate only; does not replace existing reports.
+   * Additive — overrides + last gate + approved freeze only; does not replace existing reports.
+   * Authoritative module: lib/projects/compliance (only).
    */
   compliance?: ProjectComplianceState;
+  /**
+   * SoT metadata: canonical source, revision, live/legacy conflicts.
+   * Populated by resolveCanonicalEngineeringDataset / live hydrate.
+   */
+  engineering_meta?: EngineeringMeta;
   /**
    * أرشيف PDF ثابت لتقارير الزيارات والإشراف (عدة تقارير لكل مشروع).
    * الملف الثنائي في Storage؛ هنا بيانات وصفية فقط.
@@ -665,6 +683,7 @@ export const EMPTY_PROJECT_ENGINEERING_DATA: ProjectEngineeringData = {
       checkedAt: null,
       error: null,
       error_code: null,
+      authoritative: false,
     },
     exports: [],
     knowledge_links: {

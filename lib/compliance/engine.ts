@@ -18,8 +18,16 @@ function pushUnique(findings: ComplianceFinding[], item: ComplianceFinding) {
 }
 
 /**
- * Dynamic Compliance Engine — يدمج اشتقاقات SBC الحالية مع قواعد NFPA استرشادية
- * وربط مواضيع EKB لسجل المخاطر والقرارات.
+ * Dynamic Compliance Engine — ADVISORY ONLY (Phase 2.3).
+ *
+ * يدمج اشتقاقات SBC الحالية مع قواعد NFPA استرشادية وربط مواضيع EKB.
+ *
+ * This module MUST NOT:
+ * - unlock workflow stages
+ * - produce authoritative PASS for project gates
+ * - override lib/projects/compliance
+ *
+ * Authoritative PASS/FAIL/NEEDS_DATA/BLOCKED lives only in lib/projects/compliance.
  */
 export function validateCompliance(input: ComplianceValidateInput): ComplianceValidationResult {
   const findings: ComplianceFinding[] = [];
@@ -180,5 +188,6 @@ export function validateCompliance(input: ComplianceValidateInput): ComplianceVa
     standards: ['SBC', 'NFPA'],
     ekbHints,
     parsedFile,
+    authoritative: false,
   };
 }

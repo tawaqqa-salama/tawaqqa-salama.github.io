@@ -80,8 +80,8 @@ function emptyCtx(partial: Partial<ComplianceRuleContext> = {}): ComplianceRuleC
 }
 
 describe('Saudi Code Compliance Engine — final citation audit', () => {
-  it('registers 84 rules with precise code citations', () => {
-    expect(COMPLIANCE_RULES.length).toBe(84);
+  it('registers 127 rules with precise code citations', () => {
+    expect(COMPLIANCE_RULES.length).toBe(127);
     for (const r of COMPLIANCE_RULES) {
       expect(RULE_CODE_REFS[r.id], `missing citation for ${r.id}`).toBeTruthy();
       expect(RULE_CODE_REFS[r.id].citation.length).toBeGreaterThan(10);
@@ -107,8 +107,11 @@ describe('Saudi Code Compliance Engine — final citation audit', () => {
           },
         },
       });
-      expect(ctx.building.building_area_m2).toBe(1800);
+      // Site area must never become building area. CRM building_area alone is not
+      // canonical for compliance (Phase 2.3) — requires FP area or zone sum.
+      expect(ctx.building.building_area_m2).toBeNull();
       expect(ctx.building.total_site_area_m2).toBe(9000);
+      expect(ctx.building.building_area_m2).not.toBe(9000);
     });
   });
 

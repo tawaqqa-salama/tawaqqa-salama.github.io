@@ -99,6 +99,7 @@ export const EMPTY_DESIGN_CENTER: DesignCenterState = {
     error: null,
     error_code: null,
     knowledge_citations: [],
+    authoritative: false,
   },
   exports: emptyExports(),
   knowledge_links: {
@@ -175,6 +176,7 @@ export function mergeDesignCenterDefaults(
       standards: base.compliance?.standards?.length
         ? base.compliance.standards
         : (['NFPA', 'SBC'] as const),
+      authoritative: false,
     },
     exports: emptyExports().map((e) => {
       const row = exportsByKind.get(e.kind);

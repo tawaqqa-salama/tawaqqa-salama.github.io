@@ -33,6 +33,7 @@ import type {
 } from '@/lib/projects/compliance/types';
 import { MATRIX_COMPLIANCE_RULES } from '@/lib/projects/compliance/matrix-rules';
 import { SBC201_EGRESS_COMPLIANCE_RULES } from '@/lib/projects/compliance/sbc201-egress-rules';
+import { buildNfpaComplianceRules } from '@/lib/projects/compliance/nfpa';
 
 export { requiredExitsFromOccupantLoad } from '@/lib/projects/compliance/thresholds';
 
@@ -2009,6 +2010,7 @@ export const COMPLIANCE_RULES: ComplianceRule[] = [
   ...smokeRules,
   ...MATRIX_COMPLIANCE_RULES,
   ...SBC201_EGRESS_COMPLIANCE_RULES,
+  ...buildNfpaComplianceRules(),
 ];
 
 export function getComplianceRuleById(id: string): ComplianceRule | undefined {

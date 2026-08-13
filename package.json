@@ -8,6 +8,7 @@
     "build:user-pages": "bash scripts/build-user-pages.sh",
     "start": "next start",
     "lint": "eslint",
+    "typecheck": "tsc --noEmit",
     "test": "vitest run",
     "test:watch": "vitest",
     "test:live-rls": "node scripts/live-rls-jwt-security-tests.mjs",
