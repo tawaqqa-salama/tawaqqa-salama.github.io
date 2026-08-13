@@ -44,6 +44,12 @@ import EngineeringRulesPanel from '@/components/design/EngineeringRulesPanel';
 import CodeKnowledgePanel from '@/components/design/CodeKnowledgePanel';
 import { runBlueprintAiAudit } from '@/lib/compliance/blueprint-audit';
 import { useAuth } from '@/lib/auth/AuthProvider';
+import {
+  EXPECTED_PRODUCTION_SUPABASE_REF,
+  getSupabaseProjectRef,
+  isSupabaseConfigured,
+  SUPABASE_PERSISTENCE_UNAVAILABLE,
+} from '@/lib/supabase';
 import type { EngineeringSelection } from '@/lib/design-intelligence/rules-types';
 import type { ClientRecord } from '@/lib/types/client';
 import type { BlueprintAiAuditResult } from '@/lib/types/project-reports';
@@ -159,8 +165,21 @@ export default function DesignIntelligenceModule() {
     setBusy(true);
     setMessage(null);
     try {
+      if (!isSupabaseConfigured) {
+        throw new Error(SUPABASE_PERSISTENCE_UNAVAILABLE);
+      }
+      const companyUuid = tenantCompanyId;
+      if (!companyUuid) {
+        throw new Error(
+          lang === 'en'
+            ? 'Supabase persistence unavailable: sign in with a company UUID.'
+            : 'Supabase persistence unavailable: يلزم تسجيل الدخول بشركة (UUID).'
+        );
+      }
+
       const doc = await uploadAndIndexKnowledgeFile({
         file,
+        companyId: companyUuid,
         meta: {
           title: title.trim(),
           category,
@@ -174,27 +193,30 @@ export default function DesignIntelligenceModule() {
           keywords: tagsMeta.split(/[,،]/).map((s) => s.trim()).filter(Boolean),
           notes: notesMeta,
           applicable_codes: codes.split(/[,،]/).map((s) => s.trim()).filter(Boolean),
+          company_id: companyUuid,
         },
       });
       setTitle('');
       setFile(null);
       setNotesMeta('');
       setDocs(await listKnowledgeDocuments());
-      if (doc.persistedToCloud) {
-        setMessage(
-          lang === 'en'
-            ? 'Document indexed and saved to Supabase (browser cache kept lightweight).'
-            : 'تم فهرسة المستند وحفظه في Supabase — التخزين المحلي للمتصفح لم يعد يمتلئ بالنصوص الكبيرة.'
-        );
-      } else {
-        setMessage(
-          lang === 'en'
-            ? 'Document indexed in session memory. Connect Supabase tables/bucket for durable cloud storage.'
-            : 'تمت الفهرسة في ذاكرة الجلسة. اربط جداول/سلة Supabase للحفظ الدائم على السحابة.'
-        );
+      if (!doc.persistedToCloud) {
+        throw new Error(SUPABASE_PERSISTENCE_UNAVAILABLE);
       }
+      const ref = getSupabaseProjectRef() || 'unknown';
+      setMessage(
+        lang === 'en'
+          ? `SUPABASE / PERSISTED · project=${ref} · document_id=${doc.id} · path=${doc.storage_path} · chunks=${doc.chunk_count}`
+          : `SUPABASE / PERSISTED · project=${ref} · document_id=${doc.id} · path=${doc.storage_path} · chunks=${doc.chunk_count}`
+      );
     } catch (e) {
-      setMessage(e instanceof Error ? e.message : 'Upload failed');
+      const raw = e instanceof Error ? e.message : 'Upload failed';
+      const msg = raw.includes('Supabase persistence unavailable')
+        ? SUPABASE_PERSISTENCE_UNAVAILABLE
+        : raw.startsWith('FAILED')
+          ? raw
+          : `FAILED: ${raw}`;
+      setMessage(msg);
     } finally {
       setBusy(false);
     }
@@ -304,7 +326,13 @@ export default function DesignIntelligenceModule() {
       </ModuleSubNavSlot>
 
       {message ? (
-        <div className="rounded-xl border border-emerald-100 bg-emerald-50 px-3 py-2 text-sm text-emerald-900">
+        <div
+          className={`rounded-xl border px-3 py-2 text-sm ${
+            message.includes('FAILED') || message.includes('Supabase persistence unavailable')
+              ? 'border-rose-200 bg-rose-50 text-rose-900'
+              : 'border-emerald-100 bg-emerald-50 text-emerald-900'
+          }`}
+        >
           {message}
         </div>
       ) : null}
@@ -365,7 +393,14 @@ export default function DesignIntelligenceModule() {
               {busy ? '…' : label('design.kb.index', 'Upload & Index')}
             </button>
             <p className="text-[11px] text-gray-400">
-              Pipeline: OCR → extract → chunk → embed → index · jobs: {listIndexingJobs().filter((j) => j.status === 'queued').length} queued
+              Pipeline: Storage → DB → OCR/chunk/embed/index · supabase=
+              {isSupabaseConfigured ? 'YES' : 'NO'} · project=
+              {getSupabaseProjectRef() || '—'}
+              {getSupabaseProjectRef() &&
+              getSupabaseProjectRef() !== EXPECTED_PRODUCTION_SUPABASE_REF
+                ? ` (expected ${EXPECTED_PRODUCTION_SUPABASE_REF})`
+                : ''}
+              · jobs: {listIndexingJobs().filter((j) => j.status === 'queued').length} queued
             </p>
           </div>
           <div className="xl:col-span-3">

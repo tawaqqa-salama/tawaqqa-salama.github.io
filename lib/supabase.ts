@@ -17,6 +17,30 @@ export const isDemoMode = !isSupabaseConfigured;
 export const SUPABASE_CONFIG_ERROR =
   'إعدادات Supabase غير موجودة. أضف NEXT_PUBLIC_SUPABASE_URL و NEXT_PUBLIC_SUPABASE_ANON_KEY إلى ملف .env.local';
 
+export const SUPABASE_PERSISTENCE_UNAVAILABLE = 'Supabase persistence unavailable';
+
+/** Expected Production Supabase project ref (never log keys). */
+export const EXPECTED_PRODUCTION_SUPABASE_REF = 'ezmdkwgziyencejfevso';
+
+/**
+ * Project ref from NEXT_PUBLIC_SUPABASE_URL only — never returns the anon key.
+ */
+export function getSupabaseProjectRef(): string | null {
+  if (!supabaseUrl) return null;
+  try {
+    const host = new URL(supabaseUrl).hostname;
+    const ref = host.split('.')[0]?.trim();
+    return ref || null;
+  } catch {
+    const m = supabaseUrl.match(/https?:\/\/([a-z0-9-]+)\.supabase\.co/i);
+    return m?.[1] ?? null;
+  }
+}
+
+export function isExpectedProductionSupabaseProject(): boolean {
+  return getSupabaseProjectRef() === EXPECTED_PRODUCTION_SUPABASE_REF;
+}
+
 if (
   typeof window === 'undefined' &&
   process.env.NODE_ENV === 'production' &&

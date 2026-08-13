@@ -9,18 +9,31 @@ import type {
   RagCitation,
 } from '@/lib/design-intelligence/types';
 import { KNOWLEDGE_CATEGORIES } from '@/lib/design-intelligence/types';
-import { isDemoMode, supabase } from '@/lib/supabase';
+import {
+  isDemoMode,
+  isSupabaseConfigured,
+  SUPABASE_PERSISTENCE_UNAVAILABLE,
+  supabase,
+} from '@/lib/supabase';
 import {
   chunkPagesPreserving,
   pagesFromPlainText,
 } from '@/lib/design-intelligence/code-knowledge/pdf-page-extract';
 import { detectSourceRefsFromText } from '@/lib/design-intelligence/code-knowledge/source-refs';
 import { sha256HexFromBytes } from '@/lib/design-intelligence/code-knowledge/sha256';
-import { CODE_KNOWLEDGE_STORAGE_BUCKET } from '@/lib/design-intelligence/code-knowledge/storage-path';
+import {
+  CODE_KNOWLEDGE_STORAGE_BUCKET,
+  sanitizeStorageSegment,
+} from '@/lib/design-intelligence/code-knowledge/storage-path';
+import {
+  isUuid,
+  newKnowledgeChunkId,
+  newKnowledgeDocumentId,
+} from '@/lib/design-intelligence/code-knowledge/persist';
 
 const LOCAL_DOCS_KEY = 'tawaqqa_di_knowledge_docs_v1';
 const LOCAL_CHUNKS_KEY = 'tawaqqa_di_knowledge_chunks_v1';
-const BUCKET = 'design-knowledge';
+const BUCKET = CODE_KNOWLEDGE_STORAGE_BUCKET;
 
 /** Browser localStorage is ~5MB — never store PDF text / data URLs / embedding vectors there. */
 const LOCAL_DOC_LIMIT = 80;
@@ -258,22 +271,70 @@ export async function listKnowledgeDocuments(): Promise<DiKnowledgeDocument[]> {
   return readLocalDocs();
 }
 
-async function tryUploadToStorage(file: File, docId: string): Promise<{ path: string | null; bucket: string }> {
-  if (isDemoMode || typeof window === 'undefined') return { path: null, bucket: BUCKET };
-  try {
-    // Avoid Supabase "Invalid key" for Arabic filenames; title stays in doc metadata
-    const { buildStorageObjectPath } = await import('@/lib/storage/project-files');
-    const safeDocId = String(docId).replace(/[^A-Za-z0-9._-]+/g, '_') || 'doc';
-    const path = buildStorageObjectPath([safeDocId], `doc-${Date.now().toString(36)}`, file.name);
-    const { error } = await supabase.storage.from(BUCKET).upload(path, file, {
-      upsert: true,
-      contentType: file.type || undefined,
-    });
-    if (error) return { path: null, bucket: BUCKET };
-    return { path, bucket: BUCKET };
-  } catch {
-    return { path: null, bucket: BUCKET };
+async function tryUploadToStorage(input: {
+  file: File;
+  docId: string;
+  companyId: string;
+}): Promise<{ path: string | null; bucket: string; error?: string }> {
+  if (!isSupabaseConfigured) {
+    return { path: null, bucket: BUCKET, error: SUPABASE_PERSISTENCE_UNAVAILABLE };
   }
+  if (typeof window === 'undefined') {
+    return { path: null, bucket: BUCKET, error: 'browser_only_upload' };
+  }
+  if (!isUuid(input.companyId)) {
+    return {
+      path: null,
+      bucket: BUCKET,
+      error: 'company_id must be a UUID for design-knowledge Storage RLS',
+    };
+  }
+  if (!isUuid(input.docId)) {
+    return { path: null, bucket: BUCKET, error: 'document_id must be a UUID' };
+  }
+
+  try {
+    const safeName =
+      sanitizeStorageSegment(input.file.name) || `doc-${Date.now().toString(36)}.bin`;
+    // Tenant RLS: first path segment must equal current_app_company_id()
+    const path = `${input.companyId}/knowledge/${input.docId}/${safeName}`;
+    const { error } = await supabase.storage.from(BUCKET).upload(path, input.file, {
+      upsert: true,
+      contentType: input.file.type || undefined,
+    });
+    if (error) return { path: null, bucket: BUCKET, error: error.message };
+    return { path, bucket: BUCKET };
+  } catch (err) {
+    return {
+      path: null,
+      bucket: BUCKET,
+      error: err instanceof Error ? err.message : String(err),
+    };
+  }
+}
+
+async function verifyPersistedKnowledgeRows(documentId: string): Promise<{
+  ok: boolean;
+  chunkCount: number;
+  error?: string;
+}> {
+  const { data: doc, error: docErr } = await supabase
+    .from('di_knowledge_documents')
+    .select('id, index_status, chunk_count')
+    .eq('id', documentId)
+    .is('deleted_at', null)
+    .maybeSingle();
+  if (docErr) return { ok: false, chunkCount: 0, error: docErr.message };
+  if (!doc) return { ok: false, chunkCount: 0, error: 'db_document_missing' };
+
+  const { count, error: chunkErr } = await supabase
+    .from('di_knowledge_chunks')
+    .select('id', { count: 'exact', head: true })
+    .eq('document_id', documentId);
+  if (chunkErr) return { ok: false, chunkCount: 0, error: chunkErr.message };
+  const chunkCount = count || 0;
+  if (chunkCount <= 0) return { ok: false, chunkCount: 0, error: 'chunks_missing' };
+  return { ok: true, chunkCount };
 }
 
 export async function indexDocumentText(
@@ -287,8 +348,13 @@ export async function indexDocumentText(
     page_texts?: string[];
     extraction_method?: string;
     sha256?: string | null;
+  },
+  opts?: {
+    /** When true (Production Knowledge upload), DB+chunk persistence is required. */
+    requireCloudPersist?: boolean;
   }
 ): Promise<{ doc: DiKnowledgeDocument; chunks: DiKnowledgeChunk[]; persistedToCloud: boolean }> {
+  const requireCloud = Boolean(opts?.requireCloudPersist) || isSupabaseConfigured;
   const pageTexts = pageMeta?.page_texts?.length
     ? pageMeta.page_texts.map((t, i) => ({
         page: i + 1,
@@ -302,6 +368,7 @@ export async function indexDocumentText(
     : pagesFromPlainText(text).pages;
 
   const pageParts = chunkPagesPreserving(pageTexts, 900);
+  const useUuidIds = requireCloud || isUuid(doc.id);
   const chunks: DiKnowledgeChunk[] =
     pageParts.length > 0
       ? pageParts.map((part) => {
@@ -310,8 +377,9 @@ export async function indexDocumentText(
             allowPageGuess: true,
           });
           return {
-            id: uid('chk'),
+            id: useUuidIds ? newKnowledgeChunkId() : uid('chk'),
             document_id: doc.id,
+            company_id: doc.company_id ?? null,
             chunk_index: part.index,
             page_number: refs.page_number ?? part.page_start,
             page_start: part.page_start,
@@ -330,8 +398,9 @@ export async function indexDocumentText(
           };
         })
       : chunkText(text).map((part, i) => ({
-          id: uid('chk'),
+          id: useUuidIds ? newKnowledgeChunkId() : uid('chk'),
           document_id: doc.id,
+          company_id: doc.company_id ?? null,
           chunk_index: i,
           page_number: part.pageGuess,
           page_start: part.pageGuess,
@@ -350,8 +419,8 @@ export async function indexDocumentText(
     extracted_text: text,
     data_url: null,
     ocr_used: ocrUsed,
-    index_status: 'indexed',
-    indexed_at: now,
+    index_status: 'processing',
+    indexed_at: null,
     chunk_count: chunks.length,
     page_count: pageMeta?.page_count ?? pageTexts.length ?? doc.page_count ?? null,
     pages_extracted: pageMeta?.pages_extracted ?? pageTexts.filter((p) => p.text.trim()).length,
@@ -360,7 +429,7 @@ export async function indexDocumentText(
     extraction_status: 'indexed',
     ocr_status: ocrUsed ? 'indexed' : 'indexed',
     embedding_status: chunks.length ? 'indexed' : 'pending',
-    ingestion_status: 'indexed',
+    ingestion_status: 'indexing',
     last_ingestion_at: now,
     sha256: pageMeta?.sha256 ?? doc.sha256 ?? null,
     content_sha256: pageMeta?.sha256 ?? doc.content_sha256 ?? null,
@@ -370,9 +439,33 @@ export async function indexDocumentText(
 
   let persistedToCloud = false;
 
-  if (!isDemoMode) {
+  if (isSupabaseConfigured) {
+    if (!isUuid(updated.id)) {
+      updated.index_status = 'failed';
+      updated.ingestion_status = 'failed';
+      throw new Error('document_id must be a UUID for di_knowledge_documents');
+    }
+    if (!updated.storage_path) {
+      updated.index_status = 'failed';
+      updated.ingestion_status = 'failed';
+      throw new Error('storage_path required before DB persist');
+    }
+    if (!chunks.length) {
+      updated.index_status = 'failed';
+      updated.ingestion_status = 'failed';
+      throw new Error('chunks_missing');
+    }
+
+    updated.index_status = 'indexed';
+    updated.ingestion_status = 'indexed';
+    updated.indexed_at = now;
+
+    const companyId =
+      updated.company_id && isUuid(updated.company_id) ? updated.company_id : null;
+
     const { error: docErr } = await supabase.from('di_knowledge_documents').upsert({
       id: updated.id,
+      company_id: companyId,
       title: updated.title,
       category: updated.category,
       discipline: updated.discipline,
@@ -394,7 +487,7 @@ export async function indexDocumentText(
       file_mime: updated.file_mime,
       mime_type: updated.mime_type || updated.file_mime,
       file_size_bytes: updated.file_size_bytes,
-      storage_bucket: updated.storage_bucket,
+      storage_bucket: updated.storage_bucket || BUCKET,
       storage_path: updated.storage_path,
       source_kind: updated.source_kind,
       index_status: updated.index_status,
@@ -417,71 +510,222 @@ export async function indexDocumentText(
       source_type: updated.source_type,
       platform_verification_status: updated.platform_verification_status,
       updated_at: updated.updated_at,
+      created_at: updated.created_at || now,
     });
-    if (!docErr) {
-      persistedToCloud = true;
-      await supabase.from('di_knowledge_chunks').delete().eq('document_id', doc.id);
-      if (chunks.length) {
-        const batchSize = 50;
-        for (let i = 0; i < chunks.length; i += batchSize) {
-          const batch = chunks.slice(i, i + batchSize);
-          await supabase.from('di_knowledge_chunks').insert(
-            batch.map((c) => ({
-              id: c.id,
-              document_id: c.document_id,
-              chunk_index: c.chunk_index,
-              page_number: c.page_number,
-              page_start: c.page_start,
-              page_end: c.page_end,
-              extraction_method: c.extraction_method,
-              paragraph_ref: c.paragraph_ref,
-              code_reference: c.code_reference,
-              content: c.content,
-              section: c.section,
-              subsection: c.subsection,
-              table_reference: c.table_reference,
-              figure_reference: c.figure_reference,
-              source_verification_status: c.source_verification_status,
-              token_estimate: Math.ceil(c.content.length / 4),
-              embedding_json: c.embedding,
-            }))
-          );
-        }
+    if (docErr) {
+      updated.index_status = 'failed';
+      updated.ingestion_status = 'failed';
+      throw new Error(`di_knowledge_documents insert failed: ${docErr.message}`);
+    }
+
+    await supabase.from('di_knowledge_chunks').delete().eq('document_id', doc.id);
+    const batchSize = 50;
+    for (let i = 0; i < chunks.length; i += batchSize) {
+      const batch = chunks.slice(i, i + batchSize);
+      const { error: chunkErr } = await supabase.from('di_knowledge_chunks').insert(
+        batch.map((c) => ({
+          id: c.id,
+          company_id: companyId,
+          document_id: c.document_id,
+          chunk_index: c.chunk_index,
+          page_number: c.page_number,
+          page_start: c.page_start,
+          page_end: c.page_end,
+          extraction_method: c.extraction_method,
+          paragraph_ref: c.paragraph_ref,
+          code_reference: c.code_reference,
+          content: c.content,
+          section: c.section,
+          subsection: c.subsection,
+          table_reference: c.table_reference,
+          figure_reference: c.figure_reference,
+          source_verification_status: c.source_verification_status,
+          token_estimate: Math.ceil(c.content.length / 4),
+          embedding_json: c.embedding,
+        }))
+      );
+      if (chunkErr) {
+        updated.index_status = 'failed';
+        updated.ingestion_status = 'failed';
+        throw new Error(`di_knowledge_chunks insert failed: ${chunkErr.message}`);
       }
     }
+
+    const verified = await verifyPersistedKnowledgeRows(updated.id);
+    if (!verified.ok) {
+      updated.index_status = 'failed';
+      updated.ingestion_status = 'failed';
+      throw new Error(`persistence verification failed: ${verified.error}`);
+    }
+    updated.chunk_count = verified.chunkCount;
+    persistedToCloud = true;
+  } else if (requireCloud) {
+    updated.index_status = 'failed';
+    updated.ingestion_status = 'failed';
+    throw new Error(SUPABASE_PERSISTENCE_UNAVAILABLE);
+  } else {
+    // Demo / unit-test only — never a Production success path
+    updated.index_status = 'indexed';
+    updated.ingestion_status = 'indexed';
+    updated.indexed_at = now;
+    persistedToCloud = false;
   }
 
-  const docs = readLocalDocs().filter((d) => d.id !== doc.id);
-  docs.unshift(updated);
-  writeLocalDocs(docs);
-  const otherChunks = readLocalChunks().filter((c) => c.document_id !== doc.id);
-  writeLocalChunks([...chunks, ...otherChunks]);
+  // Mirror metadata locally only after successful cloud persist (or explicit demo mode)
+  if (persistedToCloud || !isSupabaseConfigured) {
+    const docs = readLocalDocs().filter((d) => d.id !== doc.id);
+    docs.unshift(updated);
+    writeLocalDocs(docs);
+    const otherChunks = readLocalChunks().filter((c) => c.document_id !== doc.id);
+    writeLocalChunks([...chunks, ...otherChunks]);
+  }
 
-  await completeIndexingJob(doc.id, true);
+  await completeIndexingJob(doc.id, persistedToCloud || !isSupabaseConfigured);
   return { doc: updated, chunks, persistedToCloud };
+}
+
+function looksLikeNfpa13_2025(input: {
+  fileName: string;
+  title: string;
+  codes: string[];
+}): boolean {
+  return (
+    /nfpa\s*-?\s*13/i.test(input.fileName) ||
+    /nfpa\s*-?\s*13/i.test(input.title) ||
+    input.codes.some((c) => /nfpa\s*-?\s*13/i.test(c))
+  );
 }
 
 export async function uploadAndIndexKnowledgeFile(input: {
   file: File;
   meta: Partial<DiKnowledgeDocument> & { title: string };
+  companyId?: string | null;
 }): Promise<DiKnowledgeDocument & { persistedToCloud?: boolean }> {
   // Free space before large uploads if legacy cache is bloated
   pruneKnowledgeLocalCache();
 
-  const id = uid('doc');
+  // Production / any live Supabase host: never succeed via session-memory alone
+  if (!isSupabaseConfigured) {
+    throw new Error(SUPABASE_PERSISTENCE_UNAVAILABLE);
+  }
+
+  const companyId = input.companyId || input.meta.company_id || null;
+  if (!companyId || !isUuid(companyId)) {
+    throw new Error(
+      'Supabase persistence unavailable: authenticated company UUID required for Storage RLS'
+    );
+  }
+
+  const codes = input.meta.applicable_codes || [];
+  const nfpa = looksLikeNfpa13_2025({
+    fileName: input.file.name,
+    title: input.meta.title,
+    codes,
+  });
+
+  // NFPA 13 / code documents must use the Code Knowledge Storage ingest path
+  if (nfpa) {
+    const bytes = new Uint8Array(await input.file.arrayBuffer());
+    const { uploadAndIngestCodeKnowledgeDocument } = await import(
+      '@/lib/design-intelligence/code-knowledge/storage-ingestion'
+    );
+    const result = await uploadAndIngestCodeKnowledgeDocument({
+      companyId,
+      code: 'NFPA-13',
+      edition: '2025',
+      title: input.meta.title,
+      fileName: input.file.name,
+      mimeType: input.file.type || 'application/pdf',
+      bytes,
+      source_document_id: `kb_upload:NFPA-13-2025:${input.file.name}`,
+      source_type: 'PROJECT_PROVIDED_DOCUMENT',
+      verification_status: 'PROJECT_COVER_IDENTIFIED',
+      platform_verification_status: 'NOT_VERIFIED_OFFICIAL',
+      adoption_status: 'PROJECT_ADOPTED',
+      replaceIfChanged: true,
+    });
+
+    if (result.status === 'failed') {
+      throw new Error(
+        ('error' in result && result.error) ||
+          'Code Knowledge ingest FAILED — Storage/DB persistence required'
+      );
+    }
+    if (result.status === 'indexed' && !result.document.persisted) {
+      throw new Error(SUPABASE_PERSISTENCE_UNAVAILABLE);
+    }
+
+    const d = result.document;
+    const mapped: DiKnowledgeDocument & { persistedToCloud: boolean } = {
+      id: d.id,
+      company_id: d.company_id,
+      title: d.title,
+      category: input.meta.category || 'NFPA',
+      discipline: input.meta.discipline || 'Fire Protection',
+      status: 'active',
+      file_name: d.file_name,
+      file_mime: d.file_mime || d.mime_type,
+      mime_type: d.mime_type || d.file_mime,
+      file_size_bytes: d.file_size_bytes,
+      storage_bucket: d.storage_bucket || BUCKET,
+      storage_path: d.storage_path,
+      source_kind: 'upload',
+      index_status: d.persisted ? 'indexed' : 'failed',
+      indexed_at: d.indexed_at,
+      chunk_count: d.chunk_count,
+      ocr_used: d.ocr_used,
+      sha256: d.sha256,
+      content_sha256: d.content_sha256,
+      page_count: d.page_count,
+      pages_extracted: d.pages_extracted,
+      pages_ocr: d.pages_ocr,
+      ingestion_status: d.ingestion_status,
+      extraction_status: d.extraction_status,
+      extract_status: d.extract_status,
+      ocr_status: d.ocr_status,
+      embedding_status: d.embedding_status,
+      last_ingestion_at: d.last_ingestion_at,
+      code: 'NFPA-13',
+      edition: '2025',
+      source_type: 'PROJECT_PROVIDED_DOCUMENT',
+      platform_verification_status: 'NOT_VERIFIED_OFFICIAL',
+      applicable_codes: codes.length ? codes : ['NFPA 13'],
+      created_at: d.created_at,
+      updated_at: d.updated_at,
+      persistedToCloud: Boolean(d.persisted),
+    };
+
+    if (!mapped.persistedToCloud) {
+      throw new Error(SUPABASE_PERSISTENCE_UNAVAILABLE);
+    }
+
+    // Refresh local list mirror from successful cloud row
+    const docs = readLocalDocs().filter((x) => x.id !== mapped.id);
+    docs.unshift(mapped);
+    writeLocalDocs(docs);
+
+    return mapped;
+  }
+
+  const id = newKnowledgeDocumentId();
   const bytes = new Uint8Array(await input.file.arrayBuffer());
   const sha256 = await sha256HexFromBytes(bytes);
   const extracted = await extractTextFromFile(input.file);
-  const storage = await tryUploadToStorage(input.file, id);
+  const storage = await tryUploadToStorage({
+    file: input.file,
+    docId: id,
+    companyId,
+  });
 
-  const codes = input.meta.applicable_codes || [];
-  const looksNfpa13_2025 =
-    /nfpa\s*-?\s*13/i.test(input.file.name) ||
-    /nfpa\s*-?\s*13/i.test(input.meta.title) ||
-    codes.some((c) => /nfpa\s*-?\s*13/i.test(c));
+  if (!storage.path) {
+    throw new Error(
+      `Storage upload failed: ${storage.error || 'no_path'} — no local indexed fallback`
+    );
+  }
 
   const draft: DiKnowledgeDocument = {
     id,
+    company_id: companyId,
     title: input.meta.title,
     category: input.meta.category || KNOWLEDGE_CATEGORIES[0],
     discipline: input.meta.discipline || 'Fire Protection',
@@ -503,7 +747,7 @@ export async function uploadAndIndexKnowledgeFile(input: {
     file_mime: input.file.type,
     mime_type: input.file.type || null,
     file_size_bytes: input.file.size,
-    storage_bucket: storage.bucket || CODE_KNOWLEDGE_STORAGE_BUCKET,
+    storage_bucket: storage.bucket || BUCKET,
     storage_path: storage.path,
     data_url: null,
     source_kind: 'upload',
@@ -516,25 +760,33 @@ export async function uploadAndIndexKnowledgeFile(input: {
     page_count: extracted.page_count ?? null,
     pages_extracted: extracted.pages_extracted ?? null,
     pages_ocr: extracted.pages_ocr ?? null,
-    code: looksNfpa13_2025 ? 'NFPA-13' : input.meta.code || null,
-    edition: looksNfpa13_2025 ? '2025' : input.meta.edition || null,
-    source_type: looksNfpa13_2025 ? 'PROJECT_PROVIDED_DOCUMENT' : input.meta.source_type || 'upload',
-    platform_verification_status: looksNfpa13_2025
-      ? 'NOT_VERIFIED_OFFICIAL'
-      : input.meta.platform_verification_status || null,
+    code: input.meta.code || null,
+    edition: input.meta.edition || null,
+    source_type: input.meta.source_type || 'upload',
+    platform_verification_status: input.meta.platform_verification_status || null,
     created_at: new Date().toISOString(),
     updated_at: new Date().toISOString(),
   };
 
   await enqueueIndexingJob({ documentId: id, jobType: 'index' });
-  const { doc, persistedToCloud } = await indexDocumentText(draft, extracted.text, extracted.ocrUsed, {
-    page_count: extracted.page_count,
-    pages_extracted: extracted.pages_extracted,
-    pages_ocr: extracted.pages_ocr,
-    page_texts: extracted.page_texts,
-    extraction_method: extracted.extraction_method,
-    sha256,
-  });
+  const { doc, persistedToCloud } = await indexDocumentText(
+    draft,
+    extracted.text,
+    extracted.ocrUsed,
+    {
+      page_count: extracted.page_count,
+      pages_extracted: extracted.pages_extracted,
+      pages_ocr: extracted.pages_ocr,
+      page_texts: extracted.page_texts,
+      extraction_method: extracted.extraction_method,
+      sha256,
+    },
+    { requireCloudPersist: true }
+  );
+
+  if (!persistedToCloud) {
+    throw new Error(SUPABASE_PERSISTENCE_UNAVAILABLE);
+  }
 
   void import('@/lib/activity/logger').then(({ logActivity }) =>
     logActivity({
