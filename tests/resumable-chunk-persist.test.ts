@@ -83,10 +83,13 @@ describe('Resumable chunk persistence', () => {
     expect(src).not.toMatch(/numeric_value|NFPA.?13.*density/i);
   });
 
-  it('package.json exposes resume:nfpa13-chunks', () => {
-    const pkg = JSON.parse(readFileSync(join(root, 'package.json'), 'utf8'));
-    expect(pkg.scripts['resume:nfpa13-chunks']).toMatch(
-      /resume-nfpa13-chunk-persist/
+  it('UI exposes Resume chunks for incomplete Storage documents (no service role)', () => {
+    const ck = readFileSync(
+      join(root, 'components/design/CodeKnowledgePanel.tsx'),
+      'utf8'
     );
+    expect(ck).toMatch(/Resume chunks/);
+    expect(ck).toMatch(/resumeIncompleteCodeKnowledgeIngestion/);
+    expect(ck).toMatch(/Resuming chunks from Storage \(no re-upload\)/);
   });
 });

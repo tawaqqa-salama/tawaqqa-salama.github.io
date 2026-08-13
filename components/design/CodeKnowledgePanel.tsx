@@ -28,6 +28,7 @@ import {
   registerNfpa13_2025ProjectEdition,
   registerNfpa13_2025RuleShells,
   reingestCodeKnowledgeDocument,
+  resumeIncompleteCodeKnowledgeIngestion,
   resetCodeKnowledgeStore,
   resetInMemoryCodeKnowledgeStorage,
   runDocumentPipeline,
@@ -391,6 +392,63 @@ export default function CodeKnowledgePanel({ companyId, clientId }: Props) {
     }
   };
 
+  /**
+   * Resume incomplete chunk persistence from existing Storage (no re-upload).
+   * Preserves valid chunks; fills missing pages via authenticated session.
+   */
+  const onResumeChunks = async (d: CodeKnowledgeDocumentMeta) => {
+    if (!d.storage_path) {
+      setMessage('FAILED: storage_path_missing — cannot resume without Storage object.');
+      return;
+    }
+    if (persistedMode && !authCompany) {
+      setMessage('FAILED: no authenticated company UUID — cannot resume.');
+      return;
+    }
+    setBusy(true);
+    setMessage(
+      `Resuming chunks from Storage (no re-upload)… document_id=${d.id}`
+    );
+    setUploadPhase('chunking');
+    try {
+      const result = await resumeIncompleteCodeKnowledgeIngestion({
+        companyId: company,
+        documentId: d.id,
+        storagePath: d.storage_path,
+        storageBucket: d.storage_bucket || CODE_KNOWLEDGE_STORAGE_BUCKET,
+        code: d.code,
+        edition: d.edition,
+        title: d.title,
+        fileName: d.file_name || undefined,
+        mimeType: d.mime_type || d.file_mime || undefined,
+        onPhase: (phase) => {
+          setUploadPhase(phase);
+          setIndexStatus(phase);
+        },
+      });
+      await refresh();
+      if (result.status === 'failed') {
+        setUploadPhase('failed');
+        setIndexStatus('failed');
+        setMessage(
+          `FAILED: ${result.error || 'resume_failed'}. coverage max_page_end=${result.coverage_after?.max_page_end ?? '—'} missing=${(result.missing_pages || []).slice(0, 12).join(',') || '—'}`
+        );
+        return;
+      }
+      setUploadPhase('indexed');
+      setIndexStatus('indexed');
+      setMessage(
+        `SUPABASE / RESUMED · document_id=${result.document.id} · chunks=${result.chunk_count} · pages=${result.page_count} · max_page_end=${result.coverage_after?.max_page_end ?? '—'} · missing=${(result.missing_pages || []).length}`
+      );
+    } catch (err) {
+      setUploadPhase('failed');
+      setIndexStatus('failed');
+      setMessage(`FAILED: ${err instanceof Error ? err.message : String(err)}`);
+    } finally {
+      setBusy(false);
+    }
+  };
+
   const confirmDeleteMessage = (d: CodeKnowledgeDocumentMeta, duplicate: boolean) => {
     const title = d.file_name || d.title || d.id;
     if (duplicate) {
@@ -731,6 +789,20 @@ export default function CodeKnowledgePanel({ companyId, clientId }: Props) {
                   <td className="py-2 pr-2">{d.ingestion_status || '—'}</td>
                   <td className="py-2 pr-2">{displayIndex}</td>
                   <td className="py-2 pr-2 space-y-1">
+                    {(d.ingestion_status === 'failed' ||
+                      (Boolean(d.storage_path) &&
+                        (d.chunk_count || 0) > 0 &&
+                        !isIndexed)) &&
+                    d.storage_path ? (
+                      <button
+                        type="button"
+                        disabled={busy}
+                        className="block text-amber-800 underline font-semibold disabled:opacity-40"
+                        onClick={() => void onResumeChunks(d)}
+                      >
+                        Resume chunks
+                      </button>
+                    ) : null}
                     <button
                       type="button"
                       disabled={busy || !d.storage_path}
