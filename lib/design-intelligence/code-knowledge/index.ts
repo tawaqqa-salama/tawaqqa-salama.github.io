@@ -26,6 +26,10 @@ export {
 export {
   detectSourceRefsFromText,
   assertCitationPresentInText,
+  toPgInt4,
+  toSafePageNumber,
+  PG_INT4_MAX,
+  MAX_REASONABLE_PAGE_NUMBER,
 } from '@/lib/design-intelligence/code-knowledge/source-refs';
 export {
   registerKnowledgeDocument,

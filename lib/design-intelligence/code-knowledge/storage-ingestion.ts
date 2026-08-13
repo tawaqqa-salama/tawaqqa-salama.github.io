@@ -55,6 +55,7 @@ import {
   dedupePersistedChunksByFingerprint,
   finalizeCodeKnowledgeDocumentIfComplete,
 } from '@/lib/design-intelligence/code-knowledge/persist';
+import { toPgInt4, toSafePageNumber } from '@/lib/design-intelligence/code-knowledge/source-refs';
 import type {
   CodeKnowledgeChunk,
   CodeKnowledgeDocumentMeta,
@@ -872,12 +873,16 @@ export async function ingestCodeKnowledgeFromStorage(
       pageGuess: p.page_start,
       allowPageGuess: true,
     });
+    const safePage = toSafePageNumber(
+      refs.page_number ?? p.page_start,
+      toSafePageNumber(p.page_start, 1)
+    );
     return {
       id: mustPersist ? newKnowledgeChunkId() : uid('kchk'),
       company_id: doc.company_id,
       document_id: doc.id,
       edition_id: editionId,
-      chunk_index: p.index,
+      chunk_index: toPgInt4(p.index, 0) ?? 0,
       content: p.content,
       code: doc.code,
       edition: doc.edition,
@@ -885,9 +890,9 @@ export async function ingestCodeKnowledgeFromStorage(
       subsection: refs.subsection,
       table_reference: refs.table_reference,
       figure_reference: refs.figure_reference,
-      page_number: refs.page_number ?? p.page_start,
-      page_start: p.page_start,
-      page_end: p.page_end,
+      page_number: safePage,
+      page_start: toSafePageNumber(p.page_start, safePage),
+      page_end: toSafePageNumber(p.page_end, safePage),
       extraction_method: p.extraction_method,
       paragraph_reference: refs.paragraph_reference,
       code_reference: refs.code_reference,

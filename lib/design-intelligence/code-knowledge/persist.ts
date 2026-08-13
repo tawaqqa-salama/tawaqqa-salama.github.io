@@ -5,6 +5,10 @@
 
 import { isDemoMode, isSupabaseConfigured, supabase } from '@/lib/supabase';
 import { CODE_KNOWLEDGE_STORAGE_BUCKET } from '@/lib/design-intelligence/code-knowledge/storage-path';
+import {
+  toPgInt4,
+  toSafePageNumber,
+} from '@/lib/design-intelligence/code-knowledge/source-refs';
 import type {
   CodeKnowledgeChunk,
   CodeKnowledgeDocumentMeta,
@@ -262,10 +266,13 @@ export async function persistCodeKnowledgeChunks(
     id: isUuid(c.id) ? c.id : newKnowledgeDocumentId(),
     company_id: companyId,
     document_id: documentId,
-    chunk_index: c.chunk_index,
-    page_number: c.page_number ?? c.page_start ?? null,
-    page_start: c.page_start ?? null,
-    page_end: c.page_end ?? null,
+    chunk_index: toPgInt4(c.chunk_index, 0) ?? 0,
+    page_number: toSafePageNumber(
+      c.page_number ?? c.page_start,
+      toSafePageNumber(c.page_start, null)
+    ),
+    page_start: toSafePageNumber(c.page_start, null),
+    page_end: toSafePageNumber(c.page_end, null),
     extraction_method: c.extraction_method ?? null,
     paragraph_ref: c.paragraph_reference || null,
     code_reference: c.code_reference || null,
@@ -279,7 +286,7 @@ export async function persistCodeKnowledgeChunks(
     source_document_id: c.source_document_id,
     source_verification_status: c.source_verification_status,
     edition_id: isUuid(c.edition_id || undefined) ? c.edition_id : null,
-    token_estimate: Math.ceil(c.content.length / 4),
+    token_estimate: toPgInt4(Math.ceil(c.content.length / 4), 0),
     embedding_json: c.embedding || null,
   }));
 

@@ -20,7 +20,7 @@ import {
   chunkPagesPreserving,
   pagesFromPlainText,
 } from '@/lib/design-intelligence/code-knowledge/pdf-page-extract';
-import { detectSourceRefsFromText } from '@/lib/design-intelligence/code-knowledge/source-refs';
+import { detectSourceRefsFromText, toPgInt4, toSafePageNumber } from '@/lib/design-intelligence/code-knowledge/source-refs';
 import { sha256HexFromBytes } from '@/lib/design-intelligence/code-knowledge/sha256';
 import {
   CODE_KNOWLEDGE_STORAGE_BUCKET,
@@ -532,14 +532,18 @@ export async function indexDocumentText(
             pageGuess: part.page_start,
             allowPageGuess: true,
           });
+          const safePage = toSafePageNumber(
+            refs.page_number ?? part.page_start,
+            toSafePageNumber(part.page_start, 1)
+          );
           return {
             id: useUuidIds ? newKnowledgeChunkId() : uid('chk'),
             document_id: doc.id,
             company_id: doc.company_id ?? null,
-            chunk_index: part.index,
-            page_number: refs.page_number ?? part.page_start,
-            page_start: part.page_start,
-            page_end: part.page_end,
+            chunk_index: toPgInt4(part.index, 0) ?? 0,
+            page_number: safePage,
+            page_start: toSafePageNumber(part.page_start, safePage),
+            page_end: toSafePageNumber(part.page_end, safePage),
             extraction_method: part.extraction_method,
             paragraph_ref: refs.paragraph_reference || `§${part.index + 1}`,
             code_reference: doc.applicable_codes?.[0] || refs.code_reference || null,
@@ -683,10 +687,10 @@ export async function indexDocumentText(
           id: c.id,
           company_id: companyId,
           document_id: c.document_id,
-          chunk_index: c.chunk_index,
-          page_number: c.page_number,
-          page_start: c.page_start,
-          page_end: c.page_end,
+          chunk_index: toPgInt4(c.chunk_index, 0) ?? 0,
+          page_number: toSafePageNumber(c.page_number ?? c.page_start, null),
+          page_start: toSafePageNumber(c.page_start, null),
+          page_end: toSafePageNumber(c.page_end, null),
           extraction_method: c.extraction_method,
           paragraph_ref: c.paragraph_ref,
           code_reference: c.code_reference,
@@ -696,7 +700,7 @@ export async function indexDocumentText(
           table_reference: c.table_reference,
           figure_reference: c.figure_reference,
           source_verification_status: c.source_verification_status,
-          token_estimate: Math.ceil(c.content.length / 4),
+          token_estimate: toPgInt4(Math.ceil(c.content.length / 4), 0),
           embedding_json: c.embedding,
         }))
       );

@@ -1,6 +1,10 @@
 /**
  * Detect section / table / figure references from extracted text.
  * Never fabricates citations — missing → NOT_VERIFIED.
+ *
+ * IMPORTANT: page_number is written to PostgreSQL `integer` (max 2147483647).
+ * Never accept bare "P"+"digits" (phone/SKU) — that produced overflow
+ * `value "7777777777" is out of range for type integer` on NFPA PDFs.
  */
 
 import type { SourceVerificationStatus } from '@/lib/design-intelligence/code-knowledge/types';
@@ -16,12 +20,46 @@ export type DetectedSourceRefs = {
   source_verification_status: SourceVerificationStatus;
 };
 
+/** PostgreSQL signed int32 max — all persisted page/index ints must fit. */
+export const PG_INT4_MAX = 2147483647;
+export const PG_INT4_MIN = -2147483648;
+
+/** Reject absurd "Page" matches (phone numbers, SKUs misread as pages). */
+export const MAX_REASONABLE_PAGE_NUMBER = 100_000;
+
 const SECTION_RE =
   /\b(?:Section|Sec\.?|§)\s*(\d+(?:\.\d+){0,4})\b/i;
 const TABLE_RE = /\b(?:Table)\s+([\dA-Za-z]+(?:\.[\dA-Za-z]+)*)\b/i;
 const FIGURE_RE = /\b(?:Figure|Fig\.?)\s+([\dA-Za-z]+(?:\.[\dA-Za-z]+)*)\b/i;
-const PAGE_RE = /\b(?:Page|p\.?)\s*(\d+)\b/i;
+/** Require "Page"/"Pages" or "p." / "pp." — NOT bare "p"+"digits". */
+const PAGE_RE = /\b(?:Pages?|pp\.)\s*(\d{1,6})\b|\bp\.\s*(\d{1,6})\b/i;
 const PARA_RE = /\b(?:Paragraph|Para\.?)\s*([\d.]+)\b/i;
+
+/**
+ * Clamp a value to PostgreSQL integer, or return fallback when out of range.
+ */
+export function toPgInt4(
+  value: number | null | undefined,
+  fallback: number | null = null
+): number | null {
+  if (value == null || !Number.isFinite(value)) return fallback;
+  const n = Math.trunc(value);
+  if (n > PG_INT4_MAX || n < PG_INT4_MIN) return fallback;
+  return n;
+}
+
+/**
+ * Safe page number for di_knowledge_chunks.page_number / page_start / page_end.
+ */
+export function toSafePageNumber(
+  value: number | null | undefined,
+  fallback: number | null = null
+): number | null {
+  const n = toPgInt4(value, null);
+  if (n == null) return fallback;
+  if (n < 1 || n > MAX_REASONABLE_PAGE_NUMBER) return fallback;
+  return n;
+}
 
 /**
  * Extract references only when patterns appear in the chunk text.
@@ -41,11 +79,16 @@ export function detectSourceRefsFromText(
   const section = sectionMatch?.[1] ? String(sectionMatch[1]) : null;
   const table_reference = tableMatch?.[1] ? `Table ${tableMatch[1]}` : null;
   const figure_reference = figureMatch?.[1] ? `Figure ${figureMatch[1]}` : null;
-  const page_number = pageMatch?.[1]
-    ? Number(pageMatch[1])
-    : opts?.allowPageGuess && opts.pageGuess != null
-      ? opts.pageGuess
+
+  const rawPage = pageMatch?.[1] || pageMatch?.[2] || null;
+  const parsedPage = rawPage ? Number(rawPage) : NaN;
+  const fromText = toSafePageNumber(parsedPage, null);
+  const fromGuess =
+    opts?.allowPageGuess && opts.pageGuess != null
+      ? toSafePageNumber(opts.pageGuess, null)
       : null;
+  const page_number = fromText ?? fromGuess;
+
   const paragraph_reference = paraMatch?.[1] ? String(paraMatch[1]) : null;
 
   const subsection =
@@ -92,7 +135,11 @@ export function assertCitationPresentInText(
     }
   }
   if (citation.page != null) {
-    if (!new RegExp(`\\b(?:Page|p\\.?)\\s*${citation.page}\\b`, 'i').test(text)) {
+    if (
+      !new RegExp(`\\b(?:Pages?|pp\\.)\\s*${citation.page}\\b|\\bp\\.\\s*${citation.page}\\b`, 'i').test(
+        text
+      )
+    ) {
       return { ok: false, reason: 'page_not_in_text' };
     }
   }
