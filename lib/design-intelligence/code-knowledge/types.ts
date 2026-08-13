@@ -160,6 +160,8 @@ export type CodeKnowledgeDocumentMeta = {
    * upload to Supabase Storage. Production UI upload should prefer Storage.
    */
   local_source_path?: string | null;
+  /** Operator notes (e.g. SAFE_CLEANUP_CANDIDATE for duplicate Storage objects). */
+  notes?: string | null;
   created_by?: string | null;
   created_at?: string;
   updated_at?: string;
