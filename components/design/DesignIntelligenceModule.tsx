@@ -405,7 +405,12 @@ export default function DesignIntelligenceModule() {
         </div>
       )}
 
-      {tab === 'codes' && <CodeKnowledgePanel />}
+      {tab === 'codes' && (
+        <CodeKnowledgePanel
+          companyId="demo-company"
+          clientId={activeWs?.client_id || clients[0]?.id || 'demo-client'}
+        />
+      )}
 
       {(tab === 'rag' || tab === 'copilot') && (
         <div className="rounded-xl border bg-white p-4 space-y-3">

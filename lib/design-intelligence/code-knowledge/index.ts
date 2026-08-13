@@ -60,6 +60,16 @@ export {
   reingestCodeKnowledgeDocument,
 } from '@/lib/design-intelligence/code-knowledge/storage-ingestion';
 export {
+  ingestPlatformNfpa13_2025AndAdopt,
+  adoptNfpa13_2025AcrossProjects,
+  ensureNfpa13_2025ShellsInactive,
+  countActiveNfpa13_2025NumericRules,
+  assertRagCannotActivateNfpaNumericRules,
+  assertDocumentTenantIsolation,
+  PLATFORM_NFPA13_CODE,
+  PLATFORM_NFPA13_EDITION,
+} from '@/lib/design-intelligence/code-knowledge/platform-nfpa13-pipeline';
+export {
   extractPdfPagesFromBytes,
   applyOcrFallbackToPages,
   pagesFromPlainText,

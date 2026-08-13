@@ -13,6 +13,7 @@ import {
   compareCodeEditions,
   explainCodeKnowledgeHits,
   getProjectAdoptedEdition,
+  ingestPlatformNfpa13_2025AndAdopt,
   listAvailableCodes,
   listCodeEditions,
   listEditionRules,
@@ -128,13 +129,44 @@ export default function CodeKnowledgePanel({ companyId, clientId }: Props) {
 
   const onUploadDocument = async () => {
     if (!uploadFile) {
-      setMessage('Choose a document from your device (stored in Supabase Storage design-knowledge).');
+      setMessage(
+        'NFPA 13-2025 file is not present. Upload the PDF from this panel (Supabase Storage design-knowledge). Do not use Cursor/ChatGPT/web sources.'
+      );
       return;
     }
     setBusy(true);
     try {
       const bytes = new Uint8Array(await uploadFile.arrayBuffer());
-      const result = await uploadAndIngestCodeKnowledgeDocument({
+      const isNfpa13_2025 =
+        uploadCode.trim() === 'NFPA-13' && uploadEdition.trim() === '2025';
+
+      if (isNfpa13_2025) {
+        const result = await ingestPlatformNfpa13_2025AndAdopt({
+          companyId: company,
+          bytes,
+          fileName: uploadFile.name,
+          mimeType: uploadFile.type || undefined,
+          adoptForProjects: [{ companyId: company, clientId: client }],
+        });
+        setIndexStatus(
+          result.ok
+            ? result.ingest?.status === 'skipped_duplicate'
+              ? 'skipped_duplicate'
+              : 'indexed'
+            : result.blocked || 'failed'
+        );
+        refresh();
+        if (!result.ok) {
+          setMessage(result.message || 'Ingestion blocked/failed');
+        } else {
+          setMessage(
+            `Storage ${CODE_KNOWLEDGE_STORAGE_BUCKET} OK · pages=${result.pages_extracted} ocr_pages=${result.pages_ocr} chunks=${result.chunk_count} · adopted=${result.adoptions.length} project(s) · active_numeric=${result.active_numeric_rules}`
+          );
+        }
+        return;
+      }
+
+      const generic = await uploadAndIngestCodeKnowledgeDocument({
         companyId: company,
         code: uploadCode.trim() || 'NFPA-13',
         edition: uploadEdition.trim() || '2025',
@@ -147,21 +179,21 @@ export default function CodeKnowledgePanel({ companyId, clientId }: Props) {
         replaceIfChanged: true,
       });
       setIndexStatus(
-        result.status === 'skipped_duplicate'
+        generic.status === 'skipped_duplicate'
           ? 'skipped_duplicate'
-          : result.document.index_status
+          : generic.document.index_status
       );
       refresh();
-      if (result.status === 'skipped_duplicate') {
+      if (generic.status === 'skipped_duplicate') {
         setMessage(
-          `Identical SHA-256 — ingestion skipped. sha256=${result.sha256.slice(0, 16)}…`
+          `Identical SHA-256 — ingestion skipped. sha256=${generic.sha256.slice(0, 16)}…`
         );
-      } else if (result.status === 'indexed') {
+      } else if (generic.status === 'indexed') {
         setMessage(
-          `Uploaded to ${CODE_KNOWLEDGE_STORAGE_BUCKET} → ${result.storage_path}. pages=${result.page_count} chunks=${result.chunk_count} sha256=${result.sha256.slice(0, 16)}…`
+          `Uploaded to ${CODE_KNOWLEDGE_STORAGE_BUCKET} → ${generic.storage_path}. pages=${generic.page_count} chunks=${generic.chunk_count}`
         );
       } else {
-        setMessage(`Ingestion failed: ${'error' in result ? result.error : 'unknown'}`);
+        setMessage(`Ingestion failed: ${'error' in generic ? generic.error : 'unknown'}`);
       }
     } catch (err) {
       setMessage(err instanceof Error ? err.message : String(err));
