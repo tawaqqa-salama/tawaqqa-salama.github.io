@@ -23,6 +23,36 @@ export function sanitizeStorageSegment(value: string): string {
     .slice(0, 120);
 }
 
+/**
+ * Sanitize a file leaf name for Storage object keys.
+ * Arabic / non-ASCII basenames must not collapse to ".pdf".
+ * Empty basename → "document.<ext>".
+ */
+export function sanitizeKnowledgeFileName(originalName: string, fallbackExt = "pdf"): string {
+  const leaf =
+    String(originalName || "")
+      .trim()
+      .split(/[/\\]/)
+      .filter(Boolean)
+      .pop() || `document.${fallbackExt}`;
+
+  const lastDot = leaf.lastIndexOf(".");
+  const hasExt = lastDot > 0 && lastDot < leaf.length - 1;
+  const baseRaw = hasExt ? leaf.slice(0, lastDot) : leaf;
+  const extRaw = hasExt ? leaf.slice(lastDot + 1) : fallbackExt;
+
+  const ext =
+    sanitizeStorageSegment(extRaw).replace(/^\.+/, "").toLowerCase() || fallbackExt;
+  let base = sanitizeStorageSegment(baseRaw).replace(/^\.+/, "");
+
+  // Reject empty / extension-only results (e.g. Arabic title → "" → ".pdf")
+  if (!base || base.toLowerCase() === ext) {
+    base = "document";
+  }
+
+  return `${base}.${ext}`;
+}
+
 export function buildCodeKnowledgeLogicalPath(input: {
   code: string;
   edition: string;
@@ -32,7 +62,7 @@ export function buildCodeKnowledgeLogicalPath(input: {
   const code = sanitizeStorageSegment(input.code);
   const edition = sanitizeStorageSegment(input.edition);
   const documentId = sanitizeStorageSegment(input.documentId);
-  const fileName = sanitizeStorageSegment(input.fileName) || "document.pdf";
+  const fileName = sanitizeKnowledgeFileName(input.fileName);
   if (!code || !edition || !documentId) {
     throw new Error("code, edition, and documentId are required for storage path");
   }
