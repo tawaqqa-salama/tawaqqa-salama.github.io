@@ -32,7 +32,10 @@ function applyCompanyFilter<T extends { eq: (col: string, val: string) => T }>(
   query: T,
   companyId: string | null
 ): T {
-  if (!companyId) return query;
+  // Fail closed: never run an unscoped list/query when tenant is unknown
+  if (!companyId) {
+    throw new Error('company_id_required');
+  }
   return query.eq('company_id', companyId);
 }
 
@@ -41,6 +44,7 @@ export async function fetchClientsList(options: ListFetchOptions = {}): Promise<
   const offset = options.offset ?? 0;
   const columns = options.includeEngineering ? PROJECT_LIST_COLUMNS : CLIENT_LIST_COLUMNS;
   const companyId = resolveFetchCompanyId(options.companyId);
+  if (!companyId) return [];
 
   let query = supabase
     .from('clients')
@@ -79,19 +83,24 @@ export async function fetchClientById(
 ): Promise<ClientRecord | null> {
   if (!id) return null;
   const tenantId = resolveFetchCompanyId(companyId);
+  // Fail closed without tenant — do not load by id alone (IDOR)
+  if (!tenantId) return null;
   let query = supabase.from('clients').select('*').eq('id', id);
   query = applyCompanyFilter(query, tenantId);
   const { data, error } = await query.maybeSingle();
   if (error || !data) {
-    // محاولة استعادة من النسخة المحلية للتقارير إن وُجدت
+    // Local override only when it already belongs to this tenant (or has no company)
     const local = mergeLocalClientOverrides({ id } as ClientRecord);
-    if ((local as ClientRecord).project_engineering_data) {
+    const localCompany = (local as ClientRecord & { company_id?: string }).company_id;
+    if (
+      (local as ClientRecord).project_engineering_data &&
+      (!localCompany || localCompany === tenantId)
+    ) {
       return local as ClientRecord;
     }
     return null;
   }
-  // Defense-in-depth: reject cross-tenant rows even if filter was skipped
-  if (tenantId && (data as { company_id?: string }).company_id && (data as { company_id: string }).company_id !== tenantId) {
+  if ((data as { company_id?: string }).company_id && (data as { company_id: string }).company_id !== tenantId) {
     return null;
   }
   const merged = mergeLocalClientOverrides(data as ClientRecord);
@@ -100,6 +109,7 @@ export async function fetchClientById(
 
 export async function fetchSalesDocuments(limit = ARCHIVE_PAGE_SIZE): Promise<SalesDocument[]> {
   const companyId = resolveFetchCompanyId();
+  if (!companyId) return [];
   let query = supabase
     .from('sales_documents')
     .select('id, client_id, doc_type, doc_number, subtotal, vat_amount, total_amount, status, archived, created_at')
@@ -112,6 +122,7 @@ export async function fetchSalesDocuments(limit = ARCHIVE_PAGE_SIZE): Promise<Sa
 
 export async function fetchSalesContracts(limit = ARCHIVE_PAGE_SIZE): Promise<SalesContract[]> {
   const companyId = resolveFetchCompanyId();
+  if (!companyId) return [];
   let query = supabase
     .from('sales_contracts')
     .select('*')
@@ -124,6 +135,7 @@ export async function fetchSalesContracts(limit = ARCHIVE_PAGE_SIZE): Promise<Sa
 
 export async function fetchSalesReturns(limit = LIST_PAGE_SIZE): Promise<SalesReturn[]> {
   const companyId = resolveFetchCompanyId();
+  if (!companyId) return [];
   let query = supabase
     .from('sales_returns')
     .select('id, client_id, return_number, amount, reason, status, created_at')
@@ -164,15 +176,17 @@ export async function fetchProjectsList(limit = PROJECTS_PAGE_SIZE): Promise<Cli
   // 2) إن رجعت قائمة قصيرة بشكل مريب، أعد الجلب بـ *
   if (rows.length === 0) {
     const companyId = resolveFetchCompanyId();
-    let query = supabase
-      .from('clients')
-      .select('*')
-      .order('created_at', { ascending: false })
-      .limit(fetchLimit);
-    query = applyCompanyFilter(query, companyId);
-    const { data, error } = await query;
-    if (!error && data?.length) {
-      rows = (data as ClientRecord[]).map((row) => mergeLocalClientOverrides(row));
+    if (companyId) {
+      let query = supabase
+        .from('clients')
+        .select('*')
+        .order('created_at', { ascending: false })
+        .limit(fetchLimit);
+      query = applyCompanyFilter(query, companyId);
+      const { data, error } = await query;
+      if (!error && data?.length) {
+        rows = (data as ClientRecord[]).map((row) => mergeLocalClientOverrides(row));
+      }
     }
   }
 

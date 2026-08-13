@@ -1,18 +1,23 @@
 import { NextResponse } from 'next/server';
 import { ragQuery } from '@/lib/design-intelligence/knowledge-base';
+import { withTenantApi } from '@/lib/tenant/api-guard';
 
 /**
  * Offline RAG query endpoint — answers only from indexed company knowledge.
- * No outbound LLM / internet calls. Client RBAC gates the /design UI (dept.design).
+ * No outbound LLM / internet calls. Requires authenticated tenant + design module.
  */
 export async function POST(req: Request) {
+  const gated = await withTenantApi(req, { module: 'design' });
+  if ('response' in gated) return gated.response;
+
   try {
     const contentType = req.headers.get('content-type') || '';
     if (!contentType.includes('application/json')) {
       return NextResponse.json({ ok: false, error: 'Expected application/json' }, { status: 415 });
     }
 
-    const body = (await req.json()) as { question?: string; topK?: number };
+    const body = (await req.json()) as { question?: string; topK?: number; company_id?: string };
+    // Ignore client-supplied company_id — session tenant only
     const question = String(body.question || '').trim();
     if (!question) {
       return NextResponse.json(
@@ -28,18 +33,18 @@ export async function POST(req: Request) {
     }
 
     const topK = Math.min(Math.max(Number(body.topK) || 5, 1), 12);
-    const result = await ragQuery(question, topK);
+    const result = await ragQuery(question, topK, { companyId: gated.ctx.tenantId });
     return NextResponse.json({
       ok: true,
       offline: true,
       internet: false,
       ...result,
     });
-  } catch (e) {
+  } catch {
     return NextResponse.json(
       {
         ok: false,
-        error: e instanceof Error ? e.message : 'RAG failed',
+        error: 'RAG failed',
         answer: 'No reliable reference found.',
         reliable: false,
       },

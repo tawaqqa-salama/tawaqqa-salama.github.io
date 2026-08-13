@@ -7,17 +7,20 @@ function isMemoryStore() {
   return isMarketingCrmMemoryMode();
 }
 
-export async function listMarketingCampaigns() {
+export async function listMarketingCampaigns(companyId?: string | null) {
   if (isMemoryStore()) return marketingMemory.campaigns.list();
+  if (!companyId) return [];
   const { data } = await supabase
     .from('marketing_campaigns')
     .select('*')
+    .eq('company_id', companyId)
     .order('created_at', { ascending: false });
   return data || [];
 }
 
 export async function saveMarketingCampaign(input: {
   id?: string;
+  companyId?: string | null;
   name: string;
   objective?: string | null;
   channels?: string[];
@@ -56,6 +59,8 @@ export async function saveMarketingCampaign(input: {
     return marketingMemory.campaigns.save(row);
   }
 
+  if (!input.companyId) throw new Error('company_id_required');
+
   if (input.id) {
     const { data, error } = await supabase
       .from('marketing_campaigns')
@@ -73,6 +78,7 @@ export async function saveMarketingCampaign(input: {
         updated_at: new Date().toISOString(),
       })
       .eq('id', input.id)
+      .eq('company_id', input.companyId)
       .select('*')
       .single();
     if (error) throw new Error(error.message);
@@ -82,6 +88,7 @@ export async function saveMarketingCampaign(input: {
   const { data, error } = await supabase
     .from('marketing_campaigns')
     .insert({
+      company_id: input.companyId,
       name: input.name,
       objective: input.objective ?? null,
       channels: input.channels || [],
@@ -99,17 +106,20 @@ export async function saveMarketingCampaign(input: {
   return data;
 }
 
-export async function campaignPerformance(campaignId?: string) {
-  const campaigns = await listMarketingCampaigns();
+export async function campaignPerformance(campaignId?: string, companyId?: string | null) {
+  const campaigns = await listMarketingCampaigns(companyId);
   const clients = isMemoryStore()
     ? marketingMemory.listClients()
-    : (
-        await supabase
-          .from('clients')
-          .select(
-            'id, lead_source, utm_campaign, pipeline_stage, quotation_number, total_amount, lead_status'
-          )
-      ).data || [];
+    : !companyId
+      ? []
+      : (
+          await supabase
+            .from('clients')
+            .select(
+              'id, lead_source, utm_campaign, pipeline_stage, quotation_number, total_amount, lead_status'
+            )
+            .eq('company_id', companyId)
+        ).data || [];
 
   return campaigns
     .filter((c) => !campaignId || c.id === campaignId)

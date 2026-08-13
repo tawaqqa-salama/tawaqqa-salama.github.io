@@ -7,7 +7,7 @@ export const runtime = 'nodejs';
 export async function GET(request: Request) {
   const gated = await withTenantApi(request, { module: 'social_media' });
   if ('response' in gated) return gated.response;
-  const posts = await listPosts();
+  const posts = await listPosts(gated.ctx.tenantId);
   return NextResponse.json({ ok: true, posts });
 }
 
@@ -17,6 +17,7 @@ export async function POST(request: Request) {
   const body = await request.json();
   const post = await createOrUpdatePost({
     id: body.id,
+    companyId: gated.ctx.tenantId,
     title: body.title,
     content: body.content || '',
     media: body.media,

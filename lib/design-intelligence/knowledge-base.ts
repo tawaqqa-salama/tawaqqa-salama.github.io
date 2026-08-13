@@ -1155,7 +1155,11 @@ export async function reingestKnowledgeDocumentFromStorage(
 
 const CONFIDENCE_FLOOR = 0.18;
 
-export async function ragQuery(question: string, topK = 5): Promise<RagAnswer> {
+export async function ragQuery(
+  question: string,
+  topK = 5,
+  opts?: { companyId?: string | null }
+): Promise<RagAnswer> {
   ensureSeedKnowledgeBase();
   const q = question.trim();
   if (!q) {
@@ -1170,22 +1174,31 @@ export async function ragQuery(question: string, topK = 5): Promise<RagAnswer> {
 
   let chunks = readLocalChunks();
   if (!isDemoMode) {
-    const { data } = await supabase.from('di_knowledge_chunks').select('*').limit(2000);
-    if (data?.length) {
-      const remote = data.map((row) => ({
-        id: row.id,
-        document_id: row.document_id,
-        chunk_index: row.chunk_index,
-        page_number: row.page_number,
-        paragraph_ref: row.paragraph_ref,
-        code_reference: row.code_reference,
-        content: row.content,
-        embedding: (row.embedding_json as number[]) || undefined,
-        document_title: undefined as string | undefined,
-      }));
-      const localOnly = chunks.filter((c) => !remote.some((r) => r.id === c.id));
-      chunks = [...remote, ...localOnly];
-      memoryChunks = chunks;
+    let query = supabase.from('di_knowledge_chunks').select('*').limit(2000);
+    if (opts?.companyId) {
+      query = query.eq('company_id', opts.companyId);
+    } else {
+      // Fail closed without tenant — do not return cross-tenant chunks
+      chunks = [];
+    }
+    if (opts?.companyId) {
+      const { data } = await query;
+      if (data?.length) {
+        const remote = data.map((row) => ({
+          id: row.id,
+          document_id: row.document_id,
+          chunk_index: row.chunk_index,
+          page_number: row.page_number,
+          paragraph_ref: row.paragraph_ref,
+          code_reference: row.code_reference,
+          content: row.content,
+          embedding: (row.embedding_json as number[]) || undefined,
+          document_title: undefined as string | undefined,
+        }));
+        const localOnly = chunks.filter((c) => !remote.some((r) => r.id === c.id));
+        chunks = [...remote, ...localOnly];
+        memoryChunks = chunks;
+      }
     }
   }
 

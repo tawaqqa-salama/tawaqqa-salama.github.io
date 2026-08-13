@@ -131,6 +131,7 @@ export type MemCampaign = {
 
 export type MemWebsiteSite = {
   id: string;
+  company_id?: string | null;
   website_name: string;
   domain: string | null;
   logo_url: string | null;
@@ -175,6 +176,8 @@ type Db = {
     metadata?: Record<string, unknown>;
   }>;
   website: MemWebsiteSite | null;
+  /** Multi-tenant public sites (token → site) for memory-mode tests / multi-company */
+  websiteSites: MemWebsiteSite[];
   pages: Array<Record<string, unknown>>;
   services: Array<Record<string, unknown>>;
   forms: Array<Record<string, unknown>>;
@@ -199,6 +202,7 @@ function db(): Db {
       campaigns: [],
       timeline: [],
       website: null,
+      websiteSites: [],
       pages: [],
       services: [],
       forms: [],
@@ -285,6 +289,7 @@ export const marketingMemory = {
       quotation_number: row.quotation_number ?? null,
       total_amount: row.total_amount ?? null,
       created_at: new Date().toISOString(),
+      ...(row.company_id ? { company_id: row.company_id } : {}),
     };
     db().clients.unshift(c);
     return c;
@@ -482,7 +487,31 @@ export const marketingMemory = {
     get: () => db().website,
     save(site: MemWebsiteSite) {
       db().website = site;
+      const d = db();
+      if (site.public_form_token) {
+        const i = d.websiteSites.findIndex((s) => s.id === site.id);
+        if (i >= 0) d.websiteSites[i] = site;
+        else d.websiteSites.push(site);
+      }
       return site;
+    },
+    getByToken(token: string): MemWebsiteSite | null {
+      const t = String(token || '').trim();
+      if (!t) return null;
+      const d = db();
+      const fromList = d.websiteSites.find((s) => s.public_form_token === t);
+      if (fromList) return fromList;
+      if (d.website?.public_form_token === t) return d.website;
+      return null;
+    },
+    findByCompanyId(companyId: string): MemWebsiteSite | null {
+      const id = String(companyId || '').trim();
+      if (!id) return null;
+      const d = db();
+      return (
+        d.websiteSites.find((s) => s.company_id === id) ||
+        (d.website?.company_id === id ? d.website : null)
+      );
     },
     pages: () => db().pages,
     savePage(p: Record<string, unknown>) {

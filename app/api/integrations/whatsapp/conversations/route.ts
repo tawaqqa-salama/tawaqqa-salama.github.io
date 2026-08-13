@@ -12,7 +12,11 @@ export async function GET(request: Request) {
   const url = new URL(request.url);
   const status = url.searchParams.get('status') || undefined;
   const unassigned = url.searchParams.get('unassigned') === '1';
-  const conversations = await waRepository.listConversations({ status, unassigned });
+  const conversations = await waRepository.listConversations({
+    status,
+    unassigned,
+    companyId: gated.ctx.tenantId,
+  });
   const enriched = await Promise.all(
     conversations.map(async (c) => {
       const client = await getCrmClient(c.customer_id);

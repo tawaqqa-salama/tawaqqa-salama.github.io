@@ -7,7 +7,7 @@ export const runtime = 'nodejs';
 export async function GET(request: Request) {
   const gated = await withTenantApi(request, { module: 'website' });
   if ('response' in gated) return gated.response;
-  const site = await getOrCreateWebsiteSite();
+  const site = await getOrCreateWebsiteSite(gated.ctx.tenantId);
   return NextResponse.json({ ok: true, site });
 }
 
@@ -34,6 +34,6 @@ export async function PUT(request: Request) {
   for (const k of allowed) {
     if (k in body) patch[k] = body[k];
   }
-  const site = await updateWebsiteSettings(patch);
+  const site = await updateWebsiteSettings(patch, gated.ctx.tenantId);
   return NextResponse.json({ ok: true, site });
 }
