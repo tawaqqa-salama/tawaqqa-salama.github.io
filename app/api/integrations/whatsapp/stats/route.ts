@@ -30,7 +30,7 @@ export async function GET(request: Request) {
       .eq('company_id', tenantId)
       .or('lead_source.eq.WhatsApp,source_channel.eq.whatsapp')
       .gte('created_at', since),
-    waRepository.listConversations(),
+    waRepository.listConversations({ companyId: tenantId }),
   ]);
 
   const leads = waClients || [];

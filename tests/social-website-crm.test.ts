@@ -85,9 +85,10 @@ describe('Social + Website CRM hub', () => {
     });
     expect(social.createdLead).toBe(true);
 
-    await getOrCreateWebsiteSite();
+    const site = await getOrCreateWebsiteSite('co-tawaqqa');
     const web = await submitWebsiteForm({
       formSlug: 'consultation',
+      publicFormToken: site.public_form_token!,
       payload: {
         name: 'أحمد',
         phone: '0501112233',
@@ -103,9 +104,10 @@ describe('Social + Website CRM hub', () => {
   });
 
   it('website form creates CRM lead with attribution', async () => {
-    await getOrCreateWebsiteSite();
+    const site = await getOrCreateWebsiteSite('co-tawaqqa');
     const res = await submitWebsiteForm({
       formSlug: 'consultation',
+      publicFormToken: site.public_form_token!,
       payload: {
         name: 'سارة',
         phone: '0556677889',
@@ -130,8 +132,9 @@ describe('Social + Website CRM hub', () => {
   });
 
   it('tracks website WhatsApp click attribution when phone provided', async () => {
-    await getOrCreateWebsiteSite();
+    const site = await getOrCreateWebsiteSite('co-tawaqqa');
     const res = await trackWebsiteWhatsAppClick({
+      publicFormToken: site.public_form_token!,
       phone: '0550001111',
       utm: { utm_source: 'website', utm_medium: 'whatsapp_button' },
       landing_page: '/',
@@ -227,12 +230,13 @@ describe('Social + Website CRM hub', () => {
   });
 
   it('public website form API works without session', async () => {
-    await getOrCreateWebsiteSite();
+    const site = await getOrCreateWebsiteSite('co-tawaqqa');
     const res = await publicFormPost(
       new Request('http://localhost/api/public/website/forms/consultation', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
+          public_form_token: site.public_form_token,
           payload: { name: 'خالد', phone: '0544443333', message: 'مرحبا' },
           utm: { utm_source: 'facebook', utm_medium: 'social' },
         }),
@@ -242,5 +246,20 @@ describe('Social + Website CRM hub', () => {
     const json = await res.json();
     expect(json.ok).toBe(true);
     expect(json.client.lead_source).toBe('Facebook');
+  });
+
+  it('public website form rejects missing token', async () => {
+    await getOrCreateWebsiteSite('co-tawaqqa');
+    const res = await publicFormPost(
+      new Request('http://localhost/api/public/website/forms/consultation', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          payload: { name: 'خالد', phone: '0544443333', message: 'مرحبا' },
+        }),
+      }),
+      { params: Promise.resolve({ slug: 'consultation' }) }
+    );
+    expect(res.status).toBe(401);
   });
 });

@@ -59,6 +59,7 @@ export type CustomerWhatsAppContact = {
 
 export type WhatsAppConversation = {
   id: string;
+  company_id?: string | null;
   customer_id: string;
   whatsapp_account_id: string | null;
   phone_number: string;

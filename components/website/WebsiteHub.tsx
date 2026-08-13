@@ -124,10 +124,17 @@ export default function WebsiteHub() {
   const submitTestLead = async () => {
     setBusy(true);
     setMessage(null);
+    const token = String(site?.public_form_token || '');
+    if (!token) {
+      setBusy(false);
+      setMessage('لا يوجد public_form_token — احفظ إعدادات الموقع أولاً');
+      return;
+    }
     const res = await fetch('/api/public/website/forms/consultation', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
+        public_form_token: token,
         payload: testForm,
         utm: {
           utm_source: 'website',
@@ -150,17 +157,23 @@ export default function WebsiteHub() {
   };
 
   const waClick = async () => {
+    const token = String(site?.public_form_token || '');
+    if (!token) {
+      setMessage('لا يوجد public_form_token — احفظ إعدادات الموقع أولاً');
+      return;
+    }
     const res = await fetch('/api/integrations/website/whatsapp-click', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
+        public_form_token: token,
         phone: testForm.phone || null,
         utm: { utm_source: 'website', utm_medium: 'whatsapp_button', utm_campaign: 'site_cta' },
         landing_page: '/',
       }),
     }).then((r) => r.json());
     if (res.whatsapp_url) window.open(res.whatsapp_url, '_blank');
-    setMessage(res.note || null);
+    setMessage(res.note || res.error || null);
   };
 
   return (

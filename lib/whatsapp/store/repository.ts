@@ -230,11 +230,14 @@ export const waRepository = {
   async listConversations(filter?: {
     status?: string;
     unassigned?: boolean;
+    companyId?: string | null;
   }): Promise<WhatsAppConversation[]> {
     if (shouldUseMemoryStore()) return memoryStore.listConversations(filter);
+    if (!filter?.companyId) return [];
     let q = supabase
       .from('whatsapp_conversations')
       .select('*')
+      .eq('company_id', filter.companyId)
       .order('last_message_at', { ascending: false });
     if (filter?.status) q = q.eq('status', filter.status);
     if (filter?.unassigned) q = q.is('assigned_user_id', null);
@@ -243,14 +246,19 @@ export const waRepository = {
     return (data || []) as WhatsAppConversation[];
   },
 
-  async getConversation(id: string): Promise<WhatsAppConversation | null> {
-    if (shouldUseMemoryStore()) return memoryStore.getConversation(id);
+  async getConversation(
+    id: string,
+    companyId?: string | null
+  ): Promise<WhatsAppConversation | null> {
+    if (shouldUseMemoryStore()) return memoryStore.getConversation(id, companyId);
+    if (!companyId) return null;
     const { data, error } = await supabase
       .from('whatsapp_conversations')
       .select('*')
       .eq('id', id)
+      .eq('company_id', companyId)
       .maybeSingle();
-    if (error) return memoryStore.getConversation(id);
+    if (error) return memoryStore.getConversation(id, companyId);
     return (data as WhatsAppConversation) || null;
   },
 
@@ -265,26 +273,31 @@ export const waRepository = {
     return (data || []) as WhatsAppMessage[];
   },
 
-  async markRead(conversationId: string): Promise<void> {
+  async markRead(conversationId: string, companyId?: string | null): Promise<void> {
     if (shouldUseMemoryStore()) {
       memoryStore.markConversationRead(conversationId);
       return;
     }
+    if (!companyId) return;
     await supabase
       .from('whatsapp_conversations')
       .update({ unread_count: 0, updated_at: now() })
-      .eq('id', conversationId);
+      .eq('id', conversationId)
+      .eq('company_id', companyId);
   },
 
   async updateConversation(
     id: string,
-    patch: Partial<WhatsAppConversation>
+    patch: Partial<WhatsAppConversation>,
+    companyId?: string | null
   ): Promise<WhatsAppConversation | null> {
     if (shouldUseMemoryStore()) return memoryStore.updateConversation(id, patch);
+    if (!companyId) return null;
     const { data } = await supabase
       .from('whatsapp_conversations')
       .update({ ...patch, updated_at: now() })
       .eq('id', id)
+      .eq('company_id', companyId)
       .select('*')
       .maybeSingle();
     return (data as WhatsAppConversation) || null;

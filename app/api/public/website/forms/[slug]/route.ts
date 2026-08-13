@@ -12,7 +12,7 @@ const MAX_BODY_BYTES = 32_768;
 const RATE_LIMIT = 20;
 const RATE_WINDOW_MS = 60_000;
 
-/** Public form endpoint (no session) — validated + lightly rate-limited. */
+/** Public form endpoint (no session) — requires public_form_token bound to owning company. */
 export async function POST(
   request: Request,
   ctx: { params: Promise<{ slug: string }> }
@@ -49,6 +49,16 @@ export async function POST(
   }
 
   const body = raw as Record<string, unknown>;
+  const token =
+    asTrimmedString(body.public_form_token || body.token || request.headers.get('x-website-token'), 128);
+  if (!token) {
+    return NextResponse.json({ ok: false, error: 'token_required' }, { status: 401 });
+  }
+
+  // Ignore client-supplied company_id — company is derived from token only
+  delete body.company_id;
+  delete body.companyId;
+
   const sourcePayload =
     body.payload && typeof body.payload === 'object' && !Array.isArray(body.payload)
       ? (body.payload as Record<string, unknown>)
@@ -57,7 +67,16 @@ export async function POST(
   const sanitized: Record<string, unknown> = {};
   for (const [key, value] of Object.entries(sourcePayload)) {
     const safeKey = asTrimmedString(key, 64).replace(/[^a-zA-Z0-9_.-]/g, '');
-    if (!safeKey || safeKey === 'utm' || safeKey === 'landing_page' || safeKey === 'referrer') {
+    if (
+      !safeKey ||
+      safeKey === 'utm' ||
+      safeKey === 'landing_page' ||
+      safeKey === 'referrer' ||
+      safeKey === 'public_form_token' ||
+      safeKey === 'token' ||
+      safeKey === 'company_id' ||
+      safeKey === 'companyId'
+    ) {
       continue;
     }
     if (typeof value === 'string') {
@@ -74,6 +93,7 @@ export async function POST(
   try {
     const result = await submitWebsiteForm({
       formSlug: safeSlug,
+      publicFormToken: token,
       payload: sanitized,
       utm: typeof body.utm === 'object' && body.utm ? (body.utm as Record<string, string>) : undefined,
       landing_page: sanitizePlainText(body.landing_page, 500) || undefined,
@@ -83,9 +103,11 @@ export async function POST(
     });
     return NextResponse.json(result);
   } catch (e) {
+    const msg = e instanceof Error ? e.message : 'submit failed';
+    const status = (e as { status?: number })?.status || (msg === 'invalid_public_token' ? 404 : 400);
     return NextResponse.json(
-      { ok: false, error: e instanceof Error ? e.message : 'submit failed' },
-      { status: 400 }
+      { ok: false, error: msg === 'invalid_public_token' ? 'not_found' : 'submit_failed' },
+      { status }
     );
   }
 }

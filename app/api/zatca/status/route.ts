@@ -28,13 +28,19 @@ export async function GET(request: Request) {
     });
   }
 
-  let query = supabase.from('zatca_invoices').select('*').order('created_at', { ascending: false }).limit(1);
+  const tenantId = gated.ctx.tenantId;
+  let query = supabase
+    .from('zatca_invoices')
+    .select('*')
+    .eq('company_id', tenantId)
+    .order('created_at', { ascending: false })
+    .limit(1);
   if (invoiceNumber) query = query.eq('invoice_number', invoiceNumber);
   if (uuid) query = query.eq('uuid', uuid);
 
   const { data, error } = await query.maybeSingle();
   if (error) {
-    return NextResponse.json({ ok: false, error: error.message }, { status: 400 });
+    return NextResponse.json({ ok: false, error: 'query_failed' }, { status: 400 });
   }
 
   return NextResponse.json({ ok: true, invoice: data });

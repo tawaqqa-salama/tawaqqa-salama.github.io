@@ -29,6 +29,7 @@ export async function POST(request: Request) {
 
     const result = await sendOutboundMessage({
       conversationId: body.conversationId,
+      companyId: gated.ctx.tenantId,
       userId: body.userId,
       kind: body.kind || (body.templateName ? 'template' : 'text'),
       text: body.text,

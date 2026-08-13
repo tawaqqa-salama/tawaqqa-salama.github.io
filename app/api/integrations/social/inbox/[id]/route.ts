@@ -11,7 +11,7 @@ export async function GET(
   const gated = await withTenantApi(request, { module: 'social_media' });
   if ('response' in gated) return gated.response;
   const { id } = await ctx.params;
-  const detail = await getConversationDetail(id);
-  if (!detail) return NextResponse.json({ ok: false, error: 'غير موجود' }, { status: 404 });
+  const detail = await getConversationDetail(id, gated.ctx.tenantId);
+  if (!detail) return NextResponse.json({ ok: false, error: 'not_found' }, { status: 404 });
   return NextResponse.json({ ok: true, ...detail });
 }

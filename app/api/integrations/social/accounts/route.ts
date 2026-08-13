@@ -10,7 +10,7 @@ export const runtime = 'nodejs';
 export async function GET(request: Request) {
   const gated = await withTenantApi(request, { module: 'social_media' });
   if ('response' in gated) return gated.response;
-  const accounts = await listSocialAccounts();
+  const accounts = await listSocialAccounts(gated.ctx.tenantId);
   return NextResponse.json({
     ok: true,
     accounts,
@@ -29,7 +29,7 @@ export async function POST(request: Request) {
   };
 
   if (body.action === 'disconnect' && body.accountId) {
-    const result = await disconnectAccount(body.accountId);
+    const result = await disconnectAccount(body.accountId, gated.ctx.tenantId);
     return NextResponse.json({ ok: result.ok, account: result.account });
   }
 
