@@ -92,6 +92,8 @@ export type DiProjectCodeAdoption = {
 
 export type IngestionStatus =
   | 'pending'
+  | 'uploading'
+  | 'upload_paused'
   | 'uploaded'
   | 'extracting'
   | 'ocr'

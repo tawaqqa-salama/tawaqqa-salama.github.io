@@ -36,12 +36,15 @@ import {
   uploadAndIngestCodeKnowledgeDocument,
   deleteKnowledgeDocument,
   documentHasSha256Duplicate,
+  shouldUseResumableUpload,
   type CodeKnowledgeDocumentMeta,
   type CodeKnowledgeSearchHit,
   type DiCodeEdition,
   type DiProjectCodeAdoption,
   type EditionComparisonResult,
   type KnowledgeDeleteResult,
+  type ResumableUploadHandle,
+  type UploadPhase,
 } from '@/lib/design-intelligence/code-knowledge';
 import { useAuth } from '@/lib/auth/AuthProvider';
 import { useLanguage } from '@/lib/i18n/LanguageProvider';
@@ -109,6 +112,11 @@ export default function CodeKnowledgePanel({ companyId, clientId }: Props) {
   const [uploadCode, setUploadCode] = useState('NFPA-13');
   const [uploadEdition, setUploadEdition] = useState('2025');
   const [uploadFile, setUploadFile] = useState<File | null>(null);
+  const [uploadPercent, setUploadPercent] = useState(0);
+  const [uploadPhase, setUploadPhase] = useState<UploadPhase | 'idle'>('idle');
+  const [uploadHandle, setUploadHandle] = useState<ResumableUploadHandle | null>(
+    null
+  );
 
   const [sourceText, setSourceText] = useState(
     'Section 8.1 general requirements.\n\nTable 8.2.1 design criteria placeholder text for indexing tests only.\n\nPage 12 discusses spacing. Figure 8.3 shows coverage layout.'
@@ -183,6 +191,8 @@ export default function CodeKnowledgePanel({ companyId, clientId }: Props) {
   /**
    * Primary Production path: always calls uploadAndIngestCodeKnowledgeDocument
    * (Storage → di_knowledge_documents → extract/OCR → chunks → verify).
+   * Large files use TUS resumable upload with real 0–100% progress; ingestion
+   * never starts before upload reaches 100%.
    */
   const onUploadAndIndex = async () => {
     if (!uploadFile) {
@@ -199,8 +209,17 @@ export default function CodeKnowledgePanel({ companyId, clientId }: Props) {
       return;
     }
     setBusy(true);
+    setUploadPercent(0);
+    setUploadPhase('uploading');
+    setUploadHandle(null);
     try {
       const bytes = new Uint8Array(await uploadFile.arrayBuffer());
+      const large = shouldUseResumableUpload(uploadFile.size);
+      setMessage(
+        large
+          ? `Uploading large file via resumable TUS (${(uploadFile.size / (1024 * 1024)).toFixed(1)} MB)…`
+          : 'Uploading…'
+      );
       const result = await uploadAndIngestCodeKnowledgeDocument({
         companyId: company,
         code: uploadCode.trim() || 'NFPA-13',
@@ -209,16 +228,24 @@ export default function CodeKnowledgePanel({ companyId, clientId }: Props) {
         fileName: uploadFile.name,
         mimeType: uploadFile.type || undefined,
         bytes,
+        file: uploadFile,
         source_document_id: `platform_upload:${uploadCode}-${uploadEdition}:${uploadFile.name}`,
         source_type: 'PROJECT_PROVIDED_DOCUMENT',
         verification_status: 'PROJECT_COVER_IDENTIFIED',
         platform_verification_status: 'NOT_VERIFIED_OFFICIAL',
         adoption_status: 'PROJECT_ADOPTED',
         replaceIfChanged: true,
+        onUploadProgress: (percent) => setUploadPercent(percent),
+        onPhase: (phase) => {
+          setUploadPhase(phase);
+          setIndexStatus(phase);
+        },
+        registerUploadHandle: (handle) => setUploadHandle(handle),
       });
 
       if (result.status === 'failed') {
         setIndexStatus('failed');
+        setUploadPhase('failed');
         await refresh();
         setMessage(
           `FAILED: ${'error' in result ? result.error : 'ingestion_failed'}. No silent session-memory fallback.`
@@ -230,10 +257,12 @@ export default function CodeKnowledgePanel({ companyId, clientId }: Props) {
         setIndexStatus(
           result.document.persisted ? 'skipped_duplicate' : 'failed'
         );
+        setUploadPhase('idle');
+        setUploadPercent(0);
         await refresh();
         setMessage(
           result.document.persisted
-            ? `Identical SHA-256 — already persisted. document_id=${result.document.id}`
+            ? `Identical SHA-256 — already persisted (no re-upload). document_id=${result.document.id}`
             : `FAILED: duplicate only in session-memory — re-upload required for Supabase persistence.`
         );
         return;
@@ -242,6 +271,7 @@ export default function CodeKnowledgePanel({ companyId, clientId }: Props) {
       // Indexed only when Production persistence verified (or demo local mode)
       if (persistedMode && !result.document.persisted) {
         setIndexStatus('failed');
+        setUploadPhase('failed');
         await refresh();
         setMessage(
           `FAILED: ${result.document.persist_error || 'not_persisted'}. Storage/DB required.`
@@ -263,17 +293,25 @@ export default function CodeKnowledgePanel({ companyId, clientId }: Props) {
       }
 
       setIndexStatus(result.document.index_status);
+      setUploadPhase('indexed');
+      setUploadPercent(100);
       await refresh();
+      const method =
+        'upload_method' in result && result.upload_method
+          ? result.upload_method
+          : 'standard';
       setMessage(
         persistedMode
-          ? `SUPABASE / PERSISTED · document_id=${result.document.id} · path=${result.storage_path} · pages=${result.document.page_count} extracted=${result.document.pages_extracted} ocr=${result.document.pages_ocr} chunks=${result.chunk_count}`
+          ? `SUPABASE / PERSISTED · upload=${method} · document_id=${result.document.id} · path=${result.storage_path} · pages=${result.document.page_count} extracted=${result.document.pages_extracted} ocr=${result.document.pages_ocr} chunks=${result.chunk_count}`
           : `LOCAL / NOT SAVED · pages=${result.document.page_count} chunks=${result.chunk_count}`
       );
     } catch (err) {
       setIndexStatus('failed');
+      setUploadPhase('failed');
       setMessage(`FAILED: ${err instanceof Error ? err.message : String(err)}`);
     } finally {
       setBusy(false);
+      setUploadHandle(null);
     }
   };
 
@@ -517,10 +555,51 @@ export default function CodeKnowledgePanel({ companyId, clientId }: Props) {
           >
             {busy ? 'Working…' : uploadLabel}
           </button>
+          {uploadHandle && uploadPhase === 'uploading' ? (
+            <button
+              type="button"
+              className="rounded-lg border border-amber-400 px-3 py-2 text-sm text-amber-800"
+              onClick={() => uploadHandle.pause()}
+            >
+              Pause upload
+            </button>
+          ) : null}
+          {uploadHandle && uploadPhase === 'upload_paused' ? (
+            <button
+              type="button"
+              className="rounded-lg border border-cyan-500 px-3 py-2 text-sm text-cyan-800"
+              onClick={() => uploadHandle.resume()}
+            >
+              Resume upload
+            </button>
+          ) : null}
           <span className="self-center text-xs text-slate-500">
             Path: {'{company}'}/code-knowledge/{'{code}'}/{'{edition}'}/{'{documentId}'}/file
+            · large files (≥6MB) use resumable TUS
           </span>
         </div>
+        {(busy || uploadPercent > 0) && uploadPhase !== 'idle' ? (
+          <div className="mt-3 rounded-lg border border-slate-200 bg-slate-50 p-3">
+            <div className="flex items-center justify-between text-xs text-slate-600">
+              <span>
+                {uploadPhase === 'uploading' || uploadPhase === 'upload_paused'
+                  ? `Uploading ${uploadPercent}%`
+                  : uploadPhase}
+              </span>
+              <span className="font-mono">{uploadPercent}%</span>
+            </div>
+            <div className="mt-2 h-2 overflow-hidden rounded-full bg-slate-200">
+              <div
+                className="h-full rounded-full bg-cyan-600 transition-[width] duration-200"
+                style={{ width: `${Math.min(100, Math.max(0, uploadPercent))}%` }}
+                role="progressbar"
+                aria-valuenow={uploadPercent}
+                aria-valuemin={0}
+                aria-valuemax={100}
+              />
+            </div>
+          </div>
+        ) : null}
       </section>
 
       <section className="rounded-xl border border-slate-200 bg-white p-4 overflow-x-auto">

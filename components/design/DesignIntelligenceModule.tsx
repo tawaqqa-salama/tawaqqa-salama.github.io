@@ -112,6 +112,13 @@ export default function DesignIntelligenceModule() {
   const [tagsMeta, setTagsMeta] = useState('');
   const [notesMeta, setNotesMeta] = useState('');
   const [file, setFile] = useState<File | null>(null);
+  const [kbUploadPercent, setKbUploadPercent] = useState(0);
+  const [kbUploadPhase, setKbUploadPhase] = useState<string>('idle');
+  const [kbUploadHandle, setKbUploadHandle] = useState<{
+    pause: () => void;
+    resume: () => void;
+    abort: () => void;
+  } | null>(null);
 
   // RAG / Copilot
   const [question, setQuestion] = useState('');
@@ -177,6 +184,9 @@ export default function DesignIntelligenceModule() {
     }
     setBusy(true);
     setMessage(null);
+    setKbUploadPercent(0);
+    setKbUploadPhase('uploading');
+    setKbUploadHandle(null);
     const authenticated = Boolean(session);
     try {
       if (!isSupabaseConfigured) {
@@ -221,11 +231,16 @@ export default function DesignIntelligenceModule() {
           applicable_codes: codes.split(/[,،]/).map((s) => s.trim()).filter(Boolean),
           company_id: companyUuid,
         },
+        onUploadProgress: (percent) => setKbUploadPercent(percent),
+        onPhase: (phase) => setKbUploadPhase(phase),
+        registerUploadHandle: (handle) => setKbUploadHandle(handle),
       });
       setKbDiag(doc.diagnostics);
       setTitle('');
       setFile(null);
       setNotesMeta('');
+      setKbUploadPhase('indexed');
+      setKbUploadPercent(100);
       setDocs(await listKnowledgeDocuments());
       if (!doc.persistedToCloud) {
         throw new KnowledgePersistError(
@@ -238,6 +253,7 @@ export default function DesignIntelligenceModule() {
         `SUPABASE / PERSISTED · project=${ref} · document_id=${doc.id} · path=${doc.storage_path} · chunks=${doc.chunk_count}`
       );
     } catch (e) {
+      setKbUploadPhase('failed');
       if (e instanceof KnowledgePersistError) {
         setKbDiag(e.diagnostics);
         setMessage(`FAILED: ${e.message}`);
@@ -258,6 +274,7 @@ export default function DesignIntelligenceModule() {
       }
     } finally {
       setBusy(false);
+      setKbUploadHandle(null);
     }
   };
 
@@ -481,9 +498,52 @@ export default function DesignIntelligenceModule() {
             >
               {busy ? '…' : label('design.kb.index', 'Upload & Index')}
             </button>
+            {kbUploadHandle && kbUploadPhase === 'uploading' ? (
+              <button
+                type="button"
+                className="w-full rounded-xl border border-amber-400 px-3 py-2 text-sm text-amber-900"
+                onClick={() => kbUploadHandle.pause()}
+              >
+                Pause upload
+              </button>
+            ) : null}
+            {kbUploadHandle && kbUploadPhase === 'upload_paused' ? (
+              <button
+                type="button"
+                className="w-full rounded-xl border border-emerald-500 px-3 py-2 text-sm text-emerald-900"
+                onClick={() => kbUploadHandle.resume()}
+              >
+                Resume upload
+              </button>
+            ) : null}
+            {(busy || kbUploadPercent > 0) && kbUploadPhase !== 'idle' ? (
+              <div className="rounded-lg border border-slate-200 bg-slate-50 p-3">
+                <div className="flex items-center justify-between text-xs text-slate-600">
+                  <span>
+                    {kbUploadPhase === 'uploading' || kbUploadPhase === 'upload_paused'
+                      ? `Uploading ${kbUploadPercent}%`
+                      : kbUploadPhase}
+                  </span>
+                  <span className="font-mono">{kbUploadPercent}%</span>
+                </div>
+                <div className="mt-2 h-2 overflow-hidden rounded-full bg-slate-200">
+                  <div
+                    className="h-full rounded-full bg-[#1f4d3a] transition-[width] duration-200"
+                    style={{
+                      width: `${Math.min(100, Math.max(0, kbUploadPercent))}%`,
+                    }}
+                    role="progressbar"
+                    aria-valuenow={kbUploadPercent}
+                    aria-valuemin={0}
+                    aria-valuemax={100}
+                  />
+                </div>
+              </div>
+            ) : null}
             <p className="text-[11px] text-gray-400">
               Pipeline: Storage → DB → OCR/chunk/embed/index · jobs:{' '}
               {listIndexingJobs().filter((j) => j.status === 'queued').length} queued
+              · ≥6MB uses resumable TUS
             </p>
             <div className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-[11px] text-slate-700 space-y-0.5 font-mono">
               {(() => {

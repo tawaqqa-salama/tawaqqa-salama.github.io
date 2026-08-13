@@ -767,6 +767,23 @@ export async function uploadAndIndexKnowledgeFile(input: {
   companyId?: string | null;
   /** True when caller has an authenticated session (never a secret). */
   authenticated?: boolean;
+  onUploadProgress?: (percent: number, bytesUploaded: number, bytesTotal: number) => void;
+  onPhase?: (
+    phase:
+      | 'uploading'
+      | 'upload_paused'
+      | 'uploaded'
+      | 'extracting'
+      | 'chunking'
+      | 'indexing'
+      | 'indexed'
+      | 'failed'
+  ) => void;
+  registerUploadHandle?: (handle: {
+    pause: () => void;
+    resume: () => void;
+    abort: () => void;
+  }) => void;
 }): Promise<
   DiKnowledgeDocument & {
     persistedToCloud: boolean;
@@ -831,12 +848,16 @@ export async function uploadAndIndexKnowledgeFile(input: {
       fileName: input.file.name,
       mimeType: input.file.type || 'application/pdf',
       bytes,
+      file: input.file,
       source_document_id: `kb_upload:NFPA-13-2025:${input.file.name}`,
       source_type: 'PROJECT_PROVIDED_DOCUMENT',
       verification_status: 'PROJECT_COVER_IDENTIFIED',
       platform_verification_status: 'NOT_VERIFIED_OFFICIAL',
       adoption_status: 'PROJECT_ADOPTED',
       replaceIfChanged: true,
+      onUploadProgress: input.onUploadProgress,
+      onPhase: input.onPhase,
+      registerUploadHandle: input.registerUploadHandle,
     });
 
     const diag = buildKnowledgeUploadDiagnostics({
