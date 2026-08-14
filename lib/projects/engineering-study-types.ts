@@ -86,6 +86,12 @@ export interface EngineeringStudyModel {
   fire_pump: FirePumpInputsModel;
   fire_water_tank: FireWaterTankInputsModel;
   evidence_list: EvidenceModelItem[];
+  engineer_approval?: {
+    approved: boolean;
+    reviewer_name?: string;
+    review_notes?: string;
+    approval_timestamp?: string;
+  };
 }
 
 export type ReportReadinessStatus = 'READY' | 'NEEDS_REVIEW' | 'MISSING_REQUIRED_DATA';
