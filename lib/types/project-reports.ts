@@ -3,6 +3,8 @@ import type { ProjectComplianceState } from '@/lib/projects/compliance/types';
 import type { FireProtectionDesign } from '@/lib/types/fire-protection-design';
 import type { ReportPdfSnapshot } from '@/lib/types/report-pdf-snapshot';
 import type { EngineeringMeta } from '@/lib/projects/canonical-engineering';
+import type { EngineeringStudyModel } from '@/lib/projects/engineering-study-types';
+export type { EngineeringStudyModel };
 
 export type { DesignCenterState };
 export type { FireProtectionDesign };
@@ -586,6 +588,7 @@ export interface ProjectEngineeringData {
    * مصدر بيانات قالب «التقرير الفني — مبنى إداري تحت الإنشاء»
    */
   fire_protection_design?: FireProtectionDesign;
+  engineering_study?: EngineeringStudyModel;
   /**
    * Saudi Code Compliance Engine snapshot (SBC 201/801).
    * Additive — overrides + last gate + approved freeze only; does not replace existing reports.
