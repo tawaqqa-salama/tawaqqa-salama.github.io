@@ -166,7 +166,7 @@ export default function AppHeader() {
 
   return (
     <>
-      <header className="app-header bg-white/90 backdrop-blur-xl border-b border-[var(--erp-border)] px-3 sm:px-5 py-2.5 flex items-center justify-between gap-2 sm:gap-3 shrink-0 z-[55] relative">
+      <header className="bg-white border-b border-[var(--erp-border)] px-3 sm:px-5 py-2.5 flex items-center justify-between gap-2 sm:gap-3 shrink-0 z-[55] relative">
         <div className="flex flex-row items-center justify-start gap-2 min-w-0 flex-1">
           <nav
             aria-label={t('shell.navAria')}
@@ -184,7 +184,7 @@ export default function AppHeader() {
               <button
                 type="button"
                 onClick={onMenuToggle}
-                className={`app-header-control ${navBtnBase} ${menuOpen ? navBtnActive : navBtnIdle}`}
+                className={`${navBtnBase} ${menuOpen ? navBtnActive : navBtnIdle}`}
                 style={{ order: 1 }}
                 title={
                   stagesActive
@@ -214,7 +214,7 @@ export default function AppHeader() {
             <button
               type="button"
               onClick={() => setSwitcherOpen(true)}
-              className={`app-header-control ${navBtnBase} ${switcherOpen ? navBtnActive : navBtnIdle}`}
+              className={`${navBtnBase} ${switcherOpen ? navBtnActive : navBtnIdle}`}
               style={{ order: 2 }}
               title={t('shell.appsTitle')}
               aria-label={t('shell.openApps')}
@@ -226,7 +226,7 @@ export default function AppHeader() {
 
             <Link
               href={LAUNCHER_HREF}
-              className={`app-header-control ${navBtnBase} ${isLauncher ? navBtnActive : navBtnIdle}`}
+              className={`${navBtnBase} ${isLauncher ? navBtnActive : navBtnIdle}`}
               style={{ order: 3 }}
               title={t('shell.homeTitle')}
               aria-label={t('shell.homeAria')}

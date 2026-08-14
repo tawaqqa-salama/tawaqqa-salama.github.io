@@ -86,13 +86,13 @@ export default function LoginPage() {
   };
 
   return (
-    <div className="login-shell min-h-screen grid lg:grid-cols-2">
-      <section className="login-hero relative hidden lg:flex flex-col justify-between p-10 text-white overflow-hidden bg-[#101b18]">
+    <div className="min-h-screen grid lg:grid-cols-2">
+      <section className="relative hidden lg:flex flex-col justify-between p-10 text-white overflow-hidden bg-[#1f4d3a]">
         <div
           className="absolute inset-0 opacity-40"
           style={{
             backgroundImage:
-              'radial-gradient(circle at 18% 16%, rgba(217,184,120,.72) 0%, transparent 25%), radial-gradient(circle at 82% 78%, rgba(29,107,82,.92) 0%, transparent 42%), linear-gradient(135deg, #101b18 0%, #163d30 55%, #0d1513 100%)',
+              'radial-gradient(circle at 20% 20%, #b8e986 0%, transparent 40%), radial-gradient(circle at 80% 80%, #4caf50 0%, transparent 45%)',
           }}
         />
         <div className="relative z-10">
@@ -103,14 +103,14 @@ export default function LoginPage() {
         <p className="relative z-10 text-sm text-white/70">{t('login.staffOnly')}</p>
       </section>
 
-      <section className="login-panel flex items-center justify-center p-6 md:p-10">
+      <section className="flex items-center justify-center p-6 md:p-10">
         <div className="w-full max-w-md">
           <div className="mb-8 lg:hidden">
             <p className="text-sm text-[#1f4d3a] font-semibold">{PLATFORM_SHORT_NAME}</p>
             <h1 className="text-2xl font-bold text-gray-900 mt-1">{t('login.pageTitle')}</h1>
           </div>
 
-          <div className="login-card bg-white border border-gray-200 rounded-2xl shadow-sm p-6">
+          <div className="bg-white border border-gray-200 rounded-2xl shadow-sm p-6">
             <h2 className="text-xl font-bold text-gray-900 mb-1">{t('login.staffLogin')}</h2>
             <p className="text-sm text-gray-500 mb-5">{t('login.staffLoginHint')}</p>
 
@@ -226,7 +226,7 @@ export default function LoginPage() {
           </div>
 
           {isDemoMode && (
-            <div className="login-demo mt-5 bg-white/80 border border-dashed border-gray-300 rounded-2xl p-4 text-sm">
+            <div className="mt-5 bg-white/80 border border-dashed border-gray-300 rounded-2xl p-4 text-sm">
               <p className="font-semibold text-gray-800 mb-2">{t('login.demoHint')}</p>
               <ul className="space-y-2 text-gray-600">
                 {DEMO_LOGIN_HINTS.map((hint) => (
