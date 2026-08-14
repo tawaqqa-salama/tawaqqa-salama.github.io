@@ -24,6 +24,7 @@ import ModuleSubNavSlot from '@/components/layout/ModuleSubNavSlot';
 import ModuleTabBar from '@/components/layout/ModuleTabBar';
 import { useLanguage } from '@/lib/i18n/LanguageProvider';
 import { MARKETING_PAGE_SIZE } from '@/lib/data/query-config';
+import { measureRequest } from '@/lib/performance/measure-request';
 import type { ClientFollowUp } from '@/lib/types/sales';
 import type { ClientRecord } from '@/lib/types/client';
 
@@ -44,23 +45,31 @@ const marketingPageCache = new Map<number, MarketingPageCache>();
 async function fetchMarketingPage(page: number): Promise<{ clients: ClientRecord[]; followUps: ClientFollowUp[] }> {
   const cached = marketingPageCache.get(page);
   if (cached && cached.expiresAt > Date.now()) {
-    return { clients: cached.clients, followUps: cached.followUps };
+    return measureRequest(
+      `clients:page:${page}:cache`,
+      Promise.resolve({ clients: cached.clients, followUps: cached.followUps }),
+      { cacheStatus: 'hit', route: '/marketing' }
+    );
   }
 
   const from = page * MARKETING_PAGE_SIZE;
   const to = from + MARKETING_PAGE_SIZE - 1;
-  const [{ data: clients }, { data: followUps }] = await Promise.all([
-    supabase
-      .from('clients')
-      .select('*')
-      .order('created_at', { ascending: false })
-      .range(from, to),
-    supabase
-      .from('client_follow_ups')
-      .select('*')
-      .order('follow_up_date', { ascending: false })
-      .limit(50),
-  ]);
+  const [{ data: clients }, { data: followUps }] = await measureRequest(
+    `clients:page:${page}`,
+    Promise.all([
+      supabase
+        .from('clients')
+        .select('*')
+        .order('created_at', { ascending: false })
+        .range(from, to),
+      supabase
+        .from('client_follow_ups')
+        .select('*')
+        .order('follow_up_date', { ascending: false })
+        .limit(50),
+    ]),
+    { cacheStatus: 'miss', route: '/marketing' }
+  );
 
   const result = {
     clients: (clients || []) as ClientRecord[],

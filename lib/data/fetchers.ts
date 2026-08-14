@@ -12,6 +12,7 @@ import {
 } from '@/lib/data/query-config';
 import type { ClientRecord } from '@/lib/types/client';
 import type { SalesContract, SalesDocument, SalesReturn } from '@/lib/types/sales';
+import { measureRequest } from '@/lib/performance/measure-request';
 
 export type ListFetchOptions = {
   limit?: number;
@@ -53,7 +54,11 @@ export async function fetchClientsList(options: ListFetchOptions = {}): Promise<
     .range(offset, offset + limit - 1);
   query = applyCompanyFilter(query, companyId);
 
-  const { data, error } = await query;
+  const { data, error } = await measureRequest(
+    `clients:list:${options.includeEngineering ? 'engineering' : 'standard'}`,
+    query,
+    { cacheStatus: 'miss', route: '/data/clients' }
+  );
 
   if (error) {
     console.warn('[fetchClientsList]', error.message);
@@ -64,7 +69,12 @@ export async function fetchClientsList(options: ListFetchOptions = {}): Promise<
       .order('created_at', { ascending: false })
       .range(offset, offset + limit - 1);
     fallback = applyCompanyFilter(fallback, companyId);
-    const { data: allData, error: allError } = await fallback;
+          const { data: allData, error: allError } = await measureRequest(
+        'clients:list:fallback',
+        fallback,
+        { cacheStatus: 'miss', route: '/data/clients/fallback' }
+      );
+
     if (allError) {
       console.warn('[fetchClientsList] * fallback failed:', allError.message);
       return [];
@@ -116,7 +126,11 @@ export async function fetchSalesDocuments(limit = ARCHIVE_PAGE_SIZE): Promise<Sa
     .order('created_at', { ascending: false })
     .limit(limit);
   query = applyCompanyFilter(query, companyId);
-  const { data } = await query;
+  const { data } = await measureRequest(
+    'sales:documents',
+    query,
+    { cacheStatus: 'miss', route: '/data/sales/documents' }
+  );
   return (data || []) as SalesDocument[];
 }
 
@@ -129,7 +143,11 @@ export async function fetchSalesContracts(limit = ARCHIVE_PAGE_SIZE): Promise<Sa
     .order('created_at', { ascending: false })
     .limit(limit);
   query = applyCompanyFilter(query, companyId);
-  const { data } = await query;
+  const { data } = await measureRequest(
+    'sales:contracts',
+    query,
+    { cacheStatus: 'miss', route: '/data/sales/contracts' }
+  );
   return (data || []) as SalesContract[];
 }
 
@@ -142,7 +160,11 @@ export async function fetchSalesReturns(limit = LIST_PAGE_SIZE): Promise<SalesRe
     .order('created_at', { ascending: false })
     .limit(limit);
   query = applyCompanyFilter(query, companyId);
-  const { data } = await query;
+  const { data } = await measureRequest(
+    'sales:returns',
+    query,
+    { cacheStatus: 'miss', route: '/data/sales/returns' }
+  );
   return (data || []) as SalesReturn[];
 }
 
