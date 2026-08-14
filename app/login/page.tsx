@@ -38,7 +38,12 @@ export default function LoginPage() {
     setBusy(true);
     setError(null);
     try {
-      const err = await loginWithEmail(email, password);
+      const err = await Promise.race([
+        loginWithEmail(email, password),
+        new Promise<string>((resolve) =>
+          setTimeout(() => resolve('انتهت مهلة تسجيل الدخول. تحقق من الاتصال وإعدادات الخادم ثم حاول مرة أخرى.'), 18_000)
+        ),
+      ]);
       if (err) setError(err);
       else router.replace('/me');
     } catch {

@@ -206,18 +206,18 @@ export async function signInWithEmailPassword(email: string, password: string): 
         authError = result.error;
       } catch (e) {
         // Network / timeout — try legacy demo_credentials row as last resort on Pages
-        const legacy = await tryLegacyPasswordLogin(trimmedEmail, password);
+        const legacy = await tryLegacyPasswordLoginSafe(trimmedEmail, password);
         if (legacy.session) return legacy;
-        return { session: null, error: authErrorMessage(e, 'فشل الاتصال بخادم الدخول') };
+        return { session: null, error: legacy.error || authErrorMessage(e, 'فشل الاتصال بخادم الدخول') };
       }
 
       if (authError || !authData?.user) {
         // Wrong password in Auth: still allow demo_credentials match for migrated rows
-        const legacy = await tryLegacyPasswordLogin(trimmedEmail, password);
+        const legacy = await tryLegacyPasswordLoginSafe(trimmedEmail, password);
         if (legacy.session) return legacy;
         return {
           session: null,
-          error: authErrorMessage(authError, 'فشل تسجيل الدخول'),
+          error: legacy.error || authErrorMessage(authError, 'فشل تسجيل الدخول'),
         };
       }
 
@@ -244,7 +244,7 @@ export async function signInWithEmailPassword(email: string, password: string): 
       return { session, error: null };
     }
 
-    return tryLegacyPasswordLogin(trimmedEmail, password);
+    return tryLegacyPasswordLoginSafe(trimmedEmail, password);
   } catch (e) {
     return {
       session: null,
@@ -254,6 +254,14 @@ export async function signInWithEmailPassword(email: string, password: string): 
 }
 
 /** Demo-credentials / plaintext password path (also used as Pages fallback). */
+async function tryLegacyPasswordLoginSafe(email: string, password: string): Promise<AuthResult> {
+  try {
+    return await withTimeout(tryLegacyPasswordLogin(email, password), AUTH_TIMEOUT_MS, 'legacy_auth_timeout');
+  } catch (error) {
+    return { session: null, error: authErrorMessage(error, 'انتهت مهلة الاتصال بخادم الدخول. تحقق من الإعدادات أو الشبكة.') };
+  }
+}
+
 async function tryLegacyPasswordLogin(email: string, password: string): Promise<AuthResult> {
   const user = await fetchUserByEmail(email);
   if (!user || !user.is_active) {
