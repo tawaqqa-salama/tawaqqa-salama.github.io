@@ -1,6 +1,7 @@
 'use client';
 
 import { Suspense, useEffect, useMemo, useState } from 'react';
+import dynamic from 'next/dynamic';
 import { useSearchParams } from 'next/navigation';
 import { supabase } from '@/lib/supabase';
 import { nextLeadCode } from '@/lib/business/document-numbers';
@@ -9,14 +10,15 @@ import { insertClientSafe } from '@/lib/supabase/safe-client-write';
 import AddLeadModal from '@/components/marketing/AddLeadModal';
 import FollowUpModal from '@/components/marketing/FollowUpModal';
 import PipelineStatusBoard from '@/components/marketing/PipelineStatusBoard';
-import WhatsAppInbox from '@/components/whatsapp/WhatsAppInbox';
-import WhatsAppDashboardCards from '@/components/whatsapp/WhatsAppDashboardCards';
-import WhatsAppCampaignsPanel from '@/components/whatsapp/WhatsAppCampaignsPanel';
-import SocialMediaHub from '@/components/social/SocialMediaHub';
-import WebsiteHub from '@/components/website/WebsiteHub';
-import MarketingCrmFunnel from '@/components/marketing/MarketingCrmFunnel';
-import CustomerSocialTimeline from '@/components/marketing/CustomerSocialTimeline';
-import WhatsAppCustomerActivity from '@/components/whatsapp/WhatsAppCustomerActivity';
+
+const WhatsAppInbox = dynamic(() => import('@/components/whatsapp/WhatsAppInbox'), { ssr: false });
+const WhatsAppDashboardCards = dynamic(() => import('@/components/whatsapp/WhatsAppDashboardCards'), { ssr: false });
+const WhatsAppCampaignsPanel = dynamic(() => import('@/components/whatsapp/WhatsAppCampaignsPanel'), { ssr: false });
+const SocialMediaHub = dynamic(() => import('@/components/social/SocialMediaHub'), { ssr: false });
+const WebsiteHub = dynamic(() => import('@/components/website/WebsiteHub'), { ssr: false });
+const MarketingCrmFunnel = dynamic(() => import('@/components/marketing/MarketingCrmFunnel'), { ssr: false });
+const CustomerSocialTimeline = dynamic(() => import('@/components/marketing/CustomerSocialTimeline'), { ssr: false });
+const WhatsAppCustomerActivity = dynamic(() => import('@/components/whatsapp/WhatsAppCustomerActivity'), { ssr: false });
 import ResponsiveTable from '@/components/ui/ResponsiveTable';
 import ModuleSubNavSlot from '@/components/layout/ModuleSubNavSlot';
 import ModuleTabBar from '@/components/layout/ModuleTabBar';
