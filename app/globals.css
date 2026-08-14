@@ -1,22 +1,19 @@
 @import "tailwindcss";
 
 :root {
-  --erp-sidebar: #0b1020;
-  --erp-sidebar-hover: #171d35;
-  --erp-accent: #a78bfa;
-  --erp-accent-dark: #6d54d9;
-  --erp-primary: #635bdb;
-  --erp-primary-dark: #4943b5;
-  --erp-page: #f6f7fb;
+  --erp-sidebar: #101b18;
+  --erp-sidebar-hover: #1b2d27;
+  --erp-accent: #d9b878;
+  --erp-accent-dark: #a9854e;
+  --erp-primary: #1d6b52;
+  --erp-primary-dark: #124a39;
+  --erp-page: #f4f6f3;
   --erp-card: #ffffff;
-  --erp-border: #e6e8f0;
-  --erp-text: #171a2b;
-  --erp-muted: #73798c;
-  --erp-gold-soft: #fff1ec;
-  --erp-green-soft: #e8fbf5;
-  --erp-cyan: #23c7b6;
-  --erp-coral: #ff8a65;
-  --erp-navy: #0b1020;
+  --erp-border: #dfe6df;
+  --erp-text: #17231f;
+  --erp-muted: #6d7b74;
+  --erp-gold-soft: #f6efe3;
+  --erp-green-soft: #eaf3ee;
   --touch-min: 44px;
 }
 
@@ -43,9 +40,8 @@ body {
 /* هوية فاخرة موحّدة للواجهات الحالية */
 .app-body-font {
   background:
-    radial-gradient(circle at 8% 0%, rgba(167, 139, 250, 0.12), transparent 22rem),
-    radial-gradient(circle at 92% 12%, rgba(35, 199, 182, 0.08), transparent 20rem),
-    linear-gradient(135deg, #fbfbfe 0%, var(--erp-page) 52%, #eef1fa 100%);
+    radial-gradient(circle at 8% 0%, rgba(217, 184, 120, 0.10), transparent 22rem),
+    linear-gradient(135deg, #f8faf7 0%, var(--erp-page) 52%, #eef3ee 100%);
 }
 
 main > * {
@@ -408,7 +404,7 @@ main iframe {
 
 /* Premium shell chrome */
 .app-header {
-  box-shadow: 0 8px 28px rgba(11, 16, 32, 0.07);
+  box-shadow: 0 8px 28px rgba(16, 42, 32, 0.06);
 }
 
 .app-header::after {
@@ -540,7 +536,7 @@ main .text-yellow-700 {
 
 .login-demo {
   border-color: rgba(217, 184, 120, 0.52) !important;
-  background: rgba(255, 255, 255, 0.88) !important;
+  background: rgba(255, 252, 246, 0.88) !important;
 }
 
 @media (max-width: 1023px) {
@@ -613,65 +609,3 @@ main .text-yellow-700 {
   .dashboard-module { animation: none; }
   .dashboard-module:hover, .dashboard-text-link:hover, .dashboard-quick-action:hover { transform: none; }
 }
-
-/* Neo-SaaS visual refresh */
-.app-body-font {
-  background:
-    radial-gradient(circle at 12% -8%, rgba(167,139,250,.17), transparent 25rem),
-    radial-gradient(circle at 96% 28%, rgba(35,199,182,.11), transparent 22rem),
-    #f6f7fb;
-}
-
-.app-header {
-  background: rgba(255,255,255,.78) !important;
-  border-color: rgba(230,232,240,.86) !important;
-  box-shadow: 0 8px 28px rgba(11,16,32,.055);
-}
-
-.app-header::after { background: linear-gradient(90deg, #a78bfa, #23c7b6, transparent); }
-.app-header-control:hover { box-shadow: 0 8px 18px rgba(99,91,219,.15); }
-
-.dashboard-hero {
-  background: linear-gradient(118deg, #0b1020 0%, #161c38 58%, #252050 100%) !important;
-  box-shadow: 0 26px 70px rgba(11,16,32,.18) !important;
-}
-.dashboard-hero::after { background: linear-gradient(115deg, transparent 0 49%, rgba(167,139,250,.17) 49.2% 49.7%, transparent 50% 100%); }
-.dashboard-hero-glow { background: radial-gradient(circle, rgba(167,139,250,.34), transparent 68%); }
-.dashboard-hero-chip { border-color: rgba(167,139,250,.28); background: rgba(167,139,250,.11); }
-.dashboard-profile-mark { border-color: rgba(35,199,182,.48); background: linear-gradient(145deg, rgba(35,199,182,.18), rgba(167,139,250,.07)); }
-.dashboard-profile-mark small { color: #8ce9dc; }
-
-.dashboard-kpi { border-radius: 1rem; box-shadow: 0 12px 28px rgba(11,16,32,.07); }
-.dashboard-kpi-green { background: linear-gradient(140deg, #635bdb, #4943b5); }
-.dashboard-kpi-gold { background: linear-gradient(140deg, #fff1ec, #ffe1d7); color: #663f37; border-color: #ffd6ca; }
-.dashboard-kpi-dark { background: linear-gradient(140deg, #11172c, #252050); }
-.dashboard-kpi-light { background: rgba(255,255,255,.9); }
-.dashboard-kpi-dot { background: #23c7b6; box-shadow: 0 0 0 5px rgba(35,199,182,.14); }
-.dashboard-kpi-progress { background: rgba(11,16,32,.12); }
-
-.dashboard-surface { border-color: rgba(230,232,240,.94); background: rgba(255,255,255,.82); box-shadow: 0 16px 42px rgba(11,16,32,.045); }
-.dashboard-eyebrow { color: #6d54d9; }
-.dashboard-filter-group { background: #f0f1f7; border-color: #e2e4ee; }
-.dashboard-filter.is-active { background: linear-gradient(135deg, #635bdb, #4943b5); box-shadow: 0 7px 16px rgba(99,91,219,.22); }
-.dashboard-filter:hover { color: #635bdb; }
-.dashboard-search { background: #f8f9fc; border-color: #e2e4ee; }
-.dashboard-search:focus-within { border-color: #a78bfa; box-shadow: 0 0 0 3px rgba(167,139,250,.14); }
-.dashboard-module { border-color: #e6e8f0; background: rgba(255,255,255,.62); }
-.dashboard-module:hover { border-color: rgba(99,91,219,.38); box-shadow: 0 13px 28px rgba(99,91,219,.1); }
-.dashboard-module-icon { background: #eeeafd; color: #635bdb; }
-.dashboard-module-arrow { color: #23a99d; }
-.dashboard-progress-ring { background: conic-gradient(#635bdb var(--progress), #eef0f6 0); }
-.dashboard-progress-ring span { color: #635bdb; }
-.dashboard-outline-button:hover { border-color: #635bdb; background: #f1efff; }
-.dashboard-quick-action:hover { color: #635bdb; }
-.dashboard-quick-action span:last-child { color: #23a99d; }
-.dashboard-last-login { background: #f0f1f7; }
-.dashboard-info-card { border-color: #e6e8f0; background: #fafaff; }
-
-.login-shell { background: #f6f7fb; }
-.login-hero { background: #0b1020 !important; border-color: rgba(167,139,250,.18); }
-.login-panel { background: radial-gradient(circle at 92% 8%, rgba(167,139,250,.18), transparent 18rem), linear-gradient(135deg, #fbfbfe, #eef1fa); }
-.login-card button[type='submit'] { background: linear-gradient(135deg, #635bdb, #4943b5) !important; box-shadow: 0 10px 22px rgba(99,91,219,.22); }
-.login-card button[type='submit']:hover { box-shadow: 0 14px 28px rgba(99,91,219,.3); }
-.login-card .bg-gray-50 { background: #f0f1f7 !important; }
-.login-demo { border-color: rgba(255,138,101,.48) !important; background: rgba(255,247,244,.9) !important; }

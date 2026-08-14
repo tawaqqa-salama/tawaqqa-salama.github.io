@@ -55,12 +55,12 @@ export default function MyPage() {
 
   return (
     <div className="dashboard-page space-y-6 pb-8">
-      <section className="dashboard-hero relative overflow-hidden rounded-[1.75rem] bg-[#0b1020] text-white">
+      <section className="dashboard-hero relative overflow-hidden rounded-[1.75rem] bg-[#101b18] text-white">
         <div className="dashboard-hero-glow" />
         <div className="relative z-10 grid gap-8 p-6 sm:p-8 lg:grid-cols-[1fr_auto] lg:items-end lg:p-10">
           <div>
-            <div className="flex flex-wrap items-center gap-2 text-xs font-semibold tracking-[0.12em] text-[#a78bfa]">
-              <span className="h-2 w-2 rounded-full bg-[#a78bfa]" />
+            <div className="flex flex-wrap items-center gap-2 text-xs font-semibold tracking-[0.12em] text-[#d9b878]">
+              <span className="h-2 w-2 rounded-full bg-[#d9b878]" />
               {t('me.myPage')}
               <span className="text-white/35">/</span>
               <span className="text-white/60">EXECUTIVE OVERVIEW</span>
