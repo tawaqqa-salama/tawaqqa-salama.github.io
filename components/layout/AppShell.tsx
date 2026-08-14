@@ -150,7 +150,7 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
           </Suspense>
           <SupabaseConfigBanner />
           <ActivityTracker />
-          <main className="flex-1 p-3 sm:p-5 md:p-6 overflow-y-auto overflow-x-hidden w-full max-w-none">
+          <main className="app-main flex-1 p-3 sm:p-5 md:p-6 overflow-y-auto overflow-x-hidden w-full max-w-none">
             {children}
           </main>
           {previewMounted ? <DocumentPreviewSheet /> : null}
