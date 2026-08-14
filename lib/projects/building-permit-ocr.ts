@@ -624,10 +624,15 @@ function extractPhone(text: string): string | null {
 }
 
 function extractLandArea(text: string): string | null {
+  const normalized = collapseOcrDigitGaps(text);
+  // Prefer the value immediately following the explicit table label.
+  const direct =
+    normalized.match(/مساحة\s*الار[ض]?\.?\s*[:：]?\s*(?:\n+\s*)?(\d{2,6}(?:[.,]\d{1,2})?)/u)?.[1] ||
+    normalized.match(/مساحة\s*الأرض\s*[:：]?\s*(?:\n+\s*)?(\d{2,6}(?:[.,]\d{1,2})?)/u)?.[1];
+  if (direct) return direct.replace(/,/g, '');
+
   const fromColumns = extractBaladyLocationColumns(text)?.landAreaM2;
   if (fromColumns) return fromColumns;
-
-  const normalized = collapseOcrDigitGaps(text);
   const m =
     normalized.match(/مساحة\s*الار[ض]?\.?\s*\n+\s*([\d.,]+)/u)?.[1] ||
     normalized.match(/مساحة\s*الأرض\.?\s*[:：]?\s*([\d.,]+)/u)?.[1] ||

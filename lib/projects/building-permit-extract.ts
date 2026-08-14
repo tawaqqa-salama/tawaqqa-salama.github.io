@@ -144,8 +144,10 @@ export async function extractBuildingPermitFromFile(
     }
   }
 
-  // 3) Optional Vision API when Node API is available (not on static Pages)
-  if (needsFloorsOrActivityOcr(result) || !hasUsefulPermitExtraction(result)) {
+  // 3) Vision API: prefer structured visual extraction for scanned permits when available.
+  // The static GitHub Pages deployment may return 404; in that case we safely keep local OCR.
+  const isScannedPermit = canRunClientOcr(file) && (result.source === 'tesseract' || result.confidence !== 'high');
+  if (needsFloorsOrActivityOcr(result) || !hasUsefulPermitExtraction(result) || isScannedPermit) {
     try {
       onProgress?.('جاري محاولة الاستخراج عبر الخادم...');
       const base64 = await fileToBase64(file);

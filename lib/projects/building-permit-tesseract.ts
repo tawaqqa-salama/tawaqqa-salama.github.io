@@ -58,6 +58,37 @@ async function cropTopIdentityBand(source: Blob | File): Promise<Blob | File> {
   }
 }
 
+/** Crop the Balady contents table where floor names and areas are printed. */
+async function cropContentsTable(source: Blob | File): Promise<Blob | File> {
+  if (!isBrowserDom() || typeof createImageBitmap === 'undefined') return source;
+  try {
+    const bitmap = await createImageBitmap(source);
+    const topRatio = 0.30;
+    const bottomRatio = 0.76;
+    const cropY = Math.round(bitmap.height * topRatio);
+    const cropH = Math.max(240, Math.round(bitmap.height * (bottomRatio - topRatio)));
+    const maxW = 2200;
+    const scale = Math.min(1, maxW / bitmap.width);
+    const w = Math.round(bitmap.width * scale);
+    const h = Math.round(cropH * scale);
+    const canvas = document.createElement('canvas');
+    canvas.width = w;
+    canvas.height = h;
+    const ctx = canvas.getContext('2d');
+    if (!ctx) {
+      bitmap.close();
+      return source;
+    }
+    ctx.fillStyle = '#fff';
+    ctx.fillRect(0, 0, w, h);
+    ctx.drawImage(bitmap, 0, cropY, bitmap.width, cropH, 0, 0, w, h);
+    bitmap.close();
+    return (await canvasToJpeg(canvas, 0.92)) || source;
+  } catch {
+    return source;
+  }
+}
+
 /** Downscaled full page for floors / totals. */
 async function downscaleFullPage(source: Blob | File): Promise<Blob | File> {
   if (!isBrowserDom() || typeof createImageBitmap === 'undefined') return source;
@@ -184,16 +215,27 @@ async function recognizeArabicForm(
       text = fullText;
     }
   } else {
-    // Merge a light full-page pass for floors/areas when identity already succeeded
+    // Read the structured contents table before the noisy full-page pass.
     try {
-      onProgress?.('جاري استخراج بيانات الأدوار والمساحات...');
+      onProgress?.('جاري قراءة جدول الأدوار والمساحات من الرخصة...');
+      const table = await cropContentsTable(image);
+      const tableText = await recognizeWithWorker(table, 6, onProgress);
+      if (tableText.length > 20) {
+        text = `${text}\n\n${tableText}`;
+      }
+    } catch {
+      /* continue with full-page OCR */
+    }
+
+    // Merge a light full-page pass for remaining fields.
+    try {
       const full = await downscaleFullPage(image);
       const fullText = await recognizeWithWorker(full, 11, onProgress);
       if (fullText.length > 40) {
         text = `${text}\n\n${fullText}`;
       }
     } catch {
-      /* identity-only is enough for owner/permit */
+      /* identity/table OCR may still be enough */
     }
   }
 

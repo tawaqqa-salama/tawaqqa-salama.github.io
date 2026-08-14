@@ -624,89 +624,25 @@ export default function ClientDetailModal({
       permitHydrateLockRef.current = true;
     }
 
-    const eng = parseProjectEngineeringData(client.project_engineering_data);
-    const building_plan = {
-      ...eng.building_plan,
-      building_permit_number:
-        fields.building_permit_number || eng.building_plan.building_permit_number,
-      building_permit_date: fields.building_permit_date || eng.building_plan.building_permit_date,
-      building_permit_date_hijri:
-        fields.building_permit_date_hijri || eng.building_plan.building_permit_date_hijri,
-      report_date: fields.report_date || eng.building_plan.report_date,
-      building_permit_ocr_status: 'success' as const,
-      building_permit_ocr_message: '✓ تم استخراج بيانات الرخصة وتعبئة البيانات الأساسية',
-    };
-    const technical_report = {
-      ...eng.technical_report,
-      building_permit_number:
-        fields.building_permit_number || eng.technical_report.building_permit_number,
-      building_permit_date:
-        fields.building_permit_date || eng.technical_report.building_permit_date,
-    };
-
     // لا تُعد كتابة quotation_documents هنا — onChange يحفظها قبل الاستخراج
     // (تجنّب استبدال المرفق بحالة قديمة من الـ closure)
-    const payload: Record<string, unknown> = {
-      project_engineering_data: { ...eng, building_plan, technical_report },
-    };
-    if (fields.owner_name) payload.owner_name = fields.owner_name;
-    if (matched.region) payload.region = matched.region;
-    if (matched.city || fields.city) payload.city = matched.city || fields.city;
-    if (matched.district || fields.district) {
-      payload.district = matched.district || fields.district;
-    }
-    if (fields.street) payload.street = fields.street;
-    if (fields.plot_number) payload.plot_number = fields.plot_number;
-    if (fields.commercial_register) {
-      payload.commercial_register = fields.commercial_register;
-      payload.client_kind = 'business';
-    }
-    if (fields.phone && /^05\d{8}$/.test(fields.phone)) payload.phone = fields.phone;
-    if (fields.land_area) payload.land_area = parseLocalizedNumber(fields.land_area) || null;
-    if (fields.national_address || fields.location_summary) {
-      payload.national_address = fields.national_address || fields.location_summary;
-    }
-    if (fields.activity_type) payload.activity_type = fields.activity_type;
-    if (nextFloorLevels && nextFloorLevels.length > 0) {
-      payload.floor_levels = nextFloorLevels;
-      payload.floors_count = nextFloorLevels.reduce(
-        (sum, level) => sum + Math.max(1, level.repeat_count || 1),
-        0
-      );
-      payload.building_area = nextFloorLevels.reduce(
-        (sum, level) =>
-          sum + Math.max(0, level.area_m2 || 0) * Math.max(1, level.repeat_count || 1),
-        0
-      );
-    } else {
-      if (fields.floors_count != null) payload.floors_count = fields.floors_count;
-      if (fields.building_area) {
-        payload.building_area = parseLocalizedNumber(fields.building_area) || null;
-      }
-    }
-
-    void updateClientSafe(client.id, payload).then((result) => {
-      if (result.error) {
-        setErrorMessage(result.error);
-        return;
-      }
-      setSuccessMessage(
-        [
-          fields.building_permit_number ? `رقم الرخصة: ${fields.building_permit_number}` : null,
-          fields.owner_name ? `المالك: ${fields.owner_name}` : null,
-          fields.activity_type ? `النشاط: ${fields.usage_label || fields.activity_type}` : null,
-          fields.floors_count != null ? `الأدوار: ${fields.floors_count}` : null,
-          fields.building_area ? `مساحة البناء: ${fields.building_area} م²` : null,
-          matched.district || fields.district
-            ? `الحي: ${matched.district || fields.district}`
-            : null,
-          fields.street ? `الشارع: ${fields.street}` : null,
-        ]
-          .filter(Boolean)
-          .join(' · ') || 'تم استخراج بيانات الرخصة وتعبئة البيانات الأساسية'
-      );
-      onUpdated();
-    });
+    // لا تحفظ قيم OCR تلقائيًا؛ تبقى الحقول معبأة للمراجعة ثم يعتمدها المستخدم بزر الحفظ.
+    // هذا يمنع انتقال قيمة مقروءة بشكل خاطئ من الرخصة إلى سجل العميل دون مراجعة.
+    setSuccessMessage(
+      [
+        fields.building_permit_number ? `رقم الرخصة: ${fields.building_permit_number}` : null,
+        fields.owner_name ? `المالك: ${fields.owner_name}` : null,
+        fields.activity_type ? `النشاط: ${fields.usage_label || fields.activity_type}` : null,
+        fields.floors_count != null ? `الأدوار: ${fields.floors_count}` : null,
+        fields.building_area ? `مساحة البناء: ${fields.building_area} م²` : null,
+        matched.district || fields.district
+          ? `الحي: ${matched.district || fields.district}`
+          : null,
+        fields.street ? `الشارع: ${fields.street}` : null,
+      ]
+        .filter(Boolean)
+        .join(' · ') || 'تم استخراج بيانات الرخصة وتعبئة الحقول — راجعها ثم اضغط حفظ'
+    );
   };
 
   const handleSaveBasic = async () => {
@@ -877,6 +813,9 @@ export default function ClientDetailModal({
                     activity_type: activityType,
                   }} />
                 ) : null}
+                <p className="mt-3 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-[11px] text-amber-900">
+                  راجع القيم المستخرجة من الرخصة، خصوصًا رقم الرخصة والمساحات وتفاصيل الأدوار، ثم اضغط «حفظ البيانات الأساسية» لاعتمادها.
+                </p>
                 <div className="grid grid-cols-1 md:grid-cols-3 gap-3 pt-1">
                   <div>
                     <label className="block text-xs font-semibold text-gray-700 mb-1">
