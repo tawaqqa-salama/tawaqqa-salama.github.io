@@ -38,7 +38,7 @@ export function buildFieldVisitReportHtml(params: {
       color: #122018; font-size: 12pt; line-height: 1.65; margin: 0; background: #fff;
     }
     .wrap { padding: 8px; }
-    .brand { color: #1f4d3a; font-weight: 700; font-size: 13pt; margin-bottom: 4px; }
+    .brand { color: #635bdb; font-weight: 700; font-size: 13pt; margin-bottom: 4px; }
     h1 { font-size: 16pt; margin: 8px 0 4px; color: #0f291f; }
     .sub { color: #4a6357; font-size: 10.5pt; margin-bottom: 14px; }
     table { width: 100%; border-collapse: collapse; margin: 10px 0; font-size: 11pt; }
@@ -48,7 +48,7 @@ export function buildFieldVisitReportHtml(params: {
       border: 1px solid #c5d5cc; border-radius: 8px; padding: 10px 12px; margin-top: 12px;
       background: #f7faf8; white-space: pre-wrap;
     }
-    .lab { font-weight: 700; color: #1f4d3a; margin-bottom: 4px; font-size: 10.5pt; }
+    .lab { font-weight: 700; color: #635bdb; margin-bottom: 4px; font-size: 10.5pt; }
     .foot { margin-top: 18px; font-size: 9.5pt; color: #5a6f64; }
   </style>
 </head>

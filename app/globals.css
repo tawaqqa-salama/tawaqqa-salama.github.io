@@ -1,12 +1,12 @@
 @import "tailwindcss";
 
 :root {
-  --erp-sidebar: #2c3333;
-  --erp-sidebar-hover: #3a4444;
-  --erp-accent: #b8e986;
+  --erp-sidebar: #0b1020;
+  --erp-sidebar-hover: #171d35;
+  --erp-accent: #a78bfa;
   --erp-accent-dark: #6b8f4e;
-  --erp-primary: #1f4d3a;
-  --erp-page: #f0f2f5;
+  --erp-primary: #635bdb;
+  --erp-page: #f6f7fb;
   --erp-card: #ffffff;
   --erp-border: #e8eaed;
   --erp-text: #1f2937;

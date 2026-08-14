@@ -65,7 +65,7 @@ export default function CompanySettingsPage() {
         title="معلومات الشركة"
         description="بيانات المكتب والبنك وخطة السداد والشعار والختم — تغذي عروض الأسعار والفواتير وعقود الاتفاق تلقائياً."
         action={
-          <Link href="/settings" className="text-sm font-semibold text-[#1f4d3a] hover:underline">
+          <Link href="/settings" className="text-sm font-semibold text-[#635bdb] hover:underline">
             ← رجوع للإعدادات
           </Link>
         }
@@ -201,7 +201,7 @@ export default function CompanySettingsPage() {
         <button
           type="submit"
           disabled={saving}
-          className="px-4 py-2.5 rounded-xl bg-[#1f4d3a] text-white text-sm font-semibold disabled:opacity-60"
+          className="px-4 py-2.5 rounded-xl bg-[#635bdb] text-white text-sm font-semibold disabled:opacity-60"
         >
           {saving ? 'جاري الحفظ...' : 'حفظ معلومات الشركة'}
         </button>
@@ -213,7 +213,7 @@ export default function CompanySettingsPage() {
 function Section({ title, children }: { title: string; children: ReactNode }) {
   return (
     <section className="bg-white rounded-2xl border border-gray-100 p-6 shadow-sm space-y-4">
-      <h2 className="text-base font-bold text-[#1f4d3a]">{title}</h2>
+      <h2 className="text-base font-bold text-[#635bdb]">{title}</h2>
       {children}
     </section>
   );

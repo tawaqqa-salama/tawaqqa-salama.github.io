@@ -231,7 +231,7 @@ export default function UsersSettingsPage() {
             <button
               type="submit"
               disabled={busy}
-              className="flex-1 bg-[#1f4d3a] text-white rounded-xl py-2.5 font-semibold disabled:opacity-60"
+              className="flex-1 bg-[#635bdb] text-white rounded-xl py-2.5 font-semibold disabled:opacity-60"
             >
               {busy ? 'جاري الحفظ...' : form.id ? 'حفظ التعديل' : 'إضافة الموظف'}
             </button>
@@ -278,7 +278,7 @@ export default function UsersSettingsPage() {
                     <td className="p-3">
                       <Link
                         href={`/u/?username=${user.username}`}
-                        className="text-[#1f4d3a] hover:underline"
+                        className="text-[#635bdb] hover:underline"
                       >
                         /u/?username={user.username}
                       </Link>
@@ -296,7 +296,7 @@ export default function UsersSettingsPage() {
                       <button
                         type="button"
                         onClick={() => editUser(user)}
-                        className="text-[#1f4d3a] font-semibold hover:underline"
+                        className="text-[#635bdb] font-semibold hover:underline"
                       >
                         تعديل
                       </button>

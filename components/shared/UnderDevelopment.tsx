@@ -28,7 +28,7 @@ export default function UnderDevelopment({
         </p>
         <Link
           href={href}
-          className="inline-flex items-center rounded-xl bg-[#1f4d3a] px-4 py-2.5 text-sm font-semibold text-white"
+          className="inline-flex items-center rounded-xl bg-[#635bdb] px-4 py-2.5 text-sm font-semibold text-white"
         >
           {linkLabel}
         </Link>

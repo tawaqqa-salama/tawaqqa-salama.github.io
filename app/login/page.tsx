@@ -87,12 +87,12 @@ export default function LoginPage() {
 
   return (
     <div className="min-h-screen grid lg:grid-cols-2">
-      <section className="relative hidden lg:flex flex-col justify-between p-10 text-white overflow-hidden bg-[#1f4d3a]">
+      <section className="relative hidden lg:flex flex-col justify-between p-10 text-white overflow-hidden bg-[#635bdb]">
         <div
           className="absolute inset-0 opacity-40"
           style={{
             backgroundImage:
-              'radial-gradient(circle at 20% 20%, #b8e986 0%, transparent 40%), radial-gradient(circle at 80% 80%, #4caf50 0%, transparent 45%)',
+              'radial-gradient(circle at 20% 20%, #a78bfa 0%, transparent 40%), radial-gradient(circle at 80% 80%, #23c7b6 0%, transparent 45%)',
           }}
         />
         <div className="relative z-10">
@@ -106,7 +106,7 @@ export default function LoginPage() {
       <section className="flex items-center justify-center p-6 md:p-10">
         <div className="w-full max-w-md">
           <div className="mb-8 lg:hidden">
-            <p className="text-sm text-[#1f4d3a] font-semibold">{PLATFORM_SHORT_NAME}</p>
+            <p className="text-sm text-[#635bdb] font-semibold">{PLATFORM_SHORT_NAME}</p>
             <h1 className="text-2xl font-bold text-gray-900 mt-1">{t('login.pageTitle')}</h1>
           </div>
 
@@ -119,7 +119,7 @@ export default function LoginPage() {
                 type="button"
                 onClick={() => setMode('email')}
                 className={`py-2.5 rounded-lg text-sm font-semibold transition ${
-                  mode === 'email' ? 'bg-white shadow text-[#1f4d3a]' : 'text-gray-500'
+                  mode === 'email' ? 'bg-white shadow text-[#635bdb]' : 'text-gray-500'
                 }`}
               >
                 {t('login.emailTab')}
@@ -128,7 +128,7 @@ export default function LoginPage() {
                 type="button"
                 onClick={() => setMode('phone')}
                 className={`py-2.5 rounded-lg text-sm font-semibold transition ${
-                  mode === 'phone' ? 'bg-white shadow text-[#1f4d3a]' : 'text-gray-500'
+                  mode === 'phone' ? 'bg-white shadow text-[#635bdb]' : 'text-gray-500'
                 }`}
               >
                 {t('login.phoneTab')}
@@ -143,7 +143,7 @@ export default function LoginPage() {
                     type="email"
                     value={email}
                     onChange={(e) => setEmail(e.target.value)}
-                    className="w-full border border-gray-200 rounded-xl px-3 py-2.5 outline-none focus:border-[#1f4d3a] isolate-ltr"
+                    className="w-full border border-gray-200 rounded-xl px-3 py-2.5 outline-none focus:border-[#635bdb] isolate-ltr"
                     autoComplete="username"
                     required
                     dir="ltr"
@@ -155,7 +155,7 @@ export default function LoginPage() {
                     type="password"
                     value={password}
                     onChange={(e) => setPassword(e.target.value)}
-                    className="w-full border border-gray-200 rounded-xl px-3 py-2.5 outline-none focus:border-[#1f4d3a] isolate-ltr"
+                    className="w-full border border-gray-200 rounded-xl px-3 py-2.5 outline-none focus:border-[#635bdb] isolate-ltr"
                     autoComplete="current-password"
                     required
                     dir="ltr"
@@ -164,7 +164,7 @@ export default function LoginPage() {
                 <button
                   type="submit"
                   disabled={busy}
-                  className="w-full bg-[#1f4d3a] text-white rounded-xl py-3 font-semibold hover:bg-[#163828] disabled:opacity-60"
+                  className="w-full bg-[#635bdb] text-white rounded-xl py-3 font-semibold hover:bg-[#4943b5] disabled:opacity-60"
                 >
                   {busy ? t('login.signingIn') : t('login.submit')}
                 </button>
@@ -177,7 +177,7 @@ export default function LoginPage() {
                     type="tel"
                     value={phone}
                     onChange={(e) => setPhone(e.target.value)}
-                    className="w-full border border-gray-200 rounded-xl px-3 py-2.5 outline-none focus:border-[#1f4d3a] isolate-ltr"
+                    className="w-full border border-gray-200 rounded-xl px-3 py-2.5 outline-none focus:border-[#635bdb] isolate-ltr"
                     placeholder="05xxxxxxxx"
                     required
                     dir="ltr"
@@ -191,7 +191,7 @@ export default function LoginPage() {
                       inputMode="numeric"
                       value={otp}
                       onChange={(e) => setOtp(e.target.value)}
-                      className="w-full border border-gray-200 rounded-xl px-3 py-2.5 outline-none focus:border-[#1f4d3a] tracking-widest isolate-ltr"
+                      className="w-full border border-gray-200 rounded-xl px-3 py-2.5 outline-none focus:border-[#635bdb] tracking-widest isolate-ltr"
                       placeholder="------"
                       required
                       dir="ltr"
@@ -207,7 +207,7 @@ export default function LoginPage() {
                 <button
                   type="submit"
                   disabled={busy}
-                  className="w-full bg-[#1f4d3a] text-white rounded-xl py-3 font-semibold hover:bg-[#163828] disabled:opacity-60"
+                  className="w-full bg-[#635bdb] text-white rounded-xl py-3 font-semibold hover:bg-[#4943b5] disabled:opacity-60"
                 >
                   {busy
                     ? t('login.processing')

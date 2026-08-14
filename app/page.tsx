@@ -19,14 +19,14 @@ export default function HomePage() {
 
   return (
     <div className="space-y-6">
-      <div className="rounded-xl bg-gradient-to-l from-[#b8e986] to-[#8bc34a] p-5 flex flex-col md:flex-row md:items-center md:justify-between gap-4">
+      <div className="rounded-xl bg-gradient-to-l from-[#a78bfa] to-[#8bc34a] p-5 flex flex-col md:flex-row md:items-center md:justify-between gap-4">
         <div>
-          <p className="font-bold text-[#2c3333] text-lg">{PLATFORM_NAME}</p>
-          <p className="text-sm text-[#2c3333]/80 mt-1 max-w-2xl">
+          <p className="font-bold text-[#0b1020] text-lg">{PLATFORM_NAME}</p>
+          <p className="text-sm text-[#0b1020]/80 mt-1 max-w-2xl">
             مرحباً {session?.fullName || ''} — الأقسام أدناه حسب صلاحيات حسابك
           </p>
         </div>
-        <Link href="/me" className="text-sm font-semibold text-[#1f4d3a] hover:underline shrink-0">
+        <Link href="/me" className="text-sm font-semibold text-[#635bdb] hover:underline shrink-0">
           صفحتي الخاصة ←
         </Link>
       </div>
@@ -40,7 +40,7 @@ export default function HomePage() {
 
       <div>
         <h2 className="text-lg font-bold text-gray-800 mb-4 flex items-center gap-2">
-          <span className="text-[#1f4d3a]">▦</span>
+          <span className="text-[#635bdb]">▦</span>
           أنظمة {PLATFORM_SHORT_NAME}
         </h2>
         <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
@@ -55,7 +55,7 @@ export default function HomePage() {
               </div>
               <div className="min-w-0 flex-1">
                 <div className="flex items-center gap-2 flex-wrap">
-                  <h3 className="font-bold text-gray-800 group-hover:text-[#1f4d3a] transition">{module.title}</h3>
+                  <h3 className="font-bold text-gray-800 group-hover:text-[#635bdb] transition">{module.title}</h3>
                 </div>
                 <p className="text-sm text-gray-500 mt-1 leading-relaxed">{module.description}</p>
               </div>
@@ -71,7 +71,7 @@ function InfoCell({ label, value, highlight }: { label: string; value: string; h
   return (
     <div className="border-l border-gray-100 first:border-0 pl-4 first:pl-0">
       <p className="text-xs text-gray-400 mb-1">{label}</p>
-      <p className={`font-semibold ${highlight ? 'text-[#1f4d3a]' : 'text-gray-800'}`}>{value}</p>
+      <p className={`font-semibold ${highlight ? 'text-[#635bdb]' : 'text-gray-800'}`}>{value}</p>
     </div>
   );
 }

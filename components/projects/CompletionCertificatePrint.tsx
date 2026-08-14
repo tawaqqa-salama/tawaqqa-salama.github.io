@@ -98,7 +98,7 @@ export function buildCompletionCertificateHtml(params: {
       direction: rtl;
       background: #fff;
       color: #111;
-      border: 1.5px solid #1f4d3a;
+      border: 1.5px solid #635bdb;
       display: flex;
       flex-direction: column;
       gap: 7px;
@@ -109,7 +109,7 @@ export function buildCompletionCertificateHtml(params: {
       grid-template-columns: 1.1fr 1.6fr 1.1fr;
       gap: 10px;
       align-items: start;
-      border-bottom: 2px solid #1f4d3a;
+      border-bottom: 2px solid #635bdb;
       padding-bottom: 6px;
     }
     .meta { font-size: 9px; line-height: 1.45; }
@@ -122,9 +122,9 @@ export function buildCompletionCertificateHtml(params: {
     .logo-fallback {
       border: 1px solid #cbd5e1; border-radius: 6px;
       display: flex; align-items: center; justify-content: center;
-      font-size: 7.5px; font-weight: 800; color: #1f4d3a; padding: 2px;
+      font-size: 7.5px; font-weight: 800; color: #635bdb; padding: 2px;
     }
-    .brand { margin: 0; font-size: 11px; font-weight: 900; color: #1f4d3a; }
+    .brand { margin: 0; font-size: 11px; font-weight: 900; color: #635bdb; }
     .doc-title {
       margin: 3px 0 0;
       font-size: 17px;
@@ -136,7 +136,7 @@ export function buildCompletionCertificateHtml(params: {
     .meta-end { text-align: left; }
     .cert-no {
       display: inline-block;
-      border: 1px solid #1f4d3a;
+      border: 1px solid #635bdb;
       border-radius: 4px;
       padding: 2px 8px;
       font-weight: 800;
@@ -158,8 +158,8 @@ export function buildCompletionCertificateHtml(params: {
     h3 {
       margin: 2px 0 3px;
       font-size: 10.5px;
-      color: #1f4d3a;
-      border-right: 3px solid #1f4d3a;
+      color: #635bdb;
+      border-right: 3px solid #635bdb;
       padding-right: 6px;
     }
 
@@ -252,7 +252,7 @@ export function buildCompletionCertificateHtml(params: {
       line-height: 1.35;
       text-align: right;
     }
-    .chamber .note strong { color: #1f4d3a; }
+    .chamber .note strong { color: #635bdb; }
 
     @media print {
       @page {
@@ -271,7 +271,7 @@ export function buildCompletionCertificateHtml(params: {
         width: 100%;
         min-height: auto;
         padding: 0;
-        border: 1.5px solid #1f4d3a;
+        border: 1.5px solid #635bdb;
         margin: 0;
       }
       a[href]::after { content: none !important; }

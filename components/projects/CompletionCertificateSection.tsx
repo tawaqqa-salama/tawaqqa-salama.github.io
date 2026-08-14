@@ -341,7 +341,7 @@ export default function CompletionCertificateSection({
           type="button"
           onClick={() => void handlePrint()}
           disabled={saving || !company}
-          className="px-4 py-2.5 rounded-xl bg-[#1f4d3a] text-white text-sm font-semibold disabled:opacity-50"
+          className="px-4 py-2.5 rounded-xl bg-[#635bdb] text-white text-sm font-semibold disabled:opacity-50"
         >
           معاينة وطباعة الشهادة (A4)
         </button>

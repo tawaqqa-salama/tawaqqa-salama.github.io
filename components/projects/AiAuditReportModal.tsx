@@ -31,7 +31,7 @@ export default function AiAuditReportModal({ open, result, onClose }: AiAuditRep
       <div className="w-full max-w-3xl max-h-[92vh] overflow-hidden rounded-t-2xl sm:rounded-2xl bg-white shadow-xl border flex flex-col">
         <div className="px-5 py-4 border-b bg-[#f0f7f3] flex items-start justify-between gap-3">
           <div>
-            <h2 className="text-lg font-bold text-[#1f4d3a]">التقرير التلقائي للامتثال (AI Audit)</h2>
+            <h2 className="text-lg font-bold text-[#635bdb]">التقرير التلقائي للامتثال (AI Audit)</h2>
             <p className="text-sm text-gray-600 mt-1">
               {KIND_LABELS[result.blueprintKind]} — {result.fileName}
             </p>
@@ -92,7 +92,7 @@ export default function AiAuditReportModal({ open, result, onClose }: AiAuditRep
           <button
             type="button"
             onClick={onClose}
-            className="px-4 py-2 rounded-xl bg-[#1f4d3a] text-white text-sm font-semibold"
+            className="px-4 py-2 rounded-xl bg-[#635bdb] text-white text-sm font-semibold"
           >
             إغلاق
           </button>

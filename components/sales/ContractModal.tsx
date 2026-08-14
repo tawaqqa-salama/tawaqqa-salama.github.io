@@ -169,7 +169,7 @@ export default function ContractModal({ client, onClose, onCreated }: ContractMo
               <button
                 onClick={() => void handleSave(false)}
                 disabled={saving}
-                className="px-4 py-2 bg-[#1f4d3a] text-white rounded-xl text-sm"
+                className="px-4 py-2 bg-[#635bdb] text-white rounded-xl text-sm"
               >
                 حفظ / ربط العقد
               </button>

@@ -80,7 +80,7 @@ export default function ActivityLogPage() {
       <div className="bg-white border rounded-xl p-6">
         <p className="font-bold text-gray-800 mb-2">غير مصرح</p>
         <p className="text-sm text-gray-500 mb-4">سجل النشاطات متاح لمدير النظام فقط.</p>
-        <Link href="/settings" className="text-sm font-semibold text-[#1f4d3a] hover:underline">
+        <Link href="/settings" className="text-sm font-semibold text-[#635bdb] hover:underline">
           ← رجوع للإعدادات
         </Link>
       </div>
@@ -101,7 +101,7 @@ export default function ActivityLogPage() {
             >
               تحديث
             </button>
-            <Link href="/settings" className="text-sm font-semibold text-[#1f4d3a] hover:underline">
+            <Link href="/settings" className="text-sm font-semibold text-[#635bdb] hover:underline">
               ← رجوع
             </Link>
           </div>
@@ -209,7 +209,7 @@ export default function ActivityLogPage() {
                     <div className="text-[11px] text-gray-400">{roleLabel(row.user_role)}</div>
                   </td>
                   <td className="p-3" data-label="نوع الإجراء">
-                    <span className="inline-flex text-xs font-semibold px-2 py-1 rounded-lg bg-[#eef6f1] text-[#1f4d3a]">
+                    <span className="inline-flex text-xs font-semibold px-2 py-1 rounded-lg bg-[#eef6f1] text-[#635bdb]">
                       {ACTIVITY_ACTION_LABELS[row.action_type] || row.action_type}
                     </span>
                   </td>

@@ -176,8 +176,8 @@ export default function ProjectsPage() {
             onClick={() => setStatusFilter(id)}
             className={`px-3 py-1.5 rounded-full text-xs font-semibold border transition ${
               statusFilter === id
-                ? 'bg-[#1f4d3a] text-white border-[#1f4d3a]'
-                : 'bg-white text-gray-700 border-gray-200 hover:border-[#1f4d3a]/40'
+                ? 'bg-[#635bdb] text-white border-[#635bdb]'
+                : 'bg-white text-gray-700 border-gray-200 hover:border-[#635bdb]/40'
             }`}
           >
             {t(STATUS_FILTER_KEYS[id])}

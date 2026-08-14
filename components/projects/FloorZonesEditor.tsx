@@ -57,7 +57,7 @@ export default function FloorZonesEditor({ floors, onChange, onUploadPhoto }: Pr
         </div>
         <button
           type="button"
-          className="text-xs font-semibold text-[#1f4d3a]"
+          className="text-xs font-semibold text-[#635bdb]"
           onClick={() =>
             onChange([
               ...floors,
@@ -291,7 +291,7 @@ export default function FloorZonesEditor({ floors, onChange, onUploadPhoto }: Pr
                           </button>
                         </div>
                       ) : (
-                        <label className="text-xs font-semibold text-[#1f4d3a] cursor-pointer">
+                        <label className="text-xs font-semibold text-[#635bdb] cursor-pointer">
                           + إرفاق صورة مقصوصة من الكود
                           <input
                             type="file"
@@ -332,7 +332,7 @@ export default function FloorZonesEditor({ floors, onChange, onUploadPhoto }: Pr
             <div className="flex flex-wrap gap-3">
               <button
                 type="button"
-                className="text-xs font-semibold text-[#1f4d3a]"
+                className="text-xs font-semibold text-[#635bdb]"
                 onClick={() =>
                   updateFloor(floor.id, (f) => ({
                     ...f,

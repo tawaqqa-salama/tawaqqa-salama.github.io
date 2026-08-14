@@ -115,7 +115,7 @@ export default function ZatcaSettingsPage() {
         title="إعدادات ZATCA (الفوترة الإلكترونية)"
         description="Phase 2 — Onboarding، CSID، Sandbox/Production، وإرسال الفواتير (Reporting/Clearance)."
         action={
-          <Link href="/settings" className="text-sm font-semibold text-[#1f4d3a] hover:underline">
+          <Link href="/settings" className="text-sm font-semibold text-[#635bdb] hover:underline">
             ← رجوع للإعدادات
           </Link>
         }
@@ -123,7 +123,7 @@ export default function ZatcaSettingsPage() {
 
       <form onSubmit={onSubmit} className="space-y-4">
         <section className="bg-white rounded-2xl border border-gray-100 p-6 shadow-sm space-y-4">
-          <h2 className="text-base font-bold text-[#1f4d3a]">الربط والبيئة</h2>
+          <h2 className="text-base font-bold text-[#635bdb]">الربط والبيئة</h2>
           <label className="flex items-center gap-2 text-sm font-semibold">
             <input
               type="checkbox"
@@ -163,7 +163,7 @@ export default function ZatcaSettingsPage() {
         </section>
 
         <section className="bg-white rounded-2xl border border-gray-100 p-6 shadow-sm space-y-4">
-          <h2 className="text-base font-bold text-[#1f4d3a]">Onboarding — OTP و CSID</h2>
+          <h2 className="text-base font-bold text-[#635bdb]">Onboarding — OTP و CSID</h2>
           <p className="text-xs text-gray-500">
             أدخل رمز OTP من منصة فاتورة، ثم الصق شهادة CSR، واضغط تسجيل الجهاز. تُحفظ CSID/Secret تلقائياً.
           </p>
@@ -216,7 +216,7 @@ export default function ZatcaSettingsPage() {
               type="button"
               disabled={onboarding || !form.otp || !form.csr_pem}
               onClick={() => void runOnboarding('compliance')}
-              className="px-3 py-2 rounded-xl bg-[#1f4d3a] text-white text-sm font-semibold disabled:opacity-50"
+              className="px-3 py-2 rounded-xl bg-[#635bdb] text-white text-sm font-semibold disabled:opacity-50"
             >
               {onboarding ? 'جاري التسجيل...' : 'تسجيل الجهاز (Compliance CSID)'}
             </button>
@@ -239,7 +239,7 @@ export default function ZatcaSettingsPage() {
         <button
           type="submit"
           disabled={saving}
-          className="px-4 py-2.5 rounded-xl bg-[#1f4d3a] text-white text-sm font-semibold disabled:opacity-60"
+          className="px-4 py-2.5 rounded-xl bg-[#635bdb] text-white text-sm font-semibold disabled:opacity-60"
         >
           {saving ? 'جاري الحفظ...' : 'حفظ إعدادات ZATCA'}
         </button>

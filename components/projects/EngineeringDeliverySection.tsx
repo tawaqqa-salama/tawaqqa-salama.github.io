@@ -324,7 +324,7 @@ export default function EngineeringDeliverySection({
           type="button"
           onClick={handlePrint}
           disabled={!company}
-          className="px-4 py-2.5 rounded-xl bg-[#1f4d3a] text-white text-sm font-semibold disabled:opacity-50"
+          className="px-4 py-2.5 rounded-xl bg-[#635bdb] text-white text-sm font-semibold disabled:opacity-50"
         >
           توليد وطباعة الخطاب الرسمي (PDF / Print)
         </button>

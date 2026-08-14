@@ -266,8 +266,8 @@ export default function SafetyBlueprintsUpload({
                 {statusBadge(file)}
               </div>
 
-              <label className="mt-3 flex flex-col items-center justify-center gap-1 rounded-xl border-2 border-dashed border-gray-300 bg-white/80 px-3 py-6 cursor-pointer hover:border-[#1f4d3a]/50">
-                <span className="text-xs font-semibold text-[#1f4d3a]">
+              <label className="mt-3 flex flex-col items-center justify-center gap-1 rounded-xl border-2 border-dashed border-gray-300 bg-white/80 px-3 py-6 cursor-pointer hover:border-[#635bdb]/50">
+                <span className="text-xs font-semibold text-[#635bdb]">
                   {file ? 'استبدال الملف' : 'اسحب الملف أو اختر للرفع'}
                 </span>
                 <span className="text-[11px] text-gray-500">
@@ -298,7 +298,7 @@ export default function SafetyBlueprintsUpload({
                           setReportResult(file.auditResult || null);
                           setReportOpen(true);
                         }}
-                        className="px-2.5 py-1.5 rounded-lg bg-[#1f4d3a] text-white font-semibold"
+                        className="px-2.5 py-1.5 rounded-lg bg-[#635bdb] text-white font-semibold"
                       >
                         عرض التقرير التلقائي للامتثال (AI Audit Report)
                       </button>

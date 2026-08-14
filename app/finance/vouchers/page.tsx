@@ -59,7 +59,7 @@ export default function VouchersPage() {
         {activeTab !== 'approvals' && (
           <button
             onClick={() => setShowModal(true)}
-            className="px-4 py-2 bg-[#1f4d3a] text-white rounded-lg text-sm font-semibold"
+            className="px-4 py-2 bg-[#635bdb] text-white rounded-lg text-sm font-semibold"
           >
             + {activeTab === 'receipt' ? 'سند قبض' : 'سند صرف'}
           </button>
@@ -77,7 +77,7 @@ export default function VouchersPage() {
             onClick={() => setActiveTab(tab.id)}
             className={`px-4 py-2 rounded-lg text-sm font-semibold border transition ${
               activeTab === tab.id
-                ? 'bg-[#1f4d3a] text-white border-[#1f4d3a]'
+                ? 'bg-[#635bdb] text-white border-[#635bdb]'
                 : 'bg-white text-gray-600 border-gray-200 hover:border-gray-300'
             }`}
           >
@@ -113,7 +113,7 @@ export default function VouchersPage() {
                     <td className="p-3">
                       <button
                         onClick={() => setSelected(client)}
-                        className="px-3 py-1.5 bg-[#1f4d3a] text-white rounded-lg text-xs font-semibold"
+                        className="px-3 py-1.5 bg-[#635bdb] text-white rounded-lg text-xs font-semibold"
                       >
                         اعتماد / سداد
                       </button>

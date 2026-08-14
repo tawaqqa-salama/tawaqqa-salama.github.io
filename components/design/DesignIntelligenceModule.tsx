@@ -473,7 +473,7 @@ export default function DesignIntelligenceModule() {
           ariaLabel={label('subnav.design', 'Design Intelligence')}
           activeId={tab}
           onChange={(id) => setTab(id as DesignIntelligenceTabId)}
-          activeClassName="bg-[#1f4d3a] text-white shadow-sm"
+          activeClassName="bg-[#635bdb] text-white shadow-sm"
           idleClassName="bg-white border border-gray-200 text-gray-800"
           items={TABS.map((item) => ({
             id: item.id,
@@ -545,7 +545,7 @@ export default function DesignIntelligenceModule() {
               type="button"
               disabled={busy}
               onClick={() => void onUpload()}
-              className="w-full px-4 py-2.5 rounded-xl bg-[#1f4d3a] text-white text-sm font-semibold disabled:opacity-50"
+              className="w-full px-4 py-2.5 rounded-xl bg-[#635bdb] text-white text-sm font-semibold disabled:opacity-50"
             >
               {busy ? '…' : label('design.kb.index', 'Upload & Index')}
             </button>
@@ -588,7 +588,7 @@ export default function DesignIntelligenceModule() {
                 </div>
                 <div className="mt-2 h-2 overflow-hidden rounded-full bg-slate-200">
                   <div
-                    className="h-full rounded-full bg-[#1f4d3a] transition-[width] duration-200"
+                    className="h-full rounded-full bg-[#635bdb] transition-[width] duration-200"
                     style={{
                       width: `${Math.min(100, Math.max(0, kbUploadPercent))}%`,
                     }}
@@ -778,7 +778,7 @@ export default function DesignIntelligenceModule() {
             type="button"
             disabled={busy || !question.trim()}
             onClick={() => void onAsk()}
-            className="px-4 py-2.5 rounded-xl bg-[#1f4d3a] text-white text-sm font-semibold disabled:opacity-50"
+            className="px-4 py-2.5 rounded-xl bg-[#635bdb] text-white text-sm font-semibold disabled:opacity-50"
           >
             {label('design.rag.ask', 'Ask knowledge base')}
           </button>
@@ -1214,7 +1214,7 @@ export default function DesignIntelligenceModule() {
                   </div>
                   <div className="h-2 bg-gray-100 rounded overflow-hidden">
                     <div
-                      className={`h-full ${task.is_critical ? 'bg-rose-700' : 'bg-[#1f4d3a]'}`}
+                      className={`h-full ${task.is_critical ? 'bg-rose-700' : 'bg-[#635bdb]'}`}
                       style={{ width: `${Math.max(task.progress_percent, 4)}%` }}
                     />
                   </div>
@@ -1329,7 +1329,7 @@ export default function DesignIntelligenceModule() {
                 setLessonSolution('');
                 setMessage('Lesson saved — available as future project reference.');
               }}
-              className="px-4 py-2 rounded-xl bg-[#1f4d3a] text-white text-sm font-semibold"
+              className="px-4 py-2 rounded-xl bg-[#635bdb] text-white text-sm font-semibold"
             >
               Save lesson
             </button>

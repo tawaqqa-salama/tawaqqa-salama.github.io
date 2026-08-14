@@ -113,7 +113,7 @@ export function buildPrintHtml(
       grid-template-columns: 1fr 1.2fr 1fr;
       gap: 8px;
       align-items: center;
-      border-bottom: 2.5px solid #1f4d3a;
+      border-bottom: 2.5px solid #635bdb;
       padding-bottom: 8px;
       margin-bottom: 10px;
     }
@@ -132,7 +132,7 @@ export function buildPrintHtml(
       border-radius: 8px;
       font-size: 10px;
       font-weight: 700;
-      color: #1f4d3a;
+      color: #635bdb;
       text-align: center;
       padding: 4px;
     }
@@ -141,7 +141,7 @@ export function buildPrintHtml(
     .brand-name {
       font-size: 16px;
       font-weight: 800;
-      color: #1f4d3a;
+      color: #635bdb;
       margin: 0 0 4px;
       line-height: 1.3;
     }
@@ -199,7 +199,7 @@ export function buildPrintHtml(
       vertical-align: middle;
     }
     table.services th {
-      background: #1f4d3a;
+      background: #635bdb;
       color: #fff;
       font-size: 11px;
     }
@@ -252,7 +252,7 @@ export function buildPrintHtml(
     .panel h3 {
       margin: 0 0 6px;
       font-size: 12px;
-      color: #1f4d3a;
+      color: #635bdb;
       border-bottom: 1px solid #e2e8f0;
       padding-bottom: 4px;
     }

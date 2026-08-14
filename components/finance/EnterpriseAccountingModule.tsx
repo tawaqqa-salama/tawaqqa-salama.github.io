@@ -186,7 +186,7 @@ export default function EnterpriseAccountingModule() {
             onClick={() => setTab(item.id)}
             className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition ${
               tab === item.id
-                ? 'bg-[#1f4d3a] text-white'
+                ? 'bg-[#635bdb] text-white'
                 : 'bg-white border text-gray-600 hover:bg-emerald-50'
             }`}
           >
@@ -679,7 +679,7 @@ export default function EnterpriseAccountingModule() {
             <button
               type="button"
               onClick={runCopilot}
-              className="px-4 py-2 rounded-lg bg-[#1f4d3a] text-white text-sm font-semibold hover:bg-[#163828]"
+              className="px-4 py-2 rounded-lg bg-[#635bdb] text-white text-sm font-semibold hover:bg-[#4943b5]"
             >
               {L('اقترح قيداً', 'Suggest journal')}
             </button>

@@ -138,7 +138,7 @@ export function buildSupervisionReportHtml(params: {
       grid-template-columns: 1fr auto 1fr;
       gap: 8px;
       align-items: center;
-      border-bottom: 2px solid #1f4d3a;
+      border-bottom: 2px solid #635bdb;
       padding-bottom: 6px;
       margin-bottom: 8px;
     }
@@ -147,7 +147,7 @@ export function buildSupervisionReportHtml(params: {
       display: block;
     }
     .logo-fallback {
-      border: 1px solid #1f4d3a;
+      border: 1px solid #635bdb;
       display: flex; align-items: center; justify-content: center;
       font-size: 8px; text-align: center; padding: 2px;
     }
@@ -155,7 +155,7 @@ export function buildSupervisionReportHtml(params: {
     .title-block h1 {
       margin: 0;
       font-size: 14px;
-      color: #1f4d3a;
+      color: #635bdb;
     }
     .title-block p { margin: 2px 0 0; font-size: 9px; color: #444; }
     .office { text-align: left; font-size: 9px; }
@@ -174,7 +174,7 @@ export function buildSupervisionReportHtml(params: {
       gap: 6px;
       font-size: 9.5px;
     }
-    .meta .label { font-weight: 700; color: #1f4d3a; white-space: nowrap; }
+    .meta .label { font-weight: 700; color: #635bdb; white-space: nowrap; }
     .meta .value { flex: 1; border-bottom: 1px dotted #94a3b8; min-height: 14px; }
 
     .legend {
@@ -210,7 +210,7 @@ export function buildSupervisionReportHtml(params: {
       text-align: center;
     }
     table.progress th {
-      background: #1f4d3a;
+      background: #635bdb;
       color: #fff;
       font-weight: 700;
     }
@@ -235,7 +235,7 @@ export function buildSupervisionReportHtml(params: {
       font-weight: 700;
     }
     .overall span {
-      border: 1.5px solid #1f4d3a;
+      border: 1.5px solid #635bdb;
       padding: 4px 12px;
       background: #ecfdf5;
     }

@@ -776,7 +776,7 @@ export default function ProjectReportModal({
                                 requestAnimationFrame(() => onUpdated());
                               })();
                             }}
-                            className="px-3 py-2 rounded-xl bg-[#1f4d3a] text-white text-sm font-semibold disabled:opacity-60"
+                            className="px-3 py-2 rounded-xl bg-[#635bdb] text-white text-sm font-semibold disabled:opacity-60"
                           >
                             {saving ? 'جاري الحفظ...' : 'حفظ الزيارة كـ PDF مرفق'}
                           </button>
@@ -814,7 +814,7 @@ export default function ProjectReportModal({
                                     </span>
                                     <button
                                       type="button"
-                                      className="shrink-0 text-[#1f4d3a] font-semibold"
+                                      className="shrink-0 text-[#635bdb] font-semibold"
                                       onClick={() => {
                                         void openReportPdfSnapshot(snap).catch((err) =>
                                           setMessage(
@@ -890,7 +890,7 @@ export default function ProjectReportModal({
                               </span>
                               <button
                                 type="button"
-                                className="shrink-0 text-[#1f4d3a] font-semibold"
+                                className="shrink-0 text-[#635bdb] font-semibold"
                                 onClick={() => {
                                   void openReportPdfSnapshot(snap).catch((err) =>
                                     setMessage(
@@ -1150,7 +1150,7 @@ export default function ProjectReportModal({
                     type="button"
                     disabled={saving || blockers.length > 0}
                     onClick={() => void handleApproveAndProceed()}
-                    className="px-4 py-2.5 rounded-xl bg-[#1f4d3a] text-white text-sm font-bold disabled:opacity-50"
+                    className="px-4 py-2.5 rounded-xl bg-[#635bdb] text-white text-sm font-bold disabled:opacity-50"
                   >
                     {saving ? 'جاري الحفظ...' : approveButtonLabel}
                   </button>

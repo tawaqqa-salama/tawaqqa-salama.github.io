@@ -158,7 +158,7 @@ export default function DocumentPreviewSheet() {
           type="button"
           onClick={() => setMobileFit((v) => !v)}
           className={`touch-target flex-1 rounded-xl text-sm font-semibold border ${
-            mobileFit ? 'bg-[#1f4d3a] text-white border-[#1f4d3a]' : 'bg-white text-gray-700'
+            mobileFit ? 'bg-[#635bdb] text-white border-[#635bdb]' : 'bg-white text-gray-700'
           }`}
         >
           {mobileFit ? 'معاينة الجوال ✓' : 'معاينة الجوال'}

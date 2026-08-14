@@ -171,7 +171,7 @@ export default function SupervisionReportSection({
           <button
             type="button"
             onClick={handlePrint}
-            className="px-4 py-2 rounded-xl bg-[#1f4d3a] text-white text-sm font-semibold hover:bg-[#163828]"
+            className="px-4 py-2 rounded-xl bg-[#635bdb] text-white text-sm font-semibold hover:bg-[#4943b5]"
           >
             طباعة التقرير (PDF)
           </button>
@@ -345,7 +345,7 @@ export default function SupervisionReportSection({
         <button
           type="button"
           onClick={handlePrint}
-          className="px-3 py-1.5 rounded-lg bg-[#1f4d3a] text-white text-xs font-semibold"
+          className="px-3 py-1.5 rounded-lg bg-[#635bdb] text-white text-xs font-semibold"
         >
           طباعة التقرير (PDF)
         </button>
@@ -533,7 +533,7 @@ export default function SupervisionReportSection({
         <button
           type="button"
           onClick={handlePrint}
-          className="px-4 py-2 rounded-xl border border-[#1f4d3a] text-[#1f4d3a] text-sm font-semibold"
+          className="px-4 py-2 rounded-xl border border-[#635bdb] text-[#635bdb] text-sm font-semibold"
         >
           معاينة / طباعة
         </button>

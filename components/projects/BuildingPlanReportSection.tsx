@@ -164,7 +164,7 @@ export default function BuildingPlanReportSection({
             <button
               type="button"
               onClick={applyRecommendation}
-              className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-[#1f4d3a] text-white text-xs font-semibold hover:bg-[#163828] transition"
+              className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-[#635bdb] text-white text-xs font-semibold hover:bg-[#4943b5] transition"
             >
               تطبيق التوصية الموصى بها
             </button>
@@ -253,7 +253,7 @@ export default function BuildingPlanReportSection({
         <button type="button" onClick={saveDraft} disabled={saving} className="px-4 py-2 bg-gray-600 text-white rounded-xl text-sm disabled:opacity-50">
           {saving ? 'جاري الحفظ...' : 'حفظ كمسودة'}
         </button>
-        <button type="button" onClick={saveApproved} disabled={saving} className="px-4 py-2 bg-[#1f4d3a] text-white rounded-xl text-sm disabled:opacity-50">
+        <button type="button" onClick={saveApproved} disabled={saving} className="px-4 py-2 bg-[#635bdb] text-white rounded-xl text-sm disabled:opacity-50">
           اعتماد نهائي
         </button>
         <button type="button" onClick={() => printBuildingPlanReport(client, report)} className="px-4 py-2 bg-indigo-600 text-white rounded-xl text-sm">

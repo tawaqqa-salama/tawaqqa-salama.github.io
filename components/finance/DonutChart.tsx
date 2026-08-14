@@ -7,7 +7,7 @@ interface DonutChartProps {
   items: { label: string; value: number; color?: string }[];
 }
 
-const FALLBACK_COLORS = ['#1f4d3a', '#b8e986', '#6366f1', '#f59e0b', '#ec4899', '#14b8a6'];
+const FALLBACK_COLORS = ['#635bdb', '#a78bfa', '#6366f1', '#f59e0b', '#ec4899', '#14b8a6'];
 
 export default function DonutChart({ title, items }: DonutChartProps) {
   const { t } = useLanguage();

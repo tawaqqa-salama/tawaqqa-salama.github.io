@@ -124,7 +124,7 @@ export default function FinancialReportsPage() {
                     type="button"
                     disabled={!vatReturn}
                     onClick={() => vatReturn && exportVatReturnCsv(vatReturn)}
-                    className="px-3 py-1.5 rounded-lg bg-[#1f4d3a] text-white text-xs font-semibold disabled:opacity-50"
+                    className="px-3 py-1.5 rounded-lg bg-[#635bdb] text-white text-xs font-semibold disabled:opacity-50"
                   >
                     تصدير CSV للإقرار
                   </button>

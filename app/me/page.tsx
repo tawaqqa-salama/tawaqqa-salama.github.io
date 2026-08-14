@@ -32,7 +32,7 @@ export default function MyPage() {
 
   return (
     <div className="space-y-6">
-      <section className="rounded-2xl bg-gradient-to-l from-[#1f4d3a] to-[#2f6b4f] text-white p-6 md:p-8">
+      <section className="rounded-2xl bg-gradient-to-l from-[#635bdb] to-[#252050] text-white p-6 md:p-8">
         <p className="text-sm text-white/70">{t('me.myPage')}</p>
         <h1 className="text-2xl md:text-3xl font-bold mt-1">{pageTitle}</h1>
         <p className="mt-2 text-white/85 max-w-2xl">{pageBio}</p>
@@ -62,7 +62,7 @@ export default function MyPage() {
         <div className="flex items-center justify-between mb-3 gap-3">
           <h2 className="text-lg font-bold text-gray-800">{t('me.mySections')}</h2>
           {canManageStaff && (
-            <Link href="/settings/users" className="text-sm font-semibold text-[#1f4d3a] hover:underline">
+            <Link href="/settings/users" className="text-sm font-semibold text-[#635bdb] hover:underline">
               {t('me.manageStaff')}
             </Link>
           )}
@@ -75,7 +75,7 @@ export default function MyPage() {
               <Link
                 key={module.href}
                 href={module.href}
-                className="bg-white border border-gray-200 rounded-xl p-5 hover:border-[#1f4d3a]/40 hover:shadow-sm transition"
+                className="bg-white border border-gray-200 rounded-xl p-5 hover:border-[#635bdb]/40 hover:shadow-sm transition"
               >
                 <div className="flex items-start gap-3">
                   <span className="text-2xl">{module.icon}</span>
@@ -102,7 +102,7 @@ export default function MyPage() {
           {t('me.customLinkHint')}{' '}
           <Link
             href={`/u/?username=${profile.username}`}
-            className="font-mono text-[#1f4d3a] hover:underline isolate-ltr inline-block"
+            className="font-mono text-[#635bdb] hover:underline isolate-ltr inline-block"
           >
             /u/?username={profile.username}
           </Link>

@@ -1098,7 +1098,7 @@ export default function ClientDetailModal({
                 type="button"
                 disabled={saving}
                 onClick={() => void handleSaveBasic()}
-                className="w-full md:w-auto bg-[#1f4d3a] text-white rounded-xl px-5 py-2.5 font-semibold disabled:opacity-60"
+                className="w-full md:w-auto bg-[#635bdb] text-white rounded-xl px-5 py-2.5 font-semibold disabled:opacity-60"
               >
                 {saving ? 'جاري الحفظ...' : 'حفظ البيانات الأساسية'}
               </button>
@@ -1286,7 +1286,7 @@ export default function ClientDetailModal({
                     setPromptInvoice(null);
                     setInvoicePromptOpen(true);
                   }}
-                  className="px-4 py-2 bg-[#1f4d3a] text-white rounded-xl text-sm font-semibold disabled:opacity-50"
+                  className="px-4 py-2 bg-[#635bdb] text-white rounded-xl text-sm font-semibold disabled:opacity-50"
                 >
                   اصدار فاتورة جديدة
                 </button>

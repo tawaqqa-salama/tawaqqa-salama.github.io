@@ -105,7 +105,7 @@ export function buildSafetyDeliveryLetterHtml(params: {
       grid-template-columns: 1fr 1.25fr 1fr;
       gap: 6px;
       align-items: start;
-      border-bottom: 2px solid #1f4d3a;
+      border-bottom: 2px solid #635bdb;
       padding-bottom: 6px;
       margin-bottom: 7px;
     }
@@ -118,9 +118,9 @@ export function buildSafetyDeliveryLetterHtml(params: {
     .logo-fallback {
       border: 1px solid #cbd5e1; border-radius: 6px;
       display: flex; align-items: center; justify-content: center;
-      font-size: 8px; font-weight: 800; color: #1f4d3a; padding: 3px;
+      font-size: 8px; font-weight: 800; color: #635bdb; padding: 3px;
     }
-    .brand { margin: 0; font-size: 12px; font-weight: 900; color: #1f4d3a; }
+    .brand { margin: 0; font-size: 12px; font-weight: 900; color: #635bdb; }
     .doc-title { margin: 2px 0 0; font-size: 13px; font-weight: 900; }
     .left { text-align: left; }
     .addressee {
@@ -130,8 +130,8 @@ export function buildSafetyDeliveryLetterHtml(params: {
     .addressee p { margin: 0 0 2px; }
     .preamble { margin: 0 0 6px; text-align: justify; }
     h3 {
-      margin: 0 0 3px; font-size: 10px; color: #1f4d3a;
-      border-right: 3px solid #1f4d3a; padding-right: 5px;
+      margin: 0 0 3px; font-size: 10px; color: #635bdb;
+      border-right: 3px solid #635bdb; padding-right: 5px;
     }
     table.grid, table.scope {
       width: 100%; border-collapse: collapse; margin: 0 0 6px;

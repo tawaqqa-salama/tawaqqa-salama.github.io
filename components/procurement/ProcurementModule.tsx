@@ -230,7 +230,7 @@ export default function ProcurementModule() {
             if (next === 'vendors') setVendorForm((f) => ({ ...f, vendor_type: 'supplier' }));
             if (next === 'subcontractors') setVendorForm((f) => ({ ...f, vendor_type: 'subcontractor' }));
           }}
-          activeClassName="bg-[#1f4d3a] text-white shadow-sm"
+          activeClassName="bg-[#635bdb] text-white shadow-sm"
           idleClassName="bg-white border border-gray-200 text-gray-800"
           items={[
             { id: 'vendors', label: t('procurement.tab.vendors') },
@@ -296,7 +296,7 @@ export default function ProcurementModule() {
               type="button"
               disabled={busy}
               onClick={() => void saveVendor()}
-              className="w-full px-4 py-2.5 rounded-xl bg-[#1f4d3a] text-white text-sm font-semibold disabled:opacity-50"
+              className="w-full px-4 py-2.5 rounded-xl bg-[#635bdb] text-white text-sm font-semibold disabled:opacity-50"
             >
               {t('procurement.vendor.save')}
             </button>
@@ -333,7 +333,7 @@ export default function ProcurementModule() {
                       <td className="p-3" data-label={t('procurement.col.action')}>
                         <button
                           type="button"
-                          className="text-xs font-semibold text-[#1f4d3a] underline"
+                          className="text-xs font-semibold text-[#635bdb] underline"
                           onClick={() => openVendorEditor(v.vendor_type, v)}
                         >
                           {t('procurement.action.edit')}
@@ -430,7 +430,7 @@ export default function ProcurementModule() {
               type="button"
               disabled={busy}
               onClick={() => void saveOrder()}
-              className="w-full px-4 py-2.5 rounded-xl bg-[#1f4d3a] text-white text-sm font-semibold disabled:opacity-50"
+              className="w-full px-4 py-2.5 rounded-xl bg-[#635bdb] text-white text-sm font-semibold disabled:opacity-50"
             >
               {t('procurement.po.create')}
             </button>
@@ -534,7 +534,7 @@ export default function ProcurementModule() {
                 type="button"
                 disabled={busy}
                 onClick={() => void createBoqRfq()}
-                className="w-full px-4 py-2.5 rounded-xl bg-[#1f4d3a] text-white text-sm font-semibold disabled:opacity-50"
+                className="w-full px-4 py-2.5 rounded-xl bg-[#635bdb] text-white text-sm font-semibold disabled:opacity-50"
               >
                 {t('procurement.rfq.convert')}
               </button>
@@ -586,7 +586,7 @@ export default function ProcurementModule() {
                       <td className="p-3" data-label={t('procurement.rfq.col.action')}>
                         <button
                           type="button"
-                          className="text-xs font-semibold text-[#1f4d3a] underline"
+                          className="text-xs font-semibold text-[#635bdb] underline"
                           onClick={() => {
                             void upsertRfq({ ...r, status: 'sent' }).then(() => {
                               setMessage(t('procurement.rfq.markedSent', { number: r.rfq_number }));

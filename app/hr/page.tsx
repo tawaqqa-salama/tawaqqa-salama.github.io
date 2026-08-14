@@ -257,7 +257,7 @@ export default function HRPage() {
           ariaLabel={t('subnav.hr')}
           activeId={tab}
           onChange={(id) => setTab(id as 'employees' | 'assignments')}
-          activeClassName="bg-[#1f4d3a] text-white shadow-sm"
+          activeClassName="bg-[#635bdb] text-white shadow-sm"
           idleClassName="bg-white border border-gray-200 text-gray-700"
           items={[
             { id: 'employees', label: t('hr.tab.employees') },
@@ -357,7 +357,7 @@ export default function HRPage() {
                 <button
                   type="submit"
                   disabled={busy}
-                  className="flex-1 bg-[#1f4d3a] text-white rounded-xl py-2.5 font-semibold disabled:opacity-60"
+                  className="flex-1 bg-[#635bdb] text-white rounded-xl py-2.5 font-semibold disabled:opacity-60"
                 >
                   {busy ? 'جاري الحفظ...' : form.id ? 'حفظ التعديل' : 'إضافة الموظف'}
                 </button>
@@ -414,7 +414,7 @@ export default function HRPage() {
                             <p>{user.job_title || '—'}</p>
                             <p className="text-xs text-gray-500">{user.role_code}</p>
                           </td>
-                          <td className="p-3 font-semibold text-[#1f4d3a]">
+                          <td className="p-3 font-semibold text-[#635bdb]">
                             {user.salary != null ? formatCurrency(user.salary) : '—'}
                           </td>
                           <td className="p-3">
@@ -437,7 +437,7 @@ export default function HRPage() {
                             <button
                               type="button"
                               onClick={() => editEmployee(user)}
-                              className="text-[#1f4d3a] font-semibold hover:underline"
+                              className="text-[#635bdb] font-semibold hover:underline"
                             >
                               تفاصيل
                             </button>

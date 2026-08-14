@@ -46,7 +46,7 @@ export default function FollowUpModal({ clientName, isOpen, isSubmitting, onClos
           <button
             onClick={() => onSubmit({ follow_up_date: followUpDate, contact_method: contactMethod, notes })}
             disabled={isSubmitting}
-            className="px-4 py-2 bg-[#1f4d3a] text-white rounded-xl text-sm disabled:opacity-50"
+            className="px-4 py-2 bg-[#635bdb] text-white rounded-xl text-sm disabled:opacity-50"
           >
             {isSubmitting ? 'جاري الحفظ...' : 'حفظ المتابعة'}
           </button>

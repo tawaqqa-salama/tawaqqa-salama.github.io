@@ -13,7 +13,7 @@ interface BarChartPanelProps {
 export default function BarChartPanel({
   title,
   items,
-  colorClass = 'bg-[#1f4d3a]',
+  colorClass = 'bg-[#635bdb]',
   valueFormatter = (v) => String(v),
 }: BarChartPanelProps) {
   const { t } = useLanguage();
@@ -61,7 +61,7 @@ export function IncomeBarChart({
       <h3 className="font-bold text-gray-800 text-sm mb-4">{t('finance.chart.incomeSummary')}</h3>
       <div className="space-y-4">
         <BarRow label={t('finance.chart.revenue')} value={revenue} max={max} color="bg-[#6366f1]" />
-        <BarRow label={t('finance.chart.expenses')} value={expenses} max={max} color="bg-[#1f4d3a]" />
+        <BarRow label={t('finance.chart.expenses')} value={expenses} max={max} color="bg-[#635bdb]" />
         <div className="pt-2 border-t flex justify-between text-xs">
           <span className="text-gray-500">{t('finance.chart.netIncome')}</span>
           <span

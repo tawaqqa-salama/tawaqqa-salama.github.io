@@ -103,7 +103,7 @@ export function buildBuildingPlanPrintHtml(
     .head .brand {
       font-size: 11px;
       font-weight: 700;
-      color: #1f4d3a;
+      color: #635bdb;
       margin: 0 0 1px;
     }
 
@@ -219,7 +219,7 @@ export function buildBuildingPlanPrintHtml(
     }
 
     table.cert th {
-      background: #1f4d3a;
+      background: #635bdb;
       color: #fff;
       font-size: 10px;
       text-align: center;
@@ -256,12 +256,12 @@ export function buildBuildingPlanPrintHtml(
       width: 46px;
       height: 46px;
       margin: 1px auto 2px;
-      border: 1.5px dashed #1f4d3a;
+      border: 1.5px dashed #635bdb;
       border-radius: 50%;
       display: flex;
       align-items: center;
       justify-content: center;
-      color: #1f4d3a;
+      color: #635bdb;
       font-size: 8px;
       font-weight: 700;
       line-height: 1.15;

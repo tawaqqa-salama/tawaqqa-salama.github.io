@@ -123,7 +123,7 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
 
   if (loading) {
     return (
-      <div className="min-h-screen w-full flex items-center justify-center bg-[#eef2ef] text-[#1f4d3a]">
+      <div className="min-h-screen w-full flex items-center justify-center bg-[#eef2ef] text-[#635bdb]">
         {t('shell.checkingSession')}
       </div>
     );

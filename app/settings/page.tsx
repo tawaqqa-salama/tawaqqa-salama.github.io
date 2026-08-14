@@ -64,7 +64,7 @@ export default function SettingsPage() {
             {item.enabled && item.href ? (
               <Link
                 href={item.href}
-                className="inline-flex text-sm font-semibold text-[#1f4d3a] hover:underline"
+                className="inline-flex text-sm font-semibold text-[#635bdb] hover:underline"
               >
                 فتح ←
               </Link>

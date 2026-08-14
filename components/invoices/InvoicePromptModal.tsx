@@ -36,7 +36,7 @@ export default function InvoicePromptModal({
     <div className="fixed inset-0 z-[80] flex items-center justify-center bg-black/40 p-4">
       <div className="w-full max-w-lg rounded-2xl bg-white shadow-xl border border-gray-100 overflow-hidden">
         <div className="px-5 py-4 border-b bg-[#f0f7f3]">
-          <h2 className="text-lg font-bold text-[#1f4d3a]">{title}</h2>
+          <h2 className="text-lg font-bold text-[#635bdb]">{title}</h2>
           <p className="text-sm text-gray-600 mt-1">{message}</p>
         </div>
 
@@ -85,7 +85,7 @@ export default function InvoicePromptModal({
               type="button"
               disabled={loading}
               onClick={onIssue}
-              className="px-3 py-2 rounded-xl bg-[#1f4d3a] text-white text-sm font-semibold disabled:opacity-50"
+              className="px-3 py-2 rounded-xl bg-[#635bdb] text-white text-sm font-semibold disabled:opacity-50"
             >
               {loading ? 'جاري الإصدار...' : issueLabel}
             </button>
@@ -113,7 +113,7 @@ export default function InvoicePromptModal({
               <button
                 type="button"
                 onClick={onPreview}
-                className="px-3 py-2 rounded-xl bg-[#1f4d3a] text-white text-sm font-semibold"
+                className="px-3 py-2 rounded-xl bg-[#635bdb] text-white text-sm font-semibold"
               >
                 استعراض وطباعة
               </button>

@@ -63,7 +63,7 @@ export default function FinanceDashboardPage() {
         </div>
         <Link
           href="/finance/journal"
-          className="inline-flex items-center justify-center px-4 py-2 bg-[#1f4d3a] text-white rounded-lg text-sm font-semibold hover:bg-[#163828] transition"
+          className="inline-flex items-center justify-center px-4 py-2 bg-[#635bdb] text-white rounded-lg text-sm font-semibold hover:bg-[#4943b5] transition"
         >
           {t('finance.page.newJournal')}
         </Link>
@@ -98,7 +98,7 @@ export default function FinanceDashboardPage() {
 
       <div className="grid grid-cols-1 xl:grid-cols-3 gap-4">
         <DonutChart title={t('finance.chart.byCostCenter')} items={costItems} />
-        <BarChartPanel title={t('finance.chart.byType')} items={typeItems} colorClass="bg-[#1f4d3a]" />
+        <BarChartPanel title={t('finance.chart.byType')} items={typeItems} colorClass="bg-[#635bdb]" />
         <IncomeBarChart revenue={stats.incomeSummary.revenue} expenses={stats.incomeSummary.expenses} />
       </div>
 
@@ -157,7 +157,7 @@ export default function FinanceDashboardPage() {
             </div>
             <div className="flex justify-between">
               <span className="text-gray-500">{t('finance.vat.output')}</span>
-              <span className="font-mono font-semibold text-[#1f4d3a]">
+              <span className="font-mono font-semibold text-[#635bdb]">
                 {formatCurrency(stats.vatSummary.outputVat)}
               </span>
             </div>
@@ -167,7 +167,7 @@ export default function FinanceDashboardPage() {
             </div>
             <Link
               href="/finance/reports"
-              className="block text-center text-xs text-[#1f4d3a] font-semibold hover:underline pt-2"
+              className="block text-center text-xs text-[#635bdb] font-semibold hover:underline pt-2"
             >
               {t('finance.vat.fullReport')}
             </Link>

@@ -142,16 +142,16 @@ export function buildContractPrintHtml(
     .sheet { width: 100%; max-width: 190mm; margin: 0 auto; }
     .header {
       display: grid; grid-template-columns: 58px 1fr 72px; gap: 6px;
-      align-items: center; border-bottom: 2px solid #1f4d3a;
+      align-items: center; border-bottom: 2px solid #635bdb;
       padding-bottom: 5px; margin-bottom: 6px;
     }
     .logo, .logo-fallback { width: 54px; height: 54px; object-fit: contain; }
     .logo-fallback {
       border: 1px solid #cbd5e1; border-radius: 6px; display: flex; align-items: center;
-      justify-content: center; text-align: center; font-size: 8px; font-weight: 700; color: #1f4d3a; padding: 3px;
+      justify-content: center; text-align: center; font-size: 8px; font-weight: 700; color: #635bdb; padding: 3px;
     }
     .head-center { text-align: center; }
-    .brand { margin: 0; font-size: 13px; font-weight: 800; color: #1f4d3a; }
+    .brand { margin: 0; font-size: 13px; font-weight: 800; color: #635bdb; }
     .doc-title { margin: 2px 0 0; font-size: 18px; font-weight: 900; color: #0f172a; }
     .license { text-align: left; font-size: 8.5px; color: #334155; line-height: 1.35; }
     .meta {
@@ -161,8 +161,8 @@ export function buildContractPrintHtml(
     }
     .section { margin: 0 0 6px; }
     .section h3 {
-      margin: 0 0 3px; font-size: 11px; color: #1f4d3a;
-      border-right: 3px solid #1f4d3a; padding-right: 6px;
+      margin: 0 0 3px; font-size: 11px; color: #635bdb;
+      border-right: 3px solid #635bdb; padding-right: 6px;
     }
     .section p { margin: 0; }
     .party-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; }
@@ -184,7 +184,7 @@ export function buildContractPrintHtml(
     .money-table th, .money-table td {
       border: 1px solid #94a3b8; padding: 3px 6px; text-align: right;
     }
-    .money-table th { background: #1f4d3a; color: #fff; }
+    .money-table th { background: #635bdb; color: #fff; }
     .money-table .due { background: #e8f5ef; font-weight: 800; }
     .words {
       margin-top: 4px; padding: 4px 7px; border-radius: 6px;

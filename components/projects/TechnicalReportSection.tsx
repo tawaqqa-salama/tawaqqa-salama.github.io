@@ -151,7 +151,7 @@ export default function TechnicalReportSection({
             type="button"
             disabled={saving}
             onClick={onSave}
-            className="px-3 py-2 rounded-lg bg-[#1f4d3a] text-white text-sm font-semibold disabled:opacity-60"
+            className="px-3 py-2 rounded-lg bg-[#635bdb] text-white text-sm font-semibold disabled:opacity-60"
           >
             {saving ? 'جاري الحفظ...' : 'حفظ التقرير'}
           </button>
@@ -165,7 +165,7 @@ export default function TechnicalReportSection({
             type="button"
             onClick={() => setChapter(item.id)}
             className={`px-3 py-1.5 rounded-full text-xs font-semibold border ${
-              chapter === item.id ? 'bg-[#1f4d3a] text-white border-[#1f4d3a]' : 'bg-white text-gray-700'
+              chapter === item.id ? 'bg-[#635bdb] text-white border-[#635bdb]' : 'bg-white text-gray-700'
             }`}
           >
             {index + 1}. {item.title}
@@ -176,7 +176,7 @@ export default function TechnicalReportSection({
       {chapter === 'facility' && (
         <div className="space-y-4">
           <section className="bg-emerald-50/60 border border-emerald-100 rounded-xl p-4">
-            <h4 className="font-bold text-[#1f4d3a] mb-3">بيانات المنشأة العامة (تلقائي من التسويق/المبيعات)</h4>
+            <h4 className="font-bold text-[#635bdb] mb-3">بيانات المنشأة العامة (تلقائي من التسويق/المبيعات)</h4>
             <div className="grid grid-cols-1 md:grid-cols-2 gap-3 text-sm">
               <ReadOnly label="اسم المنشأة" value={facility.business_name} />
               <ReadOnly label="النشاط" value={facility.activity_label} />
@@ -215,7 +215,7 @@ export default function TechnicalReportSection({
               <ReadOnly label="تصنيف المبنى (تلقائي من SBC حسب المناطق)" value={report.building_classification || '—'} />
               <ReadOnly label="تصنيف الخطورة (تلقائي من المناطق)" value={report.risk_class || '—'} />
             </div>
-            <button type="button" className="text-xs font-semibold text-[#1f4d3a]" onClick={() => onChange(applyAutoClassification(report, client))}>
+            <button type="button" className="text-xs font-semibold text-[#635bdb]" onClick={() => onChange(applyAutoClassification(report, client))}>
               إعادة حساب التصنيف من المناطق
             </button>
             <label className="block text-sm">
@@ -267,7 +267,7 @@ export default function TechnicalReportSection({
                 const photos = (report.code_proofs_by_key || {})[card.id] || [];
                 return (
                   <div key={card.id} className="border rounded-xl overflow-hidden">
-                    <div className="bg-[#1f4d3a] text-white px-3 py-2 text-sm font-bold">{card.title}</div>
+                    <div className="bg-[#635bdb] text-white px-3 py-2 text-sm font-bold">{card.title}</div>
                     <div className="px-3 py-2 text-sm font-semibold text-[#c0392b] bg-rose-50">{card.subtitle}</div>
                     <table className="w-full text-sm">
                       <tbody>
@@ -284,7 +284,7 @@ export default function TechnicalReportSection({
                     <div className="px-3 py-2 border-t bg-white space-y-2">
                       <div className="flex items-center justify-between">
                         <p className="text-xs font-semibold text-gray-700">صورة مقطع الكود تحت هذا الإثبات</p>
-                        <label className="text-xs font-semibold text-[#1f4d3a] cursor-pointer">
+                        <label className="text-xs font-semibold text-[#635bdb] cursor-pointer">
                           + صورة مقصوصة
                           <input
                             type="file"
@@ -327,10 +327,10 @@ export default function TechnicalReportSection({
         <div className="space-y-3">
           {chapter === 'firefighting' && zoneNeeds.length > 0 && (
             <section className="rounded-xl border border-emerald-200 bg-emerald-50/70 p-4 space-y-2">
-              <h4 className="font-bold text-[#1f4d3a] text-sm">توزيع أنظمة الإطفاء حسب الأدوار والمناطق</h4>
+              <h4 className="font-bold text-[#635bdb] text-sm">توزيع أنظمة الإطفاء حسب الأدوار والمناطق</h4>
               <div className="overflow-x-auto">
                 <table className="w-full text-xs bg-white rounded-lg overflow-hidden">
-                  <thead className="bg-emerald-100 text-[#1f4d3a]">
+                  <thead className="bg-emerald-100 text-[#635bdb]">
                     <tr>
                       <th className="p-2 text-right">الدور</th>
                       <th className="p-2 text-right">المنطقة</th>
@@ -408,7 +408,7 @@ export default function TechnicalReportSection({
                           <span className="text-sm text-gray-600">نقاط فنية ومواصفات (مختصرة)</span>
                           <button
                             type="button"
-                            className="text-xs font-semibold text-[#1f4d3a] border border-[#1f4d3a]/20 rounded-lg px-2 py-1"
+                            className="text-xs font-semibold text-[#635bdb] border border-[#635bdb]/20 rounded-lg px-2 py-1"
                             onClick={() => {
                               const draft = buildSpecBullets(item.selectedOptions);
                               updateItemList(bundle.key, item.id, (row) => ({
@@ -449,7 +449,7 @@ export default function TechnicalReportSection({
                       <div>
                         <div className="flex items-center justify-between mb-2">
                           <p className="text-sm font-semibold text-gray-700">صور البند / الملاحظة</p>
-                          <label className="text-xs font-semibold text-[#1f4d3a] cursor-pointer">
+                          <label className="text-xs font-semibold text-[#635bdb] cursor-pointer">
                             + صورة
                             <input type="file" accept="image/*" className="hidden" onChange={(e) => void uploadPhoto(e.target.files?.[0] || null, (photo) => updateItemList(bundle.key, item.id, (row) => ({ ...row, photos: [...row.photos, photo] })))} />
                           </label>

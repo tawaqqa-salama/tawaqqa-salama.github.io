@@ -131,7 +131,7 @@ export function buildCdCoverLetterHtml(params: {
       grid-template-columns: 1.1fr 1.4fr 1.1fr;
       gap: 10px;
       align-items: start;
-      border-bottom: 2.5px solid #1f4d3a;
+      border-bottom: 2.5px solid #635bdb;
       padding-bottom: 10px;
       margin-bottom: 14px;
     }
@@ -160,14 +160,14 @@ export function buildCdCoverLetterHtml(params: {
       text-align: center;
       font-size: 8pt;
       font-weight: 800;
-      color: #1f4d3a;
+      color: #635bdb;
       padding: 4px;
     }
     .brand {
       margin: 0;
       font-size: 11.5pt;
       font-weight: 800;
-      color: #1f4d3a;
+      color: #635bdb;
       line-height: 1.35;
     }
     .doc-title {
@@ -259,7 +259,7 @@ export function buildCdCoverLetterHtml(params: {
     .sig-title {
       font-weight: 800;
       margin-bottom: 6px;
-      color: #1f4d3a;
+      color: #635bdb;
       font-size: 11.5pt;
     }
     .sig-name {

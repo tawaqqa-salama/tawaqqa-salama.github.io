@@ -63,7 +63,7 @@ export default function ActivityRequirementsPanel({
             {result.buildingArea ? `${result.buildingArea.toLocaleString('ar-SA')} م²` : '—'}
           </p>
         </div>
-        <span className="text-[11px] font-semibold px-2 py-1 rounded-lg bg-[#1f4d3a]/10 text-[#1f4d3a]">
+        <span className="text-[11px] font-semibold px-2 py-1 rounded-lg bg-[#635bdb]/10 text-[#635bdb]">
           SBC 801 / 201
         </span>
       </div>

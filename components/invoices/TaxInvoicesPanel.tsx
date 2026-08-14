@@ -118,7 +118,7 @@ export default function TaxInvoicesPanel({
             type="button"
             disabled={busy || !activeClient}
             onClick={() => void handleGenerate()}
-            className="px-4 py-2.5 rounded-xl bg-[#1f4d3a] text-white text-sm font-semibold disabled:opacity-50"
+            className="px-4 py-2.5 rounded-xl bg-[#635bdb] text-white text-sm font-semibold disabled:opacity-50"
           >
             اصدار فاتورة جديدة
           </button>
@@ -167,7 +167,7 @@ export default function TaxInvoicesPanel({
                       type="button"
                       disabled={busy}
                       onClick={() => void handleGenerate(m.id.startsWith('local-') || m.id.startsWith('demo-') ? undefined : m.id)}
-                      className="text-[#1f4d3a] font-semibold underline disabled:opacity-50"
+                      className="text-[#635bdb] font-semibold underline disabled:opacity-50"
                     >
                       إصدار فاتورة هذه الدفعة
                     </button>

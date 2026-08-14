@@ -95,12 +95,12 @@ export default function ComplianceMatrixPanel({ client, data, onChange }: Props)
   return (
     <section
       id="sbc-compliance-matrix"
-      className="rounded-xl border border-[#1f4d3a]/30 bg-white p-4 space-y-3"
+      className="rounded-xl border border-[#635bdb]/30 bg-white p-4 space-y-3"
       dir="rtl"
     >
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div>
-          <h3 className="font-bold text-[#1f4d3a] text-lg">مصفوفة تقييم المطابقة الكودية (SBC 201 / SBC 801)</h3>
+          <h3 className="font-bold text-[#635bdb] text-lg">مصفوفة تقييم المطابقة الكودية (SBC 201 / SBC 801)</h3>
           <p className="text-xs text-gray-600 mt-1 leading-relaxed max-w-3xl">
             {COMPLIANCE_ASSESSMENT_DISCLAIMER_AR}
           </p>
@@ -258,7 +258,7 @@ export default function ComplianceMatrixPanel({ client, data, onChange }: Props)
           <button
             type="button"
             onClick={applyOverride}
-            className="rounded-lg bg-[#1f4d3a] text-white text-xs font-semibold px-3 py-2"
+            className="rounded-lg bg-[#635bdb] text-white text-xs font-semibold px-3 py-2"
           >
             تسجيل تجاوز هندسي → effective PASS
           </button>

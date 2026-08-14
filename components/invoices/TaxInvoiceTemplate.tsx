@@ -88,7 +88,7 @@ export function buildTaxInvoiceHtml(
     .sheet { width: 100%; max-width: 192mm; margin: 0 auto; }
     .top {
       display: grid; grid-template-columns: 1fr 1.3fr 120px; gap: 8px;
-      border-bottom: 2px solid #1f4d3a; padding-bottom: 8px; margin-bottom: 8px;
+      border-bottom: 2px solid #635bdb; padding-bottom: 8px; margin-bottom: 8px;
       align-items: start;
     }
     .logo, .logo-fallback {
@@ -97,10 +97,10 @@ export function buildTaxInvoiceHtml(
     .logo-fallback {
       border: 1px solid #cbd5e1; border-radius: 8px;
       display: flex; align-items: center; justify-content: center;
-      font-size: 8px; font-weight: 800; color: #1f4d3a; text-align: center; padding: 4px;
+      font-size: 8px; font-weight: 800; color: #635bdb; text-align: center; padding: 4px;
     }
     .brand { text-align: center; }
-    .brand h1 { margin: 0; font-size: 15px; color: #1f4d3a; }
+    .brand h1 { margin: 0; font-size: 15px; color: #635bdb; }
     .brand .sub { margin: 2px 0 0; font-size: 9px; color: #64748b; }
     .meta { font-size: 9px; line-height: 1.45; }
     .meta div { margin-bottom: 1px; }
@@ -117,13 +117,13 @@ export function buildTaxInvoiceHtml(
     .box {
       border: 1px solid #cbd5e1; border-radius: 6px; padding: 6px 8px; background: #f8fafc;
     }
-    .box h3 { margin: 0 0 4px; font-size: 10px; color: #1f4d3a; }
+    .box h3 { margin: 0 0 4px; font-size: 10px; color: #635bdb; }
     .box p { margin: 0 0 2px; }
     table.lines { width: 100%; border-collapse: collapse; margin: 0 0 8px; }
     table.lines th, table.lines td {
       border: 1px solid #64748b; padding: 4px 5px; vertical-align: middle;
     }
-    table.lines th { background: #1f4d3a; color: #fff; font-size: 9px; }
+    table.lines th { background: #635bdb; color: #fff; font-size: 9px; }
     td.num, th.num { text-align: center; width: 28px; }
     td.price { text-align: left; font-variant-numeric: tabular-nums; white-space: nowrap; }
     .totals {

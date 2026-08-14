@@ -54,7 +54,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
       <head>
         <script dangerouslySetInnerHTML={{ __html: localeBootScript }} />
       </head>
-      <body className="bg-[#f0f2f5] flex h-screen overflow-hidden overflow-x-hidden app-body-font">
+      <body className="bg-[#f6f7fb] flex h-screen overflow-hidden overflow-x-hidden app-body-font">
         <LanguageProvider>
           <AuthProvider>
             <SwrProvider>

@@ -98,7 +98,7 @@ export default function BankReconciliationPanel() {
           type="button"
           disabled={busy || !bankId}
           onClick={() => void onImport()}
-          className="px-3 py-1.5 rounded-lg bg-[#1f4d3a] text-white text-xs font-semibold disabled:opacity-50"
+          className="px-3 py-1.5 rounded-lg bg-[#635bdb] text-white text-xs font-semibold disabled:opacity-50"
         >
           استيراد الحركات
         </button>

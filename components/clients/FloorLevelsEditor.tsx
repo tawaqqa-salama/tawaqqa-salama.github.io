@@ -73,7 +73,7 @@ export default function FloorLevelsEditor({ levels, onChange, maxFloors }: Floor
         <button
           type="button"
           onClick={() => addLevel(levels.length === 0 ? 'ground' : 'typical')}
-          className="text-xs font-semibold text-[#1f4d3a] bg-emerald-50 border border-emerald-100 rounded-lg px-3 py-1.5 hover:bg-emerald-100"
+          className="text-xs font-semibold text-[#635bdb] bg-emerald-50 border border-emerald-100 rounded-lg px-3 py-1.5 hover:bg-emerald-100"
         >
           + إضافة دور
         </button>

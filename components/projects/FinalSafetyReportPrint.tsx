@@ -128,12 +128,12 @@ export function buildFinalSafetyReportHtml(params: {
     .page-break { page-break-after: always; }
     .page-break:last-child { page-break-after: auto; }
     .cover {
-      border: 2px solid #1f4d3a; border-radius: 8px; padding: 16px;
+      border: 2px solid #635bdb; border-radius: 8px; padding: 16px;
       min-height: 240mm; display: flex; flex-direction: column;
     }
     .cover-top {
       display: grid; grid-template-columns: 1fr 1.2fr 1fr;
-      gap: 8px; align-items: start; border-bottom: 2px solid #1f4d3a;
+      gap: 8px; align-items: start; border-bottom: 2px solid #635bdb;
       padding-bottom: 10px; margin-bottom: 18px;
     }
     .meta div { margin: 0 0 4px; font-size: 10px; }
@@ -144,24 +144,24 @@ export function buildFinalSafetyReportHtml(params: {
     .logo-fallback {
       border: 1px solid #cbd5e1; border-radius: 8px;
       display: flex; align-items: center; justify-content: center;
-      font-size: 10px; font-weight: 800; color: #1f4d3a; padding: 4px;
+      font-size: 10px; font-weight: 800; color: #635bdb; padding: 4px;
     }
-    .brand { margin: 0; font-size: 14px; font-weight: 900; color: #1f4d3a; }
+    .brand { margin: 0; font-size: 14px; font-weight: 900; color: #635bdb; }
     .doc-title { margin: 6px 0 0; font-size: 22px; font-weight: 900; color: #143528; }
     .subtitle { margin: 4px 0 0; font-size: 12px; color: #475569; }
     .cover-body { flex: 1; display: flex; flex-direction: column; justify-content: center; gap: 10px; }
     .cover-card {
       border: 1px solid #cbd5e1; border-radius: 8px; padding: 12px 14px; background: #f8fafc;
     }
-    .cover-card h2 { margin: 0 0 6px; font-size: 13px; color: #1f4d3a; }
+    .cover-card h2 { margin: 0 0 6px; font-size: 13px; color: #635bdb; }
     .cover-card p { margin: 0 0 4px; font-size: 12px; }
     .big-result {
-      text-align: center; font-size: 18px; font-weight: 900; color: #1f4d3a;
-      padding: 14px; border: 2px dashed #1f4d3a; border-radius: 10px; margin-top: 12px;
+      text-align: center; font-size: 18px; font-weight: 900; color: #635bdb;
+      padding: 14px; border: 2px dashed #635bdb; border-radius: 10px; margin-top: 12px;
     }
     h2 {
-      margin: 0 0 8px; font-size: 14px; color: #1f4d3a;
-      border-right: 4px solid #1f4d3a; padding-right: 8px;
+      margin: 0 0 8px; font-size: 14px; color: #635bdb;
+      border-right: 4px solid #635bdb; padding-right: 8px;
     }
     table.systems {
       width: 100%; border-collapse: collapse; margin: 0 0 12px;
@@ -201,7 +201,7 @@ export function buildFinalSafetyReportHtml(params: {
     }
     figure { margin: 0; }
     figcaption {
-      text-align: center; font-weight: 800; font-size: 11px; margin-bottom: 4px; color: #1f4d3a;
+      text-align: center; font-weight: 800; font-size: 11px; margin-bottom: 4px; color: #635bdb;
     }
     figure img {
       width: 100%; height: 210px; object-fit: cover; border: 1px solid #94a3b8; border-radius: 6px;
