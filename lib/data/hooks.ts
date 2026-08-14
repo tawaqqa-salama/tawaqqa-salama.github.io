@@ -4,7 +4,7 @@ import useSWR, { mutate as globalMutate, type KeyedMutator } from 'swr';
 import { SWR_DEFAULTS, LIST_PAGE_SIZE, PROJECTS_PAGE_SIZE } from '@/lib/data/query-config';
 import {
   fetchClientById,
-  fetchProjectsList,
+  fetchProjectsPage,
   fetchSalesBundle,
   type SalesBundle,
 } from '@/lib/data/fetchers';
@@ -12,7 +12,7 @@ import type { ClientRecord } from '@/lib/types/client';
 
 export const swrKeys = {
   salesBundle: (limit: number) => ['sales-bundle', limit] as const,
-  projectsList: (limit: number) => ['projects-list', limit] as const,
+  projectsList: (limit: number, offset: number) => ['projects-list', limit, offset] as const,
   client: (id: string) => ['client', id] as const,
 };
 
@@ -36,15 +36,16 @@ export function useSalesBundle(limit = LIST_PAGE_SIZE) {
   };
 }
 
-export function useProjectsList(limit = PROJECTS_PAGE_SIZE) {
+export function useProjectsList(limit = PROJECTS_PAGE_SIZE, offset = 0) {
   const { data, error, isLoading, isValidating, mutate } = useSWR(
-    swrKeys.projectsList(limit),
-    () => fetchProjectsList(limit),
+    swrKeys.projectsList(limit, offset),
+    () => fetchProjectsPage(limit, offset),
     SWR_DEFAULTS
   );
 
   return {
-    projects: Array.isArray(data) ? data : [],
+    projects: data?.projects ?? [],
+    hasMore: Boolean(data?.hasMore),
     loading: isLoading,
     refreshing: isValidating && !isLoading,
     error,

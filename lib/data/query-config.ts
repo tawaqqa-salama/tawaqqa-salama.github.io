@@ -2,7 +2,8 @@
 export const LIST_PAGE_SIZE = 20;
 
 /** قائمة المشاريع يجب أن تجلب المعتمدين مالياً مباشرة (لا أحدث N عميل ثم تصفية) */
-export const PROJECTS_PAGE_SIZE = 500;
+export const PROJECTS_PAGE_SIZE = 25;
+export const MARKETING_PAGE_SIZE = 25;
 
 /** حجم أكبر قليلاً لأرشيف المستندات / السندات */
 export const ARCHIVE_PAGE_SIZE = 40;

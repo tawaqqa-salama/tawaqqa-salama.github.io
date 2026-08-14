@@ -23,6 +23,7 @@ import ResponsiveTable from '@/components/ui/ResponsiveTable';
 import ModuleSubNavSlot from '@/components/layout/ModuleSubNavSlot';
 import ModuleTabBar from '@/components/layout/ModuleTabBar';
 import { useLanguage } from '@/lib/i18n/LanguageProvider';
+import { MARKETING_PAGE_SIZE } from '@/lib/data/query-config';
 import type { ClientFollowUp } from '@/lib/types/sales';
 import type { ClientRecord } from '@/lib/types/client';
 
@@ -87,14 +88,27 @@ function MarketingPageInner() {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [sourceFilter, setSourceFilter] = useState<(typeof SOURCE_FILTERS)[number]>('الكل');
+  const [clientPage, setClientPage] = useState(0);
+  const [hasMoreClients, setHasMoreClients] = useState(false);
 
-  const fetchData = async () => {
+  const fetchData = async (page = clientPage) => {
     setLoading(true);
+    const from = page * MARKETING_PAGE_SIZE;
+    const to = from + MARKETING_PAGE_SIZE - 1;
     const [{ data: clients }, { data: ups }] = await Promise.all([
-      supabase.from('clients').select('*').order('created_at', { ascending: false }),
-      supabase.from('client_follow_ups').select('*').order('follow_up_date', { ascending: false }),
+      supabase
+        .from('clients')
+        .select('*')
+        .order('created_at', { ascending: false })
+        .range(from, to),
+      supabase
+        .from('client_follow_ups')
+        .select('*')
+        .order('follow_up_date', { ascending: false })
+        .limit(50),
     ]);
     const all = (clients || []) as ClientRecord[];
+    setHasMoreClients(all.length === MARKETING_PAGE_SIZE);
     setAllClients(all);
     setLeads(all.filter(shouldShowInMarketing));
     setFollowUps((ups || []) as ClientFollowUp[]);
@@ -105,12 +119,23 @@ function MarketingPageInner() {
     let cancelled = false;
     void (async () => {
       setLoading(true);
+      const from = clientPage * MARKETING_PAGE_SIZE;
+      const to = from + MARKETING_PAGE_SIZE - 1;
       const [{ data: clients }, { data: ups }] = await Promise.all([
-        supabase.from('clients').select('*').order('created_at', { ascending: false }),
-        supabase.from('client_follow_ups').select('*').order('follow_up_date', { ascending: false }),
+        supabase
+          .from('clients')
+          .select('*')
+          .order('created_at', { ascending: false })
+          .range(from, to),
+        supabase
+          .from('client_follow_ups')
+          .select('*')
+          .order('follow_up_date', { ascending: false })
+          .limit(50),
       ]);
       if (cancelled) return;
       const all = (clients || []) as ClientRecord[];
+      setHasMoreClients(all.length === MARKETING_PAGE_SIZE);
       setAllClients(all);
       setLeads(all.filter(shouldShowInMarketing));
       setFollowUps((ups || []) as ClientFollowUp[]);
@@ -119,7 +144,7 @@ function MarketingPageInner() {
     return () => {
       cancelled = true;
     };
-  }, []);
+  }, [clientPage]);
 
   const filteredLeads = useMemo(() => {
     if (sourceFilter === 'الكل') return leads;
@@ -175,13 +200,14 @@ function MarketingPageInner() {
       return;
     }
     setIsModalOpen(false);
-    fetchData();
+    setClientPage(0);
+    void fetchData(0);
   };
 
   const convertToSales = async (client: ClientRecord) => {
     const { error } = await supabase.from('clients').update({ pipeline_stage: 'sales' }).eq('id', client.id);
     if (error) alert(error.message);
-    else fetchData();
+    else void fetchData(clientPage);
   };
 
   const handleFollowUp = async (payload: { follow_up_date: string; contact_method: string; notes: string }) => {
@@ -201,7 +227,7 @@ function MarketingPageInner() {
     }).eq('id', followUpClient.id);
     setIsSubmitting(false);
     setFollowUpClient(null);
-    fetchData();
+    void fetchData(clientPage);
   };
 
   const clientName = (id: string) => {
@@ -396,6 +422,27 @@ function MarketingPageInner() {
               </tbody>
             </table>
           </ResponsiveTable>
+          {(clientPage > 0 || hasMoreClients) && (
+            <div className="flex items-center justify-between gap-3 rounded-xl border border-[var(--erp-border)] bg-white/80 p-3">
+              <button
+                type="button"
+                disabled={clientPage === 0 || loading}
+                onClick={() => setClientPage((page) => Math.max(0, page - 1))}
+                className="rounded-lg border px-4 py-2 text-sm font-semibold text-gray-700 transition hover:border-[#635bdb]/40 disabled:cursor-not-allowed disabled:opacity-40"
+              >
+                السابق
+              </button>
+              <span className="text-xs font-semibold text-gray-500">صفحة {clientPage + 1}</span>
+              <button
+                type="button"
+                disabled={!hasMoreClients || loading}
+                onClick={() => setClientPage((page) => page + 1)}
+                className="rounded-lg bg-[#635bdb] px-4 py-2 text-sm font-semibold text-white transition hover:bg-[#4943b5] disabled:cursor-not-allowed disabled:opacity-40"
+              >
+                التالي
+              </button>
+            </div>
+          )}
         </div>
       )}
 

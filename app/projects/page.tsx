@@ -118,8 +118,11 @@ const ProjectRow = memo(function ProjectRow({
 export default function ProjectsPage() {
   const { t } = useLanguage();
   const router = useRouter();
-  const [limit, setLimit] = useState(PROJECTS_PAGE_SIZE);
-  const { projects: rawProjects, loading, error, refresh } = useProjectsList(limit);
+  const [projectPage, setProjectPage] = useState(0);
+  const { projects: rawProjects, hasMore, loading, error, refresh } = useProjectsList(
+    PROJECTS_PAGE_SIZE,
+    projectPage * PROJECTS_PAGE_SIZE
+  );
   const [statusFilter, setStatusFilter] = useState<StatusFilter>('all');
 
   const hydrated = useMemo(() => {
@@ -246,14 +249,26 @@ export default function ProjectsPage() {
         </table>
       </ResponsiveTable>
 
-      {hydrated.length >= limit && (
-        <button
-          type="button"
-          onClick={() => setLimit((n) => n + PROJECTS_PAGE_SIZE)}
-          className="w-full py-2.5 rounded-xl border text-sm font-semibold text-indigo-700 bg-white hover:bg-indigo-50"
-        >
-          تحميل المزيد
-        </button>
+      {(projectPage > 0 || hasMore) && (
+        <div className="flex items-center justify-between gap-3 rounded-xl border border-[var(--erp-border)] bg-white/80 p-3">
+          <button
+            type="button"
+            disabled={projectPage === 0 || loading}
+            onClick={() => setProjectPage((page) => Math.max(0, page - 1))}
+            className="rounded-lg border px-4 py-2 text-sm font-semibold text-gray-700 transition hover:border-[#635bdb]/40 disabled:cursor-not-allowed disabled:opacity-40"
+          >
+            السابق
+          </button>
+          <span className="text-xs font-semibold text-gray-500">صفحة {projectPage + 1}</span>
+          <button
+            type="button"
+            disabled={!hasMore || loading}
+            onClick={() => setProjectPage((page) => page + 1)}
+            className="rounded-lg bg-[#635bdb] px-4 py-2 text-sm font-semibold text-white transition hover:bg-[#4943b5] disabled:cursor-not-allowed disabled:opacity-40"
+          >
+            التالي
+          </button>
+        </div>
       )}
     </div>
   );

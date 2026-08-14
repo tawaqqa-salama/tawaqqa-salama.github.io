@@ -167,41 +167,42 @@ export async function fetchSalesBundle(limit = LIST_PAGE_SIZE): Promise<SalesBun
  * يجلب كل العملاء المحتملين كمشاريع بدون الاعتماد على فلتر SQL هشّ للنصوص العربية.
  * التصفية تتم محلياً عبر shouldShowInProjects (يشمل العمل الهندسي المحفوظ).
  */
-export async function fetchProjectsList(limit = PROJECTS_PAGE_SIZE): Promise<ClientRecord[]> {
-  const fetchLimit = Math.max(limit, 500);
+export type ProjectsPage = {
+  projects: ClientRecord[];
+  hasMore: boolean;
+};
 
-  // 1) محاولة بالأعمدة المختارة + JSON التقارير
-  let rows = await fetchClientsList({ limit: fetchLimit, includeEngineering: true });
+export async function fetchProjectsPage(
+  limit = PROJECTS_PAGE_SIZE,
+  offset = 0
+): Promise<ProjectsPage> {
+  const fetchLimit = Math.max(limit, 1);
+  // نطلب صفًا إضافيًا لمعرفة وجود صفحة لاحقة دون جلب مئات السجلات.
+  const rows = await fetchClientsList({
+    limit: fetchLimit + 1,
+    offset,
+    includeEngineering: true,
+  });
+  const hasMore = rows.length > fetchLimit;
+  const visibleRows = rows.slice(0, fetchLimit);
+  const projects = visibleRows.filter(shouldShowInProjects);
 
-  // 2) إن رجعت قائمة قصيرة بشكل مريب، أعد الجلب بـ *
-  if (rows.length === 0) {
-    const companyId = resolveFetchCompanyId();
-    if (companyId) {
-      let query = supabase
-        .from('clients')
-        .select('*')
-        .order('created_at', { ascending: false })
-        .limit(fetchLimit);
-      query = applyCompanyFilter(query, companyId);
-      const { data, error } = await query;
-      if (!error && data?.length) {
-        rows = (data as ClientRecord[]).map((row) => mergeLocalClientOverrides(row));
-      }
-    }
-  }
-
-  const projects = rows.filter(shouldShowInProjects);
-
-  // 3) إن بقيت فارغة رغم وجود عملاء — أرجع كل الصفوف ليظهرها وضع «كل السجلات»
-  //    (الواجهة تفرّق بين الفلاتر؛ لا نخفي البيانات هنا)
-  if (projects.length === 0 && rows.length > 0) {
+  if (projects.length === 0 && visibleRows.length > 0) {
     console.warn(
-      '[fetchProjectsList] no rows matched shouldShowInProjects; returning all fetched clients for recovery UI'
+      '[fetchProjectsPage] no rows matched shouldShowInProjects; returning current page for recovery UI'
     );
-    return rows;
+    return { projects: visibleRows, hasMore };
   }
 
-  return projects;
+  return { projects, hasMore };
+}
+
+export async function fetchProjectsList(
+  limit = PROJECTS_PAGE_SIZE,
+  offset = 0
+): Promise<ClientRecord[]> {
+  const page = await fetchProjectsPage(limit, offset);
+  return page.projects;
 }
 
 export async function fetchProjectOptions(limit = PROJECTS_PAGE_SIZE): Promise<
