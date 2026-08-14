@@ -508,3 +508,34 @@ main [class*='dashboard-kpi']:nth-child(4) { animation-delay: 135ms; }
 @keyframes dashboardModuleIn { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: translateY(0); } }
 @media (max-width: 767px) { .main-dashboard-avatar { width: 6.5rem; min-height: 6.5rem; } .main-dashboard-avatar span { font-size: 2rem; } .main-dashboard-search { max-width: none; } }
 @media (prefers-reduced-motion: reduce) { .main-dashboard-module, .main-dashboard-stat { animation: none; transition: none; } .main-dashboard-primary-action:hover, .main-dashboard-ghost-action:hover, .main-dashboard-module:hover, .main-dashboard-stat:hover { transform: none; } }
+
+/* Projects & clients management surfaces */
+.projects-page, .clients-page { max-width: 1480px; margin-inline: auto; }
+.projects-page-header, .clients-page-header { position: relative; padding: 1.25rem 1.35rem; border: 1px solid var(--erp-border); border-radius: 1.2rem; background: linear-gradient(135deg, rgb(255 255 255 / .92), rgb(240 241 247 / .82)); box-shadow: 0 12px 28px rgb(11 16 32 / .045); }
+.projects-page-header::after, .clients-page-header::after { content: ''; position: absolute; inset-inline-start: 0; top: 0; width: 7rem; height: 2px; background: linear-gradient(90deg, #a78bfa, #23c7b6, transparent); }
+.projects-page-kicker, .clients-page-header::before { color: #6d54d9; font-size: .68rem; font-weight: 800; letter-spacing: .16em; }
+.projects-page-header h1, .clients-page-header h1 { margin-top: .25rem; letter-spacing: -.035em; }
+.projects-filters, .clients-source-filters { padding: .3rem; border: 1px solid var(--erp-border); border-radius: .85rem; background: #f0f1f7; }
+.projects-filters button, .clients-source-filters button { min-height: 2.25rem; border-radius: .62rem !important; transition: transform 180ms cubic-bezier(.22,1,.36,1), background-color 160ms ease, color 160ms ease, border-color 160ms ease; }
+.projects-filters button:hover, .clients-source-filters button:hover { transform: translateY(-1px); border-color: rgb(99 91 219 / .42); }
+.projects-filters button[class*='bg-[#635bdb]'], .clients-source-filters button[class*='bg-purple-600'] { box-shadow: 0 6px 14px rgb(99 91 219 / .2); }
+.projects-table-surface, .clients-page table { overflow: hidden; border-color: var(--erp-border) !important; box-shadow: 0 16px 38px rgb(11 16 32 / .055) !important; }
+.projects-table-head, .clients-page thead { background: #f0f1f7 !important; color: var(--erp-muted) !important; }
+.projects-table-head th, .clients-page thead th { font-size: .72rem; font-weight: 800; letter-spacing: .02em; }
+.projects-table-row { transition: background-color 160ms ease, transform 180ms cubic-bezier(.22,1,.36,1); }
+.projects-table-row:hover { background: #fafaff !important; }
+.projects-table-row td { border-color: var(--erp-border); }
+.projects-table-row button { background: linear-gradient(135deg, #635bdb, #4943b5) !important; box-shadow: 0 6px 14px rgb(99 91 219 / .18); }
+.clients-create-button { background: linear-gradient(135deg, #635bdb, #4943b5) !important; box-shadow: 0 10px 22px rgb(99 91 219 / .2); }
+.clients-create-button:hover { transform: translateY(-2px); box-shadow: 0 14px 28px rgb(99 91 219 / .28); }
+.clients-stats-grid > div, .clients-funnel-grid > div { border-color: var(--erp-border) !important; border-radius: 1rem !important; box-shadow: 0 10px 24px rgb(11 16 32 / .045); }
+.clients-stats-grid > div { background: rgb(255 255 255 / .86) !important; }
+.clients-stats-grid > div p:first-child { color: var(--erp-muted) !important; }
+.clients-stats-grid > div p:last-child { color: var(--erp-primary) !important; }
+.clients-funnel-grid > div { background: #e8fbf5 !important; }
+.clients-funnel-grid > div p:first-child { color: #167d73 !important; }
+.clients-funnel-grid > div p:last-child { color: #0d6159 !important; }
+.clients-page .rounded-xl.border.bg-white { border-color: var(--erp-border); box-shadow: 0 12px 28px rgb(11 16 32 / .045); }
+.clients-page .bg-purple-600 { background: linear-gradient(135deg, #635bdb, #4943b5) !important; }
+.clients-page .bg-gray-50 { background: #f0f1f7 !important; }
+@media (max-width: 767px) { .projects-page-header, .clients-page-header { padding: 1rem; } .projects-table-surface, .clients-page table { box-shadow: none !important; } }

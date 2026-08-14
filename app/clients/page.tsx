@@ -1,5 +1,5 @@
 import { redirect } from 'next/navigation';
 
-export default function LegacyClientsPage() {
-  redirect('/marketing');
+export default function ClientsPage() {
+  redirect('/marketing?tab=leads');
 }

@@ -75,7 +75,7 @@ const ProjectRow = memo(function ProjectRow({
     ACTIVITY_RULES[project.activity_type || '']?.label || project.city || project.client_code || '—';
 
   return (
-    <tr className="border-b hover:bg-gray-50">
+    <tr className="projects-table-row border-b hover:bg-gray-50">
       <td className="p-4">
         <div className="font-semibold">{title}</div>
         <div className="text-xs text-gray-400">{subtitle}</div>
@@ -162,13 +162,14 @@ export default function ProjectsPage() {
   );
 
   return (
-    <div className="space-y-5">
-      <div>
+    <div className="projects-page space-y-6">
+      <div className="projects-page-header">
+        <p className="projects-page-kicker">PROJECT OPERATIONS</p>
         <h1 className="text-xl font-bold text-gray-900">{t('projects.title')}</h1>
         <p className="text-sm text-gray-500 mt-1">{t('projects.subtitle')}</p>
       </div>
 
-      <div className="flex flex-wrap gap-2">
+      <div className="projects-filters flex flex-wrap gap-2">
         {STATUS_FILTER_IDS.map((id) => (
           <button
             key={id}
@@ -211,9 +212,9 @@ export default function ProjectsPage() {
         </div>
       ) : null}
 
-      <ResponsiveTable className="bg-white rounded-xl border shadow-sm">
+      <ResponsiveTable className="projects-table-surface bg-white rounded-xl border shadow-sm">
         <table className="w-full text-right text-sm">
-          <thead className="bg-gray-50 border-b text-gray-600">
+          <thead className="projects-table-head bg-gray-50 border-b text-gray-600">
             <tr>
               <th className="p-4">المشروع</th>
               <th className="p-4">الزيارات</th>

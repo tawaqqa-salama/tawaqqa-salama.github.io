@@ -208,13 +208,13 @@ function MarketingPageInner() {
   };
 
   return (
-    <div className="space-y-5">
-      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+    <div className="clients-page space-y-6">
+      <div className="clients-page-header flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
         <div>
           <h1 className="text-xl font-bold text-gray-900">{t('marketing.title')}</h1>
           <p className="text-sm text-gray-500 mt-1">{t('marketing.subtitle')}</p>
         </div>
-        <button onClick={() => { setErrorMessage(null); setIsModalOpen(true); }} className="px-4 py-2 bg-purple-600 text-white rounded-lg text-sm font-semibold">
+        <button onClick={() => { setErrorMessage(null); setIsModalOpen(true); }} className="clients-create-button px-4 py-2 bg-purple-600 text-white rounded-lg text-sm font-semibold">
           {t('marketing.create')}
         </button>
       </div>
@@ -243,7 +243,7 @@ function MarketingPageInner() {
         <div className="space-y-4">
           <MarketingCrmFunnel />
           <WhatsAppDashboardCards />
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+          <div className="clients-stats-grid grid grid-cols-1 md:grid-cols-3 gap-3">
             <div className="rounded-xl border bg-white p-4">
               <p className="text-xs text-gray-500">{t('marketing.stat.activeLeads')}</p>
               <p className="text-2xl font-bold text-gray-900 mt-1">{leads.length}</p>
@@ -257,7 +257,7 @@ function MarketingPageInner() {
               <p className="text-2xl font-bold text-gray-900 mt-1">{whatsappFunnel.total}</p>
             </div>
           </div>
-          <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-2">
+          <div className="clients-funnel-grid grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-2">
             {[
               ['العملاء', whatsappFunnel.total],
               ['الجدد', whatsappFunnel.newCount],
@@ -316,7 +316,7 @@ function MarketingPageInner() {
 
       {tab === 'leads' && (
         <div className="space-y-3">
-          <div className="flex flex-wrap gap-2">
+          <div className="clients-source-filters flex flex-wrap gap-2">
             {SOURCE_FILTERS.map((s) => (
               <button
                 key={s}
