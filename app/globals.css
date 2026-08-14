@@ -539,3 +539,47 @@ main [class*='dashboard-kpi']:nth-child(4) { animation-delay: 135ms; }
 .clients-page .bg-purple-600 { background: linear-gradient(135deg, #635bdb, #4943b5) !important; }
 .clients-page .bg-gray-50 { background: #f0f1f7 !important; }
 @media (max-width: 767px) { .projects-page-header, .clients-page-header { padding: 1rem; } .projects-table-surface, .clients-page table { box-shadow: none !important; } }
+
+/* Performance Dashboard */
+.performance-request-row,
+.performance-feed-row {
+  display: flex;
+  align-items: center;
+  gap: .75rem;
+  border: 1px solid var(--erp-border);
+  border-radius: 1rem;
+  background: color-mix(in srgb, var(--erp-card) 92%, var(--erp-page));
+  padding: .85rem 1rem;
+  transition: border-color 180ms ease, transform 180ms ease, box-shadow 180ms ease;
+}
+.performance-request-row:hover,
+.performance-feed-row:hover {
+  border-color: rgb(99 91 219 / .35);
+  transform: translateY(-1px);
+  box-shadow: 0 10px 24px rgb(11 16 32 / .06);
+}
+.performance-duration {
+  min-width: 4.5rem;
+  border-radius: .7rem;
+  background: rgb(99 91 219 / .10);
+  padding: .45rem .65rem;
+  text-align: center;
+  font-size: .75rem;
+  font-weight: 800;
+  color: #4943b5;
+}
+.performance-status-dot {
+  display: block;
+  width: .55rem;
+  height: .55rem;
+  flex: 0 0 auto;
+  border-radius: 999px;
+}
+.performance-status-dot.is-success { background: #23c7b6; box-shadow: 0 0 0 4px rgb(35 199 182 / .12); }
+.performance-status-dot.is-failed { background: #ff8066; box-shadow: 0 0 0 4px rgb(255 128 102 / .12); }
+.main-dashboard-stat-violet { background: linear-gradient(145deg, #f0edff 0%, #e7e3ff 100%); color: #4943b5; }
+.main-dashboard-stat-coral { background: linear-gradient(145deg, #fff1ec 0%, #ffe3da 100%); color: #b4533d; }
+@media (prefers-reduced-motion: reduce) {
+  .performance-request-row,
+  .performance-feed-row { transition: none; }
+}
