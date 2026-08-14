@@ -43,9 +43,13 @@ export const CLIENT_LIST_COLUMNS = [
 /** أعمدة قائمة المشاريع — تشمل JSON التقارير لحساب نسبة الاكتمال فقط عند الحاجة */
 export const PROJECT_LIST_COLUMNS = `${CLIENT_LIST_COLUMNS},project_engineering_data`;
 
+/** سياسة stale-while-revalidate للبيانات المتكررة داخل الجلسة */
 export const SWR_DEFAULTS = {
   revalidateOnFocus: false,
+  revalidateOnReconnect: true,
   revalidateIfStale: true,
-  dedupingInterval: 8_000,
+  dedupingInterval: 30_000,
+  focusThrottleInterval: 30_000,
   keepPreviousData: true,
+  shouldRetryOnError: false,
 } as const;

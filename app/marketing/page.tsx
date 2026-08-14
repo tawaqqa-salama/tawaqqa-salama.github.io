@@ -37,6 +37,39 @@ type TabId =
   | 'followups'
   | 'pipeline';
 
+const MARKETING_CACHE_TTL = 30_000;
+type MarketingPageCache = { clients: ClientRecord[]; followUps: ClientFollowUp[]; expiresAt: number };
+const marketingPageCache = new Map<number, MarketingPageCache>();
+
+async function fetchMarketingPage(page: number): Promise<{ clients: ClientRecord[]; followUps: ClientFollowUp[] }> {
+  const cached = marketingPageCache.get(page);
+  if (cached && cached.expiresAt > Date.now()) {
+    return { clients: cached.clients, followUps: cached.followUps };
+  }
+
+  const from = page * MARKETING_PAGE_SIZE;
+  const to = from + MARKETING_PAGE_SIZE - 1;
+  const [{ data: clients }, { data: followUps }] = await Promise.all([
+    supabase
+      .from('clients')
+      .select('*')
+      .order('created_at', { ascending: false })
+      .range(from, to),
+    supabase
+      .from('client_follow_ups')
+      .select('*')
+      .order('follow_up_date', { ascending: false })
+      .limit(50),
+  ]);
+
+  const result = {
+    clients: (clients || []) as ClientRecord[],
+    followUps: (followUps || []) as ClientFollowUp[],
+  };
+  marketingPageCache.set(page, { ...result, expiresAt: Date.now() + MARKETING_CACHE_TTL });
+  return result;
+}
+
 const SOURCE_FILTERS = [
   'الكل',
   'WhatsApp',
@@ -93,25 +126,11 @@ function MarketingPageInner() {
 
   const fetchData = async (page = clientPage) => {
     setLoading(true);
-    const from = page * MARKETING_PAGE_SIZE;
-    const to = from + MARKETING_PAGE_SIZE - 1;
-    const [{ data: clients }, { data: ups }] = await Promise.all([
-      supabase
-        .from('clients')
-        .select('*')
-        .order('created_at', { ascending: false })
-        .range(from, to),
-      supabase
-        .from('client_follow_ups')
-        .select('*')
-        .order('follow_up_date', { ascending: false })
-        .limit(50),
-    ]);
-    const all = (clients || []) as ClientRecord[];
-    setHasMoreClients(all.length === MARKETING_PAGE_SIZE);
-    setAllClients(all);
-    setLeads(all.filter(shouldShowInMarketing));
-    setFollowUps((ups || []) as ClientFollowUp[]);
+    const { clients, followUps } = await fetchMarketingPage(page);
+    setHasMoreClients(clients.length === MARKETING_PAGE_SIZE);
+    setAllClients(clients);
+    setLeads(clients.filter(shouldShowInMarketing));
+    setFollowUps(followUps);
     setLoading(false);
   };
 
@@ -119,26 +138,12 @@ function MarketingPageInner() {
     let cancelled = false;
     void (async () => {
       setLoading(true);
-      const from = clientPage * MARKETING_PAGE_SIZE;
-      const to = from + MARKETING_PAGE_SIZE - 1;
-      const [{ data: clients }, { data: ups }] = await Promise.all([
-        supabase
-          .from('clients')
-          .select('*')
-          .order('created_at', { ascending: false })
-          .range(from, to),
-        supabase
-          .from('client_follow_ups')
-          .select('*')
-          .order('follow_up_date', { ascending: false })
-          .limit(50),
-      ]);
+      const { clients, followUps } = await fetchMarketingPage(clientPage);
       if (cancelled) return;
-      const all = (clients || []) as ClientRecord[];
-      setHasMoreClients(all.length === MARKETING_PAGE_SIZE);
-      setAllClients(all);
-      setLeads(all.filter(shouldShowInMarketing));
-      setFollowUps((ups || []) as ClientFollowUp[]);
+      setHasMoreClients(clients.length === MARKETING_PAGE_SIZE);
+      setAllClients(clients);
+      setLeads(clients.filter(shouldShowInMarketing));
+      setFollowUps(followUps);
       setLoading(false);
     })();
     return () => {
@@ -200,6 +205,7 @@ function MarketingPageInner() {
       return;
     }
     setIsModalOpen(false);
+    marketingPageCache.clear();
     setClientPage(0);
     void fetchData(0);
   };
@@ -207,7 +213,10 @@ function MarketingPageInner() {
   const convertToSales = async (client: ClientRecord) => {
     const { error } = await supabase.from('clients').update({ pipeline_stage: 'sales' }).eq('id', client.id);
     if (error) alert(error.message);
-    else void fetchData(clientPage);
+    else {
+      marketingPageCache.clear();
+      void fetchData(clientPage);
+    }
   };
 
   const handleFollowUp = async (payload: { follow_up_date: string; contact_method: string; notes: string }) => {
@@ -227,6 +236,7 @@ function MarketingPageInner() {
     }).eq('id', followUpClient.id);
     setIsSubmitting(false);
     setFollowUpClient(null);
+    marketingPageCache.clear();
     void fetchData(clientPage);
   };
 
