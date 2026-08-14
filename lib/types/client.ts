@@ -21,6 +21,8 @@ export interface FloorLevel {
   kind: FloorLevelKind;
   area_m2: number;
   repeat_count: number;
+  /** تصنيف النشاط للدور كما ورد في الرخصة، إن كان مذكورًا */
+  activity_type?: string | null;
 }
 
 export interface ClientRecord {

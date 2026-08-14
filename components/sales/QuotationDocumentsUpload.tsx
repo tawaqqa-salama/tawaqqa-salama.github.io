@@ -5,6 +5,7 @@ import { extractBuildingPermitFromFile } from '@/lib/projects/building-permit-ex
 import {
   extractionToHydration,
   hasUsefulPermitExtraction,
+  type BuildingPermitExtraction,
   type BuildingPermitHydration,
 } from '@/lib/projects/building-permit-ocr';
 import { isDemoMode } from '@/lib/supabase';
@@ -22,7 +23,7 @@ type Props = {
   clientId?: string | null;
   disabled?: boolean;
   /** يُستدعى بعد استخراج بيانات رخصة البناء تلقائياً */
-  onPermitExtracted?: (fields: BuildingPermitHydration) => void;
+  onPermitExtracted?: (fields: BuildingPermitHydration, extraction: BuildingPermitExtraction) => void;
 };
 
 const SLOTS: {
@@ -35,7 +36,7 @@ const SLOTS: {
     kind: 'building_permit',
     key: 'building_permit',
     required: true,
-    hint: 'إلزامي — يستخرج المالك والحي والشارع والعنوان ورقم الرخصة',
+    hint: 'إلزامي — يستخرج بيانات المالك والرخصة والمساحات والأدوار والنشاط',
   },
   {
     kind: 'owner_id',
@@ -84,7 +85,7 @@ export default function QuotationDocumentsUpload({
           });
           const hydration = extractionToHydration(extraction);
           if (hasUsefulPermitExtraction(extraction)) {
-            onPermitExtracted?.(hydration);
+            onPermitExtracted?.(hydration, extraction);
             const parts = [
               hydration.building_permit_number
                 ? `الرقم ${hydration.building_permit_number}`
@@ -139,7 +140,7 @@ export default function QuotationDocumentsUpload({
       <div>
         <p className="text-xs font-semibold text-gray-700">مستندات إصدار عرض السعر — رخصة البناء</p>
         <p className="mt-0.5 text-[11px] text-gray-500">
-          أرفق رخصة البناء من المبيعات لاستخراج المالك والحي والشارع والعنوان تلقائياً · الهوية والسجل اختياريان
+          أرفق رخصة البناء لاستخراج البيانات الأساسية والمساحات والأدوار والنشاط تلقائياً · راجع النتائج قبل الحفظ
         </p>
       </div>
 

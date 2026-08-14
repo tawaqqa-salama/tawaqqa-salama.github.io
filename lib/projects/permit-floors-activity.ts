@@ -12,6 +12,7 @@ export type PermitFloorRow = {
   kind: FloorLevelKind;
   area_m2: number;
   repeat_count: number;
+  activity_type?: string | null;
 };
 
 const USAGE_ACTIVITY_PATTERNS: { re: RegExp; activity: string }[] = [
@@ -115,6 +116,7 @@ export function permitFloorsToFloorLevels(rows: PermitFloorRow[]): FloorLevel[] 
       label: r.label || labelForFloorKind(r.kind),
       area_m2: Math.max(0, Number(r.area_m2) || 0),
       repeat_count: Math.max(1, Math.floor(Number(r.repeat_count) || 1)),
+      activity_type: r.activity_type || null,
     }));
 }
 

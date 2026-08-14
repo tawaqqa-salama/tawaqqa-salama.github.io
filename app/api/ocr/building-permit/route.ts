@@ -39,13 +39,13 @@ Return ONLY valid JSON with these keys:
   "buildingAreaM2": string|null,
   "floorsCount": number|null,
   "usageLabel": string|null,
-  "floors": [{"label": string, "area_m2": number}]|null,
+  "floors": [{"label": string, "area_m2": number, "activity_type": string|null}]|null,
   "nationalAddress": string|null,
   "locationSummary": string|null,
   "rawTextPreview": string|null
 }
 usageLabel = الاستعمال / الاستخدام (e.g. رخصة بناء مبنى تجاري, صناعي, سكني).
-floors = rows from محتويات المبنى / تفصيل الأدوار with Arabic floor names (أرضي، أول، ثاني، بدروم، دور الروف، سطح) and area in m².
+floors = rows from محتويات المبنى / تفصيل الأدوار with Arabic floor names (أرضي، أول، ثاني، بدروم، دور الروف، سطح), area in m², and the activity/usage of each floor when explicitly present. Never infer a floor activity that is not visible in the permit.
 floorsCount = عدد الأدوار. buildingAreaM2 = إجمالي مساحة البناء when present.
 Use Gregorian dates as YYYY-MM-DD when possible. Keep Arabic names as written.`;
 
@@ -104,11 +104,13 @@ function floorsFromVision(value: unknown): PermitFloorRow[] | null {
     const area = numOrNull(raw.area_m2 ?? raw.area ?? raw.buildingAreaM2);
     if (!label || area == null || area <= 0) continue;
     const classified = classifyFloorName(label) || { kind: 'custom' as const, label };
+    const floorUsage = strOrNull(raw.activity_type) || strOrNull(raw.activity) || strOrNull(raw.usage);
     rows.push({
       label: classified.label,
       kind: classified.kind,
       area_m2: area,
       repeat_count: Math.max(1, Math.floor(numOrNull(raw.repeat_count) || 1)),
+      activity_type: floorUsage ? mapPermitUsageToActivityType(floorUsage, floorUsage) || floorUsage : null,
     });
   }
   return rows.length > 0 ? rows : null;

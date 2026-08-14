@@ -70,7 +70,7 @@ import {
   normalizeQuotationDocuments,
   validateQuotationDocumentsForIssue,
 } from '@/lib/business/quotation-documents';
-import type { BuildingPermitHydration } from '@/lib/projects/building-permit-ocr';
+import type { BuildingPermitExtraction, BuildingPermitHydration } from '@/lib/projects/building-permit-ocr';
 import { matchPermitLocation } from '@/lib/projects/permit-location-match';
 import type { ClientRecord, DepartmentMode, FloorLevel, InspectionChecklistItem } from '@/lib/types/client';
 import type { QuotationDocumentsState } from '@/lib/types/quotation-documents';
@@ -173,6 +173,7 @@ export default function ClientDetailModal({
   const [buildingPermitNumber, setBuildingPermitNumber] = useState('');
   const [buildingPermitDate, setBuildingPermitDate] = useState('');
   const [buildingPermitDateHijri, setBuildingPermitDateHijri] = useState('');
+  const [permitExtraction, setPermitExtraction] = useState<BuildingPermitExtraction | null>(null);
   /** Prevents document upload refresh from wiping freshly OCR-hydrated floors/activity */
   const permitHydrateLockRef = useRef(false);
 
@@ -188,6 +189,7 @@ export default function ClientDetailModal({
     setActiveTab(allowed.includes(preferred) ? preferred : allowed[0]);
     setErrorMessage(null);
     setSuccessMessage(null);
+    setPermitExtraction(null);
     setQuotationServices(normalizeQuotationServices(hydrated.quotation_services));
     setQuotationDocuments(normalizeQuotationDocuments(hydrated.quotation_documents));
     const hydratedLevels = ensureFloorLevels(
@@ -574,7 +576,8 @@ export default function ClientDetailModal({
       ? [...catalogDistricts, district]
       : catalogDistricts;
 
-  const applyPermitHydration = (fields: BuildingPermitHydration) => {
+  const applyPermitHydration = (fields: BuildingPermitHydration, extraction?: BuildingPermitExtraction) => {
+    if (extraction) setPermitExtraction(extraction);
     const matched = matchPermitLocation({
       city: fields.city,
       district: fields.district,
@@ -862,6 +865,18 @@ export default function ClientDetailModal({
                   }}
                   onPermitExtracted={applyPermitHydration}
                 />
+                {permitExtraction ? (
+                  <PermitExtractionSummary extraction={permitExtraction} hydration={{
+                    owner_name: ownerName,
+                    building_permit_number: buildingPermitNumber,
+                    building_permit_date: buildingPermitDate,
+                    building_permit_date_hijri: buildingPermitDateHijri,
+                    land_area: landArea,
+                    building_area: String(computedBuildingArea || ''),
+                    floors_count: computedFloorsCount,
+                    activity_type: activityType,
+                  }} />
+                ) : null}
                 <div className="grid grid-cols-1 md:grid-cols-3 gap-3 pt-1">
                   <div>
                     <label className="block text-xs font-semibold text-gray-700 mb-1">
@@ -1523,3 +1538,81 @@ export default function ClientDetailModal({
   );
 }
 
+
+
+function PermitExtractionSummary({
+  extraction,
+  hydration,
+}: {
+  extraction: BuildingPermitExtraction;
+  hydration: {
+    owner_name: string;
+    building_permit_number: string;
+    building_permit_date: string;
+    building_permit_date_hijri: string;
+    land_area: string;
+    building_area: string;
+    floors_count: number;
+    activity_type: string;
+  };
+}) {
+  const activityLabel = hydration.activity_type
+    ? ACTIVITY_RULES[hydration.activity_type]?.label || hydration.activity_type
+    : extraction.usageLabel || 'غير محدد في الرخصة';
+  const floors = extraction.floors || [];
+  const valueOrDash = (value: string | number | null | undefined) => value === '' || value == null ? '—' : String(value);
+
+  return (
+    <section className="rounded-2xl border border-indigo-100 bg-gradient-to-br from-indigo-50/80 via-white to-teal-50/70 p-4" aria-label="بيانات الرخصة المستخرجة">
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div>
+          <p className="text-sm font-bold text-indigo-950">بيانات الرخصة المستخرجة</p>
+          <p className="mt-1 text-[11px] text-indigo-800/70">تم استخراجها من الملف المرفوع — راجعها قبل الحفظ النهائي.</p>
+        </div>
+        <span className="rounded-full bg-white px-2.5 py-1 text-[10px] font-bold text-indigo-700 shadow-sm">المصدر: {extraction.source}</span>
+      </div>
+
+      <div className="mt-4 grid grid-cols-2 gap-2 md:grid-cols-4">
+        <PermitValue label="اسم المالك" value={valueOrDash(hydration.owner_name || extraction.ownerName)} />
+        <PermitValue label="رقم الرخصة" value={valueOrDash(hydration.building_permit_number || extraction.permitNumber)} />
+        <PermitValue label="تاريخ الرخصة" value={valueOrDash(hydration.building_permit_date || extraction.permitDateGregorian)} />
+        <PermitValue label="التاريخ الهجري" value={valueOrDash(hydration.building_permit_date_hijri || extraction.permitDateHijri)} />
+        <PermitValue label="مساحة الأرض" value={hydration.land_area ? `${hydration.land_area} م²` : '—'} />
+        <PermitValue label="مساحة المبنى" value={hydration.building_area ? `${hydration.building_area} م²` : extraction.buildingAreaM2 ? `${extraction.buildingAreaM2} م²` : '—'} />
+        <PermitValue label="عدد الأدوار" value={hydration.floors_count ? `${hydration.floors_count}` : '—'} />
+        <PermitValue label="تصنيف النشاط" value={activityLabel} />
+      </div>
+
+      <div className="mt-4 overflow-x-auto rounded-xl border border-indigo-100 bg-white/80">
+        <table className="w-full min-w-[560px] text-right text-xs">
+          <thead className="border-b border-indigo-100 bg-indigo-50/70 text-indigo-900">
+            <tr><th className="p-3">اسم الدور</th><th className="p-3">المساحة</th><th className="p-3">نشاط الدور</th><th className="p-3">التكرار</th></tr>
+          </thead>
+          <tbody>
+            {floors.length ? floors.map((floor, index) => (
+              <tr key={`${floor.label}-${index}`} className="border-b border-indigo-50 last:border-0">
+                <td className="p-3 font-semibold">{floor.label || `دور ${index + 1}`}</td>
+                <td className="p-3 font-mono">{floor.area_m2 ? `${floor.area_m2} م²` : '—'}</td>
+                <td className="p-3">{floor.activity_type || activityLabel || 'غير مذكور مستقلًا'}</td>
+                <td className="p-3">{floor.repeat_count || 1}</td>
+              </tr>
+            )) : (
+              <tr><td colSpan={4} className="p-4 text-center text-gray-500">لم تُستخرج تفاصيل منفصلة للأدوار من هذه الرخصة.</td></tr>
+            )}
+          </tbody>
+        </table>
+      </div>
+
+      <p className="mt-3 text-[11px] text-gray-500">دقة الاستخراج: {extraction.confidence} · البيانات غير الواضحة تبقى قابلة للتعديل يدويًا.</p>
+    </section>
+  );
+}
+
+function PermitValue({ label, value }: { label: string; value: string }) {
+  return (
+    <div className="rounded-xl border border-indigo-100 bg-white/80 p-3">
+      <p className="text-[10px] font-semibold text-gray-500">{label}</p>
+      <p className="mt-1 break-words text-xs font-bold text-gray-900">{value}</p>
+    </div>
+  );
+}
