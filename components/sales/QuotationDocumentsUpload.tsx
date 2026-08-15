@@ -82,6 +82,9 @@ export default function QuotationDocumentsUpload({
         try {
           const extraction = await extractBuildingPermitFromFile(file, {
             onProgress: (msg) => setHint(msg),
+            storageBucket: att.storageBucket,
+            storagePath: att.storagePath,
+            clientId,
           });
           const hydration = extractionToHydration(extraction);
           if (hasUsefulPermitExtraction(extraction)) {

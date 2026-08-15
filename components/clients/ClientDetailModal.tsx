@@ -52,6 +52,7 @@ import {
 import { loadCompanyProfile } from '@/lib/company-profile';
 import PrintQuotationModal from '@/components/sales/PrintQuotationModal';
 import QuotationDocumentsUpload from '@/components/sales/QuotationDocumentsUpload';
+import PermitReviewPanel from '@/components/clients/PermitReviewPanel';
 import { processZatcaOnQuotationApproval } from '@/lib/zatca/submit';
 import { processAutoContractOnApproval } from '@/lib/business/contract-service';
 import {
@@ -174,6 +175,10 @@ export default function ClientDetailModal({
   const [buildingPermitDate, setBuildingPermitDate] = useState('');
   const [buildingPermitDateHijri, setBuildingPermitDateHijri] = useState('');
   const [permitExtraction, setPermitExtraction] = useState<BuildingPermitExtraction | null>(null);
+  const [permitReviewDraft, setPermitReviewDraft] = useState<{
+    fields: BuildingPermitHydration;
+    extraction: BuildingPermitExtraction;
+  } | null>(null);
   /** Prevents document upload refresh from wiping freshly OCR-hydrated floors/activity */
   const permitHydrateLockRef = useRef(false);
 
@@ -190,6 +195,7 @@ export default function ClientDetailModal({
     setErrorMessage(null);
     setSuccessMessage(null);
     setPermitExtraction(null);
+    setPermitReviewDraft(null);
     setQuotationServices(normalizeQuotationServices(hydrated.quotation_services));
     setQuotationDocuments(normalizeQuotationDocuments(hydrated.quotation_documents));
     const hydratedLevels = ensureFloorLevels(
@@ -576,7 +582,13 @@ export default function ClientDetailModal({
       ? [...catalogDistricts, district]
       : catalogDistricts;
 
-  const applyPermitHydration = (fields: BuildingPermitHydration, extraction?: BuildingPermitExtraction) => {
+  const queuePermitReview = (fields: BuildingPermitHydration, extraction: BuildingPermitExtraction) => {
+    setPermitExtraction(extraction);
+    setPermitReviewDraft({ fields, extraction });
+    setSuccessMessage('SERVER OCR جاهز للمراجعة — لم تُعدّل الحقول ولم تُحفظ البيانات بعد.');
+  };
+
+  const commitPermitHydration = (fields: BuildingPermitHydration, extraction?: BuildingPermitExtraction) => {
     if (extraction) setPermitExtraction(extraction);
     const matched = matchPermitLocation({
       city: fields.city,
@@ -799,9 +811,22 @@ export default function ClientDetailModal({
                       onUpdated();
                     });
                   }}
-                  onPermitExtracted={applyPermitHydration}
+                  onPermitExtracted={queuePermitReview}
                 />
-                {permitExtraction ? (
+                {permitReviewDraft ? (
+                  <PermitReviewPanel
+                    extraction={permitReviewDraft.extraction}
+                    fields={permitReviewDraft.fields}
+                    onApprove={(accepted) => {
+                      commitPermitHydration(accepted, permitReviewDraft.extraction);
+                      setPermitReviewDraft(null);
+                    }}
+                    onReject={() => {
+                      setPermitReviewDraft(null);
+                      setSuccessMessage('تم رفض مسودة OCR — لم تُطبّق أي قيمة على النموذج.');
+                    }}
+                  />
+                ) : permitExtraction ? (
                   <PermitExtractionSummary extraction={permitExtraction} hydration={{
                     owner_name: ownerName,
                     building_permit_number: buildingPermitNumber,

@@ -17,6 +17,12 @@ import {
   canRunClientOcr,
   extractBuildingPermitWithTesseract,
 } from '@/lib/projects/building-permit-tesseract';
+import { isSupabaseConfigured, supabase } from '@/lib/supabase';
+import {
+  classifyFloorName,
+  mapPermitUsageToActivityType,
+  type PermitFloorRow,
+} from '@/lib/projects/permit-floors-activity';
 
 async function fileToBase64(file: File): Promise<string> {
   const buf = new Uint8Array(await file.arrayBuffer());
@@ -88,6 +94,7 @@ export function mergePermitExtractions(
     nationalAddress: pickStr(overlay.nationalAddress, base.nationalAddress),
     locationSummary: pickStr(overlay.locationSummary, base.locationSummary),
     rawTextPreview: pickStr(overlay.rawTextPreview, base.rawTextPreview) || undefined,
+    fieldEvidence: overlay.fieldEvidence || base.fieldEvidence,
     source: overlay.source !== 'none' ? overlay.source : base.source,
     confidence:
       overlay.confidence === 'high' || base.confidence === 'high'
@@ -101,80 +108,141 @@ export function mergePermitExtractions(
 
 export type ExtractPermitOptions = {
   onProgress?: (message: string) => void;
+  storageBucket?: string | null;
+  storagePath?: string | null;
+  clientId?: string | null;
 };
+
+type ServerField<T> = {
+  value: T | null;
+  confidence: number;
+  needs_review: boolean;
+  source?: { page?: number; text?: string } | null;
+};
+
+type ServerOcrResponse = {
+  ok?: boolean;
+  status?: 'review_required';
+  source?: 'server';
+  fields?: Record<string, ServerField<unknown>>;
+};
+
+function serverValue<T>(fields: Record<string, ServerField<unknown>>, key: string): T | null {
+  const field = fields[key];
+  return field && field.value != null ? field.value as T : null;
+}
+
+function serverExtractionToLocal(response: ServerOcrResponse): BuildingPermitExtraction | null {
+  if (!response.ok || response.source !== 'server' || !response.fields) return null;
+  const fields = response.fields;
+  const rawFloors = serverValue<Array<Record<string, unknown>>>(fields, 'floors');
+  const floors: PermitFloorRow[] = [];
+  for (const raw of rawFloors || []) {
+    const label = typeof raw?.label === 'string' ? raw.label.trim() : '';
+    const area = typeof raw?.area_m2 === 'number' ? raw.area_m2 : Number(raw?.area_m2);
+    if (!label || !Number.isFinite(area) || area <= 0) continue;
+    const classified = classifyFloorName(label) || { kind: 'custom' as const, label };
+    const activity = typeof raw?.activity_type === 'string' ? raw.activity_type.trim() : '';
+    floors.push({
+      label: classified.label,
+      kind: classified.kind,
+      area_m2: area,
+      repeat_count: 1,
+      activity_type: activity ? mapPermitUsageToActivityType(activity, activity) || activity : null,
+    });
+  }
+  const permitNumber = serverValue<string>(fields, 'permitNumber');
+  const permitDateGregorian = serverValue<string>(fields, 'permitDateGregorian');
+  const permitDateHijri = serverValue<string>(fields, 'permitDateHijri');
+  const ownerName = serverValue<string>(fields, 'ownerName');
+  const district = serverValue<string>(fields, 'district');
+  const city = serverValue<string>(fields, 'city');
+  const street = serverValue<string>(fields, 'street');
+  const plotNumber = serverValue<string>(fields, 'plotNumber');
+  const municipality = serverValue<string>(fields, 'municipality');
+  const landAreaM2 = serverValue<number>(fields, 'landAreaM2');
+  const buildingAreaM2 = serverValue<number>(fields, 'buildingAreaM2');
+  const floorsCount = serverValue<number>(fields, 'floorsCount');
+  const usageLabel = serverValue<string>(fields, 'usageLabel');
+  const activityType = serverValue<string>(fields, 'activityType');
+  const nationalAddress = serverValue<string>(fields, 'nationalAddress');
+  const rawTextPreview = serverValue<string>(fields, 'rawTextPreview');
+  const hits = [permitNumber, permitDateGregorian || permitDateHijri, ownerName, district || city, landAreaM2, buildingAreaM2, floorsCount, usageLabel || activityType].filter((value) => value != null).length;
+  return {
+    permitNumber,
+    permitDateGregorian,
+    permitDateHijri,
+    ownerName,
+    district,
+    city,
+    street,
+    plotNumber,
+    municipality,
+    commercialRegister: serverValue<string>(fields, 'commercialRegister'),
+    phone: serverValue<string>(fields, 'phone'),
+    landAreaM2: landAreaM2 == null ? null : String(landAreaM2),
+    buildingAreaM2: buildingAreaM2 == null ? null : String(buildingAreaM2),
+    floorsCount,
+    usageLabel,
+    activityType: activityType || (usageLabel ? mapPermitUsageToActivityType(usageLabel, usageLabel) : null),
+    floors: floors.length ? floors : null,
+    nationalAddress,
+    locationSummary: rawTextPreview,
+    rawTextPreview: rawTextPreview || undefined,
+    fieldEvidence: Object.fromEntries(Object.entries(fields).map(([key, field]) => [key, {
+      value: field.value,
+      confidence: field.confidence,
+      needs_review: field.needs_review,
+      source: field.source || null,
+    }])),
+    source: 'vision',
+    confidence: hits >= 5 ? 'high' : hits >= 3 ? 'medium' : 'low',
+  };
+}
+
+async function extractWithSupabaseServer(file: File, options: ExtractPermitOptions): Promise<BuildingPermitExtraction | null> {
+  if (!isSupabaseConfigured || !options.storagePath) return null;
+  options.onProgress?.('جاري معالجة الرخصة عبر SERVER OCR...');
+  const { data, error } = await supabase.functions.invoke('building-permit-ocr', {
+    body: {
+      bucket: options.storageBucket || 'project-files',
+      path: options.storagePath,
+      clientId: options.clientId || null,
+      fileName: file.name,
+      mimeType: file.type || null,
+    },
+  });
+  if (error || !data) return null;
+  return serverExtractionToLocal(data as ServerOcrResponse);
+}
 
 export async function extractBuildingPermitFromFile(
   file: File,
-  options?: ExtractPermitOptions
+  options: ExtractPermitOptions = {}
 ): Promise<BuildingPermitExtraction> {
-  const onProgress = options?.onProgress;
-
-  // 1) PDF/text layer (fast)
-  onProgress?.('جاري قراءة ملف الرخصة...');
-  let result = await extractLocally(file);
-
-  // 2) Client OCR for images / scanned PDFs — required for floors & areas on Balady scans
-  const shouldOcr =
-    canRunClientOcr(file) &&
-    (!hasUsefulPermitExtraction(result) ||
-      result.source === 'filename' ||
-      needsFloorsOrActivityOcr(result));
-
-  if (shouldOcr) {
+  // Production order: Storage upload → Supabase Edge Function → structured validation → Review.
+  // The browser never sends the document to OpenAI and never runs Tesseract first.
+  if (isSupabaseConfigured && options.storagePath) {
     try {
-      const ocr = await extractBuildingPermitWithTesseract(file, onProgress);
-      if (
-        hasUsefulPermitExtraction(ocr) ||
-        ocr.floorsCount ||
-        ocr.buildingAreaM2 ||
-        ocr.floors?.length
-      ) {
-        result = mergePermitExtractions(result, ocr);
-      }
-    } catch (error) {
-      // Surface failure to caller via empty result + progress; do not swallow without signal
-      const msg = error instanceof Error ? error.message : 'فشل التعرف على نص الرخصة';
-      onProgress?.(`⚠️ ${msg}`);
-      if (!hasUsefulPermitExtraction(result)) {
-        return {
-          ...emptyExtraction('none'),
-          rawTextPreview: msg,
-        };
-      }
+      const server = await extractWithSupabaseServer(file, options);
+      if (server) return server;
+      options.onProgress?.('SERVER OCR تعذر — LOCAL OCR / REQUIRES REVIEW');
+    } catch {
+      options.onProgress?.('SERVER OCR تعذر — LOCAL OCR / REQUIRES REVIEW');
     }
   }
 
-  // 3) Vision API: prefer structured visual extraction for scanned permits when available.
-  // The static GitHub Pages deployment may return 404; in that case we safely keep local OCR.
-  const isScannedPermit = canRunClientOcr(file) && (result.source === 'tesseract' || result.confidence !== 'high');
-  if (needsFloorsOrActivityOcr(result) || !hasUsefulPermitExtraction(result) || isScannedPermit) {
+  // Local extraction is fallback only and must remain explicitly unverified.
+  options.onProgress?.('LOCAL OCR / REQUIRES REVIEW');
+  let result = await extractLocally(file);
+  const shouldOcr = canRunClientOcr(file) && (!hasUsefulPermitExtraction(result) || result.source === 'filename' || needsFloorsOrActivityOcr(result));
+  if (shouldOcr) {
     try {
-      onProgress?.('جاري محاولة الاستخراج عبر الخادم...');
-      const base64 = await fileToBase64(file);
-      const res = await fetch('/api/ocr/building-permit', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          fileName: file.name,
-          mimeType: file.type || 'application/octet-stream',
-          base64,
-          localText: result.rawTextPreview || '',
-        }),
-      });
-      if (res.ok) {
-        const textBody = await res.text();
-        if (!textBody.trimStart().startsWith('<')) {
-          const json = JSON.parse(textBody) as {
-            ok?: boolean;
-            result?: BuildingPermitExtraction;
-          };
-          if (json.ok && json.result) {
-            result = mergePermitExtractions(result, json.result);
-          }
-        }
-      }
-    } catch {
-      // static export / offline — ignore
+      const ocr = await extractBuildingPermitWithTesseract(file, options.onProgress);
+      if (hasUsefulPermitExtraction(ocr) || ocr.floorsCount || ocr.buildingAreaM2 || ocr.floors?.length) result = mergePermitExtractions(result, ocr);
+    } catch (error) {
+      const msg = error instanceof Error ? error.message : 'فشل التعرف على نص الرخصة';
+      options.onProgress?.(`LOCAL OCR / REQUIRES REVIEW: ${msg}`);
     }
   }
 
