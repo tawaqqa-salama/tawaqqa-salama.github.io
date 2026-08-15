@@ -44,11 +44,19 @@ function displayValue(value: unknown): string {
 export default function PermitReviewPanel({ extraction, fields, onApprove, onReject }: Props) {
   const initial = useMemo(() => new Set(FIELD_LABELS.filter(({ key }) => fields[key] != null && fields[key] !== '').map(({ key }) => key)), [fields]);
   const [accepted, setAccepted] = useState<Set<ReviewKey>>(initial);
+  const [acceptedFloorRows, setAcceptedFloorRows] = useState<Set<number>>(
+    () => new Set((fields.floor_levels || []).map((_, index) => index))
+  );
 
   const approve = () => {
     const output: BuildingPermitHydration = {};
     for (const { key } of FIELD_LABELS) {
-      if (accepted.has(key) && fields[key] != null && fields[key] !== '') output[key] = fields[key] as never;
+      if (!accepted.has(key) || fields[key] == null || fields[key] === '') continue;
+      if (key === 'floor_levels' && Array.isArray(fields.floor_levels)) {
+        output[key] = fields.floor_levels.filter((_, index) => acceptedFloorRows.has(index)) as never;
+      } else {
+        output[key] = fields[key] as never;
+      }
     }
     onApprove(output);
   };
@@ -93,6 +101,29 @@ export default function PermitReviewPanel({ extraction, fields, onApprove, onRej
                 <span className="mt-1 block text-[10px] text-gray-500">
                   {low ? 'تحتاج مراجعة يدوية' : 'مصدر واضح'}{evidence.source?.page ? ` · الصفحة ${evidence.source.page}` : ''}
                 </span>
+                {evidence.source?.text ? (
+                  <span className="mt-1 block rounded bg-slate-50 px-1.5 py-1 text-[10px] text-slate-600">
+                    المصدر: {evidence.source.text}
+                  </span>
+                ) : null}
+                {key === 'floor_levels' && Array.isArray(fields.floor_levels) ? (
+                  <span className="mt-2 block space-y-1">
+                    {fields.floor_levels.map((row, index) => (
+                      <label key={`${row.id || row.label}-${index}`} className="flex items-center gap-2 rounded border border-slate-100 bg-slate-50 px-1.5 py-1 text-[10px]">
+                        <input
+                          type="checkbox"
+                          checked={acceptedFloorRows.has(index)}
+                          onChange={(event) => setAcceptedFloorRows((current) => {
+                            const next = new Set(current);
+                            if (event.target.checked) next.add(index); else next.delete(index);
+                            return next;
+                          })}
+                        />
+                        <span>{row.label || 'دور'} · {row.area_m2 || 0} م² · {row.activity_type || 'النشاط يحتاج مراجعة'}</span>
+                      </label>
+                    ))}
+                  </span>
+                ) : null}
               </span>
             </label>
           );
