@@ -19,8 +19,6 @@ import {
 } from '@/lib/business/quotation-documents';
 import { parseProjectEngineeringData } from '@/lib/business/project-reports';
 import { describeSalesKnowledgePreview, syncKnowledgeLinksToDesignCenterSync } from '@/lib/design-intelligence/project-knowledge-bridge';
-import { matchPermitLocation } from '@/lib/projects/permit-location-match';
-import type { BuildingPermitHydration } from '@/lib/projects/building-permit-ocr';
 import type { ClientRecord } from '@/lib/types/client';
 import type { QuotationDocumentsState } from '@/lib/types/quotation-documents';
 
@@ -53,57 +51,6 @@ export default function PrintQuotationModal({ client, onClose, onSaved }: PrintQ
   const knowledgePreview = useMemo(() => describeSalesKnowledgePreview(selected), [selected]);
 
   const subtotal = Number(client?.quotation_amount || 0);
-
-  const applyPermitHydration = (fields: BuildingPermitHydration) => {
-    if (!client) return;
-    const matched = matchPermitLocation({
-      city: fields.city,
-      district: fields.district,
-      municipality: fields.municipality,
-      locationSummary: fields.location_summary,
-    });
-    const eng = parseProjectEngineeringData(client.project_engineering_data);
-    const building_plan = {
-      ...eng.building_plan,
-      building_permit_number:
-        fields.building_permit_number || eng.building_plan.building_permit_number,
-      building_permit_date: fields.building_permit_date || eng.building_plan.building_permit_date,
-      building_permit_date_hijri:
-        fields.building_permit_date_hijri || eng.building_plan.building_permit_date_hijri,
-      building_permit_ocr_status: 'success' as const,
-      building_permit_ocr_message: '✓ تم استخراج بيانات الرخصة من المبيعات',
-    };
-    const technical_report = {
-      ...eng.technical_report,
-      building_permit_number:
-        fields.building_permit_number || eng.technical_report.building_permit_number,
-      building_permit_date:
-        fields.building_permit_date || eng.technical_report.building_permit_date,
-    };
-    const payload: Record<string, unknown> = {
-      project_engineering_data: { ...eng, building_plan, technical_report },
-    };
-    if (fields.owner_name) payload.owner_name = fields.owner_name;
-    if (matched.region) payload.region = matched.region;
-    if (matched.city || fields.city) payload.city = matched.city || fields.city;
-    if (matched.district || fields.district) {
-      payload.district = matched.district || fields.district;
-    }
-    if (fields.street) payload.street = fields.street;
-    if (fields.plot_number) payload.plot_number = fields.plot_number;
-    if (fields.national_address || fields.location_summary) {
-      payload.national_address = fields.national_address || fields.location_summary;
-    }
-    if (fields.land_area) payload.land_area = parseLocalizedNumber(fields.land_area) || null;
-
-    void updateClientSafe(client.id, payload).then((result) => {
-      if (result.error) {
-        setError(result.error);
-        return;
-      }
-      onSaved?.();
-    });
-  };
 
   const toggle = (id: QuotationServiceId) => {
     setSelected((prev) => (prev.includes(id) ? prev.filter((item) => item !== id) : [...prev, id]));
@@ -245,7 +192,6 @@ export default function PrintQuotationModal({ client, onClose, onSaved }: PrintQ
             clientId={client.id}
             disabled={saving}
             onChange={setDocuments}
-            onPermitExtracted={applyPermitHydration}
           />
 
           {selectedLabels.length > 0 ? (

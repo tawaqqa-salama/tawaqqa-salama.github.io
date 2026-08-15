@@ -1,13 +1,6 @@
 'use client';
 
 import { useState } from 'react';
-import { extractBuildingPermitFromFile } from '@/lib/projects/building-permit-extract';
-import {
-  extractionToHydration,
-  hasUsefulPermitExtraction,
-  type BuildingPermitExtraction,
-  type BuildingPermitHydration,
-} from '@/lib/projects/building-permit-ocr';
 import { isDemoMode } from '@/lib/supabase';
 import { uploadQuotationDocument } from '@/lib/storage/quotation-documents';
 import {
@@ -22,8 +15,6 @@ type Props = {
   onChange: (next: QuotationDocumentsState) => void;
   clientId?: string | null;
   disabled?: boolean;
-  /** يُستدعى بعد استخراج بيانات رخصة البناء تلقائياً */
-  onPermitExtracted?: (fields: BuildingPermitHydration, extraction: BuildingPermitExtraction) => void;
 };
 
 const SLOTS: {
@@ -36,7 +27,7 @@ const SLOTS: {
     kind: 'building_permit',
     key: 'building_permit',
     required: true,
-    hint: 'إلزامي — يستخرج بيانات المالك والرخصة والمساحات والأدوار والنشاط',
+    hint: 'إلزامي — أرفق الملف لمراجعته يدويًا وإدخال بياناته في الحقول أدناه',
   },
   {
     kind: 'owner_id',
@@ -57,10 +48,8 @@ export default function QuotationDocumentsUpload({
   onChange,
   clientId,
   disabled,
-  onPermitExtracted,
 }: Props) {
   const [uploading, setUploading] = useState<QuotationDocumentKind | null>(null);
-  const [scanning, setScanning] = useState(false);
   const [hint, setHint] = useState<string | null>(null);
 
   const setFile = async (
@@ -77,52 +66,8 @@ export default function QuotationDocumentsUpload({
       onChange({ ...value, [key]: att });
 
       if (kind === 'building_permit') {
-        setScanning(true);
-        setHint('جاري استخراج بيانات الرخصة تلقائياً...');
-        try {
-          const extraction = await extractBuildingPermitFromFile(file, {
-            onProgress: (msg) => setHint(msg),
-            storageBucket: att.storageBucket,
-            storagePath: att.storagePath,
-            clientId,
-          });
-          const hydration = extractionToHydration(extraction);
-          if (hasUsefulPermitExtraction(extraction)) {
-            onPermitExtracted?.(hydration, extraction);
-            const parts = [
-              hydration.building_permit_number
-                ? `الرقم ${hydration.building_permit_number}`
-                : null,
-              hydration.owner_name ? `المالك: ${hydration.owner_name}` : null,
-              hydration.district ? `الحي: ${hydration.district}` : null,
-              hydration.street ? `الشارع: ${hydration.street}` : null,
-              hydration.plot_number ? `القطعة: ${hydration.plot_number}` : null,
-              hydration.city ? `المدينة: ${hydration.city}` : null,
-            ].filter(Boolean);
-            setHint(
-              parts.length > 0
-                ? `✓ تم الاستخراج — ${parts.join(' · ')}`
-                : '✓ تم استخراج جزء من بيانات الرخصة — راجع الحقول يدوياً'
-            );
-          } else {
-            const detail = extraction.rawTextPreview?.startsWith('تعذر')
-              ? extraction.rawTextPreview
-              : null;
-            setHint(
-              detail ||
-                'تعذر استخراج رقم/تاريخ الرخصة — الحقول الحالية لم تُحدَّث. ارفع صورة JPG أوضح أو عبّئ يدوياً'
-            );
-          }
-        } catch (e) {
-          const msg = e instanceof Error ? e.message : 'فشل الاستخراج التلقائي';
-          setHint(`تم رفع الرخصة لكن فشل الاستخراج: ${msg} — الحقول لم تُحدَّث`);
-        } finally {
-          setScanning(false);
-        }
-        return;
-      }
-
-      if (isDemoMode) {
+        setHint('تم إرفاق رخصة البناء. افتح الملف وراجع البيانات ثم أدخلها يدويًا في الحقول الحالية.');
+      } else if (isDemoMode) {
         setHint('وضع تجريبي — الملفات تُحفظ محلياً مع بيانات العميل');
       } else if (att.storagePath) {
         setHint(`تم رفع «${QUOTATION_DOCUMENT_LABELS[kind]}» إلى التخزين`);
@@ -143,37 +88,20 @@ export default function QuotationDocumentsUpload({
       <div>
         <p className="text-xs font-semibold text-gray-700">مستندات إصدار عرض السعر — رخصة البناء</p>
         <p className="mt-0.5 text-[11px] text-gray-500">
-          أرفق رخصة البناء لاستخراج البيانات الأساسية والمساحات والأدوار والنشاط تلقائياً · راجع النتائج قبل الحفظ
+          أرفق رخصة البناء لفتحها ومراجعتها يدويًا، ثم أدخل بياناتها في الحقول الحالية.
         </p>
       </div>
 
       {hint ? (
-        <div
-          className={`rounded-lg border px-3 py-2 text-xs ${
-            scanning
-              ? 'border-sky-200 bg-sky-50 text-sky-900'
-              : hint.startsWith('✓')
-                ? 'border-emerald-100 bg-emerald-50 text-emerald-900'
-                : hint.includes('تعذر') || hint.includes('فشل')
-                  ? 'border-amber-200 bg-amber-50 text-amber-900'
-                  : 'border-emerald-100 bg-emerald-50 text-emerald-900'
-          }`}
-        >
-          {scanning ? (
-            <span className="inline-flex items-center gap-2">
-              <span className="inline-block h-3 w-3 animate-spin rounded-full border-2 border-sky-600 border-t-transparent" />
-              {hint}
-            </span>
-          ) : (
-            hint
-          )}
+        <div className="rounded-lg border border-emerald-100 bg-emerald-50 px-3 py-2 text-xs text-emerald-900">
+          {hint}
         </div>
       ) : null}
 
       <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
         {SLOTS.map((slot) => {
           const file = value[slot.key];
-          const busy = uploading === slot.kind || (slot.kind === 'building_permit' && scanning);
+          const busy = uploading === slot.kind;
           return (
             <div
               key={slot.kind}
@@ -203,13 +131,13 @@ export default function QuotationDocumentsUpload({
                 <FileRow
                   file={file}
                   onRemove={() => remove(slot.key)}
-                  disabled={disabled || Boolean(uploading) || scanning}
+                  disabled={disabled || Boolean(uploading)}
                 />
               ) : (
                 <input
                   type="file"
                   accept=".pdf,.png,.jpg,.jpeg,.webp"
-                  disabled={disabled || Boolean(uploading) || scanning}
+                  disabled={disabled || Boolean(uploading)}
                   onChange={(e) => {
                     void setFile(e.target.files, slot.kind, slot.key);
                     e.target.value = '';
@@ -218,7 +146,7 @@ export default function QuotationDocumentsUpload({
                 />
               )}
 
-              {busy ? <p className="text-[11px] text-gray-500">جاري الرفع/الاستخراج...</p> : null}
+              {busy ? <p className="text-[11px] text-gray-500">جاري رفع المرفق...</p> : null}
             </div>
           );
         })}
