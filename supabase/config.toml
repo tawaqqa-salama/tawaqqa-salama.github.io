@@ -1,0 +1,4 @@
+project_id = "ezmdkwgziyencejfevso"
+
+[functions.building-permit-ocr]
+verify_jwt = true

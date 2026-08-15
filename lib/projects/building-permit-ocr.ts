@@ -20,6 +20,13 @@ import {
   normalizePermitOcrText,
 } from '@/lib/projects/balady-permit-floors';
 
+export type BuildingPermitFieldEvidence = {
+  value: unknown;
+  confidence: number;
+  needs_review: boolean;
+  source?: { page?: number; text?: string } | null;
+};
+
 export type BuildingPermitExtraction = {
   permitNumber: string | null;
   permitDateGregorian: string | null;
@@ -46,6 +53,8 @@ export type BuildingPermitExtraction = {
   nationalAddress: string | null;
   locationSummary: string | null;
   rawTextPreview?: string;
+  /** Transient field-level OCR evidence; never persisted as a parallel form model. */
+  fieldEvidence?: Record<string, BuildingPermitFieldEvidence>;
   source: 'vision' | 'pdf_text' | 'regex' | 'filename' | 'tesseract' | 'none';
   confidence: 'high' | 'medium' | 'low';
 };
