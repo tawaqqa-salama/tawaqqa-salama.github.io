@@ -5,49 +5,58 @@ import { resolve } from 'node:path';
 const root = resolve(__dirname, '../..');
 const read = (relative: string) => readFileSync(resolve(root, relative), 'utf8');
 
-const clientFiles = [
-  'components/sales/QuotationDocumentsUpload.tsx',
-  'components/clients/ClientDetailModal.tsx',
-  'components/clients/PermitReviewPanel.tsx',
-  'lib/projects/building-permit-extract.ts',
-];
-
-describe('building permit OCR architecture contract', () => {
-  it('uses Supabase Function first and does not depend on the Next.js API route', () => {
-    const extraction = read('lib/projects/building-permit-extract.ts');
-    expect(extraction).toContain("supabase.functions.invoke('building-permit-ocr'");
-    expect(extraction).toContain('Production order: Storage upload');
-    expect(extraction).toContain('LOCAL OCR / REQUIRES REVIEW');
-    expect(extraction).not.toContain("fetch('/api/ocr/building-permit'");
-  });
-
-  it('passes the uploaded Storage path and client context to the server request', () => {
+describe('building permit manual-entry architecture contract', () => {
+  it('keeps the OCR implementation available but removes all production UI triggers', () => {
     const upload = read('components/sales/QuotationDocumentsUpload.tsx');
-    expect(upload).toContain('storageBucket: att.storageBucket');
-    expect(upload).toContain('storagePath: att.storagePath');
-    expect(upload).toContain('clientId');
+    const modal = read('components/clients/ClientDetailModal.tsx');
+    const extraction = read('lib/projects/building-permit-extract.ts');
+
+    expect(upload).not.toContain('extractBuildingPermitFromFile');
+    expect(upload).not.toContain('building-permit-ocr');
+    expect(upload).not.toContain('onPermitExtracted');
+    expect(modal).not.toContain('PermitReviewPanel');
+    expect(modal).not.toContain('PermitExtractionSummary');
+    expect(modal).not.toContain('commitPermitHydration');
+    expect(modal).not.toContain('queuePermitReview');
+    expect(extraction).toContain("supabase.functions.invoke('building-permit-ocr'");
   });
 
-  it('keeps the Review gate before hydration and preserves the existing Save action', () => {
+  it('does not expose OCR labels or the Next.js OCR route in the production UI', () => {
+    for (const file of [
+      'components/sales/QuotationDocumentsUpload.tsx',
+      'components/clients/ClientDetailModal.tsx',
+    ]) {
+      const source = read(file);
+      expect(source).not.toContain('SERVER OCR');
+      expect(source).not.toContain('LOCAL OCR');
+      expect(source).not.toContain('REQUIRES REVIEW');
+      expect(source).not.toContain('/api/ocr/building-permit');
+    }
+  });
+
+  it('keeps attachment persistence and the existing manual save flow', () => {
+    const upload = read('components/sales/QuotationDocumentsUpload.tsx');
     const modal = read('components/clients/ClientDetailModal.tsx');
-    const review = read('components/clients/PermitReviewPanel.tsx');
-    expect(modal).toContain('queuePermitReview');
-    expect(modal).toContain('<PermitReviewPanel');
-    expect(modal).toContain('commitPermitHydration');
-    expect(review).toContain('رفض المسودة');
-    expect(review).toContain('اعتماد المحدد وتعبئة الحقول');
-    expect(review).toContain('ليس VERIFIED');
-    expect(modal).toContain('handleSaveBasic');
+
+    expect(upload).toContain('uploadQuotationDocument(file, kind, { clientId })');
+    expect(upload).toContain('onChange({ ...value, [key]: att })');
+    expect(modal).toContain('<QuotationDocumentsUpload');
+    expect(modal).toContain('quotation_documents: quotationDocuments');
+    expect(modal).toContain('const handleSaveBasic = async () =>');
   });
 
   it('does not expose AI or service-role secrets to client-side files', () => {
-    for (const file of clientFiles) {
+    for (const file of [
+      'components/sales/QuotationDocumentsUpload.tsx',
+      'components/clients/ClientDetailModal.tsx',
+      'components/clients/PermitReviewPanel.tsx',
+    ]) {
       const source = read(file);
       expect(source).not.toContain('OPENAI_API_KEY');
       expect(source).not.toContain('SERVICE_ROLE');
       expect(source).not.toContain('service_role');
     }
     const server = read('supabase/functions/building-permit-ocr/index.ts');
-    expect(server).toContain('Deno.env.get(\'OPENAI_API_KEY\')');
+    expect(server).toContain("Deno.env.get('OPENAI_API_KEY')");
   });
 });

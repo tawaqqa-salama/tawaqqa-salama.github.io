@@ -52,7 +52,6 @@ import {
 import { loadCompanyProfile } from '@/lib/company-profile';
 import PrintQuotationModal from '@/components/sales/PrintQuotationModal';
 import QuotationDocumentsUpload from '@/components/sales/QuotationDocumentsUpload';
-import PermitReviewPanel from '@/components/clients/PermitReviewPanel';
 import { processZatcaOnQuotationApproval } from '@/lib/zatca/submit';
 import { processAutoContractOnApproval } from '@/lib/business/contract-service';
 import {
@@ -71,8 +70,6 @@ import {
   normalizeQuotationDocuments,
   validateQuotationDocumentsForIssue,
 } from '@/lib/business/quotation-documents';
-import type { BuildingPermitExtraction, BuildingPermitHydration } from '@/lib/projects/building-permit-ocr';
-import { matchPermitLocation } from '@/lib/projects/permit-location-match';
 import type { ClientRecord, DepartmentMode, FloorLevel, InspectionChecklistItem } from '@/lib/types/client';
 import type { QuotationDocumentsState } from '@/lib/types/quotation-documents';
 import type { TaxInvoice } from '@/lib/types/tax-invoice';
@@ -174,13 +171,6 @@ export default function ClientDetailModal({
   const [buildingPermitNumber, setBuildingPermitNumber] = useState('');
   const [buildingPermitDate, setBuildingPermitDate] = useState('');
   const [buildingPermitDateHijri, setBuildingPermitDateHijri] = useState('');
-  const [permitExtraction, setPermitExtraction] = useState<BuildingPermitExtraction | null>(null);
-  const [permitReviewDraft, setPermitReviewDraft] = useState<{
-    fields: BuildingPermitHydration;
-    extraction: BuildingPermitExtraction;
-  } | null>(null);
-  /** Prevents document upload refresh from wiping freshly OCR-hydrated floors/activity */
-  const permitHydrateLockRef = useRef(false);
 
   useEffect(() => {
     void loadCompanyProfile().then((profile) => setPricePerM2(Number(profile.price_per_m2) || 0));
@@ -194,8 +184,6 @@ export default function ClientDetailModal({
     setActiveTab(allowed.includes(preferred) ? preferred : allowed[0]);
     setErrorMessage(null);
     setSuccessMessage(null);
-    setPermitExtraction(null);
-    setPermitReviewDraft(null);
     setQuotationServices(normalizeQuotationServices(hydrated.quotation_services));
     setQuotationDocuments(normalizeQuotationDocuments(hydrated.quotation_documents));
     const hydratedLevels = ensureFloorLevels(
@@ -248,20 +236,10 @@ export default function ClientDetailModal({
     setLandArea(hydrated.land_area != null ? String(hydrated.land_area) : '');
     setProjectStatus(hydrated.project_status || '');
 
-    // Keep OCR-hydrated activity/floors if a concurrent document refresh races in
-    if (!permitHydrateLockRef.current) {
-      setActivityType(hydrated.activity_type || '');
-      setFloorLevels(
-        ensureFloorLevels(hydrated.floor_levels, hydrated.floors_count, hydrated.building_area)
-      );
-    } else if (hydrated.floor_levels?.length || hydrated.activity_type) {
-      // Persist caught up — release lock and sync from server
-      permitHydrateLockRef.current = false;
-      setActivityType(hydrated.activity_type || '');
-      setFloorLevels(
-        ensureFloorLevels(hydrated.floor_levels, hydrated.floors_count, hydrated.building_area)
-      );
-    }
+    setActivityType(hydrated.activity_type || '');
+    setFloorLevels(
+      ensureFloorLevels(hydrated.floor_levels, hydrated.floors_count, hydrated.building_area)
+    );
 
     const eng = parseProjectEngineeringData(hydrated.project_engineering_data);
     setBuildingPermitNumber(
@@ -582,81 +560,6 @@ export default function ClientDetailModal({
       ? [...catalogDistricts, district]
       : catalogDistricts;
 
-  const queuePermitReview = (fields: BuildingPermitHydration, extraction: BuildingPermitExtraction) => {
-    setPermitExtraction(extraction);
-    setPermitReviewDraft({ fields, extraction });
-    setSuccessMessage('SERVER OCR جاهز للمراجعة — لم تُعدّل الحقول ولم تُحفظ البيانات بعد.');
-  };
-
-  const commitPermitHydration = (fields: BuildingPermitHydration, extraction?: BuildingPermitExtraction) => {
-    if (extraction) setPermitExtraction(extraction);
-    const matched = matchPermitLocation({
-      city: fields.city,
-      district: fields.district,
-      municipality: fields.municipality,
-      locationSummary: fields.location_summary,
-    });
-
-    if (matched.region) setRegion(matched.region);
-    if (matched.city || fields.city) setCity(matched.city || fields.city || '');
-    if (matched.district || fields.district) {
-      setDistrict(matched.district || fields.district || '');
-    }
-    if (fields.owner_name) setOwnerName(fields.owner_name);
-    if (fields.street) setStreet(fields.street);
-    if (fields.plot_number) setPlotNumber(fields.plot_number);
-    if (fields.commercial_register) {
-      setCommercialRegister(fields.commercial_register);
-      setClientKind('business');
-    }
-    if (fields.phone && /^05\d{8}$/.test(fields.phone)) setPhone(fields.phone);
-    if (fields.land_area) setLandArea(fields.land_area);
-    if (fields.national_address) setNationalAddress(fields.national_address);
-    else if (fields.location_summary) setNationalAddress(fields.location_summary);
-    if (fields.building_permit_number) setBuildingPermitNumber(fields.building_permit_number);
-    if (fields.building_permit_date) setBuildingPermitDate(fields.building_permit_date);
-    if (fields.building_permit_date_hijri) {
-      setBuildingPermitDateHijri(fields.building_permit_date_hijri);
-    }
-    if (fields.activity_type) setActivityType(fields.activity_type);
-    const nextFloorLevels =
-      fields.floor_levels && fields.floor_levels.length > 0
-        ? fields.floor_levels
-        : fields.floors_count || fields.building_area
-          ? ensureFloorLevels(
-              null,
-              fields.floors_count ?? null,
-              fields.building_area ? Number(fields.building_area) : null
-            )
-          : null;
-    if (nextFloorLevels && nextFloorLevels.length > 0) {
-      permitHydrateLockRef.current = true;
-      setFloorLevels(nextFloorLevels);
-    } else if (fields.activity_type) {
-      permitHydrateLockRef.current = true;
-    }
-
-    // لا تُعد كتابة quotation_documents هنا — onChange يحفظها قبل الاستخراج
-    // (تجنّب استبدال المرفق بحالة قديمة من الـ closure)
-    // لا تحفظ قيم OCR تلقائيًا؛ تبقى الحقول معبأة للمراجعة ثم يعتمدها المستخدم بزر الحفظ.
-    // هذا يمنع انتقال قيمة مقروءة بشكل خاطئ من الرخصة إلى سجل العميل دون مراجعة.
-    setSuccessMessage(
-      [
-        fields.building_permit_number ? `رقم الرخصة: ${fields.building_permit_number}` : null,
-        fields.owner_name ? `المالك: ${fields.owner_name}` : null,
-        fields.activity_type ? `النشاط: ${fields.usage_label || fields.activity_type}` : null,
-        fields.floors_count != null ? `الأدوار: ${fields.floors_count}` : null,
-        fields.building_area ? `مساحة البناء: ${fields.building_area} م²` : null,
-        matched.district || fields.district
-          ? `الحي: ${matched.district || fields.district}`
-          : null,
-        fields.street ? `الشارع: ${fields.street}` : null,
-      ]
-        .filter(Boolean)
-        .join(' · ') || 'تم استخراج بيانات الرخصة وتعبئة الحقول — راجعها ثم اضغط حفظ'
-    );
-  };
-
   const handleSaveBasic = async () => {
     if (!/^05\d{8}$/.test(phone.replace(/\s+/g, ''))) {
       setErrorMessage('رقم الجوال غير صحيح. يجب أن يبدأ بـ 05 ويتكون من 10 أرقام.');
@@ -811,33 +714,7 @@ export default function ClientDetailModal({
                       onUpdated();
                     });
                   }}
-                  onPermitExtracted={queuePermitReview}
                 />
-                {permitReviewDraft ? (
-                  <PermitReviewPanel
-                    extraction={permitReviewDraft.extraction}
-                    fields={permitReviewDraft.fields}
-                    onApprove={(accepted) => {
-                      commitPermitHydration(accepted, permitReviewDraft.extraction);
-                      setPermitReviewDraft(null);
-                    }}
-                    onReject={() => {
-                      setPermitReviewDraft(null);
-                      setSuccessMessage('تم رفض مسودة OCR — لم تُطبّق أي قيمة على النموذج.');
-                    }}
-                  />
-                ) : permitExtraction ? (
-                  <PermitExtractionSummary extraction={permitExtraction} hydration={{
-                    owner_name: ownerName,
-                    building_permit_number: buildingPermitNumber,
-                    building_permit_date: buildingPermitDate,
-                    building_permit_date_hijri: buildingPermitDateHijri,
-                    land_area: landArea,
-                    building_area: String(computedBuildingArea || ''),
-                    floors_count: computedFloorsCount,
-                    activity_type: activityType,
-                  }} />
-                ) : null}
                 <p className="mt-3 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-[11px] text-amber-900">
                   راجع القيم المستخرجة من الرخصة، خصوصًا رقم الرخصة والمساحات وتفاصيل الأدوار، ثم اضغط «حفظ البيانات الأساسية» لاعتمادها.
                 </p>
@@ -1498,85 +1375,6 @@ export default function ClientDetailModal({
           if (promptInvoice) void shareTaxInvoiceWhatsApp(promptInvoice, client.phone);
         }}
       />
-    </div>
-  );
-}
-
-
-
-function PermitExtractionSummary({
-  extraction,
-  hydration,
-}: {
-  extraction: BuildingPermitExtraction;
-  hydration: {
-    owner_name: string;
-    building_permit_number: string;
-    building_permit_date: string;
-    building_permit_date_hijri: string;
-    land_area: string;
-    building_area: string;
-    floors_count: number;
-    activity_type: string;
-  };
-}) {
-  const activityLabel = hydration.activity_type
-    ? ACTIVITY_RULES[hydration.activity_type]?.label || hydration.activity_type
-    : extraction.usageLabel || 'غير محدد في الرخصة';
-  const floors = extraction.floors || [];
-  const valueOrDash = (value: string | number | null | undefined) => value === '' || value == null ? '—' : String(value);
-
-  return (
-    <section className="rounded-2xl border border-indigo-100 bg-gradient-to-br from-indigo-50/80 via-white to-teal-50/70 p-4" aria-label="بيانات الرخصة المستخرجة">
-      <div className="flex flex-wrap items-start justify-between gap-3">
-        <div>
-          <p className="text-sm font-bold text-indigo-950">بيانات الرخصة المستخرجة</p>
-          <p className="mt-1 text-[11px] text-indigo-800/70">تم استخراجها من الملف المرفوع — راجعها قبل الحفظ النهائي.</p>
-        </div>
-        <span className="rounded-full bg-white px-2.5 py-1 text-[10px] font-bold text-indigo-700 shadow-sm">المصدر: {extraction.source}</span>
-      </div>
-
-      <div className="mt-4 grid grid-cols-2 gap-2 md:grid-cols-4">
-        <PermitValue label="اسم المالك" value={valueOrDash(hydration.owner_name || extraction.ownerName)} />
-        <PermitValue label="رقم الرخصة" value={valueOrDash(hydration.building_permit_number || extraction.permitNumber)} />
-        <PermitValue label="تاريخ الرخصة" value={valueOrDash(hydration.building_permit_date || extraction.permitDateGregorian)} />
-        <PermitValue label="التاريخ الهجري" value={valueOrDash(hydration.building_permit_date_hijri || extraction.permitDateHijri)} />
-        <PermitValue label="مساحة الأرض" value={hydration.land_area ? `${hydration.land_area} م²` : '—'} />
-        <PermitValue label="مساحة المبنى" value={hydration.building_area ? `${hydration.building_area} م²` : extraction.buildingAreaM2 ? `${extraction.buildingAreaM2} م²` : '—'} />
-        <PermitValue label="عدد الأدوار" value={hydration.floors_count ? `${hydration.floors_count}` : '—'} />
-        <PermitValue label="تصنيف النشاط" value={activityLabel} />
-      </div>
-
-      <div className="mt-4 overflow-x-auto rounded-xl border border-indigo-100 bg-white/80">
-        <table className="w-full min-w-[560px] text-right text-xs">
-          <thead className="border-b border-indigo-100 bg-indigo-50/70 text-indigo-900">
-            <tr><th className="p-3">اسم الدور</th><th className="p-3">المساحة</th><th className="p-3">نشاط الدور</th><th className="p-3">التكرار</th></tr>
-          </thead>
-          <tbody>
-            {floors.length ? floors.map((floor, index) => (
-              <tr key={`${floor.label}-${index}`} className="border-b border-indigo-50 last:border-0">
-                <td className="p-3 font-semibold">{floor.label || `دور ${index + 1}`}</td>
-                <td className="p-3 font-mono">{floor.area_m2 ? `${floor.area_m2} م²` : '—'}</td>
-                <td className="p-3">{floor.activity_type || activityLabel || 'غير مذكور مستقلًا'}</td>
-                <td className="p-3">{floor.repeat_count || 1}</td>
-              </tr>
-            )) : (
-              <tr><td colSpan={4} className="p-4 text-center text-gray-500">لم تُستخرج تفاصيل منفصلة للأدوار من هذه الرخصة.</td></tr>
-            )}
-          </tbody>
-        </table>
-      </div>
-
-      <p className="mt-3 text-[11px] text-gray-500">دقة الاستخراج: {extraction.confidence} · البيانات غير الواضحة تبقى قابلة للتعديل يدويًا.</p>
-    </section>
-  );
-}
-
-function PermitValue({ label, value }: { label: string; value: string }) {
-  return (
-    <div className="rounded-xl border border-indigo-100 bg-white/80 p-3">
-      <p className="text-[10px] font-semibold text-gray-500">{label}</p>
-      <p className="mt-1 break-words text-xs font-bold text-gray-900">{value}</p>
     </div>
   );
 }
