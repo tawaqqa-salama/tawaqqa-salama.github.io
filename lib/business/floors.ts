@@ -26,6 +26,8 @@ export function normalizeFloorLevels(value: unknown): FloorLevel[] {
         label: String(item.label || labelForFloorKind(kind)),
         area_m2: area,
         repeat_count: kind === 'typical' ? repeat : Math.max(1, repeat),
+        activity_type: item.activity_type ? String(item.activity_type) : null,
+        floor_use: item.floor_use ? String(item.floor_use) : null,
       } satisfies FloorLevel;
     })
     .filter(Boolean);

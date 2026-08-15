@@ -1,5 +1,3 @@
-export { ACTIVITY_RULES, FLOOR_KIND_OPTIONS, type ActivityRule } from '@/lib/constants/activity-rules';
-
 export const REGION_DATA: Record<string, Record<string, string[]>> = {
   'مكة المكرمة': {
     جدة: [
@@ -27,7 +25,19 @@ export const REGION_DATA: Record<string, Record<string, string[]>> = {
     الدمام: ['الفيصلية', 'الشاطئ', 'الزهور'],
     الخبر: ['الحزام الذهبي', 'الكرنيش', 'الجسر'],
   },
+  'المدينة المنورة': {},
+  القصيم: {},
+  عسير: {},
+  'تبوك': {},
+  حائل: {},
+  'جازان': {},
+  'نجران': {},
+  الباحة: {},
+  الجوف: {},
+  'الحدود الشمالية': {},
 };
+
+export { ACTIVITY_RULES, FLOOR_KIND_OPTIONS } from '@/lib/constants/activity-rules';
 
 export const ENGINEERS = [
   'م. أحمد العتيبي',
