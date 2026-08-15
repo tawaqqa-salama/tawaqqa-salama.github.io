@@ -27,18 +27,30 @@ const ALLOWED_MIME_TYPES = new Set(['application/pdf', 'image/jpeg', 'image/png'
 
 const EXTRACTION_PROMPT = `أنت محلل وثائق رخص البناء السعودية. اقرأ الوثيقة المرفقة فقط، ولا تستنتج أي قيمة غير ظاهرة فيها.
 أعد JSON مطابقاً للمخطط المطلوب. لكل حقل أعد كائناً بالشكل:
-{"value": value-or-null, "confidence": number-between-0-and-1, "source": {"page": number, "text": string} أو null, "needs_review": boolean}.
+{"value": value-or-null, "confidence": number-between-0-and-1, "source": {"page": number, "text": string, "x": number, "y": number, "width": number, "height": number} أو null, "needs_review": boolean}.
 ضع needs_review=true إذا كانت القيمة غير واضحة أو confidence أقل من 0.75 أو لا يمكن تحديد مصدرها.
 لا تضع VERIFIED أبداً؛ النتيجة تحتاج مراجعة المستخدم.
 اترك القيمة null إذا لم تكن موجودة. استخدم YYYY-MM-DD للتاريخ الميلادي عند التأكد فقط.
+اقرأ رقم الرخصة من خانة «رقم الرخصة» فقط، ويجب أن يكون 10 أرقام متصلة؛ لا تستخدم رقم الباركود أو الصك أو الكروكي ولا تكمل الرقم بالتخمين.
+اقرأ اسم المالك من خانة «اسم صاحب الرخصة» فقط، ولا تستخدم اسم المدير أو المهندس أو المكتب أو التوقيعات. حافظ على ترتيب الكلمات العربية وأزل المسافات المكررة فقط.
+اقرأ رقم القطعة من «رقم القطعة» ورقم المخطط من «رقم المخطط»، واحفظ رقم المخطط كنص لأنه قد يحتوي على /. لا تخلطهما مع الصك أو الكروكي.
+اقرأ جدول «المساحات وعدد الوحدات ومواقف السيارات» صفاً صفاً. أعد كل صف مطبوع بالترتيب والتسمية الظاهرة حرفياً دون إعادة تسمية حسب ترتيب الصف: بدروم، طابق أرضي، طابق متكرر، طابق اول، ملحق علوي عند ظهورها. لكل صف أعد label وarea_m2 وactivity_type وsource.row_text وsource.column_text عند توفرها. إذا لم يمكن ربط النشاط أو المساحة بالصف، اترك القيمة null وضع needs_review=true ولا تخترعها.
+أعد licensedFloorCount من الحقل الصريح «عدد الأدوار» فقط عند ظهوره. هذا العدد مستقل عن floorLevels؛ وجود بدروم أو ملحق أو صفوف إضافية في جدول المساحات لا يغيّر licensedFloorCount. لا تقص floorLevels ولا تساوِ بينها وبين licensedFloorCount.
 لا تخلط بين مساحة الأرض ومساحة البناء، ولا تستخرج نشاط دور غير ظاهر صراحة.
 الحقول المطلوبة هي: ${JSON.stringify(EXTRACTION_JSON_SHAPE)}.`;
+
+const TARGETED_EXTRACTION_PROMPT = `أعد فحص الوثيقة نفسها مرة واحدة فقط مع تركيز موجّه على أربع مناطق، ولا تغيّر قيمة إلا إذا وجدت نصاً مصدرياً واضحاً:
+A) header/license number: خانة «رقم الرخصة» فقط؛ 10 أرقام متصلة.
+B) owner/contact block: خانة «اسم صاحب الرخصة» فقط؛ لا أسماء المهندس أو المكتب أو التوقيعات.
+C) plot/plan/land area block: «رقم القطعة»، «رقم المخطط»، «مساحة الأرض» مع الحفاظ على / والكسور العشرية.
+D) floor table: جدول «المساحات وعدد الوحدات ومواقف السيارات»؛ أعد جميع الصفوف الفعلية بتسمياتها الأصلية ومساحاتها ومصادر الصف والعمود، دون قصها حسب licensedFloorCount.
+أعد نفس JSON schema، وكل قيمة بلا نص مصدر واضح أو بثقة أقل من 0.75 يجب أن تكون needs_review=true. لا تخمّن ولا تستخدم VERIFIED. ${JSON.stringify(EXTRACTION_JSON_SHAPE)}`;
 
 const TEXT_SCHEMA = {
   type: 'object',
   additionalProperties: false,
   properties: Object.fromEntries(Object.entries(EXTRACTION_JSON_SHAPE).map(([key]) => {
-    if (key === 'floors') {
+    if (key === 'floors' || key === 'floorLevels') {
       return [key, {
         type: ['object', 'null'],
         additionalProperties: false,
@@ -47,7 +59,8 @@ const TEXT_SCHEMA = {
             label: { type: ['string', 'null'] },
             area_m2: { type: ['number', 'null'] },
             activity_type: { type: ['string', 'null'] },
-          }, required: ['label', 'area_m2', 'activity_type'] } },
+            source: { type: ['object', 'null'], additionalProperties: true },
+          }, required: ['label', 'area_m2', 'activity_type', 'source'] } },
           confidence: { type: 'number' },
           source: { type: ['object', 'null'], additionalProperties: true },
           needs_review: { type: 'boolean' },
@@ -55,7 +68,7 @@ const TEXT_SCHEMA = {
         required: ['value', 'confidence', 'source', 'needs_review'],
       }];
     }
-    const numeric = ['landAreaM2', 'buildingAreaM2', 'floorsCount', 'buildingHeightM'].includes(key);
+    const numeric = ['landAreaM2', 'buildingAreaM2', 'floorsCount', 'licensedFloorCount', 'buildingHeightM'].includes(key);
     return [key, {
       type: 'object',
       additionalProperties: false,
@@ -139,7 +152,7 @@ function parseJsonObject(text: string): Record<string, unknown> | null {
   }
 }
 
-async function callOpenAi(mimeType: string, fileName: string | null, base64: string): Promise<Record<string, unknown> | null> {
+async function callOpenAi(mimeType: string, fileName: string | null, base64: string, prompt = EXTRACTION_PROMPT): Promise<Record<string, unknown> | null> {
   const apiKey = Deno.env.get('OPENAI_API_KEY')?.trim();
   if (!apiKey) throw new Error('OPENAI_API_KEY is not configured in Supabase Function secrets');
   const media = mimeType === 'application/pdf'
@@ -151,7 +164,7 @@ async function callOpenAi(mimeType: string, fileName: string | null, base64: str
     body: JSON.stringify({
       model: Deno.env.get('OPENAI_VISION_MODEL')?.trim() || 'gpt-4o-mini',
       temperature: 0,
-      input: [{ role: 'user', content: [{ type: 'input_text', text: EXTRACTION_PROMPT }, media] }],
+      input: [{ role: 'user', content: [{ type: 'input_text', text: prompt }, media] }],
       text: { format: { type: 'json_schema', name: 'building_permit_ocr', strict: true, schema: TEXT_SCHEMA } },
     }),
   });
@@ -202,10 +215,28 @@ Deno.serve(async (request: Request) => {
   if (documentError) return errorResponse('DOCUMENT_UNVERIFIED', documentError, 422);
 
   try {
-    const raw = await callOpenAi(mimeType, fileName, bytesToBase64(bytes));
+    const base64 = bytesToBase64(bytes);
+    const raw = await callOpenAi(mimeType, fileName, base64);
     if (!raw) return errorResponse('EMPTY_OCR_RESULT', 'No structured OCR result was returned', 422);
-    const fields = normalizeOcrFields(raw);
-    const warnings = validateOcrFields(fields);
+    let fields = normalizeOcrFields(raw);
+    let warnings = validateOcrFields(fields);
+    const targetedNeeded = fields.permitNumber.needs_review || fields.ownerName.needs_review || fields.plotNumber.needs_review || fields.planNumber.needs_review || fields.landAreaM2.needs_review || fields.floors.needs_review || fields.floorsCount.needs_review;
+    if (targetedNeeded) {
+      const targetedRaw = await callOpenAi(mimeType, fileName, base64, TARGETED_EXTRACTION_PROMPT);
+      if (targetedRaw) {
+        const targetedFields = normalizeOcrFields(targetedRaw);
+        const targetedWarnings = validateOcrFields(targetedFields);
+        const merged = { ...fields };
+        for (const key of Object.keys(merged) as Array<keyof typeof merged>) {
+          const candidate = targetedFields[key];
+          if (candidate.value != null && (!merged[key].value || merged[key].needs_review || candidate.confidence > merged[key].confidence)) {
+            merged[key] = candidate as typeof merged[typeof key];
+          }
+        }
+        fields = merged;
+        warnings = [...warnings, ...targetedWarnings, 'Targeted region retry was used for low-confidence or invalid fields'];
+      }
+    }
     if (hasReviewRequired(fields)) warnings.push('One or more fields require review');
     const result: BuildingPermitOcrResponse = {
       ok: true,

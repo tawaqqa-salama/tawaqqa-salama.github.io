@@ -24,7 +24,7 @@ export type BuildingPermitFieldEvidence = {
   value: unknown;
   confidence: number;
   needs_review: boolean;
-  source?: { page?: number; text?: string } | null;
+  source?: { page?: number; text?: string; x?: number; y?: number; width?: number; height?: number; row_text?: string; column_text?: string } | null;
 };
 
 export type BuildingPermitExtraction = {
@@ -36,20 +36,24 @@ export type BuildingPermitExtraction = {
   city: string | null;
   street: string | null;
   plotNumber: string | null;
+  /** رقم المخطط؛ اختياري لأن النموذج الأساسي الحالي لا يحتاجه دائمًا */
+  planNumber?: string | null;
   municipality: string | null;
   commercialRegister: string | null;
   phone: string | null;
   landAreaM2: string | null;
   /** إجمالي مساحة البناء (م²) إن وُجدت في الرخصة */
   buildingAreaM2: string | null;
-  /** عدد الأدوار من الرخصة */
+  /** Explicit licensed count from «عدد الأدوار», not table row count. */
   floorsCount: number | null;
+  licensedFloorCount?: number | null;
   /** نص الاستخدام كما في الرخصة (مثل: رخصة بناء مبنى تجاري) */
   usageLabel: string | null;
   /** مفتاح النشاط في النظام بعد المطابقة */
   activityType: string | null;
-  /** تفصيل الأدوار إن أمكن استخراجه من جدول محتويات المبنى */
+  /** All printed floor rows from the area table, including basement/annex. */
   floors: PermitFloorRow[] | null;
+  floorLevels?: PermitFloorRow[] | null;
   nationalAddress: string | null;
   locationSummary: string | null;
   rawTextPreview?: string;
@@ -184,10 +188,13 @@ function looksLikePersonName(value: string): boolean {
 function looksLikePermitNumber(value: string | null | undefined): boolean {
   if (!value) return false;
   const v = normalizeArabicDigits(String(value)).replace(/\s+/g, '');
-  // Pure digits (Balady) or digit/digit municipal forms — never office names
-  if (/^\d{8,14}$/.test(v)) return true;
-  if (/^\d{3,5}\/\d{2,4}$/.test(v)) return true;
-  return false;
+  return /^\d{10}$/.test(v) || /^\d{3,5}\/\d{2,4}$/.test(v);
+}
+
+function looksLikePermitCandidate(value: string | null | undefined): boolean {
+  if (!value) return false;
+  const v = normalizeArabicDigits(String(value)).replace(/\s+/g, '');
+  return /^\d{8,14}$/.test(v) || /^\d{3,5}\/\d{2,4}$/.test(v);
 }
 
 /** Common Tesseract confusions on Balady Arabic names / districts */
@@ -206,7 +213,6 @@ function fixArabicOcrText(value: string): string {
     .replace(/سعيديافيل/g, 'سعيد بافيل')
     .replace(/سعيدبافيل/g, 'سعيد بافيل')
     .replace(/مجد\s+عبد\s+رضا/g, 'محمد عبد رضا')
-    .replace(/قائز/g, 'فايز')
     .replace(/صالج/g, 'صالح')
     .replace(/الجارثي/g, 'الحارثي')
     .replace(/الحارتي/g, 'الحارثي')
@@ -485,11 +491,11 @@ function extractPermitNumber(text: string): string | null {
   const baladyBlock = normalized.match(
     /رقم\s*الرخص[ةه]\s*\n+\s*(\d{8,14})/imu
   );
-  if (baladyBlock?.[1] && looksLikePermitNumber(baladyBlock[1])) return baladyBlock[1];
+  if (baladyBlock?.[1] && looksLikePermitCandidate(baladyBlock[1])) return baladyBlock[1];
 
   // Same line with OCR spacing: رقم الرخصة 4100097644
   const sameLine = normalized.match(/رقم\s*الرخص[ةه]\s*[:：]?\s*(\d{8,14})/u);
-  if (sameLine?.[1] && looksLikePermitNumber(sameLine[1])) return sameLine[1];
+  if (sameLine?.[1] && looksLikePermitCandidate(sameLine[1])) return sameLine[1];
 
   const labeled = pickLabeledValue(normalized, [
     /رقم\s*رخصة\s*البناء/,
@@ -505,7 +511,7 @@ function extractPermitNumber(text: string): string | null {
       cleaned.match(/\d{8,14}/)?.[0] ||
       cleaned.match(/\d{4,5}\/\d{2,4}/)?.[0] ||
       cleaned.match(/\d{6,}/)?.[0];
-    if (num && looksLikePermitNumber(num)) return num;
+    if (num && looksLikePermitCandidate(num)) return num;
     // Never return office names / Arabic prose as "permit number"
   }
 
@@ -514,7 +520,7 @@ function extractPermitNumber(text: string): string | null {
   );
   if (afterLabel?.[1]) {
     const num = collapseOcrDigitGaps(afterLabel[1]).match(/\d{8,14}|\d{4,5}\/\d{2,4}|\d{6,}/);
-    if (num && looksLikePermitNumber(num[0])) return num[0];
+    if (num && looksLikePermitCandidate(num[0])) return num[0];
   }
 
   const patterns = [
@@ -526,7 +532,7 @@ function extractPermitNumber(text: string): string | null {
   ];
   for (const re of patterns) {
     const m = normalized.match(re);
-    if (m?.[1] && looksLikePermitNumber(m[1])) return collapseOcrDigitGaps(m[1]);
+    if (m?.[1] && looksLikePermitCandidate(m[1])) return collapseOcrDigitGaps(m[1]);
   }
   return null;
 }
@@ -600,6 +606,14 @@ function extractStreet(text: string): string | null {
   return fixArabicOcrText(cleaned);
 }
 
+function extractPlanNumber(text: string): string | null {
+  const normalized = collapseOcrDigitGaps(text);
+  const value =
+    normalized.match(/(?:رقم\s*)?المخطط\s*[:：]?\s*([A-Za-z0-9٠-٩]+(?:\s*\/\s*[A-Za-z0-9٠-٩]+)?)/u)?.[1] ||
+    normalized.match(/رقم\s*المخطط\s*\n+\s*([A-Za-z0-9٠-٩]+(?:\s*\/\s*[A-Za-z0-9٠-٩]+)?)/u)?.[1];
+  if (!value) return null;
+  return normalizeArabicDigits(value).replace(/\s+/g, '');
+}
 function extractPlotNumber(text: string): string | null {
   const fromColumns = extractBaladyLocationColumns(text)?.plotNumber;
   if (fromColumns) return fromColumns;
@@ -711,7 +725,7 @@ function parseAreaToken(raw: string): number | null {
 }
 
 const FLOOR_TOKEN =
-  'بدروم|قبو|سرداب|أرض[يى]|ارضي|متكرر|دور\\s*الروف|روف|سطح|الأول|الاول|أول|اول|الثاني|الثانى|ثاني|الثالث|ثالث|الرابع|رابع|الخامس|خامس';
+  'بدروم|قبو|سرداب|(?:ال)?أرض[يى]|ارضي|طابق\\s*أرضي|متكرر|طابق\\s*متكرر|دور\\s*الروف|روف|سطح|ملحق\\s*علوي|الأول|الاول|أول|اول|طابق\\s*اول|الثاني|الثانى|ثاني|الثالث|ثالث|الرابع|رابع|الخامس|خامس';
 
 /**
  * Parse floor rows from contents table / labeled lines, e.g.:
@@ -724,23 +738,39 @@ function extractFloorRows(text: string): PermitFloorRow[] {
   const seen = new Set<string>();
   const nameRe = new RegExp(`^(?:الدور\\s*)?(?:${FLOOR_TOKEN})$`, 'u');
 
-  const pushRow = (name: string, areaRaw: string) => {
+  const pushRow = (name: string, areaRaw: string, activityRaw?: string | null) => {
     const classified = classifyFloorName(name);
     const area = parseAreaToken(areaRaw);
     if (!classified || area == null || area < 5) return;
-    if (seen.has(classified.label)) return;
-    seen.add(classified.label);
+    const sourceLabel = cleanLabelValue(name).replace(/^الدور\s+/u, '').trim();
+    const dedupeKey = `${sourceLabel}|${area}`;
+    if (seen.has(dedupeKey)) return;
+    seen.add(dedupeKey);
+    const activityText = activityRaw ? cleanLabelValue(activityRaw) : null;
     rows.push({
-      label: classified.label,
+      // Preserve the exact source label; kind is only an internal semantic hint.
+      label: sourceLabel || classified.label,
       kind: classified.kind,
       area_m2: area,
       repeat_count: 1,
+      activity_type: activityText ? mapPermitUsageToActivityType(activityText, activityText) || activityText : null,
     });
   };
 
   const lines = splitNonEmptyLines(normalized);
   for (let i = 0; i < lines.length; i++) {
     const line = lines[i];
+    // Structured table row: floor | area | activity. Headers are required nearby.
+    const structured = line.match(new RegExp(`^(?:الدور\\s*)?(${FLOOR_TOKEN})\\s*(?:\\||\\t| {2,})\\s*([\\d.,]+)\\s*(?:م²|م2|متر)?\\s*(?:\\||\\t| {2,})\\s*([^|\\t]{2,80})$`, 'u'));
+    if (structured && /محتويات|المساحات|عدد\\s*الوحدات|مواقف/.test(lines.slice(Math.max(0, i - 8), i + 1).join(' '))) {
+      pushRow(structured[1], structured[2], structured[3]);
+      continue;
+    }
+    const structuredWithoutActivity = line.match(new RegExp(`^(?:الدور\\s*)?(${FLOOR_TOKEN})\\s*(?:\\||\\t| {2,})\\s*([\\d.,]+)\\s*(?:م²|م2|متر)?$`, 'u'));
+    if (structuredWithoutActivity && /محتويات|المساحات|عدد\\s*الوحدات|مواقف/.test(lines.slice(Math.max(0, i - 8), i + 1).join(' '))) {
+      pushRow(structuredWithoutActivity[1], structuredWithoutActivity[2]);
+      continue;
+    }
     // Same-line: "أرضي 429.33" or "أرضي: 429.33 م²"
     const same = line.match(
       new RegExp(`^(?:الدور\\s*)?(${FLOOR_TOKEN})\\s*[:：\\-]?\\s*([\\d.,]+)\\s*(?:م²|م2|متر)?$`, 'u')
@@ -805,6 +835,7 @@ function extractLocation(text: string): {
   city: string | null;
   street: string | null;
   plotNumber: string | null;
+  planNumber: string | null;
   municipality: string | null;
   locationSummary: string | null;
 } {
@@ -844,6 +875,7 @@ function extractLocation(text: string): {
 
   let street = columns?.street || extractStreet(text);
   let plotNumber = columns?.plotNumber || extractPlotNumber(text);
+  const planNumber = extractPlanNumber(text);
 
   // PSM4 single-line location values:
   // جدة الجديدة الفرعية 3900084565 32ب مجد عبد رضا 1280
@@ -879,6 +911,7 @@ function extractLocation(text: string): {
       city: cleanCity,
       street,
       plotNumber,
+      planNumber,
       municipality: cleanMunicipality && !isLikelyFieldLabel(cleanMunicipality) ? cleanMunicipality : columns?.municipality || null,
       locationSummary:
         location ||
@@ -897,6 +930,7 @@ function extractLocation(text: string): {
     city: cleanCity,
     street,
     plotNumber,
+    planNumber,
     municipality:
       cleanMunicipality && !isLikelyFieldLabel(cleanMunicipality)
         ? cleanMunicipality
@@ -947,15 +981,18 @@ export function parseBuildingPermitText(
     city: location.city,
     street: location.street,
     plotNumber: location.plotNumber,
+    planNumber: location.planNumber,
     municipality: location.municipality,
     commercialRegister,
     phone,
     landAreaM2,
     buildingAreaM2: floorsBundle.buildingAreaM2,
     floorsCount: floorsBundle.floorsCount,
+    licensedFloorCount: floorsBundle.floorsCount,
     usageLabel: floorsBundle.usageLabel,
     activityType: floorsBundle.activityType,
     floors: floorsBundle.floors,
+    floorLevels: floorsBundle.floors,
     nationalAddress,
     locationSummary: location.locationSummary,
     rawTextPreview: cleaned.slice(0, 1200),
@@ -980,9 +1017,11 @@ export function emptyExtraction(source: BuildingPermitExtraction['source'] = 'no
     landAreaM2: null,
     buildingAreaM2: null,
     floorsCount: null,
+    licensedFloorCount: null,
     usageLabel: null,
     activityType: null,
     floors: null,
+    floorLevels: null,
     nationalAddress: null,
     locationSummary: null,
     source,

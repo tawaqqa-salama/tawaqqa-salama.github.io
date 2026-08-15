@@ -227,7 +227,7 @@ export function buildFloorsFromAreaList(
   return rows;
 }
 
-/** Merge named floor rows with heuristic area rows; named wins — still cap by count. */
+/** Merge named floor rows with heuristic area rows; named source rows always remain intact. */
 export function mergeFloorRows(
   named: PermitFloorRow[],
   heuristic: PermitFloorRow[],
@@ -235,25 +235,11 @@ export function mergeFloorRows(
 ): PermitFloorRow[] {
   const declared =
     floorsCount != null && floorsCount > 0 ? Math.floor(floorsCount) : null;
-  let rows = named.length > 0 ? named : heuristic;
-  if (declared != null && rows.length > declared) {
-    rows = rows.slice(0, declared);
-  }
-  if (declared != null && rows.length < declared && rows.length > 0) {
-    // Pad missing floors to match عدد الأدوار
-    const padded = [...rows];
-    for (let i = rows.length; i < declared; i++) {
-      const meta = DEFAULT_FLOOR_SEQUENCE[i] || {
-        label: `دور ${i + 1}`,
-        kind: 'custom' as FloorLevelKind,
-      };
-      padded.push({ label: meta.label, kind: meta.kind, area_m2: 0, repeat_count: 1 });
-    }
-    return padded;
-  }
-  if (declared != null && rows.length === 0) {
-    return buildFloorsFromAreaList([], declared);
-  }
+  const rows = named.length > 0 ? named : heuristic;
+  // licensedFloorCount is not the number of printed table rows. Keep every
+  // explicit row, including basement and roof annex, without synthetic labels.
+  if (rows.length > 0) return rows;
+  if (declared != null) return buildFloorsFromAreaList([], declared);
   return rows;
 }
 

@@ -8,6 +8,7 @@ import { buildDefaultFloorLevels, labelForFloorKind } from '@/lib/business/floor
 import type { FloorLevel, FloorLevelKind } from '@/lib/types/client';
 
 export type PermitFloorRow = {
+  /** Exact display label as read from the permit table. */
   label: string;
   kind: FloorLevelKind;
   area_m2: number;
@@ -68,8 +69,8 @@ export function activityLabelForType(activityType: string | null | undefined): s
 
 const FLOOR_NAME_PATTERNS: { re: RegExp; kind: FloorLevelKind; label: string }[] = [
   { re: /بدروم|قبو|سرداب/, kind: 'basement', label: 'بدروم' },
-  { re: /أرض[يى]|ارضي|الدور\s*الأرض[يى]/, kind: 'ground', label: 'أرضي' },
-  { re: /روف|سطح|ملحق\s*سطح|دور\s*الروف/, kind: 'roof', label: 'دور الروف' },
+  { re: /أرض[يى]|ارضي|الدور\s*الأرض[يى]|طابق\s*أرضي/, kind: 'ground', label: 'أرضي' },
+  { re: /روف|سطح|ملحق\s*سطح|ملحق\s*علوي|دور\s*الروف/, kind: 'roof', label: 'دور الروف' },
   { re: /متكرر/, kind: 'typical', label: 'متكرر' },
   { re: /الأول|الاول|أول|اول/, kind: 'custom', label: 'أول' },
   { re: /الثاني|الثانى|ثاني/, kind: 'custom', label: 'ثاني' },
@@ -128,9 +129,8 @@ export function resolveFloorLevelsFromPermit(input: {
 }): FloorLevel[] {
   const count = Math.max(0, Math.floor(Number(input.floorsCount) || 0));
   let explicit = permitFloorsToFloorLevels(input.floors || []);
-  if (count > 0 && explicit.length > count) {
-    explicit = explicit.slice(0, count);
-  }
+  // licensedFloorCount is intentionally independent from table row count;
+  // basement, roof annex, and other printed levels must remain visible.
   if (explicit.length > 0) return explicit;
 
   const area = Math.max(0, Number(input.buildingAreaM2) || 0);

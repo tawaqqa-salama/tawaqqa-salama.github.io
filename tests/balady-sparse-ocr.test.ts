@@ -18,7 +18,7 @@ describe('Balady sparse column OCR', () => {
     expect(r.permitNumber).toBe('4100097644');
     expect(r.permitDateGregorian).toBeNull();
     expect(r.permitDateHijri).toMatch(/1442/);
-    expect(r.ownerName).toBe('فايز صالح مسعود الحارثي');
+    expect(r.ownerName).toBe('قائز صالح مسعود الحارثي');
     expect(r.commercialRegister).toBe('1004007223');
     expect(r.phone).toBe('0503300033');
     expect(r.municipality).toMatch(/ابحر/);
@@ -37,7 +37,7 @@ describe('Balady sparse column OCR', () => {
     ).toEqual({ region: 'مكة المكرمة', city: 'جدة', district: 'النهضة' });
 
     const h = extractionToHydration(r);
-    expect(h.owner_name).toBe('فايز صالح مسعود الحارثي');
+    expect(h.owner_name).toBe('قائز صالح مسعود الحارثي');
     expect(h.district).toBe('النهضة');
     expect(h.street).toBe('غير مسمى');
     expect(h.plot_number).toBe('139');

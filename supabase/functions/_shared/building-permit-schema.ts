@@ -5,6 +5,8 @@ export type SourceRegion = {
   width?: number;
   height?: number;
   text?: string;
+  row_text?: string;
+  column_text?: string;
 };
 
 export type Confidence = number;
@@ -20,6 +22,7 @@ export type PermitFloor = {
   label: ExtractedField<string>;
   area_m2: ExtractedField<number>;
   activity_type: ExtractedField<string>;
+  source?: SourceRegion | null;
 };
 
 export type BuildingPermitOcrFields = {
@@ -38,8 +41,12 @@ export type BuildingPermitOcrFields = {
   activityType: ExtractedField<string>;
   landAreaM2: ExtractedField<number>;
   buildingAreaM2: ExtractedField<number>;
+  /** Explicit licensed count from «عدد الأدوار», independent from table rows. */
   floorsCount: ExtractedField<number>;
+  licensedFloorCount: ExtractedField<number>;
+  /** All printed rows from the area table, including basement/roof annex. */
   floors: ExtractedField<PermitFloor[]>;
+  floorLevels: ExtractedField<PermitFloor[]>;
   buildingHeightM: ExtractedField<number>;
   nationalAddress: ExtractedField<string>;
   rawTextPreview: ExtractedField<string>;
@@ -122,6 +129,12 @@ function normalizeSource(value: unknown): SourceRegion | null {
   if (typeof raw.text === 'string' && raw.text.trim()) {
     source.text = raw.text.trim().slice(0, 500);
   }
+  if (typeof raw.row_text === 'string' && raw.row_text.trim()) {
+    source.row_text = raw.row_text.trim().slice(0, 500);
+  }
+  if (typeof raw.column_text === 'string' && raw.column_text.trim()) {
+    source.column_text = raw.column_text.trim().slice(0, 500);
+  }
   return Object.keys(source).length ? source : null;
 }
 
@@ -146,6 +159,27 @@ function normalizeTextField(raw: unknown): ExtractedField<string> {
   return { ...field, value: field.value.trim() };
 }
 
+function normalizePermitNumberField(raw: unknown): ExtractedField<string> {
+  const field = normalizeTextField(raw);
+  if (!field.value) return field;
+  const normalized = field.value
+    .replace(/[٠-٩]/g, (digit) => String('٠١٢٣٤٥٦٧٨٩'.indexOf(digit)))
+    .replace(/\s+/g, '');
+  return { ...field, value: normalized };
+}
+
+function normalizeNumericTextField(raw: unknown): ExtractedField<string> {
+  const field = normalizeTextField(raw);
+  if (!field.value) return field;
+  return { ...field, value: field.value.replace(/[٠-٩]/g, (digit) => String('٠١٢٣٤٥٦٧٨٩'.indexOf(digit))).replace(/\s+/g, '') };
+}
+
+function normalizeOwnerNameField(raw: unknown): ExtractedField<string> {
+  const field = normalizeTextField(raw);
+  if (!field.value) return field;
+  return { ...field, value: field.value.replace(/\s+/g, ' ').trim() };
+}
+
 function normalizeNumberField(raw: unknown): ExtractedField<number> {
   const field = normalizeField<number>(raw);
   if (typeof field.value !== 'number' || !Number.isFinite(field.value) || field.value < 0) {
@@ -165,6 +199,7 @@ function normalizeFloors(raw: unknown): ExtractedField<PermitFloor[]> {
       label: normalizeTextField(row.label),
       area_m2: normalizeNumberField(row.area_m2),
       activity_type: normalizeTextField(row.activity_type),
+      source: normalizeSource(row.source),
     });
   }
   if (!floors.length) return emptyField<PermitFloor[]>();
@@ -173,13 +208,15 @@ function normalizeFloors(raw: unknown): ExtractedField<PermitFloor[]> {
 
 export function normalizeOcrFields(raw: unknown): BuildingPermitOcrFields {
   const input = raw && typeof raw === 'object' ? (raw as Record<string, unknown>) : {};
+  const licensedFloorCount = normalizeNumberField(input.licensedFloorCount ?? input.floorsCount);
+  const floorLevels = normalizeFloors(input.floorLevels ?? input.floors);
   return {
-    permitNumber: normalizeTextField(input.permitNumber),
+    permitNumber: normalizePermitNumberField(input.permitNumber),
     permitDateGregorian: normalizeTextField(input.permitDateGregorian),
     permitDateHijri: normalizeTextField(input.permitDateHijri),
     permitType: normalizeTextField(input.permitType),
-    ownerName: normalizeTextField(input.ownerName),
-    plotNumber: normalizeTextField(input.plotNumber),
+    ownerName: normalizeOwnerNameField(input.ownerName),
+    plotNumber: normalizeNumericTextField(input.plotNumber),
     planNumber: normalizeTextField(input.planNumber),
     district: normalizeTextField(input.district),
     city: normalizeTextField(input.city),
@@ -189,8 +226,10 @@ export function normalizeOcrFields(raw: unknown): BuildingPermitOcrFields {
     activityType: normalizeTextField(input.activityType),
     landAreaM2: normalizeNumberField(input.landAreaM2),
     buildingAreaM2: normalizeNumberField(input.buildingAreaM2),
-    floorsCount: normalizeNumberField(input.floorsCount),
-    floors: normalizeFloors(input.floors),
+    floorsCount: licensedFloorCount,
+    licensedFloorCount,
+    floors: floorLevels,
+    floorLevels,
     buildingHeightM: normalizeNumberField(input.buildingHeightM),
     nationalAddress: normalizeTextField(input.nationalAddress),
     rawTextPreview: normalizeTextField(input.rawTextPreview),
@@ -230,9 +269,20 @@ export function validateOcrFields(fields: BuildingPermitOcrFields): string[] {
       warnings.push(`${name}: non-positive or invalid value requires review`);
     }
   }
-  if (fields.permitNumber.value && !looksLikePermitNumber(fields.permitNumber.value)) {
-    markReview(fields.permitNumber);
-    warnings.push('permitNumber has an invalid format');
+  if (fields.permitNumber.value) {
+    const permit = fields.permitNumber.value.replace(/\s+/g, '');
+    if (!/^\d{10}$/.test(permit)) {
+      markReview(fields.permitNumber);
+      warnings.push('permitNumber must contain exactly 10 digits for this permit family');
+    }
+  }
+  if (fields.plotNumber.value && !/^\d{1,8}$/.test(fields.plotNumber.value)) {
+    markReview(fields.plotNumber);
+    warnings.push('plotNumber must preserve exact digits only');
+  }
+  if (fields.planNumber.value && !/^\d{1,8}(?:\/[A-Za-z0-9٠-٩]+)?$/.test(fields.planNumber.value)) {
+    markReview(fields.planNumber);
+    warnings.push('planNumber has an invalid format');
   }
   if (fields.permitDateGregorian.value && !isGregorianDate(fields.permitDateGregorian.value)) {
     markReview(fields.permitDateGregorian);
@@ -249,6 +299,18 @@ export function validateOcrFields(fields: BuildingPermitOcrFields): string[] {
   if (fields.floorsCount.value != null && (!Number.isInteger(fields.floorsCount.value) || fields.floorsCount.value < 1 || fields.floorsCount.value > 100)) {
     markReview(fields.floorsCount);
     warnings.push('floorsCount is impossible or not an integer');
+  }
+  if (fields.floors.value) {
+    const missingActivity = fields.floors.value.some((row) => row.activity_type.value == null);
+    if (missingActivity) {
+      fields.floors.value.forEach((row) => { if (!row.activity_type.value) row.activity_type.needs_review = true; });
+      markReview(fields.floors);
+      markReview(fields.floorLevels);
+      warnings.push('one or more floor activities are missing and require review');
+    }
+    // Do not compare licensedFloorCount with table row count: the permit can
+    // explicitly say 2 floors while the printed table lists basement, ground,
+    // typical, first, and roof-annex rows.
   }
   if (fields.buildingHeightM.value != null && fields.buildingHeightM.value > 1000) {
     markReview(fields.buildingHeightM);
@@ -285,7 +347,9 @@ export const EXTRACTION_JSON_SHAPE = {
   landAreaM2: 'number|null',
   buildingAreaM2: 'number|null',
   floorsCount: 'number|null',
+  licensedFloorCount: 'number|null',
   floors: '[{label,area_m2,activity_type}]|null',
+  floorLevels: '[{label,area_m2,activity_type}]|null',
   buildingHeightM: 'number|null',
   nationalAddress: 'string|null',
   rawTextPreview: 'string|null',

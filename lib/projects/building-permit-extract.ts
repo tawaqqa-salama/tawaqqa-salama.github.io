@@ -82,6 +82,7 @@ export function mergePermitExtractions(
     city: pickStr(overlay.city, base.city),
     street: pickStr(overlay.street, base.street),
     plotNumber: pickStr(overlay.plotNumber, base.plotNumber),
+    planNumber: pickStr(overlay.planNumber, base.planNumber),
     municipality: pickStr(overlay.municipality, base.municipality),
     commercialRegister: pickStr(overlay.commercialRegister, base.commercialRegister),
     phone: pickStr(overlay.phone, base.phone),
@@ -117,7 +118,7 @@ type ServerField<T> = {
   value: T | null;
   confidence: number;
   needs_review: boolean;
-  source?: { page?: number; text?: string } | null;
+  source?: { page?: number; text?: string; x?: number; y?: number; width?: number; height?: number; row_text?: string; column_text?: string } | null;
 };
 
 type ServerOcrResponse = {
@@ -135,7 +136,7 @@ function serverValue<T>(fields: Record<string, ServerField<unknown>>, key: strin
 function serverExtractionToLocal(response: ServerOcrResponse): BuildingPermitExtraction | null {
   if (!response.ok || response.source !== 'server' || !response.fields) return null;
   const fields = response.fields;
-  const rawFloors = serverValue<Array<Record<string, unknown>>>(fields, 'floors');
+  const rawFloors = serverValue<Array<Record<string, unknown>>>(fields, 'floorLevels') || serverValue<Array<Record<string, unknown>>>(fields, 'floors');
   const floors: PermitFloorRow[] = [];
   for (const raw of rawFloors || []) {
     const label = typeof raw?.label === 'string' ? raw.label.trim() : '';
@@ -144,7 +145,8 @@ function serverExtractionToLocal(response: ServerOcrResponse): BuildingPermitExt
     const classified = classifyFloorName(label) || { kind: 'custom' as const, label };
     const activity = typeof raw?.activity_type === 'string' ? raw.activity_type.trim() : '';
     floors.push({
-      label: classified.label,
+      // Preserve the server's source label; classification only supplies kind.
+      label,
       kind: classified.kind,
       area_m2: area,
       repeat_count: 1,
@@ -159,10 +161,11 @@ function serverExtractionToLocal(response: ServerOcrResponse): BuildingPermitExt
   const city = serverValue<string>(fields, 'city');
   const street = serverValue<string>(fields, 'street');
   const plotNumber = serverValue<string>(fields, 'plotNumber');
+  const planNumber = serverValue<string>(fields, 'planNumber');
   const municipality = serverValue<string>(fields, 'municipality');
   const landAreaM2 = serverValue<number>(fields, 'landAreaM2');
   const buildingAreaM2 = serverValue<number>(fields, 'buildingAreaM2');
-  const floorsCount = serverValue<number>(fields, 'floorsCount');
+  const floorsCount = serverValue<number>(fields, 'licensedFloorCount') ?? serverValue<number>(fields, 'floorsCount');
   const usageLabel = serverValue<string>(fields, 'usageLabel');
   const activityType = serverValue<string>(fields, 'activityType');
   const nationalAddress = serverValue<string>(fields, 'nationalAddress');
@@ -177,15 +180,18 @@ function serverExtractionToLocal(response: ServerOcrResponse): BuildingPermitExt
     city,
     street,
     plotNumber,
+    planNumber,
     municipality,
     commercialRegister: serverValue<string>(fields, 'commercialRegister'),
     phone: serverValue<string>(fields, 'phone'),
     landAreaM2: landAreaM2 == null ? null : String(landAreaM2),
     buildingAreaM2: buildingAreaM2 == null ? null : String(buildingAreaM2),
     floorsCount,
+    licensedFloorCount: floorsCount,
     usageLabel,
     activityType: activityType || (usageLabel ? mapPermitUsageToActivityType(usageLabel, usageLabel) : null),
     floors: floors.length ? floors : null,
+    floorLevels: floors.length ? floors : null,
     nationalAddress,
     locationSummary: rawTextPreview,
     rawTextPreview: rawTextPreview || undefined,
