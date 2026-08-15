@@ -25,6 +25,29 @@ describe('manual building permit form', () => {
     expect(getStreets('مكة المكرمة', 'جدة', 'الصفا')).toEqual([]);
   });
 
+  it('models unsupported region and city availability without fabricated options', () => {
+    expect(getCities('المدينة المنورة')).toEqual([]);
+    expect(getDistricts('المدينة المنورة', 'مدينة غير مربوطة')).toEqual([]);
+    expect(getCities('المدينة المنورة')).not.toContain('جدة');
+    expect(getDistricts('المدينة المنورة', 'مدينة غير مربوطة')).not.toContain('الصفا');
+  });
+
+  it('keeps street unavailable without making it part of save validation', () => {
+    expect(getStreets('الرياض', 'مدينة غير مربوطة', 'حي غير مربوط')).toEqual([]);
+    expect(isValidLocation('المدينة المنورة', 'مدينة قديمة', 'حي قديم')).toBe(true);
+  });
+
+  it('renders explicit unsupported-location UX and preserves legacy display values', () => {
+    const modal = read('components/clients/ClientDetailModal.tsx');
+    expect(modal).toContain('بيانات المدن لهذه المنطقة لم تُربط بعد بمصدر موثوق.');
+    expect(modal).toContain('بيانات الأحياء لهذه المدينة لم تُربط بعد بمصدر موثوق.');
+    expect(modal).toContain('بيانات الشوارع غير متاحة حاليًا من مصدر موثوق.');
+    expect(modal).toContain('القيمة القديمة:');
+    expect(modal).toContain('disabled\n                    className="w-full p-2.5 border rounded-xl text-sm bg-gray-100 text-gray-500"');
+    expect(modal).not.toContain('setStreet(\'\');\n                    }}\n                    className="w-full p-2.5 border rounded-xl text-sm"');
+    expect(modal).toContain('street: street.trim() || null');
+  });
+
   it('keeps coordinates and permit fields in the existing building plan model', () => {
     const plan = mergeBuildingPlanDefaults({
       northing: '2391979.9527',

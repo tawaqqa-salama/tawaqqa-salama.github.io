@@ -583,6 +583,12 @@ export default function ClientDetailModal({
   const availableCities = getCities(region);
   const availableDistricts = getDistricts(region, city);
   const availableStreets = getStreets(region, city, district);
+  const cityOptions = city && !availableCities.includes(city) ? [city, ...availableCities] : availableCities;
+  const districtOptions = district && !availableDistricts.includes(district)
+    ? [district, ...availableDistricts]
+    : availableDistricts;
+  const hasVerifiedCities = availableCities.length > 0;
+  const hasVerifiedDistricts = availableDistricts.length > 0;
 
   const handleSaveBasic = async () => {
     if (!/^05\d{8}$/.test(phone.replace(/\s+/g, ''))) {
@@ -803,50 +809,61 @@ export default function ClientDetailModal({
                   <label className="block text-xs font-semibold text-gray-700 mb-1">المدينة</label>
                   <select
                     value={city}
-                    disabled={!region}
+                    disabled={!region || !hasVerifiedCities}
                     onChange={(e) => {
                       setCity(e.target.value);
                       setDistrict('');
                       setStreet('');
                     }}
-                    className="w-full p-2.5 border rounded-xl text-sm bg-white disabled:bg-gray-50"
+                    className="w-full p-2.5 border rounded-xl text-sm bg-white disabled:bg-gray-100 disabled:text-gray-500"
                   >
-                    <option value="">اختر المدينة</option>
-                    {availableCities.map((item) => (
+                    <option value="">{region && !hasVerifiedCities ? 'لا توجد مدن موثقة بعد' : 'اختر المدينة'}</option>
+                    {city && !availableCities.includes(city) ? (
+                      <option value={city}>القيمة القديمة: {city}</option>
+                    ) : null}
+                    {cityOptions.map((item) => (
                       <option key={item} value={item}>{item}</option>
                     ))}
                   </select>
+                  {region && !hasVerifiedCities ? (
+                    <p className="mt-1 text-[11px] text-amber-700">بيانات المدن لهذه المنطقة لم تُربط بعد بمصدر موثوق.</p>
+                  ) : null}
                 </div>
                 <div>
                   <label className="block text-xs font-semibold text-gray-700 mb-1">الحي</label>
                   <select
                     value={district}
-                    disabled={!city}
+                    disabled={!city || !hasVerifiedDistricts}
                     onChange={(e) => {
                       setDistrict(e.target.value);
                       setStreet('');
                     }}
-                    className="w-full p-2.5 border rounded-xl text-sm bg-white disabled:bg-gray-50"
+                    className="w-full p-2.5 border rounded-xl text-sm bg-white disabled:bg-gray-100 disabled:text-gray-500"
                   >
-                    <option value="">اختر الحي</option>
-                    {availableDistricts.map((item) => (
+                    <option value="">{city && !hasVerifiedDistricts ? 'لا توجد أحياء موثقة بعد' : 'اختر الحي'}</option>
+                    {district && !availableDistricts.includes(district) ? (
+                      <option value={district}>القيمة القديمة: {district}</option>
+                    ) : null}
+                    {districtOptions.map((item) => (
                       <option key={item} value={item}>{item}</option>
                     ))}
                   </select>
+                  {city && !hasVerifiedDistricts ? (
+                    <p className="mt-1 text-[11px] text-amber-700">بيانات الأحياء لهذه المدينة لم تُربط بعد بمصدر موثوق.</p>
+                  ) : null}
                 </div>
                 <div>
                   <label className="block text-xs font-semibold text-gray-700 mb-1">الشارع</label>
-                  <input
-                    list="permit-streets"
+                  <select
                     value={street}
-                    onChange={(e) => setStreet(e.target.value)}
-                    className="w-full p-2.5 border rounded-xl text-sm"
-                  />
-                  {availableStreets.length > 0 ? (
-                    <datalist id="permit-streets">
-                      {availableStreets.map((item) => <option key={item} value={item} />)}
-                    </datalist>
-                  ) : null}
+                    disabled
+                    className="w-full p-2.5 border rounded-xl text-sm bg-gray-100 text-gray-500"
+                  >
+                    <option value="">{street ? `القيمة القديمة: ${street}` : 'بيانات الشوارع غير متاحة'}</option>
+                    {street ? <option value={street}>القيمة القديمة: {street}</option> : null}
+                    {availableStreets.map((item) => <option key={item} value={item}>{item}</option>)}
+                  </select>
+                  <p className="mt-1 text-[11px] text-amber-700">بيانات الشوارع غير متاحة حاليًا من مصدر موثوق.</p>
                 </div>
                 <div>
                   <label className="block text-xs font-semibold text-gray-700 mb-1">رقم القطعة</label>
