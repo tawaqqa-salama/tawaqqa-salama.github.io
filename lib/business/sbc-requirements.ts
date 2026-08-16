@@ -26,6 +26,7 @@ export type ActivityRequirementsResult = {
   floorsCount: number;
   buildingArea: number;
   landArea: number;
+  electricalRoomsCount: number;
   requirements: DerivedRequirement[];
 };
 
@@ -34,6 +35,7 @@ export function deriveActivityRequirements(input: {
   floors_count?: number | null;
   building_area?: number | null;
   land_area?: number | null;
+  electrical_rooms_count?: number | null;
 }): ActivityRequirementsResult | null {
   const key = input.activity_type || '';
   const rule = ACTIVITY_RULES[key];
@@ -43,6 +45,7 @@ export function deriveActivityRequirements(input: {
   const floorsCount = Math.max(0, Math.floor(Number(input.floors_count) || 0));
   const buildingArea = Math.max(0, Number(input.building_area) || 0);
   const landArea = Math.max(0, Number(input.land_area) || 0);
+  const electricalRoomsCount = Math.max(0, Math.floor(Number(input.electrical_rooms_count) || 0));
   const requirements: DerivedRequirement[] = [];
 
   requirements.push({
@@ -228,6 +231,7 @@ export function deriveActivityRequirements(input: {
     floorsCount,
     buildingArea,
     landArea,
+    electricalRoomsCount,
     requirements,
   };
 }

@@ -71,7 +71,8 @@ import {
 } from '@/lib/business/quotation-documents';
 import type { ClientRecord, DepartmentMode, FloorLevel, InspectionChecklistItem } from '@/lib/types/client';
 import type { QuotationDocumentsState } from '@/lib/types/quotation-documents';
-import { getCities, getDistricts, getRegions, getStreets, isValidLocation } from '@/lib/data/saudi-location-provider';
+import { getCities, getDistricts, getRegions, isValidLocation } from '@/lib/data/saudi-location-provider';
+import { formatHijriParts, HIJRI_MONTHS, hijriToGregorian, parseHijriParts } from '@/lib/date/hijri';
 import type { TaxInvoice } from '@/lib/types/tax-invoice';
 
 type TabId = 'basic' | 'finance' | 'engineering' | 'reports';
@@ -150,7 +151,11 @@ export default function ClientDetailModal({
   const [phone, setPhone] = useState('');
   const [region, setRegion] = useState('');
   const [city, setCity] = useState('');
+  const [citySelection, setCitySelection] = useState('');
+  const [manualCity, setManualCity] = useState('');
+  const [districtSelection, setDistrictSelection] = useState('');
   const [district, setDistrict] = useState('');
+  const [manualDistrict, setManualDistrict] = useState('');
   const [street, setStreet] = useState('');
   const [plotNumber, setPlotNumber] = useState('');
   const [commercialRegister, setCommercialRegister] = useState('');
@@ -171,6 +176,10 @@ export default function ClientDetailModal({
   const [buildingPermitNumber, setBuildingPermitNumber] = useState('');
   const [buildingPermitDate, setBuildingPermitDate] = useState('');
   const [buildingPermitDateHijri, setBuildingPermitDateHijri] = useState('');
+  const [hijriDay, setHijriDay] = useState('');
+  const [hijriMonth, setHijriMonth] = useState('');
+  const [hijriYear, setHijriYear] = useState('');
+  const [hijriConversionError, setHijriConversionError] = useState('');
   const [buildingPermitExpiryDate, setBuildingPermitExpiryDate] = useState('');
   const [permitType, setPermitType] = useState('');
   const [municipality, setMunicipality] = useState('');
@@ -184,6 +193,7 @@ export default function ClientDetailModal({
   const [buildingHeight, setBuildingHeight] = useState('');
   const [buildingUse, setBuildingUse] = useState('');
   const [buildingType, setBuildingType] = useState('');
+  const [electricalRoomsCount, setElectricalRoomsCount] = useState('');
 
   useEffect(() => {
     void loadCompanyProfile().then((profile) => setPricePerM2(Number(profile.price_per_m2) || 0));
@@ -232,10 +242,21 @@ export default function ClientDetailModal({
     setLicenseExpiryDate(hydrated.license_expiry_date || '');
     setOwnerName(hydrated.owner_name || '');
     setPhone(hydrated.phone || '');
-    setRegion(hydrated.region || '');
-    setCity(hydrated.city || '');
-    setDistrict(hydrated.district || '');
+    const loadedRegion = hydrated.region || '';
+    const loadedCity = hydrated.city || '';
+    const loadedDistrict = hydrated.district || '';
+    setRegion(loadedRegion);
+    setCity(loadedCity);
     setStreet(hydrated.street || '');
+    const loadedCities = getCities(loadedRegion);
+    const loadedCityIsKnown = Boolean(loadedCity && loadedCities.includes(loadedCity));
+    setCitySelection(loadedCityIsKnown ? loadedCity : loadedCity ? 'أخرى' : '');
+    setManualCity(loadedCityIsKnown ? '' : loadedCity);
+    const loadedDistricts = getDistricts(loadedRegion, loadedCity);
+    const loadedDistrictIsKnown = Boolean(loadedDistrict && loadedDistricts.includes(loadedDistrict));
+    setDistrict(loadedDistrict);
+    setDistrictSelection(loadedDistrictIsKnown ? loadedDistrict : loadedDistrict ? 'أخرى' : '');
+    setManualDistrict(loadedDistrictIsKnown ? '' : loadedDistrict);
     setPlotNumber(hydrated.plot_number || '');
     setCommercialRegister(hydrated.commercial_register || '');
     setClientTaxNumber(hydrated.tax_number || '');
@@ -261,7 +282,13 @@ export default function ClientDetailModal({
     setBuildingPermitDate(
       eng.building_plan.building_permit_date || eng.technical_report.building_permit_date || ''
     );
-    setBuildingPermitDateHijri(eng.building_plan.building_permit_date_hijri || '');
+    const loadedHijri = eng.building_plan.building_permit_date_hijri || '';
+    setBuildingPermitDateHijri(loadedHijri);
+    const loadedHijriParts = parseHijriParts(loadedHijri);
+    setHijriDay(loadedHijriParts ? String(loadedHijriParts.day) : '');
+    setHijriMonth(loadedHijriParts ? String(loadedHijriParts.month) : '');
+    setHijriYear(loadedHijriParts ? String(loadedHijriParts.year) : '');
+    setHijriConversionError('');
     setBuildingPermitExpiryDate(eng.building_plan.building_permit_expiry_date || '');
     setPermitType(eng.building_plan.permit_type || '');
     setMunicipality(eng.building_plan.municipality || '');
@@ -274,10 +301,36 @@ export default function ClientDetailModal({
     setLicensedFloorCount(
       eng.building_plan.licensed_floor_count != null ? String(eng.building_plan.licensed_floor_count) : ''
     );
+    setElectricalRoomsCount(
+      eng.building_plan.electrical_rooms_count != null ? String(eng.building_plan.electrical_rooms_count) : ''
+    );
     setBuildingHeight(eng.building_plan.building_height_m || '');
     setBuildingUse(eng.building_plan.building_use || '');
     setBuildingType(eng.building_plan.building_type_code || '');
   }, [client, department, pricePerM2]);
+
+  useEffect(() => {
+    if (!hijriDay || !hijriMonth || !hijriYear) {
+      setHijriConversionError('');
+      return;
+    }
+    const converted = hijriToGregorian({
+      day: Number(hijriDay),
+      month: Number(hijriMonth),
+      year: Number(hijriYear),
+    });
+    if (converted) {
+      setBuildingPermitDate(converted);
+      setBuildingPermitDateHijri(formatHijriParts({
+        day: Number(hijriDay),
+        month: Number(hijriMonth),
+        year: Number(hijriYear),
+      }));
+      setHijriConversionError('');
+    } else {
+      setHijriConversionError('تعذر تحويل التاريخ — راجع التاريخ الهجري');
+    }
+  }, [hijriDay, hijriMonth, hijriYear]);
 
   const subtotal = parseLocalizedNumber(quotationAmount);
   const vatAmount = useMemo(() => calculateVatAmount(subtotal), [subtotal]);
@@ -581,8 +634,9 @@ export default function ClientDetailModal({
   const computedFloorsCount = calcFloorsCount(floorLevels);
   const computedBuildingArea = calcBuildingArea(floorLevels);
   const availableCities = getCities(region);
-  const availableDistricts = getDistricts(region, city);
-  const availableStreets = getStreets(region, city, district);
+  const effectiveCity = citySelection === 'أخرى' ? manualCity.trim() : citySelection || city;
+  const availableDistricts = getDistricts(region, effectiveCity);
+  const effectiveDistrict = districtSelection === 'أخرى' ? manualDistrict.trim() : districtSelection || district;
   const cityOptions = city && !availableCities.includes(city) ? [city, ...availableCities] : availableCities;
   const districtOptions = district && !availableDistricts.includes(district)
     ? [district, ...availableDistricts]
@@ -595,11 +649,15 @@ export default function ClientDetailModal({
       setErrorMessage('رقم الجوال غير صحيح. يجب أن يبدأ بـ 05 ويتكون من 10 أرقام.');
       return;
     }
-    if (!region || !city || !district) {
+    const actualCity = citySelection === 'أخرى' ? manualCity.trim() : citySelection || city.trim();
+    const actualDistrict = districtSelection === 'أخرى' ? manualDistrict.trim() : districtSelection || district.trim();
+    const usesManualCity = citySelection === 'أخرى';
+    const usesManualDistrict = districtSelection === 'أخرى';
+    if (!region || !actualCity || !actualDistrict) {
       setErrorMessage('أكمل المنطقة والمدينة والحي.');
       return;
     }
-    if (!isValidLocation(region, city, district)) {
+    if ((!usesManualCity && !usesManualDistrict) && !isValidLocation(region, actualCity, actualDistrict)) {
       setErrorMessage('المدينة أو الحي لا يتبعان المنطقة المختارة.');
       return;
     }
@@ -609,6 +667,10 @@ export default function ClientDetailModal({
     }
     if (!activityType) {
       setErrorMessage('اختر نوع النشاط لربط الاشتراطات.');
+      return;
+    }
+    if (electricalRoomsCount && !/^\d+$/.test(electricalRoomsCount)) {
+      setErrorMessage('عدد غرف الكهرباء يجب أن يكون رقمًا صحيحًا أكبر من أو يساوي صفر.');
       return;
     }
 
@@ -635,7 +697,10 @@ export default function ClientDetailModal({
       building_permit_number: buildingPermitNumber.trim() || eng.building_plan.building_permit_number,
       building_permit_date: buildingPermitDate.trim() || eng.building_plan.building_permit_date,
       building_permit_date_hijri:
+        formatHijriParts({ day: Number(hijriDay), month: Number(hijriMonth), year: Number(hijriYear) }) ||
         buildingPermitDateHijri.trim() || eng.building_plan.building_permit_date_hijri,
+      manual_city: citySelection === 'أخرى' ? manualCity.trim() || null : null,
+      manual_district: districtSelection === 'أخرى' ? manualDistrict.trim() || null : null,
       building_permit_expiry_date: buildingPermitExpiryDate.trim() || null,
       permit_type: permitType.trim() || null,
       municipality: municipality.trim() || null,
@@ -646,6 +711,7 @@ export default function ClientDetailModal({
       northing: northing.trim() || null,
       easting: easting.trim() || null,
       licensed_floor_count: licensedFloorCount ? parseLocalizedInteger(licensedFloorCount) : null,
+      electrical_rooms_count: electricalRoomsCount ? parseLocalizedInteger(electricalRoomsCount) : null,
       building_height_m: buildingHeight.trim() || null,
       building_use: buildingUse.trim() || null,
       building_type_code: buildingType.trim() || null,
@@ -662,8 +728,8 @@ export default function ClientDetailModal({
         owner_name: ownerName.trim(),
         phone: phone.replace(/\s+/g, ''),
         region,
-        city,
-        district,
+        city: actualCity,
+        district: actualDistrict,
         street: street.trim() || null,
         plot_number: plotNumber.trim() || null,
         commercial_register: commercialRegister.trim() || null,
@@ -794,7 +860,11 @@ export default function ClientDetailModal({
                     onChange={(e) => {
                       setRegion(e.target.value);
                       setCity('');
+                      setCitySelection('');
+                      setManualCity('');
                       setDistrict('');
+                      setDistrictSelection('');
+                      setManualDistrict('');
                       setStreet('');
                     }}
                     className="w-full p-2.5 border rounded-xl text-sm bg-white"
@@ -808,61 +878,78 @@ export default function ClientDetailModal({
                 <div>
                   <label className="block text-xs font-semibold text-gray-700 mb-1">المدينة</label>
                   <select
-                    value={city}
-                    disabled={!region || !hasVerifiedCities}
+                    value={citySelection}
+                    disabled={!region}
                     onChange={(e) => {
-                      setCity(e.target.value);
+                      const next = e.target.value;
+                      setCitySelection(next);
+                      setCity(next === 'أخرى' ? '' : next);
+                      setManualCity(next === 'أخرى' ? manualCity : '');
                       setDistrict('');
+                      setDistrictSelection('');
+                      setManualDistrict('');
                       setStreet('');
                     }}
                     className="w-full p-2.5 border rounded-xl text-sm bg-white disabled:bg-gray-100 disabled:text-gray-500"
                   >
-                    <option value="">{region && !hasVerifiedCities ? 'لا توجد مدن موثقة بعد' : 'اختر المدينة'}</option>
-                    {city && !availableCities.includes(city) ? (
-                      <option value={city}>القيمة القديمة: {city}</option>
-                    ) : null}
+                    <option value="">اختر المدينة</option>
                     {cityOptions.map((item) => (
                       <option key={item} value={item}>{item}</option>
                     ))}
+                    <option value="أخرى">أخرى</option>
                   </select>
                   {region && !hasVerifiedCities ? (
                     <p className="mt-1 text-[11px] text-amber-700">بيانات المدن لهذه المنطقة لم تُربط بعد بمصدر موثوق.</p>
+                  ) : null}
+                  {citySelection === 'أخرى' ? (
+                    <input
+                      value={manualCity}
+                      onChange={(e) => setManualCity(e.target.value)}
+                      className="mt-2 w-full p-2.5 border rounded-xl text-sm"
+                      placeholder="اسم المدينة"
+                    />
                   ) : null}
                 </div>
                 <div>
                   <label className="block text-xs font-semibold text-gray-700 mb-1">الحي</label>
                   <select
-                    value={district}
-                    disabled={!city || !hasVerifiedDistricts}
+                    value={districtSelection}
+                    disabled={!effectiveCity}
                     onChange={(e) => {
-                      setDistrict(e.target.value);
+                      const next = e.target.value;
+                      setDistrictSelection(next);
+                      setDistrict(next === 'أخرى' ? '' : next);
+                      setManualDistrict(next === 'أخرى' ? manualDistrict : '');
                       setStreet('');
                     }}
                     className="w-full p-2.5 border rounded-xl text-sm bg-white disabled:bg-gray-100 disabled:text-gray-500"
                   >
-                    <option value="">{city && !hasVerifiedDistricts ? 'لا توجد أحياء موثقة بعد' : 'اختر الحي'}</option>
-                    {district && !availableDistricts.includes(district) ? (
-                      <option value={district}>القيمة القديمة: {district}</option>
-                    ) : null}
+                    <option value="">اختر الحي</option>
                     {districtOptions.map((item) => (
                       <option key={item} value={item}>{item}</option>
                     ))}
+                    <option value="أخرى">أخرى</option>
                   </select>
-                  {city && !hasVerifiedDistricts ? (
+                  {effectiveCity && !hasVerifiedDistricts ? (
                     <p className="mt-1 text-[11px] text-amber-700">بيانات الأحياء لهذه المدينة لم تُربط بعد بمصدر موثوق.</p>
+                  ) : null}
+                  {districtSelection === 'أخرى' ? (
+                    <input
+                      value={manualDistrict}
+                      onChange={(e) => setManualDistrict(e.target.value)}
+                      className="mt-2 w-full p-2.5 border rounded-xl text-sm"
+                      placeholder="اسم الحي"
+                    />
                   ) : null}
                 </div>
                 <div>
-                  <label className="block text-xs font-semibold text-gray-700 mb-1">الشارع</label>
-                  <select
+                  <label className="block text-xs font-semibold text-gray-700 mb-1">اسم الشارع</label>
+                  <input
                     value={street}
-                    disabled
-                    className="w-full p-2.5 border rounded-xl text-sm bg-gray-100 text-gray-500"
-                  >
-                    <option value="">{street ? `القيمة القديمة: ${street}` : 'بيانات الشوارع غير متاحة'}</option>
-                    {street ? <option value={street}>القيمة القديمة: {street}</option> : null}
-                    {availableStreets.map((item) => <option key={item} value={item}>{item}</option>)}
-                  </select>
+                    onChange={(e) => setStreet(e.target.value)}
+                    className="w-full p-2.5 border rounded-xl text-sm"
+                    placeholder="أدخل اسم الشارع"
+                  />
                   <p className="mt-1 text-[11px] text-amber-700">بيانات الشوارع غير متاحة حاليًا من مصدر موثوق.</p>
                 </div>
                 <div>
@@ -950,11 +1037,25 @@ export default function ClientDetailModal({
                   </div>
                   <div>
                     <label className="block text-xs font-semibold text-gray-700 mb-1">تاريخ الرخصة (ميلادي)</label>
-                    <input type="date" value={buildingPermitDate} onChange={(e) => setBuildingPermitDate(e.target.value)} className="w-full p-2.5 border rounded-xl text-sm bg-white" />
+                    <input type="date" value={buildingPermitDate} readOnly className="w-full p-2.5 border rounded-xl text-sm bg-gray-100" />
+                    {hijriConversionError ? <p className="mt-1 text-[11px] text-red-700">{hijriConversionError}</p> : null}
                   </div>
-                  <div>
+                  <div className="md:col-span-2">
                     <label className="block text-xs font-semibold text-gray-700 mb-1">تاريخ الرخصة (هجري)</label>
-                    <input value={buildingPermitDateHijri} onChange={(e) => setBuildingPermitDateHijri(e.target.value)} className="w-full p-2.5 border rounded-xl text-sm bg-white" placeholder="اختياري" dir="ltr" />
+                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
+                      <select value={hijriDay} onChange={(e) => setHijriDay(e.target.value)} className="w-full p-2.5 border rounded-xl text-sm bg-white">
+                        <option value="">اليوم</option>
+                        {Array.from({ length: 30 }, (_, index) => index + 1).map((day) => <option key={day} value={day}>{day}</option>)}
+                      </select>
+                      <select value={hijriMonth} onChange={(e) => setHijriMonth(e.target.value)} className="w-full p-2.5 border rounded-xl text-sm bg-white">
+                        <option value="">الشهر</option>
+                        {HIJRI_MONTHS.map((month, index) => <option key={month} value={index + 1}>{month}</option>)}
+                      </select>
+                      <select value={hijriYear} onChange={(e) => setHijriYear(e.target.value)} className="w-full p-2.5 border rounded-xl text-sm bg-white">
+                        <option value="">السنة</option>
+                        {Array.from({ length: 101 }, (_, index) => 1350 + index).map((year) => <option key={year} value={year}>{year}</option>)}
+                      </select>
+                    </div>
                   </div>
                   <div>
                     <label className="block text-xs font-semibold text-gray-700 mb-1">صلاحية الرخصة</label>
@@ -1024,6 +1125,18 @@ export default function ClientDetailModal({
                   <NumericInput value={licensedFloorCount} onChange={setLicensedFloorCount} className="w-full p-2.5 border rounded-xl text-sm" />
                 </div>
                 <div>
+                  <label className="block text-xs font-semibold text-gray-700 mb-1">عدد غرف الكهرباء</label>
+                  <input
+                    type="number"
+                    min={0}
+                    step={1}
+                    inputMode="numeric"
+                    value={electricalRoomsCount}
+                    onChange={(e) => setElectricalRoomsCount(e.target.value.replace(/[^0-9]/g, ''))}
+                    className="w-full p-2.5 border rounded-xl text-sm"
+                  />
+                </div>
+                <div>
                   <label className="block text-xs font-semibold text-gray-700 mb-1">مساحة الأرض (م²)</label>
                   <NumericInput
                     mode="decimal"
@@ -1087,6 +1200,7 @@ export default function ClientDetailModal({
                   floorsCount={licensedFloorCount ? parseLocalizedInteger(licensedFloorCount) : computedFloorsCount}
                   buildingArea={computedBuildingArea}
                   landArea={parseLocalizedInteger(landArea)}
+                  electricalRoomsCount={electricalRoomsCount ? parseLocalizedInteger(electricalRoomsCount) : null}
                 />
               </section>
 

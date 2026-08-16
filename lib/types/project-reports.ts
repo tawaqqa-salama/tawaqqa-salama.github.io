@@ -52,6 +52,10 @@ export interface BuildingPlanReport extends ReportMeta {
   building_permit_date?: string;
   /** تاريخ رخصة البناء الهجري كما استُخرج من الوثيقة */
   building_permit_date_hijri?: string;
+  /** اسم المدينة اليدوي عند اختيار أخرى */
+  manual_city?: string;
+  /** اسم الحي اليدوي عند اختيار أخرى */
+  manual_district?: string;
   building_permit_expiry_date?: string;
   permit_type?: string;
   municipality?: string;
@@ -62,6 +66,7 @@ export interface BuildingPlanReport extends ReportMeta {
   northing?: string;
   easting?: string;
   licensed_floor_count?: number | null;
+  electrical_rooms_count?: number | null;
   building_use?: string;
   /** ملف رخصة البناء المرفق في مرحلة المخطط */
   building_permit_file?: PlanAttachmentFile | null;
