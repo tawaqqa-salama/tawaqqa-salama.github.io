@@ -8,6 +8,28 @@ import type { QuotationDocumentsState } from '@/lib/types/quotation-documents';
 const LOCAL_CLIENT_OVERRIDES_KEY = 'tawaqqa_client_field_overrides_v1';
 const LOCAL_ENGINEERING_BACKUP_KEY = 'tawaqqa_engineering_backup_v1';
 
+type LocalOverrideMap = Record<string, Record<string, unknown>>;
+let overridesCacheRaw: string | null | undefined;
+let overridesCache: LocalOverrideMap = {};
+let engineeringBackupCacheRaw: string | null | undefined;
+let engineeringBackupCache: Record<string, unknown> = {};
+let storageListenersInstalled = false;
+
+function installStorageCacheInvalidation() {
+  if (typeof window === 'undefined' || storageListenersInstalled) return;
+  storageListenersInstalled = true;
+  window.addEventListener('storage', (event) => {
+    if (event.key === LOCAL_CLIENT_OVERRIDES_KEY) {
+      overridesCacheRaw = undefined;
+      overridesCache = {};
+    }
+    if (event.key === LOCAL_ENGINEERING_BACKUP_KEY) {
+      engineeringBackupCacheRaw = undefined;
+      engineeringBackupCache = {};
+    }
+  });
+}
+
 /** حقول يُفضّل حفظها محلياً إن لم تكن في قاعدة البيانات بعد */
 const LOCAL_FALLBACK_FIELDS = new Set([
   'quotation_services',
@@ -36,14 +58,32 @@ function extractMissingColumn(message: string): string | null {
   return null;
 }
 
-function loadOverrides(): Record<string, Record<string, unknown>> {
+function loadOverrides(): LocalOverrideMap {
   if (typeof window === 'undefined') return {};
+  installStorageCacheInvalidation();
+  if (overridesCacheRaw !== undefined) return overridesCache;
+  const raw = localStorage.getItem(LOCAL_CLIENT_OVERRIDES_KEY);
+  overridesCacheRaw = raw;
   try {
-    const raw = localStorage.getItem(LOCAL_CLIENT_OVERRIDES_KEY);
-    return raw ? (JSON.parse(raw) as Record<string, Record<string, unknown>>) : {};
+    overridesCache = raw ? (JSON.parse(raw) as LocalOverrideMap) : {};
   } catch {
-    return {};
+    overridesCache = {};
   }
+  return overridesCache;
+}
+
+function loadEngineeringBackup(): Record<string, unknown> {
+  if (typeof window === 'undefined') return {};
+  installStorageCacheInvalidation();
+  if (engineeringBackupCacheRaw !== undefined) return engineeringBackupCache;
+  const raw = localStorage.getItem(LOCAL_ENGINEERING_BACKUP_KEY);
+  engineeringBackupCacheRaw = raw;
+  try {
+    engineeringBackupCache = raw ? (JSON.parse(raw) as Record<string, unknown>) : {};
+  } catch {
+    engineeringBackupCache = {};
+  }
+  return engineeringBackupCache;
 }
 
 export function sanitizeQuotationDocumentsForLocal(value: unknown): QuotationDocumentsState | null {
@@ -88,14 +128,18 @@ function saveOverrides(map: Record<string, Record<string, unknown>>) {
   if (typeof window === 'undefined') return;
   const compact = compactLocalOverrides(map);
   try {
-    localStorage.setItem(LOCAL_CLIENT_OVERRIDES_KEY, JSON.stringify(compact));
+    const serialized = JSON.stringify(compact);
+    localStorage.setItem(LOCAL_CLIENT_OVERRIDES_KEY, serialized);
+    overridesCacheRaw = serialized;
+    overridesCache = compact;
   } catch {
     // A legacy oversized map must not make a successful Supabase save appear to fail.
     try {
-      localStorage.setItem(
-        LOCAL_CLIENT_OVERRIDES_KEY,
-        JSON.stringify(Object.fromEntries(Object.entries(compact).slice(-100)))
-      );
+      const fallback = Object.fromEntries(Object.entries(compact).slice(-100));
+      const serialized = JSON.stringify(fallback);
+      localStorage.setItem(LOCAL_CLIENT_OVERRIDES_KEY, serialized);
+      overridesCacheRaw = serialized;
+      overridesCache = fallback;
     } catch {
       // Local fallback is optional; the remote write remains authoritative.
     }
@@ -106,21 +150,11 @@ export function mergeLocalClientOverrides<T extends { id: string }>(client: T): 
   const overrides = loadOverrides()[client.id];
   let merged: T = overrides ? { ...client, ...overrides } : client;
 
-  // دمج نسخة احتياطية للتقارير الهندسية إن كان السجل بدونها
-  try {
-    if (typeof window !== 'undefined') {
-      const raw = localStorage.getItem(LOCAL_ENGINEERING_BACKUP_KEY);
-      if (raw) {
-        const map = JSON.parse(raw) as Record<string, unknown>;
-        const backup = map[client.id];
-        const current = (merged as { project_engineering_data?: unknown }).project_engineering_data;
-        if (backup && (current == null || current === undefined)) {
-          merged = { ...merged, project_engineering_data: backup } as T;
-        }
-      }
-    }
-  } catch {
-    // تجاهل أخطاء التخزين المحلي
+  // دمج نسخة احتياطية للتقارير الهندسية إن كان السجل بدونها، مع parse واحد لكل raw value.
+  const backup = loadEngineeringBackup()[client.id];
+  const current = (merged as { project_engineering_data?: unknown }).project_engineering_data;
+  if (backup && (current == null || current === undefined)) {
+    merged = { ...merged, project_engineering_data: backup } as T;
   }
 
   return merged;
