@@ -17,6 +17,7 @@ import { logActivity } from '@/lib/activity/logger';
 import { formatCurrency } from '@/lib/format/currency';
 import { parseLocalizedInteger, parseLocalizedNumber } from '@/lib/validation/client';
 import { clientToFinancialDocument } from '@/lib/invoices/document-mapper';
+import { printSavedQuotation, validateSavedQuotationForPrint } from '@/lib/invoices/quotation-print';
 import { useSalesBundle, invalidateErpLists } from '@/lib/data/hooks';
 import { LIST_PAGE_SIZE } from '@/lib/data/query-config';
 import { useLanguage } from '@/lib/i18n/LanguageProvider';
@@ -28,9 +29,6 @@ const ClientDetailModal = dynamic(() => import('@/components/clients/ClientDetai
   ssr: false,
 });
 const ContractModal = dynamic(() => import('@/components/sales/ContractModal'), { ssr: false });
-const PrintQuotationModal = dynamic(() => import('@/components/sales/PrintQuotationModal'), {
-  ssr: false,
-});
 const TaxInvoicesPanel = dynamic(() => import('@/components/invoices/TaxInvoicesPanel'), {
   ssr: false,
   loading: () => (
@@ -74,11 +72,23 @@ export default function SalesPage() {
   const [isAddOpen, setIsAddOpen] = useState(false);
   const [selected, setSelected] = useState<ClientRecord | null>(null);
   const [contractClient, setContractClient] = useState<ClientRecord | null>(null);
-  const [printClient, setPrintClient] = useState<ClientRecord | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [dateFrom, setDateFrom] = useState('');
   const [dateTo, setDateTo] = useState('');
+  const [printError, setPrintError] = useState<string | null>(null);
+
+  const handlePrintQuotation = useCallback(async (client: ClientRecord) => {
+    const hydrated = mergeLocalClientOverrides(client);
+    const validationError = validateSavedQuotationForPrint(hydrated);
+    if (validationError) {
+      setPrintError(validationError);
+      return;
+    }
+    setPrintError(null);
+    const result = await printSavedQuotation(hydrated);
+    if (result.error) setPrintError(result.error);
+  }, []);
 
   const handleRefresh = useCallback(async () => {
     await invalidateErpLists();
@@ -365,7 +375,7 @@ export default function SalesPage() {
                           {
                             id: 'print',
                             label: 'طباعة عرض',
-                            onClick: () => setPrintClient(c),
+                            onClick: () => void handlePrintQuotation(c),
                             tone: 'primary',
                           },
                           {
@@ -546,6 +556,13 @@ export default function SalesPage() {
           </button>
         )}
 
+      {printError ? (
+        <div role="alert" className="fixed bottom-4 right-4 z-50 max-w-md rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900 shadow-lg">
+          {printError}
+          <button type="button" onClick={() => setPrintError(null)} className="mr-3 font-semibold underline">إغلاق</button>
+        </div>
+      ) : null}
+
       {isAddOpen ? (
         <AddClientModal
           isOpen={isAddOpen}
@@ -568,13 +585,6 @@ export default function SalesPage() {
           client={contractClient}
           onClose={() => setContractClient(null)}
           onCreated={() => void handleRefresh()}
-        />
-      ) : null}
-      {printClient ? (
-        <PrintQuotationModal
-          client={printClient}
-          onClose={() => setPrintClient(null)}
-          onSaved={() => void handleRefresh()}
         />
       ) : null}
     </div>

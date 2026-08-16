@@ -49,10 +49,9 @@ import {
   type QuotationServiceId,
 } from '@/lib/constants/quotation-services';
 import { loadCompanyProfile } from '@/lib/company-profile';
-import PrintQuotationModal from '@/components/sales/PrintQuotationModal';
 import QuotationDocumentsUpload from '@/components/sales/QuotationDocumentsUpload';
 import { processZatcaOnQuotationApproval } from '@/lib/zatca/submit';
-import { processAutoContractOnApproval } from '@/lib/business/contract-service';
+import { findExistingContractForQuote, processAutoContractOnApproval } from '@/lib/business/contract-service';
 import {
   generateTaxInvoiceFromMilestone,
   generateUpfrontInvoiceOnContract,
@@ -64,6 +63,7 @@ import {
   shareTaxInvoiceWhatsApp,
 } from '@/components/invoices/TaxInvoiceTemplate';
 import { mergeLocalClientOverrides, updateClientSafe } from '@/lib/supabase/safe-client-write';
+import { printSavedQuotation, validateSavedQuotationForPrint } from '@/lib/invoices/quotation-print';
 import { logActivity } from '@/lib/activity/logger';
 import {
   normalizeQuotationDocuments,
@@ -121,7 +121,16 @@ export default function ClientDetailModal({
   const [saving, setSaving] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [successMessage, setSuccessMessage] = useState<string | null>(null);
+  const [isDirty, setIsDirty] = useState(false);
+  const [unsavedWarningOpen, setUnsavedWarningOpen] = useState(false);
+  const [quotationEditMode, setQuotationEditMode] = useState(false);
+  const [contractLinked, setContractLinked] = useState(false);
+  const [contractCheckLoading, setContractCheckLoading] = useState(false);
+  const [baselineRevision, setBaselineRevision] = useState(0);
+  const persistedSnapshotRef = useRef<string | null>(null);
+  const baselineSyncPendingRef = useRef(false);
 
+  const [quotationNumber, setQuotationNumber] = useState('');
   const [quotationAmount, setQuotationAmount] = useState('');
   const [quotationStatus, setQuotationStatus] = useState('مسودة');
   const [financialStatus, setFinancialStatus] = useState('بانتظار الدفعة');
@@ -133,7 +142,6 @@ export default function ClientDetailModal({
     normalizeQuotationDocuments(null)
   );
   const [pricePerM2, setPricePerM2] = useState(0);
-  const [printOpen, setPrintOpen] = useState(false);
   const [salesPaymentType, setSalesPaymentType] = useState<'نقدي' | 'آجل'>('نقدي');
 
   const [assignedEngineer, setAssignedEngineer] = useState('');
@@ -202,12 +210,30 @@ export default function ClientDetailModal({
 
   useEffect(() => {
     if (!client) return;
+    let active = true;
     const hydrated = mergeLocalClientOverrides(client);
     const allowed = DEPARTMENT_TABS[department];
     const preferred = DEFAULT_TAB[department] || allowed[0] || 'basic';
     setActiveTab(allowed.includes(preferred) ? preferred : allowed[0]);
     setErrorMessage(null);
     setSuccessMessage(null);
+    setIsDirty(false);
+    setUnsavedWarningOpen(false);
+    const issued = Boolean(hydrated.quotation_number && hydrated.quotation_status && hydrated.quotation_status !== 'مسودة');
+    setQuotationEditMode(!issued);
+    setContractLinked(false);
+    setContractCheckLoading(Boolean(hydrated.quotation_number));
+    if (hydrated.quotation_number) {
+      void findExistingContractForQuote(client.id, hydrated.quotation_number)
+        .then((contract) => {
+          if (!active) return;
+          setContractLinked(Boolean(contract));
+        })
+        .finally(() => {
+          if (active) setContractCheckLoading(false);
+        });
+    }
+    setQuotationNumber(hydrated.quotation_number || '');
     setQuotationServices(normalizeQuotationServices(hydrated.quotation_services));
     setQuotationDocuments(normalizeQuotationDocuments(hydrated.quotation_documents));
     const hydratedLevels = ensureFloorLevels(
@@ -308,7 +334,81 @@ export default function ClientDetailModal({
     setBuildingHeight(eng.building_plan.building_height_m || '');
     setBuildingUse(eng.building_plan.building_use || '');
     setBuildingType(eng.building_plan.building_type_code || '');
+    baselineSyncPendingRef.current = true;
+    setBaselineRevision((revision) => revision + 1);
+    return () => {
+      active = false;
+    };
   }, [client, department, pricePerM2]);
+
+  const currentDraftSnapshot = JSON.stringify({
+    quotationNumber,
+    quotationAmount,
+    quotationStatus,
+    financialStatus,
+    paymentReference,
+    paidAmount,
+    quotationVisitsCount,
+    quotationServices,
+    quotationDocuments,
+    salesPaymentType,
+    assignedEngineer,
+    engineeringStatus,
+    engineeringNotes,
+    visitDate,
+    visitStatus,
+    checklist,
+    finalReportStatus,
+    licenseNumber,
+    licenseExpiryDate,
+    ownerName,
+    phone,
+    region,
+    city,
+    citySelection,
+    manualCity,
+    districtSelection,
+    district,
+    manualDistrict,
+    street,
+    plotNumber,
+    commercialRegister,
+    clientTaxNumber,
+    clientKind,
+    nationalAddress,
+    businessName,
+    activityType,
+    landArea,
+    projectStatus,
+    floorLevels,
+    buildingPermitNumber,
+    buildingPermitDate,
+    buildingPermitDateHijri,
+    hijriDay,
+    hijriMonth,
+    hijriYear,
+    buildingPermitExpiryDate,
+    permitType,
+    municipality,
+    subMunicipality,
+    planNumber,
+    sketchNumber,
+    deedNumber,
+    northing,
+    easting,
+    licensedFloorCount,
+    buildingHeight,
+    buildingUse,
+    buildingType,
+    electricalRoomsCount,
+  });
+
+  useEffect(() => {
+    if (!client || !baselineSyncPendingRef.current) return;
+    baselineSyncPendingRef.current = false;
+    persistedSnapshotRef.current = currentDraftSnapshot;
+    setIsDirty(false);
+  }, [baselineRevision, client, currentDraftSnapshot]);
 
   useEffect(() => {
     if (!hijriDay || !hijriMonth || !hijriYear) {
@@ -339,8 +439,27 @@ export default function ClientDetailModal({
 
   const engineeringUnlocked = canAccessEngineeringWorkflow(financialStatus);
   const reportsUnlocked = canAccessReportsWorkflow(engineeringStatus);
+  const quotationIsIssued = Boolean(quotationNumber && quotationStatus !== 'مسودة');
+  const quotationLocked = contractLinked || contractCheckLoading || (quotationIsIssued && !quotationEditMode);
 
   if (!client) return null;
+
+  const requestClose = () => {
+    if (saving) return;
+    const hasSnapshotChanges =
+      persistedSnapshotRef.current !== null && currentDraftSnapshot !== persistedSnapshotRef.current;
+    if (isDirty || hasSnapshotChanges) {
+      setUnsavedWarningOpen(true);
+      return;
+    }
+    onClose();
+  };
+
+  const handleInvoicePromptClose = () => {
+    setInvoicePromptOpen(false);
+    setPromptInvoice(null);
+    requestClose();
+  };
 
   const handleTabChange = (tab: TabId) => {
     setErrorMessage(null);
@@ -417,10 +536,11 @@ export default function ClientDetailModal({
       const mayNeedInvoicePrompt =
         (quotationApprovedNow || financiallyApprovedNow) && Number(merged.quotation_amount || 0) > 0;
 
-      // المسار السريع: أقفل فور نجاح الكتابة قبل العقد/ZATCA/تحديث القائمة
-      if (!mayNeedInvoicePrompt) {
-        onClose();
-      }
+      // Keep the modal open so the user can see the successful persistence confirmation.
+      baselineSyncPendingRef.current = true;
+      setBaselineRevision((revision) => revision + 1);
+      setIsDirty(false);
+      setSuccessMessage('تم حفظ البيانات بنجاح');
 
       const nextClient = { ...client, ...merged } as ClientRecord;
       const newStage = merged.pipeline_stage;
@@ -463,7 +583,6 @@ export default function ClientDetailModal({
             message += ` — ZATCA: ${zatcaError instanceof Error ? zatcaError.message : 'تعذر الإرسال'}`;
           }
 
-          if (!keepOpenForInvoice) onClose();
         }
 
         void logActivity({
@@ -488,6 +607,26 @@ export default function ClientDetailModal({
     } finally {
       setSaving(false);
     }
+  };
+
+  const handlePrintQuotation = async () => {
+    const printableClient = {
+      ...mergeLocalClientOverrides(client),
+      quotation_number: quotationNumber || client.quotation_number,
+      quotation_amount: subtotal || client.quotation_amount,
+      quotation_services: quotationServices,
+      quotation_visits_count: Math.max(1, parseLocalizedNumber(quotationVisitsCount) || 1),
+      quotation_status: quotationStatus,
+    } as ClientRecord;
+    const validationError = validateSavedQuotationForPrint(printableClient);
+    if (validationError) {
+      setErrorMessage(validationError);
+      return;
+    }
+    setErrorMessage(null);
+    const result = await printSavedQuotation(printableClient);
+    if (result.error) setErrorMessage(result.error);
+    else setSuccessMessage('تم فتح معاينة عرض السعر');
   };
 
   const applyAutoPriceFromArea = () => {
@@ -546,12 +685,13 @@ export default function ClientDetailModal({
       parseProjectEngineeringData(client.project_engineering_data),
       visitsCount
     );
-    const quotationNumber = client.quotation_number || (await generateQuotationNumber());
+    const nextQuotationNumber = quotationNumber || (await generateQuotationNumber());
+    setQuotationNumber(nextQuotationNumber);
     const nextVat = calculateVatAmount(amount);
     const nextTotal = calculateTotalAmount(amount);
     await saveUpdate(
       {
-        quotation_number: quotationNumber,
+        quotation_number: nextQuotationNumber,
         quotation_amount: amount,
         vat_amount: nextVat,
         total_amount: nextTotal,
@@ -768,12 +908,12 @@ export default function ClientDetailModal({
                 {client.business_name || client.name} — {client.client_code}
               </p>
             </div>
-            <button onClick={onClose} className="text-gray-400 hover:text-gray-600 text-2xl leading-none">
+            <button onClick={requestClose} disabled={saving} className="text-gray-400 hover:text-gray-600 text-2xl leading-none disabled:opacity-40">
               ×
             </button>
           </div>
 
-          <WorkflowStepper client={{ ...client, financial_status: financialStatus, engineering_status: engineeringStatus, quotation_amount: subtotal, quotation_number: client.quotation_number }} />
+          <WorkflowStepper client={{ ...client, financial_status: financialStatus, engineering_status: engineeringStatus, quotation_amount: subtotal, quotation_number: quotationNumber || client.quotation_number }} />
 
           <div className="flex flex-wrap gap-2 mt-4">
             {visibleTabs.map((tab) => {
@@ -812,9 +952,18 @@ export default function ClientDetailModal({
               ✓ {successMessage}
             </div>
           )}
+          {unsavedWarningOpen && (
+            <div role="alertdialog" aria-modal="true" className="mb-4 rounded-xl border border-amber-300 bg-amber-50 p-4 text-sm text-amber-950">
+              <p className="font-semibold">لديك تغييرات غير محفوظة. هل تريد الخروج بدون حفظ؟</p>
+              <div className="mt-3 flex gap-2">
+                <button type="button" onClick={() => setUnsavedWarningOpen(false)} className="rounded-lg bg-white px-3 py-2 font-semibold border border-amber-200">متابعة التعديل</button>
+                <button type="button" onClick={onClose} className="rounded-lg bg-amber-700 px-3 py-2 font-semibold text-white">خروج دون حفظ</button>
+              </div>
+            </div>
+          )}
 
           {activeTab === 'basic' && (
-            <div className="space-y-5 text-sm">
+            <div className="space-y-5 text-sm" onChange={() => setIsDirty(true)}>
               <div className="rounded-xl border border-emerald-200 bg-emerald-50/70 p-3 space-y-3">
                 <div>
                   <p className="text-sm font-bold text-emerald-950">المرفقات والمستندات</p>
@@ -827,6 +976,7 @@ export default function ClientDetailModal({
                   clientId={client.id}
                   disabled={saving}
                   onChange={(next) => {
+                    setIsDirty(true);
                     setQuotationDocuments(next);
                     void updateClientSafe(client.id, { quotation_documents: next }).then((result) => {
                       if (result.error) {
@@ -1234,13 +1384,27 @@ export default function ClientDetailModal({
           )}
 
           {activeTab === 'finance' && (
-            <div className="space-y-4">
+            <>
+              <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-indigo-100 bg-indigo-50 p-3 text-sm">
+                <div>
+                  <p className="font-semibold text-indigo-950">دورة عرض السعر</p>
+                  <p className="text-xs text-indigo-800/80">
+                    {contractLinked ? 'لا يمكن تعديل عرض السعر بعد إصدار العقد.' : quotationIsIssued ? 'العرض صادر ويمكن تعديله قبل إنشاء العقد.' : 'المسودة قابلة للتحرير قبل الإصدار.'}
+                  </p>
+                </div>
+                {contractLinked ? (
+                  <button type="button" disabled className="rounded-lg bg-slate-200 px-3 py-2 text-xs font-semibold text-slate-500">تعديل عرض السعر (مقفل)</button>
+                ) : quotationIsIssued && !quotationEditMode ? (
+                  <button type="button" onClick={() => setQuotationEditMode(true)} className="rounded-lg bg-indigo-600 px-3 py-2 text-xs font-semibold text-white">تعديل عرض السعر</button>
+                ) : null}
+              </div>
+              <fieldset disabled={quotationLocked} onChange={() => setIsDirty(true)} className="space-y-4 disabled:opacity-70">
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div>
                   <label className="block text-xs font-semibold text-gray-700 mb-1">رقم عرض السعر</label>
                   <input
                     readOnly
-                    value={client.quotation_number || 'يُصدر تلقائياً عند الإنشاء (Q-YYYY-NNN)'}
+                    value={quotationNumber || 'يُصدر تلقائياً عند الإنشاء (Q-YYYY-NNN)'}
                     className="w-full p-2.5 border rounded-xl text-sm bg-gray-50"
                   />
                 </div>
@@ -1346,21 +1510,22 @@ export default function ClientDetailModal({
               <div className="flex flex-wrap gap-2">
                 <button
                   type="button"
-                  onClick={handleCreateQuotation}
-                  disabled={saving}
+                  onClick={() => void handleCreateQuotation()}
+                  disabled={saving || quotationLocked}
                   className="px-4 py-2 bg-blue-600 text-white rounded-xl text-sm font-semibold hover:bg-blue-700 disabled:opacity-50"
                 >
-                  {saving ? 'جاري الحفظ...' : 'إنشاء / تحديث عرض السعر'}
+                  {saving ? 'جاري الحفظ...' : quotationStatus === 'مسودة' ? 'حفظ المسودة' : 'إصدار عرض السعر'}
                 </button>
                 <button
                   type="button"
-                  onClick={() => setPrintOpen(true)}
+                  onClick={() => void handlePrintQuotation()}
                   className="px-4 py-2 bg-indigo-600 text-white rounded-xl text-sm font-semibold hover:bg-indigo-700"
                 >
                   طباعة عرض السعر
                 </button>
               </div>
 
+              </fieldset>
               <div className="border-t pt-4 grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div>
                   <label className="block text-xs font-semibold text-gray-700 mb-1">حالة الاعتماد المالي</label>
@@ -1419,7 +1584,7 @@ export default function ClientDetailModal({
                   اصدار فاتورة جديدة
                 </button>
               </div>
-            </div>
+            </>
           )}
 
           {activeTab === 'engineering' && (
@@ -1586,32 +1751,12 @@ export default function ClientDetailModal({
         </div>
       </div>
 
-      {printOpen ? (
-        <PrintQuotationModal
-          client={{
-            ...client,
-            quotation_amount: subtotal || client.quotation_amount,
-            quotation_services: quotationServices,
-            quotation_visits_count: Math.max(1, parseLocalizedNumber(quotationVisitsCount) || 1),
-          }}
-          onClose={() => setPrintOpen(false)}
-          onSaved={() => {
-            setPrintOpen(false);
-            onUpdated();
-          }}
-        />
-      ) : null}
-
       <InvoicePromptModal
         open={invoicePromptOpen}
         message={invoicePromptMessage}
         invoice={promptInvoice}
         loading={invoiceBusy}
-        onClose={() => {
-          setInvoicePromptOpen(false);
-          setPromptInvoice(null);
-          onClose();
-        }}
+        onClose={handleInvoicePromptClose}
         onIssue={() => {
           void (async () => {
             setInvoiceBusy(true);
