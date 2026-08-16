@@ -30,5 +30,25 @@ describe('standalone basic-data page visibility', () => {
     expect(modal).toContain('const preferred = isPagePresentation');
     expect(modal).toContain("? 'basic'");
   });
+
+  it('does not add a global disabled or readonly lock to basic page mode', () => {
+    const basicStart = modal.indexOf("{activeTab === 'basic' && (");
+    const financeStart = modal.indexOf("{activeTab === 'finance' && (");
+    const basicSection = modal.slice(basicStart, financeStart);
+
+    expect(basicStart).toBeGreaterThanOrEqual(0);
+    expect(financeStart).toBeGreaterThan(basicStart);
+    expect(basicSection).not.toContain('<fieldset disabled');
+    expect(basicSection).not.toContain('pointer-events-none');
+    expect(basicSection).toContain('value={ownerName}');
+    expect(basicSection).toContain('value={phone}');
+    expect(modal).toContain('<fieldset disabled={quotationLocked}');
+  });
+
+  it('lets only the sticky save controls receive pointer events', () => {
+    expect(modal).toContain('pointer-events-none fixed inset-x-0 bottom-0');
+    expect(modal).toContain('pointer-events-auto mx-auto flex max-w-5xl');
+    expect(modal).toContain('pb-28');
+  });
 });
 
