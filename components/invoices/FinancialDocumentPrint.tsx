@@ -285,10 +285,13 @@ export async function printFinancialDocument(document: FinancialDocument) {
   const company = await loadCompanyProfile();
   const html = buildPrintHtml(document, company);
   const { openDocumentPreview } = await import('@/lib/print/document-preview');
+  const documentLabel = document.documentType === 'quotation'
+    ? `عرض سعر - ${document.documentNumber}`
+    : `فاتورة - ${document.documentNumber}`;
   openDocumentPreview({
-    title: document.documentType === 'quotation' ? `عرض سعر ${document.documentNumber}` : `فاتورة ${document.documentNumber}`,
+    title: documentLabel,
     html,
-    fileName: document.documentNumber,
+    fileName: documentLabel,
   });
 }
 
