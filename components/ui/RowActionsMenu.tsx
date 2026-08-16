@@ -1,12 +1,13 @@
 'use client';
 
-import { useEffect, useId, useRef, useState } from 'react';
+import { useEffect, useId, useRef, useState, type ReactNode } from 'react';
 
 export type RowActionItem = {
   id: string;
   label: string;
   onClick: () => void;
   tone?: 'default' | 'primary' | 'success' | 'danger';
+  icon?: ReactNode;
 };
 
 const TONE_CLASS: Record<NonNullable<RowActionItem['tone']>, string> = {
@@ -54,9 +55,10 @@ export default function RowActionsMenu({ items, label = 'إجراءات' }: RowA
             key={item.id}
             type="button"
             onClick={item.onClick}
-            className={`shrink-0 text-xs px-2.5 py-1.5 rounded-lg border bg-white hover:bg-gray-50 whitespace-nowrap ${TONE_CLASS[item.tone || 'default']}`}
-          >
-            {item.label}
+            aria-label={item.label}
+            className={`inline-flex shrink-0 items-center gap-1.5 text-xs px-2.5 py-1.5 rounded-lg border bg-white hover:bg-gray-50 whitespace-nowrap ${TONE_CLASS[item.tone || 'default']}`}>
+            {item.icon ? <span aria-hidden="true" className="inline-flex h-4 w-4 items-center justify-center">{item.icon}</span> : null}
+            <span>{item.label}</span>
           </button>
         ))}
       </div>
@@ -88,9 +90,12 @@ export default function RowActionsMenu({ items, label = 'إجراءات' }: RowA
                   setOpen(false);
                   item.onClick();
                 }}
-                className={`w-full text-right px-3 py-2.5 text-sm font-medium hover:bg-gray-50 ${TONE_CLASS[item.tone || 'default']}`}
-              >
-                {item.label}
+                aria-label={item.label}
+                className={`w-full text-right px-3 py-2.5 text-sm font-medium hover:bg-gray-50 ${TONE_CLASS[item.tone || 'default']}`}>
+                <span className="inline-flex items-center gap-2">
+                  {item.icon ? <span aria-hidden="true" className="inline-flex h-4 w-4 items-center justify-center">{item.icon}</span> : null}
+                  <span>{item.label}</span>
+                </span>
               </button>
             ))}
           </div>

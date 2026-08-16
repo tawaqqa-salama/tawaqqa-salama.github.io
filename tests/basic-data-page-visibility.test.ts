@@ -13,7 +13,8 @@ describe('standalone basic-data page visibility', () => {
   });
 
   it('opens the complete basic-data sections instead of the quotation tab', () => {
-    expect(modal).toContain("const preferred = isPagePresentation ? 'basic' : DEFAULT_TAB[department] || allowed[0] || 'basic';");
+    expect(modal).toContain('const preferred = isPagePresentation');
+    expect(modal).toContain("? 'basic'");
     expect(modal).toContain("{activeTab === 'basic' && (");
     expect(modal).toContain('المرفقات والمستندات');
     expect(modal).toContain('بيانات الموقع والعنوان');
@@ -26,7 +27,8 @@ describe('standalone basic-data page visibility', () => {
 
   it('keeps quotation-first behavior available for the normal Sales modal', () => {
     expect(modal).toContain("sales: 'finance'");
-    expect(modal).toContain("const preferred = isPagePresentation ? 'basic' : DEFAULT_TAB[department] || allowed[0] || 'basic';");
+    expect(modal).toContain('const preferred = isPagePresentation');
+    expect(modal).toContain("? 'basic'");
   });
 });
 

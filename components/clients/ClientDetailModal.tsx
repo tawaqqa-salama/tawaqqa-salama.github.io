@@ -99,7 +99,7 @@ interface ClientDetailModalProps {
   department?: DepartmentMode;
   onClose: () => void;
   onUpdated: (updatedClient?: ClientRecord) => void | Promise<void>;
-  presentation?: 'modal' | 'page';
+  presentation?: 'modal' | 'page' | 'quotation';
   onSaveAndContinue?: () => void | Promise<void>;
   onDirtyChange?: (dirty: boolean) => void;
 }
@@ -125,6 +125,8 @@ export default function ClientDetailModal({
   onDirtyChange,
 }: ClientDetailModalProps) {
   const isPagePresentation = presentation === 'page';
+  const isQuotationPresentation = presentation === 'quotation';
+  const isStandalonePresentation = isPagePresentation || isQuotationPresentation;
   const [activeTab, setActiveTab] = useState<TabId>('basic');
   const [saving, setSaving] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
@@ -227,7 +229,11 @@ export default function ClientDetailModal({
     const allowed = DEPARTMENT_TABS[department];
     // The standalone basic-data route must always open the complete basic-data form.
     // Sales modal behavior keeps its quotation-first default unchanged.
-    const preferred = isPagePresentation ? 'basic' : DEFAULT_TAB[department] || allowed[0] || 'basic';
+    const preferred = isPagePresentation
+      ? 'basic'
+      : isQuotationPresentation
+        ? 'finance'
+        : DEFAULT_TAB[department] || allowed[0] || 'basic';
     setActiveTab(allowed.includes(preferred) ? preferred : allowed[0]);
     setErrorMessage(null);
     setSuccessMessage(null);
@@ -500,7 +506,7 @@ export default function ClientDetailModal({
   ];
 
   const visibleTabs = tabs.filter((tab) =>
-    isPagePresentation ? tab.id === 'basic' : DEPARTMENT_TABS[department].includes(tab.id)
+    isStandalonePresentation ? tab.id === (isPagePresentation ? 'basic' : 'finance') : DEPARTMENT_TABS[department].includes(tab.id)
   );
 
   const saveUpdate = async (payload: Record<string, unknown>, successText: string) => {
@@ -914,17 +920,17 @@ export default function ClientDetailModal({
   };
 
   return (
-    <div className={isPagePresentation ? 'min-h-screen bg-slate-50' : 'fixed inset-0 bg-black/50 flex items-end sm:items-center justify-center z-50 p-0 sm:p-4'}>
-      <div className={isPagePresentation ? 'min-h-screen w-full bg-white' : 'bg-white rounded-t-2xl sm:rounded-2xl shadow-xl w-full max-w-4xl max-h-[94vh] overflow-hidden flex flex-col'}>
+    <div className={isStandalonePresentation ? 'min-h-screen bg-slate-50' : 'fixed inset-0 bg-black/50 flex items-end sm:items-center justify-center z-50 p-0 sm:p-4'}>
+      <div className={isStandalonePresentation ? 'min-h-screen w-full bg-white' : 'bg-white rounded-t-2xl sm:rounded-2xl shadow-xl w-full max-w-4xl max-h-[94vh] overflow-hidden flex flex-col'}>
         <div className="p-6 border-b">
           <div className="flex justify-between items-start gap-4">
             <div>
-              <h2 className="text-xl font-bold text-gray-800">{isPagePresentation ? 'البيانات الأساسية للعميل' : 'متابعة معاملة العميل'}</h2>
+              <h2 className="text-xl font-bold text-gray-800">{isPagePresentation ? 'البيانات الأساسية للعميل' : isQuotationPresentation ? 'عرض السعر للعميل' : 'متابعة معاملة العميل'}</h2>
               <p className="text-sm text-gray-500 mt-1">
                 {client.business_name || client.name} — {client.client_code}
               </p>
             </div>
-            {isPagePresentation ? (
+            {isStandalonePresentation ? (
               <button type="button" onClick={requestClose} disabled={saving} className="rounded-xl border border-slate-300 px-3 py-2 text-sm font-semibold text-slate-700 disabled:opacity-40">
                 العودة
               </button>
@@ -963,7 +969,7 @@ export default function ClientDetailModal({
           </div>}
         </div>
 
-        <div className={isPagePresentation ? 'p-4 sm:p-6 pb-28' : 'p-6 overflow-y-auto flex-1'}>
+        <div className={isStandalonePresentation ? 'p-4 sm:p-6 pb-28' : 'p-6 overflow-y-auto flex-1'}>
           {errorMessage && (
             <div className="mb-4 p-3 bg-red-50 border border-red-200 text-red-700 rounded-xl text-sm">
               ⚠️ {errorMessage}
