@@ -6,15 +6,12 @@ export type PerformanceMetric = {
   success: boolean;
   cacheStatus?: CacheStatus;
   route?: string;
-  rowCount?: number;
-  payloadBytes?: number;
   timestamp: string;
 };
 
 export type MeasureRequestOptions = {
   cacheStatus?: CacheStatus;
   route?: string;
-  includePayloadMetrics?: boolean;
 };
 
 type MetricListener = (metric: PerformanceMetric) => void;
@@ -22,15 +19,6 @@ type MetricListener = (metric: PerformanceMetric) => void;
 const MAX_METRICS = 100;
 const recentMetrics: PerformanceMetric[] = [];
 const listeners = new Set<MetricListener>();
-
-function safePayloadBytes(value: unknown): number | undefined {
-  try {
-    const json = JSON.stringify(value);
-    return typeof json === 'string' ? new TextEncoder().encode(json).byteLength : undefined;
-  } catch {
-    return undefined;
-  }
-}
 
 export function recordPerformanceMetric(metric: PerformanceMetric): void {
   recentMetrics.push(metric);
@@ -62,16 +50,12 @@ export async function measureRequest<T>(
   try {
     const result = await request;
     const endedAt = typeof performance !== 'undefined' ? performance.now() : Date.now();
-    const rowCount = Array.isArray(result) ? result.length : Array.isArray((result as { data?: unknown })?.data) ? ((result as { data: unknown[] }).data).length : undefined;
-    const payloadBytes = options.includePayloadMetrics ? safePayloadBytes(result) : undefined;
     recordPerformanceMetric({
       name,
       durationMs: Math.max(0, Math.round(endedAt - startedAt)),
       success: true,
       cacheStatus: options.cacheStatus,
       route: options.route,
-      rowCount,
-      payloadBytes,
       timestamp: new Date().toISOString(),
     });
     return result;

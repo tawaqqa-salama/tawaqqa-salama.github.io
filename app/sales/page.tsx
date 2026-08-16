@@ -1,7 +1,6 @@
 'use client';
 
-import { useCallback, useEffect, useMemo, useState } from 'react';
-import { useRouter } from 'next/navigation';
+import { useCallback, useMemo, useState } from 'react';
 import dynamic from 'next/dynamic';
 import { supabase } from '@/lib/supabase';
 import { ACTIVITY_RULES } from '@/lib/constants/clients';
@@ -21,12 +20,14 @@ import { clientToFinancialDocument } from '@/lib/invoices/document-mapper';
 import { printSavedQuotation, validateSavedQuotationForPrint } from '@/lib/invoices/quotation-print';
 import { useSalesBundle, invalidateErpLists } from '@/lib/data/hooks';
 import { LIST_PAGE_SIZE } from '@/lib/data/query-config';
-import { markSalesLoadStage } from '@/lib/performance/sales-load';
 import { useLanguage } from '@/lib/i18n/LanguageProvider';
 import type { ClientFormData, ClientRecord, FinancialDocument } from '@/lib/types/client';
 import type { SalesReturn } from '@/lib/types/sales';
 
 const AddClientModal = dynamic(() => import('@/components/clients/AddClientModal'), { ssr: false });
+const ClientDetailModal = dynamic(() => import('@/components/clients/ClientDetailModal'), {
+  ssr: false,
+});
 const ContractModal = dynamic(() => import('@/components/sales/ContractModal'), { ssr: false });
 const TaxInvoicesPanel = dynamic(() => import('@/components/invoices/TaxInvoicesPanel'), {
   ssr: false,
@@ -61,37 +62,15 @@ async function printContractLazy(
   await printContract(contract, client);
 }
 
-function SalesTableSkeleton({ columns = 5 }: { columns?: number }) {
-  return (
-    <tr aria-label="جاري تحميل بيانات المبيعات">
-      <td colSpan={columns} className="p-4">
-        <div className="space-y-3 animate-pulse" aria-hidden="true">
-          {[0, 1, 2].map((row) => (
-            <div key={row} className="grid grid-cols-5 gap-3">
-              {[0, 1, 2, 3, 4].map((cell) => (
-                <span key={cell} className="h-4 rounded bg-gray-200" />
-              ))}
-            </div>
-          ))}
-        </div>
-      </td>
-    </tr>
-  );
-}
-
 export default function SalesPage() {
   const { t } = useLanguage();
-  useEffect(() => {
-    markSalesLoadStage('route-mounted');
-  }, []);
-  const router = useRouter();
   const [tab, setTab] = useState<TabId>('sales');
   const [limit, setLimit] = useState(LIST_PAGE_SIZE);
-  const includeRelatedData = tab === 'documents' || tab === 'contracts' || tab === 'credit';
-  const { clients: allClients, documents, contracts, returns, loading, refresh, mutate: mutateSalesBundle } =
-    useSalesBundle(limit, includeRelatedData);
+  const { clients: allClients, documents, contracts, returns, loading, refresh } =
+    useSalesBundle(limit);
 
   const [isAddOpen, setIsAddOpen] = useState(false);
+  const [selected, setSelected] = useState<ClientRecord | null>(null);
   const [contractClient, setContractClient] = useState<ClientRecord | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
@@ -116,22 +95,6 @@ export default function SalesPage() {
     await refresh();
   }, [refresh]);
 
-  const handleClientUpdated = useCallback(async (updatedClient?: ClientRecord) => {
-    if (!updatedClient) {
-      await handleRefresh();
-      return;
-    }
-    await mutateSalesBundle((current) => {
-      if (!current) return current;
-      return {
-        ...current,
-        clients: current.clients.map((client) =>
-          client.id === updatedClient.id ? { ...client, ...updatedClient } : client
-        ),
-      };
-    }, { revalidate: false });
-  }, [handleRefresh, mutateSalesBundle]);
-
   // The list query can return a stale row immediately after a modal save. Merge the
   // durable local fallback fields before deriving rows, maps, or reopening modals.
   const hydratedClients = useMemo(
@@ -140,10 +103,6 @@ export default function SalesPage() {
   );
 
   const salesClients = useMemo(() => hydratedClients.filter(shouldShowInSales), [hydratedClients]);
-
-  useEffect(() => {
-    markSalesLoadStage('local-overrides-merged');
-  }, [hydratedClients]);
 
   const clients = useMemo(
     () => salesClients.filter((c) => inDateRange(c.created_at, dateFrom, dateTo)),
@@ -154,17 +113,6 @@ export default function SalesPage() {
     () => documents.filter((doc) => inDateRange(doc.created_at, dateFrom, dateTo)),
     [documents, dateFrom, dateTo]
   );
-
-  useEffect(() => {
-    markSalesLoadStage('derived-lists-ready');
-  }, [clients, filteredDocuments]);
-
-  useEffect(() => {
-    if (!loading) {
-      markSalesLoadStage('first-usable-table');
-      markSalesLoadStage('fully-interactive');
-    }
-  }, [loading]);
 
   const clientMap = useMemo(() => new Map(hydratedClients.map((c) => [c.id, c])), [hydratedClients]);
 
@@ -318,7 +266,13 @@ export default function SalesPage() {
               </tr>
             </thead>
             <tbody>
-              {loading ? <SalesTableSkeleton /> : clients.length === 0 ? (
+              {loading ? (
+                <tr>
+                  <td colSpan={5} className="p-8 text-center text-gray-400">
+                    ...
+                  </td>
+                </tr>
+              ) : clients.length === 0 ? (
                 <tr>
                   <td colSpan={5} className="p-8 text-center text-gray-400">
                     لا يوجد عملاء في هذه الفترة
@@ -348,7 +302,7 @@ export default function SalesPage() {
                           {
                             id: 'manage',
                             label: 'إدارة',
-                            onClick: () => router.push(`/sales/clients/${c.id}/basic-data`),
+                            onClick: () => setSelected(c),
                             tone: 'primary',
                           },
                           {
@@ -381,7 +335,13 @@ export default function SalesPage() {
               </tr>
             </thead>
             <tbody>
-              {loading ? <SalesTableSkeleton /> : clients.length === 0 ? (
+              {loading ? (
+                <tr>
+                  <td colSpan={5} className="p-8 text-center text-gray-400">
+                    ...
+                  </td>
+                </tr>
+              ) : clients.length === 0 ? (
                 <tr>
                   <td colSpan={5} className="p-8 text-center text-gray-400">
                     لا توجد عروض في هذه الفترة
@@ -409,7 +369,7 @@ export default function SalesPage() {
                           {
                             id: 'manage',
                             label: 'تحرير العرض',
-                            onClick: () => router.push(`/sales/clients/${c.id}/basic-data`),
+                            onClick: () => setSelected(c),
                             tone: 'primary',
                           },
                           {
@@ -610,6 +570,14 @@ export default function SalesPage() {
           errorMessage={errorMessage}
           onClose={() => setIsAddOpen(false)}
           onSubmit={handleAdd}
+        />
+      ) : null}
+      {selected ? (
+        <ClientDetailModal
+          client={selected}
+          department="sales"
+          onClose={() => setSelected(null)}
+          onUpdated={() => void handleRefresh()}
         />
       ) : null}
       {contractClient ? (

@@ -6,8 +6,6 @@ import { shouldShowInProjects } from '@/lib/business/pipeline';
 import {
   ARCHIVE_PAGE_SIZE,
   CLIENT_LIST_COLUMNS,
-  CLIENT_LIST_CORE_FALLBACK_COLUMNS,
-  CLIENT_LIST_FALLBACK_COLUMNS,
   LIST_PAGE_SIZE,
   PROJECT_LIST_COLUMNS,
   PROJECTS_PAGE_SIZE,
@@ -15,7 +13,6 @@ import {
 import type { ClientRecord } from '@/lib/types/client';
 import type { SalesContract, SalesDocument, SalesReturn } from '@/lib/types/sales';
 import { measureRequest } from '@/lib/performance/measure-request';
-import { markSalesLoadStage } from '@/lib/performance/sales-load';
 
 export type ListFetchOptions = {
   limit?: number;
@@ -60,48 +57,29 @@ export async function fetchClientsList(options: ListFetchOptions = {}): Promise<
   const { data, error } = await measureRequest(
     `clients:list:${options.includeEngineering ? 'engineering' : 'standard'}`,
     query,
-            { cacheStatus: 'miss', route: '/data/clients', includePayloadMetrics: true }
-
+    { cacheStatus: 'miss', route: '/data/clients' }
   );
 
   if (error) {
     console.warn('[fetchClientsList]', error.message);
-    // Compatibility retry remains explicitly lightweight; never fall back to unrestricted selection.
+    // إن فشل جلب أعمدة معيّنة (مثل JSON الهندسي) جرّب * 
     let fallback = supabase
       .from('clients')
-      .select(CLIENT_LIST_FALLBACK_COLUMNS)
+      .select('*')
       .order('created_at', { ascending: false })
       .range(offset, offset + limit - 1);
     fallback = applyCompanyFilter(fallback, companyId);
-    const { data: fallbackData, error: fallbackError } = await measureRequest(
-      'clients:list:fallback-safe',
-      fallback,
-      { cacheStatus: 'miss', route: '/data/clients/fallback-safe', includePayloadMetrics: true }
-    );
-
-    if (!fallbackError) {
-      return ((fallbackData || []) as unknown as ClientRecord[]).map((row) =>
-        mergeLocalClientOverrides(row)
+          const { data: allData, error: allError } = await measureRequest(
+        'clients:list:fallback',
+        fallback,
+        { cacheStatus: 'miss', route: '/data/clients/fallback' }
       );
-    }
 
-    // Final legacy retry uses only the minimal columns required by the Sales list.
-    let coreFallback = supabase
-      .from('clients')
-      .select(CLIENT_LIST_CORE_FALLBACK_COLUMNS)
-      .order('created_at', { ascending: false })
-      .range(offset, offset + limit - 1);
-    coreFallback = applyCompanyFilter(coreFallback, companyId);
-    const { data: coreData, error: coreError } = await measureRequest(
-      'clients:list:fallback-core',
-      coreFallback,
-      { cacheStatus: 'miss', route: '/data/clients/fallback-core', includePayloadMetrics: true }
-    );
-    if (coreError) {
-      console.warn('[fetchClientsList] safe fallbacks failed:', coreError.message);
+    if (allError) {
+      console.warn('[fetchClientsList] * fallback failed:', allError.message);
       return [];
     }
-    return ((coreData || []) as unknown as ClientRecord[]).map((row) =>
+    return ((allData || []) as unknown as ClientRecord[]).map((row) =>
       mergeLocalClientOverrides(row)
     );
   }
@@ -151,7 +129,7 @@ export async function fetchSalesDocuments(limit = ARCHIVE_PAGE_SIZE): Promise<Sa
   const { data } = await measureRequest(
     'sales:documents',
     query,
-    { cacheStatus: 'miss', route: '/data/sales/documents', includePayloadMetrics: true }
+    { cacheStatus: 'miss', route: '/data/sales/documents' }
   );
   return (data || []) as SalesDocument[];
 }
@@ -168,7 +146,7 @@ export async function fetchSalesContracts(limit = ARCHIVE_PAGE_SIZE): Promise<Sa
   const { data } = await measureRequest(
     'sales:contracts',
     query,
-    { cacheStatus: 'miss', route: '/data/sales/contracts', includePayloadMetrics: true }
+    { cacheStatus: 'miss', route: '/data/sales/contracts' }
   );
   return (data || []) as SalesContract[];
 }
@@ -185,7 +163,7 @@ export async function fetchSalesReturns(limit = LIST_PAGE_SIZE): Promise<SalesRe
   const { data } = await measureRequest(
     'sales:returns',
     query,
-    { cacheStatus: 'miss', route: '/data/sales/returns', includePayloadMetrics: true }
+    { cacheStatus: 'miss', route: '/data/sales/returns' }
   );
   return (data || []) as SalesReturn[];
 }
@@ -197,36 +175,13 @@ export type SalesBundle = {
   returns: SalesReturn[];
 };
 
-export async function fetchSalesBundle(
-  limit = LIST_PAGE_SIZE,
-  options: { includeRelated?: boolean } = {}
-): Promise<SalesBundle> {
-  const includeRelated = options.includeRelated !== false;
-  const companyId = resolveFetchCompanyId();
-  if (!companyId) return { clients: [], documents: [], contracts: [], returns: [] };
-  markSalesLoadStage('auth-company-ready');
-  markSalesLoadStage('first-request-begin');
-  markSalesLoadStage('detail-data-deferred');
-
-  const clientsPromise = fetchClientsList({ limit, includeEngineering: false }).then((value) => {
-    markSalesLoadStage('clients-loaded');
-    return value;
-  });
-  const documentsPromise = includeRelated
-    ? fetchSalesDocuments().then((value) => {
-        markSalesLoadStage('quotations-loaded');
-        return value;
-      })
-    : Promise.resolve([] as SalesDocument[]);
-  const contractsPromise = includeRelated ? fetchSalesContracts() : Promise.resolve([] as SalesContract[]);
-  const returnsPromise = includeRelated ? fetchSalesReturns() : Promise.resolve([] as SalesReturn[]);
+export async function fetchSalesBundle(limit = LIST_PAGE_SIZE): Promise<SalesBundle> {
   const [clients, documents, contracts, returns] = await Promise.all([
-    clientsPromise,
-    documentsPromise,
-    contractsPromise,
-    returnsPromise,
+    fetchClientsList({ limit: Math.max(limit, 100), includeEngineering: false }),
+    fetchSalesDocuments(),
+    fetchSalesContracts(),
+    fetchSalesReturns(),
   ]);
-  markSalesLoadStage('contracts-invoices-loaded');
   return { clients, documents, contracts, returns };
 }
 
