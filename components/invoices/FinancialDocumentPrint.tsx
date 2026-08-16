@@ -171,22 +171,24 @@ export function buildPrintHtml(
     .total-row:last-child { border-bottom: 0; }
     .total-row.final { background: #1c6b63; color: #fff; font-size: 11px; font-weight: 900; }
     .total-number { direction: ltr; white-space: nowrap; font-weight: 800; }
-    .two-column { display: grid; grid-template-columns: 1fr 1fr; gap: 3mm; margin-top: 2.5mm; }
+    .bottom-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 3mm; margin-top: 2.5mm; align-items: start; }
+    .bottom-col { display: grid; gap: 2mm; align-content: start; }
     .panel { border: 1px solid #d6e1df; padding: 2mm 2.5mm; break-inside: avoid; page-break-inside: avoid; }
     .panel h3 { margin: 0 0 1.2mm; color: #1c6b63; font-size: 9.8px; font-weight: 900; border-bottom: 1px solid #d6e1df; padding-bottom: .8mm; }
     .panel ul, .terms { margin: 0; padding: 0 4mm 0 0; }
     .panel li, .terms li { margin: 0 0 .65mm; }
-    .terms-panel { margin-top: 2.5mm; }
+    .terms-panel { margin-top: 0; }
     .terms { columns: 2; column-gap: 8mm; font-size: 7.8px; line-height: 1.12; }
     .terms li { break-inside: avoid; margin-bottom: .3mm; }
-    .approval { display: grid; grid-template-columns: 1fr 1fr; gap: 10mm; margin-top: 1mm; break-inside: avoid; page-break-inside: avoid; }
+    .approval-panel { padding-bottom: 1.5mm; }
+    .approval { display: grid; grid-template-columns: 1fr 1fr; gap: 4mm; margin-top: 1mm; break-inside: avoid; page-break-inside: avoid; }
     .approval-box { min-height: 7mm; text-align: center; border-top: 1px solid #8aa29d; padding-top: .35mm; }
     .approval-box h3 { display: inline; margin: 0 2mm 0 0; color: #172033; font-size: 8px; }
     .approval-line { display: inline-block; width: 43%; margin: .3mm 0 0 1mm; border-bottom: 1px solid #8aa29d; padding-bottom: .1mm; color: #63737a; font-size: 6.8px; }
     .footer { margin-top: .7mm; padding-top: .4mm; border-top: 1px solid #d6e1df; color: #69797e; font-size: 6.5px; text-align: center; }
     @media (max-width: 760px) {
       .sheet { width: 100%; padding: 4mm; }
-      .header, .metadata, .client-grid, .totals-wrap, .two-column, .approval { grid-template-columns: 1fr; }
+      .header, .metadata, .client-grid, .totals-wrap, .bottom-grid, .approval { grid-template-columns: 1fr; }
       .header { align-items: flex-start; flex-wrap: wrap; }
       .doc-heading, .company-meta { text-align: right; }
       .terms { columns: 1; }
@@ -198,8 +200,13 @@ export function buildPrintHtml(
       .sheet { width: auto; max-width: none; }
       .no-print, button, .close, nav, header, footer { display: none !important; }
       .print-header { display: flex !important; }
+      .metadata { grid-template-columns: repeat(4, 1fr) !important; }
+      .client-grid { grid-template-columns: repeat(4, 1fr) !important; }
+      .totals-wrap { grid-template-columns: 1fr 70mm !important; }
+      .bottom-grid { grid-template-columns: 1fr 1fr !important; }
+      .terms { columns: 2 !important; }
       a[href]::after { content: none !important; }
-      .client-box, .metadata, .totals-wrap, .two-column, .terms-panel, .approval, table.services { break-inside: avoid; page-break-inside: avoid; }
+      .client-box, .metadata, .totals-wrap, .bottom-grid, .terms-panel, .approval, table.services { break-inside: avoid; page-break-inside: avoid; }
     }
   </style>
 </head>
@@ -253,27 +260,32 @@ export function buildPrintHtml(
       </div>
     </div>
 
-    <div class="two-column">
-      <section class="panel">
-        <h3>شروط وآلية السداد</h3>
-        <ul>${paymentItems.map((item) => `<li>${escapeHtml(item)}</li>`).join('')}</ul>
-        ${company.payment_terms ? `<p>${escapeHtml(company.payment_terms)}</p>` : ''}
-      </section>
-      <section class="panel">
-        <h3>البيانات البنكية</h3>
-        ${bankDetails || '<p>لا توجد بيانات بنكية محفوظة.</p>'}
-      </section>
+    <div class="bottom-grid">
+      <div class="bottom-col">
+        <section class="panel">
+          <h3>شروط وآلية السداد</h3>
+          <ul>${paymentItems.map((item) => `<li>${escapeHtml(item)}</li>`).join('')}</ul>
+          ${company.payment_terms ? `<p>${escapeHtml(company.payment_terms)}</p>` : ''}
+        </section>
+        <section class="panel terms-panel">
+          <h3>الشروط العامة</h3>
+          <ol class="terms">${generalTerms.map((term) => `<li>${escapeHtml(term)}</li>`).join('')}</ol>
+        </section>
+      </div>
+      <div class="bottom-col">
+        <section class="panel">
+          <h3>البيانات البنكية</h3>
+          ${bankDetails || '<p>لا توجد بيانات بنكية محفوظة.</p>'}
+        </section>
+        <section class="panel approval-panel">
+          <h3>الاعتمادات</h3>
+          <div class="approval">
+            <div class="approval-box"><h3>اعتماد العميل</h3><div class="approval-line">الاسم:</div><div class="approval-line">التوقيع والختم:</div></div>
+            <div class="approval-box"><h3>اعتماد الشركة</h3><div class="approval-line">الاسم والصفة:</div><div class="approval-line">التوقيع والختم:</div></div>
+          </div>
+        </section>
+      </div>
     </div>
-
-    <section class="panel terms-panel">
-      <h3>الشروط العامة</h3>
-      <ol class="terms">${generalTerms.map((term) => `<li>${escapeHtml(term)}</li>`).join('')}</ol>
-    </section>
-
-    <section class="approval">
-      <div class="approval-box"><h3>اعتماد العميل</h3><div class="approval-line">الاسم:</div><div class="approval-line">التوقيع والختم:</div></div>
-      <div class="approval-box"><h3>اعتماد الشركة</h3><div class="approval-line">الاسم والصفة:</div><div class="approval-line">التوقيع والختم:</div></div>
-    </section>
 
     <div class="footer">${escapeHtml(companyName)}${company.phone ? ` | ${escapeHtml(company.phone)}` : ''}${company.email ? ` | ${escapeHtml(company.email)}` : ''}</div>
   </main>

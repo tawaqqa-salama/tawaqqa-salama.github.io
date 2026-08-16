@@ -11,15 +11,15 @@ import {
 import type { ClientRecord } from '@/lib/types/client';
 
 export const swrKeys = {
-  salesBundle: (limit: number) => ['sales-bundle', limit] as const,
+  salesBundle: (limit: number, includeRelated: boolean) => ['sales-bundle', limit, includeRelated ? 'related' : 'clients-only'] as const,
   projectsList: (limit: number, offset: number) => ['projects-list', limit, offset] as const,
   client: (id: string) => ['client', id] as const,
 };
 
-export function useSalesBundle(limit = LIST_PAGE_SIZE) {
+export function useSalesBundle(limit = LIST_PAGE_SIZE, includeRelated = true) {
   const { data, error, isLoading, isValidating, mutate } = useSWR(
-    swrKeys.salesBundle(limit),
-    () => fetchSalesBundle(limit),
+    swrKeys.salesBundle(limit, includeRelated),
+    () => fetchSalesBundle(limit, { includeRelated }),
     SWR_DEFAULTS
   );
 
