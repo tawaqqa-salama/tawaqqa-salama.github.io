@@ -346,9 +346,15 @@ export default function SalesPage() {
                       <RowActionsMenu
                         items={[
                           {
-                            id: 'manage',
-                            label: 'إدارة',
+                            id: 'basic-data',
+                            label: 'البيانات الأساسية',
                             onClick: () => router.push(`/sales/client-basic-data?clientId=${encodeURIComponent(c.id)}`),
+                            tone: 'primary',
+                          },
+                          {
+                            id: 'quotation',
+                            label: 'عرض السعر',
+                            onClick: () => router.push(`/sales/client-quotation?clientId=${encodeURIComponent(c.id)}`),
                             tone: 'primary',
                           },
                           {
@@ -407,8 +413,14 @@ export default function SalesPage() {
                       <RowActionsMenu
                         items={[
                           {
-                            id: 'manage',
+                            id: 'quotation',
                             label: 'تحرير العرض',
+                            onClick: () => router.push(`/sales/client-quotation?clientId=${encodeURIComponent(c.id)}`),
+                            tone: 'primary',
+                          },
+                          {
+                            id: 'basic-data',
+                            label: 'البيانات الأساسية',
                             onClick: () => router.push(`/sales/client-basic-data?clientId=${encodeURIComponent(c.id)}`),
                             tone: 'primary',
                           },
