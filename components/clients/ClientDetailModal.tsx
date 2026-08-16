@@ -225,7 +225,9 @@ export default function ClientDetailModal({
     let active = true;
     const hydrated = mergeLocalClientOverrides(client);
     const allowed = DEPARTMENT_TABS[department];
-    const preferred = DEFAULT_TAB[department] || allowed[0] || 'basic';
+    // The standalone basic-data route must always open the complete basic-data form.
+    // Sales modal behavior keeps its quotation-first default unchanged.
+    const preferred = isPagePresentation ? 'basic' : DEFAULT_TAB[department] || allowed[0] || 'basic';
     setActiveTab(allowed.includes(preferred) ? preferred : allowed[0]);
     setErrorMessage(null);
     setSuccessMessage(null);
