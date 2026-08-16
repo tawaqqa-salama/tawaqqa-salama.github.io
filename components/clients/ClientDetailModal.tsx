@@ -143,6 +143,7 @@ export default function ClientDetailModal({
   }, [isDirty, onDirtyChange]);
   const persistedSnapshotRef = useRef<string | null>(null);
   const baselineSyncPendingRef = useRef(false);
+  const lastHydratedClientIdRef = useRef<string | null>(null);
 
   const [quotationNumber, setQuotationNumber] = useState('');
   const [quotationAmount, setQuotationAmount] = useState('');
@@ -223,7 +224,8 @@ export default function ClientDetailModal({
   }, []);
 
   useEffect(() => {
-    if (!client) return;
+    if (!client || lastHydratedClientIdRef.current === client.id) return;
+    lastHydratedClientIdRef.current = client.id;
     let active = true;
     const hydrated = mergeLocalClientOverrides(client);
     const allowed = DEPARTMENT_TABS[department];
@@ -359,7 +361,15 @@ export default function ClientDetailModal({
     return () => {
       active = false;
     };
-  }, [client, department, pricePerM2]);
+  }, [client?.id]);
+
+  useEffect(() => {
+    if (!client || isDirty || quotationAmount || Number(client.quotation_amount || 0) > 0 || pricePerM2 <= 0) return;
+    const areaForPricing = Number(calcBuildingArea(floorLevels) || client.building_area || 0);
+    if (areaForPricing <= 0) return;
+    const auto = Math.round(areaForPricing * pricePerM2 * 100) / 100;
+    setQuotationAmount(String(auto));
+  }, [client?.id, client?.building_area, client?.quotation_amount, floorLevels, isDirty, pricePerM2, quotationAmount]);
 
   const currentDraftSnapshot = JSON.stringify({
     quotationNumber,
@@ -460,7 +470,7 @@ export default function ClientDetailModal({
   const engineeringUnlocked = canAccessEngineeringWorkflow(financialStatus);
   const reportsUnlocked = canAccessReportsWorkflow(engineeringStatus);
   const quotationIsIssued = Boolean(quotationNumber && quotationStatus !== 'مسودة');
-  const quotationLocked = contractLinked || contractCheckLoading || (quotationIsIssued && !quotationEditMode);
+  const quotationLocked = contractLinked || contractCheckLoading;
 
   if (!client) return null;
 

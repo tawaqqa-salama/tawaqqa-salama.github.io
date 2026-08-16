@@ -72,5 +72,27 @@ describe('standalone quotation page flow', () => {
     expect(quotationPage).not.toContain('[clientId]');
     expect(quotationPage).toContain('presentation="quotation"');
   });
+
+  it('hydrates once per client identity and preserves a dirty draft across revalidation', () => {
+    expect(modal).toContain('const lastHydratedClientIdRef = useRef<string | null>(null);');
+    expect(modal).toContain('lastHydratedClientIdRef.current === client.id');
+    expect(modal).toContain('}, [client?.id]);');
+    expect(modal).toContain('if (!client || isDirty');
+    expect(modal).toContain('setIsDirty(false);');
+  });
+
+  it('locks quotation only while contract lookup is pending or a contract is linked', () => {
+    expect(modal).toContain('const quotationLocked = contractLinked || contractCheckLoading;');
+    expect(modal).not.toContain('(quotationIsIssued && !quotationEditMode)');
+    expect(modal).toContain('findExistingContractForQuote');
+  });
+
+  it('keeps print read-only and preserves the existing quotation number on edit', () => {
+    expect(modal).toContain('const printableClient = {');
+    expect(modal).toContain('quotation_number: quotationNumber || client.quotation_number');
+    expect(modal).toContain('const nextQuotationNumber = quotationNumber || (await generateQuotationNumber());');
+    expect(modal).toContain('quotation_number: nextQuotationNumber');
+    expect(modal).not.toContain('quotation_status: \'معتمد\'');
+  });
 });
 
