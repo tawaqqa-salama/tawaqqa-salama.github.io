@@ -1834,8 +1834,8 @@ export default function ClientDetailModal({
         }}
       />
       {isPagePresentation && (
-        <div className="fixed inset-x-0 bottom-0 z-40 border-t bg-white/95 backdrop-blur px-4 py-3 shadow-[0_-4px_16px_rgba(15,23,42,0.08)] sm:px-6">
-          <div className="mx-auto flex max-w-5xl items-center justify-between gap-3">
+        <div className="pointer-events-none fixed inset-x-0 bottom-0 z-40 border-t bg-white/95 backdrop-blur px-4 py-3 shadow-[0_-4px_16px_rgba(15,23,42,0.08)] sm:px-6">
+          <div className="pointer-events-auto mx-auto flex max-w-5xl items-center justify-between gap-3">
             <span className="text-xs text-slate-500">تُحفظ البيانات في السجل المستمر قبل متابعة المرحلة التالية.</span>
             <button type="button" disabled={saving} onClick={() => void handleSaveBasic()} className="rounded-xl bg-[#635bdb] px-5 py-2.5 text-sm font-semibold text-white disabled:opacity-60">
               {saving ? 'جاري الحفظ...' : 'حفظ البيانات الأساسية'}
