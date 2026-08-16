@@ -30,7 +30,7 @@ describe('client modal unsaved-changes regression guard', () => {
   });
 
   it('updates the baseline only after the awaited persistence and parent refresh', () => {
-    const refreshIndex = modal.indexOf('await onUpdated();');
+    const refreshIndex = modal.indexOf('await onUpdated(nextClient);');
     const baselineIndex = modal.indexOf('baselineSyncPendingRef.current = true;', refreshIndex);
     const successIndex = modal.indexOf("setSuccessMessage('تم حفظ البيانات بنجاح');", refreshIndex);
     expect(refreshIndex).toBeGreaterThan(-1);

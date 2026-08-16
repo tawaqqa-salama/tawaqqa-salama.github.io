@@ -13,6 +13,7 @@ import {
 import type { ClientRecord } from '@/lib/types/client';
 import type { SalesContract, SalesDocument, SalesReturn } from '@/lib/types/sales';
 import { measureRequest } from '@/lib/performance/measure-request';
+import { markSalesLoadStage } from '@/lib/performance/sales-load';
 
 export type ListFetchOptions = {
   limit?: number;
@@ -57,7 +58,8 @@ export async function fetchClientsList(options: ListFetchOptions = {}): Promise<
   const { data, error } = await measureRequest(
     `clients:list:${options.includeEngineering ? 'engineering' : 'standard'}`,
     query,
-    { cacheStatus: 'miss', route: '/data/clients' }
+            { cacheStatus: 'miss', route: '/data/clients', includePayloadMetrics: true }
+
   );
 
   if (error) {
@@ -72,7 +74,7 @@ export async function fetchClientsList(options: ListFetchOptions = {}): Promise<
           const { data: allData, error: allError } = await measureRequest(
         'clients:list:fallback',
         fallback,
-        { cacheStatus: 'miss', route: '/data/clients/fallback' }
+        { cacheStatus: 'miss', route: '/data/clients/fallback', includePayloadMetrics: true }
       );
 
     if (allError) {
@@ -129,7 +131,7 @@ export async function fetchSalesDocuments(limit = ARCHIVE_PAGE_SIZE): Promise<Sa
   const { data } = await measureRequest(
     'sales:documents',
     query,
-    { cacheStatus: 'miss', route: '/data/sales/documents' }
+    { cacheStatus: 'miss', route: '/data/sales/documents', includePayloadMetrics: true }
   );
   return (data || []) as SalesDocument[];
 }
@@ -146,7 +148,7 @@ export async function fetchSalesContracts(limit = ARCHIVE_PAGE_SIZE): Promise<Sa
   const { data } = await measureRequest(
     'sales:contracts',
     query,
-    { cacheStatus: 'miss', route: '/data/sales/contracts' }
+    { cacheStatus: 'miss', route: '/data/sales/contracts', includePayloadMetrics: true }
   );
   return (data || []) as SalesContract[];
 }
@@ -163,7 +165,7 @@ export async function fetchSalesReturns(limit = LIST_PAGE_SIZE): Promise<SalesRe
   const { data } = await measureRequest(
     'sales:returns',
     query,
-    { cacheStatus: 'miss', route: '/data/sales/returns' }
+    { cacheStatus: 'miss', route: '/data/sales/returns', includePayloadMetrics: true }
   );
   return (data || []) as SalesReturn[];
 }
@@ -175,13 +177,36 @@ export type SalesBundle = {
   returns: SalesReturn[];
 };
 
-export async function fetchSalesBundle(limit = LIST_PAGE_SIZE): Promise<SalesBundle> {
+export async function fetchSalesBundle(
+  limit = LIST_PAGE_SIZE,
+  options: { includeRelated?: boolean } = {}
+): Promise<SalesBundle> {
+  const includeRelated = options.includeRelated !== false;
+  const companyId = resolveFetchCompanyId();
+  if (!companyId) return { clients: [], documents: [], contracts: [], returns: [] };
+  markSalesLoadStage('auth-company-ready');
+  markSalesLoadStage('first-request-begin');
+  markSalesLoadStage('detail-data-deferred');
+
+  const clientsPromise = fetchClientsList({ limit, includeEngineering: false }).then((value) => {
+    markSalesLoadStage('clients-loaded');
+    return value;
+  });
+  const documentsPromise = includeRelated
+    ? fetchSalesDocuments().then((value) => {
+        markSalesLoadStage('quotations-loaded');
+        return value;
+      })
+    : Promise.resolve([] as SalesDocument[]);
+  const contractsPromise = includeRelated ? fetchSalesContracts() : Promise.resolve([] as SalesContract[]);
+  const returnsPromise = includeRelated ? fetchSalesReturns() : Promise.resolve([] as SalesReturn[]);
   const [clients, documents, contracts, returns] = await Promise.all([
-    fetchClientsList({ limit: Math.max(limit, 100), includeEngineering: false }),
-    fetchSalesDocuments(),
-    fetchSalesContracts(),
-    fetchSalesReturns(),
+    clientsPromise,
+    documentsPromise,
+    contractsPromise,
+    returnsPromise,
   ]);
+  markSalesLoadStage('contracts-invoices-loaded');
   return { clients, documents, contracts, returns };
 }
 

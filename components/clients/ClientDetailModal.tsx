@@ -63,6 +63,7 @@ import {
   shareTaxInvoiceWhatsApp,
 } from '@/components/invoices/TaxInvoiceTemplate';
 import { mergeLocalClientOverrides, updateClientSafe } from '@/lib/supabase/safe-client-write';
+import { mergeProjectEngineeringData } from '@/lib/projects/merge-engineering-data';
 import { printSavedQuotation, validateSavedQuotationForPrint } from '@/lib/invoices/quotation-print';
 import { logActivity } from '@/lib/activity/logger';
 import {
@@ -97,7 +98,10 @@ interface ClientDetailModalProps {
   client: ClientRecord | null;
   department?: DepartmentMode;
   onClose: () => void;
-  onUpdated: () => void | Promise<void>;
+  onUpdated: (updatedClient?: ClientRecord) => void | Promise<void>;
+  presentation?: 'modal' | 'page';
+  onSaveAndContinue?: () => void | Promise<void>;
+  onDirtyChange?: (dirty: boolean) => void;
 }
 
 function normalizeChecklist(value: ClientRecord['inspection_checklist']): InspectionChecklistItem[] {
@@ -116,7 +120,11 @@ export default function ClientDetailModal({
   department = 'full',
   onClose,
   onUpdated,
+  presentation = 'modal',
+  onSaveAndContinue,
+  onDirtyChange,
 }: ClientDetailModalProps) {
+  const isPagePresentation = presentation === 'page';
   const [activeTab, setActiveTab] = useState<TabId>('basic');
   const [saving, setSaving] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
@@ -127,6 +135,10 @@ export default function ClientDetailModal({
   const [contractLinked, setContractLinked] = useState(false);
   const [contractCheckLoading, setContractCheckLoading] = useState(false);
   const [baselineRevision, setBaselineRevision] = useState(0);
+
+  useEffect(() => {
+    onDirtyChange?.(isDirty);
+  }, [isDirty, onDirtyChange]);
   const persistedSnapshotRef = useRef<string | null>(null);
   const baselineSyncPendingRef = useRef(false);
 
@@ -485,7 +497,9 @@ export default function ClientDetailModal({
     { id: 'reports', label: 'التقارير والتراخيص' },
   ];
 
-  const visibleTabs = tabs.filter((tab) => DEPARTMENT_TABS[department].includes(tab.id));
+  const visibleTabs = tabs.filter((tab) =>
+    isPagePresentation ? tab.id === 'basic' : DEPARTMENT_TABS[department].includes(tab.id)
+  );
 
   const saveUpdate = async (payload: Record<string, unknown>, successText: string) => {
     setSaving(true);
@@ -519,10 +533,11 @@ export default function ClientDetailModal({
         return false;
       }
 
+      const nextClient = { ...client, ...merged } as ClientRecord;
       // Persistence is complete only after the saved row has been propagated to the parent list.
-      // A refresh failure must not turn a successful database write into a false save failure.
+      // The sales list can update this one row without reloading the full bundle.
       try {
-        await onUpdated();
+        await onUpdated(nextClient);
       } catch {
         // The next open still reads from Supabase/local fallback; keep the successful save.
       }
@@ -542,7 +557,6 @@ export default function ClientDetailModal({
       setIsDirty(false);
       setSuccessMessage('تم حفظ البيانات بنجاح');
 
-      const nextClient = { ...client, ...merged } as ClientRecord;
       const newStage = merged.pipeline_stage;
       const quoteNo = String(merged.quotation_number || client.quotation_number || '');
 
@@ -869,7 +883,7 @@ export default function ClientDetailModal({
       building_permit_date: buildingPermitDate.trim() || eng.technical_report.building_permit_date,
     };
 
-    await saveUpdate(
+    return await saveUpdate(
       {
         owner_name: ownerName.trim(),
         phone: phone.replace(/\s+/g, ''),
@@ -891,31 +905,37 @@ export default function ClientDetailModal({
         floor_levels: floorLevels,
         project_status: projectStatus || null,
         quotation_documents: quotationDocuments,
-        project_engineering_data: { ...eng, building_plan, technical_report },
+        project_engineering_data: mergeProjectEngineeringData(eng, { building_plan, technical_report }),
       },
       'تم حفظ البيانات الأساسية وتفصيل الأدوار وبيانات رخصة البناء.'
     );
   };
 
   return (
-    <div className="fixed inset-0 bg-black/50 flex items-end sm:items-center justify-center z-50 p-0 sm:p-4">
-      <div className="bg-white rounded-t-2xl sm:rounded-2xl shadow-xl w-full max-w-4xl max-h-[94vh] overflow-hidden flex flex-col">
+    <div className={isPagePresentation ? 'min-h-screen bg-slate-50' : 'fixed inset-0 bg-black/50 flex items-end sm:items-center justify-center z-50 p-0 sm:p-4'}>
+      <div className={isPagePresentation ? 'min-h-screen w-full bg-white' : 'bg-white rounded-t-2xl sm:rounded-2xl shadow-xl w-full max-w-4xl max-h-[94vh] overflow-hidden flex flex-col'}>
         <div className="p-6 border-b">
           <div className="flex justify-between items-start gap-4">
             <div>
-              <h2 className="text-xl font-bold text-gray-800">متابعة معاملة العميل</h2>
+              <h2 className="text-xl font-bold text-gray-800">{isPagePresentation ? 'البيانات الأساسية للعميل' : 'متابعة معاملة العميل'}</h2>
               <p className="text-sm text-gray-500 mt-1">
                 {client.business_name || client.name} — {client.client_code}
               </p>
             </div>
-            <button onClick={requestClose} disabled={saving} className="text-gray-400 hover:text-gray-600 text-2xl leading-none disabled:opacity-40">
-              ×
-            </button>
+            {isPagePresentation ? (
+              <button type="button" onClick={requestClose} disabled={saving} className="rounded-xl border border-slate-300 px-3 py-2 text-sm font-semibold text-slate-700 disabled:opacity-40">
+                العودة
+              </button>
+            ) : (
+              <button onClick={requestClose} disabled={saving} className="text-gray-400 hover:text-gray-600 text-2xl leading-none disabled:opacity-40">
+                ×
+              </button>
+            )}
           </div>
 
           <WorkflowStepper client={{ ...client, financial_status: financialStatus, engineering_status: engineeringStatus, quotation_amount: subtotal, quotation_number: quotationNumber || client.quotation_number }} />
 
-          <div className="flex flex-wrap gap-2 mt-4">
+          {!isPagePresentation && <div className="flex flex-wrap gap-2 mt-4">
             {visibleTabs.map((tab) => {
               const locked =
                 (tab.id === 'engineering' && !engineeringUnlocked) ||
@@ -938,10 +958,10 @@ export default function ClientDetailModal({
               </button>
               );
             })}
-          </div>
+          </div>}
         </div>
 
-        <div className="p-6 overflow-y-auto flex-1">
+        <div className={isPagePresentation ? 'p-4 sm:p-6 pb-28' : 'p-6 overflow-y-auto flex-1'}>
           {errorMessage && (
             <div className="mb-4 p-3 bg-red-50 border border-red-200 text-red-700 rounded-xl text-sm">
               ⚠️ {errorMessage}
@@ -984,7 +1004,7 @@ export default function ClientDetailModal({
                         return;
                       }
                       setErrorMessage(null);
-                      onUpdated();
+                      onUpdated({ ...client, quotation_documents: next });
                     });
                   }}
                 />
@@ -1380,6 +1400,19 @@ export default function ClientDetailModal({
               >
                 {saving ? 'جاري الحفظ...' : 'حفظ البيانات الأساسية'}
               </button>
+              {isPagePresentation && onSaveAndContinue && (
+                <button
+                  type="button"
+                  disabled={saving}
+                  onClick={async () => {
+                    const saved = await handleSaveBasic();
+                    if (saved) await onSaveAndContinue();
+                  }}
+                  className="w-full md:w-auto border border-[#635bdb] text-[#635bdb] rounded-xl px-5 py-2.5 font-semibold disabled:opacity-60"
+                >
+                  {saving ? 'جاري الحفظ...' : 'حفظ ومتابعة'}
+                </button>
+              )}
             </div>
           )}
 
@@ -1792,6 +1825,16 @@ export default function ClientDetailModal({
           if (promptInvoice) void shareTaxInvoiceWhatsApp(promptInvoice, client.phone);
         }}
       />
+      {isPagePresentation && (
+        <div className="fixed inset-x-0 bottom-0 z-40 border-t bg-white/95 backdrop-blur px-4 py-3 shadow-[0_-4px_16px_rgba(15,23,42,0.08)] sm:px-6">
+          <div className="mx-auto flex max-w-5xl items-center justify-between gap-3">
+            <span className="text-xs text-slate-500">تُحفظ البيانات في السجل المستمر قبل متابعة المرحلة التالية.</span>
+            <button type="button" disabled={saving} onClick={() => void handleSaveBasic()} className="rounded-xl bg-[#635bdb] px-5 py-2.5 text-sm font-semibold text-white disabled:opacity-60">
+              {saving ? 'جاري الحفظ...' : 'حفظ البيانات الأساسية'}
+            </button>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
