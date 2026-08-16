@@ -96,10 +96,16 @@ export const ACTIVITY_RULES: Record<string, ActivityRule> = {
   },
 };
 
-export const FLOOR_KIND_OPTIONS: { kind: 'ground' | 'typical' | 'basement' | 'roof' | 'custom'; label: string }[] = [
-  { kind: 'ground', label: 'أرضي' },
-  { kind: 'typical', label: 'متكرر' },
+export const FLOOR_KIND_OPTIONS: { kind: import('@/lib/types/client').FloorLevelKind; label: string }[] = [
   { kind: 'basement', label: 'بدروم' },
+  { kind: 'ground', label: 'أرضي' },
+  { kind: 'mezzanine', label: 'ميزانين' },
+  { kind: 'typical', label: 'متكرر' },
+  { kind: 'first', label: 'أول' },
+  { kind: 'second', label: 'ثاني' },
+  { kind: 'service', label: 'دور خدمات' },
+  { kind: 'parking', label: 'دور مواقف' },
   { kind: 'roof', label: 'دور الروف' },
-  { kind: 'custom', label: 'مخصص' },
+  { kind: 'upper_annex', label: 'ملحق علوي' },
+  { kind: 'custom', label: 'أخرى' },
 ];

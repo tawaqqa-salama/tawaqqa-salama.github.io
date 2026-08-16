@@ -11,7 +11,6 @@ import {
   FINANCIAL_STATUSES,
   PROJECT_STATUSES,
   QUOTATION_STATUSES,
-  REGION_DATA,
   VISIT_STATUSES,
 } from '@/lib/constants/clients';
 import {
@@ -72,6 +71,7 @@ import {
 } from '@/lib/business/quotation-documents';
 import type { ClientRecord, DepartmentMode, FloorLevel, InspectionChecklistItem } from '@/lib/types/client';
 import type { QuotationDocumentsState } from '@/lib/types/quotation-documents';
+import { getCities, getDistricts, getRegions, getStreets, isValidLocation } from '@/lib/data/saudi-location-provider';
 import type { TaxInvoice } from '@/lib/types/tax-invoice';
 
 type TabId = 'basic' | 'finance' | 'engineering' | 'reports';
@@ -171,6 +171,19 @@ export default function ClientDetailModal({
   const [buildingPermitNumber, setBuildingPermitNumber] = useState('');
   const [buildingPermitDate, setBuildingPermitDate] = useState('');
   const [buildingPermitDateHijri, setBuildingPermitDateHijri] = useState('');
+  const [buildingPermitExpiryDate, setBuildingPermitExpiryDate] = useState('');
+  const [permitType, setPermitType] = useState('');
+  const [municipality, setMunicipality] = useState('');
+  const [subMunicipality, setSubMunicipality] = useState('');
+  const [planNumber, setPlanNumber] = useState('');
+  const [sketchNumber, setSketchNumber] = useState('');
+  const [deedNumber, setDeedNumber] = useState('');
+  const [northing, setNorthing] = useState('');
+  const [easting, setEasting] = useState('');
+  const [licensedFloorCount, setLicensedFloorCount] = useState('');
+  const [buildingHeight, setBuildingHeight] = useState('');
+  const [buildingUse, setBuildingUse] = useState('');
+  const [buildingType, setBuildingType] = useState('');
 
   useEffect(() => {
     void loadCompanyProfile().then((profile) => setPricePerM2(Number(profile.price_per_m2) || 0));
@@ -249,6 +262,21 @@ export default function ClientDetailModal({
       eng.building_plan.building_permit_date || eng.technical_report.building_permit_date || ''
     );
     setBuildingPermitDateHijri(eng.building_plan.building_permit_date_hijri || '');
+    setBuildingPermitExpiryDate(eng.building_plan.building_permit_expiry_date || '');
+    setPermitType(eng.building_plan.permit_type || '');
+    setMunicipality(eng.building_plan.municipality || '');
+    setSubMunicipality(eng.building_plan.sub_municipality || '');
+    setPlanNumber(eng.building_plan.plan_number || '');
+    setSketchNumber(eng.building_plan.sketch_number || '');
+    setDeedNumber(eng.building_plan.deed_number || '');
+    setNorthing(eng.building_plan.northing || '');
+    setEasting(eng.building_plan.easting || '');
+    setLicensedFloorCount(
+      eng.building_plan.licensed_floor_count != null ? String(eng.building_plan.licensed_floor_count) : ''
+    );
+    setBuildingHeight(eng.building_plan.building_height_m || '');
+    setBuildingUse(eng.building_plan.building_use || '');
+    setBuildingType(eng.building_plan.building_type_code || '');
   }, [client, department, pricePerM2]);
 
   const subtotal = parseLocalizedNumber(quotationAmount);
@@ -552,13 +580,15 @@ export default function ClientDetailModal({
   const activityRule = activityType ? ACTIVITY_RULES[activityType] : null;
   const computedFloorsCount = calcFloorsCount(floorLevels);
   const computedBuildingArea = calcBuildingArea(floorLevels);
-  const availableCities = region && REGION_DATA[region] ? Object.keys(REGION_DATA[region]) : [];
-  const catalogDistricts =
-    region && city && REGION_DATA[region]?.[city] ? REGION_DATA[region][city] : [];
-  const availableDistricts =
-    district && !catalogDistricts.includes(district)
-      ? [...catalogDistricts, district]
-      : catalogDistricts;
+  const availableCities = getCities(region);
+  const availableDistricts = getDistricts(region, city);
+  const availableStreets = getStreets(region, city, district);
+  const cityOptions = city && !availableCities.includes(city) ? [city, ...availableCities] : availableCities;
+  const districtOptions = district && !availableDistricts.includes(district)
+    ? [district, ...availableDistricts]
+    : availableDistricts;
+  const hasVerifiedCities = availableCities.length > 0;
+  const hasVerifiedDistricts = availableDistricts.length > 0;
 
   const handleSaveBasic = async () => {
     if (!/^05\d{8}$/.test(phone.replace(/\s+/g, ''))) {
@@ -567,6 +597,14 @@ export default function ClientDetailModal({
     }
     if (!region || !city || !district) {
       setErrorMessage('أكمل المنطقة والمدينة والحي.');
+      return;
+    }
+    if (!isValidLocation(region, city, district)) {
+      setErrorMessage('المدينة أو الحي لا يتبعان المنطقة المختارة.');
+      return;
+    }
+    if ((northing && !/^[-+]?\d+(?:[.,]\d+)?$/.test(northing)) || (easting && !/^[-+]?\d+(?:[.,]\d+)?$/.test(easting))) {
+      setErrorMessage('أدخل الشماليات والشرقيات كأرقام صحيحة أو عشرية فقط.');
       return;
     }
     if (!activityType) {
@@ -598,6 +636,19 @@ export default function ClientDetailModal({
       building_permit_date: buildingPermitDate.trim() || eng.building_plan.building_permit_date,
       building_permit_date_hijri:
         buildingPermitDateHijri.trim() || eng.building_plan.building_permit_date_hijri,
+      building_permit_expiry_date: buildingPermitExpiryDate.trim() || null,
+      permit_type: permitType.trim() || null,
+      municipality: municipality.trim() || null,
+      sub_municipality: subMunicipality.trim() || null,
+      plan_number: planNumber.trim() || null,
+      sketch_number: sketchNumber.trim() || null,
+      deed_number: deedNumber.trim() || null,
+      northing: northing.trim() || null,
+      easting: easting.trim() || null,
+      licensed_floor_count: licensedFloorCount ? parseLocalizedInteger(licensedFloorCount) : null,
+      building_height_m: buildingHeight.trim() || null,
+      building_use: buildingUse.trim() || null,
+      building_type_code: buildingType.trim() || null,
     };
     const technical_report = {
       ...eng.technical_report,
@@ -694,9 +745,9 @@ export default function ClientDetailModal({
             <div className="space-y-5 text-sm">
               <div className="rounded-xl border border-emerald-200 bg-emerald-50/70 p-3 space-y-3">
                 <div>
-                  <p className="text-sm font-bold text-emerald-950">رخصة البناء والمستندات</p>
+                  <p className="text-sm font-bold text-emerald-950">المرفقات والمستندات</p>
                   <p className="text-[11px] text-emerald-800/80 mt-0.5">
-                    أرفق رخصة البناء وأدخل رقمها وتاريخها هنا من المبيعات — لا تُرفع من صفحة المشاريع.
+                    أرفق المستندات لمراجعتها يدويًا، ثم أدخل بيانات الرخصة في الأقسام التالية.
                   </p>
                 </div>
                 <QuotationDocumentsUpload
@@ -715,48 +766,10 @@ export default function ClientDetailModal({
                     });
                   }}
                 />
-                <p className="mt-3 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-[11px] text-amber-900">
-                  راجع القيم المستخرجة من الرخصة، خصوصًا رقم الرخصة والمساحات وتفاصيل الأدوار، ثم اضغط «حفظ البيانات الأساسية» لاعتمادها.
-                </p>
-                <div className="grid grid-cols-1 md:grid-cols-3 gap-3 pt-1">
-                  <div>
-                    <label className="block text-xs font-semibold text-gray-700 mb-1">
-                      رقم رخصة البناء
-                    </label>
-                    <input
-                      value={buildingPermitNumber}
-                      onChange={(e) => setBuildingPermitNumber(e.target.value)}
-                      className="w-full p-2.5 border rounded-xl text-sm bg-white"
-                      placeholder="يُستخرج تلقائياً أو يُدخل يدوياً"
-                    />
-                  </div>
-                  <div>
-                    <label className="block text-xs font-semibold text-gray-700 mb-1">
-                      تاريخ الرخصة (ميلادي)
-                    </label>
-                    <input
-                      type="date"
-                      value={buildingPermitDate}
-                      onChange={(e) => setBuildingPermitDate(e.target.value)}
-                      className="w-full p-2.5 border rounded-xl text-sm bg-white"
-                    />
-                  </div>
-                  <div>
-                    <label className="block text-xs font-semibold text-gray-700 mb-1">
-                      تاريخ الرخصة (هجري)
-                    </label>
-                    <input
-                      value={buildingPermitDateHijri}
-                      onChange={(e) => setBuildingPermitDateHijri(e.target.value)}
-                      className="w-full p-2.5 border rounded-xl text-sm bg-white"
-                      placeholder="اختياري"
-                      dir="ltr"
-                    />
-                  </div>
-                </div>
               </div>
 
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div className="md:col-span-2 rounded-lg bg-slate-50 px-3 py-2 text-sm font-bold text-slate-900">بيانات الموقع والعنوان</div>
                 <div>
                   <label className="block text-xs font-semibold text-gray-700 mb-1">اسم المالك</label>
                   <input
@@ -782,11 +795,12 @@ export default function ClientDetailModal({
                       setRegion(e.target.value);
                       setCity('');
                       setDistrict('');
+                      setStreet('');
                     }}
                     className="w-full p-2.5 border rounded-xl text-sm bg-white"
                   >
                     <option value="">اختر المنطقة</option>
-                    {Object.keys(REGION_DATA).map((item) => (
+                    {getRegions().map((item) => (
                       <option key={item} value={item}>{item}</option>
                     ))}
                   </select>
@@ -795,40 +809,61 @@ export default function ClientDetailModal({
                   <label className="block text-xs font-semibold text-gray-700 mb-1">المدينة</label>
                   <select
                     value={city}
-                    disabled={!region}
+                    disabled={!region || !hasVerifiedCities}
                     onChange={(e) => {
                       setCity(e.target.value);
                       setDistrict('');
+                      setStreet('');
                     }}
-                    className="w-full p-2.5 border rounded-xl text-sm bg-white disabled:bg-gray-50"
+                    className="w-full p-2.5 border rounded-xl text-sm bg-white disabled:bg-gray-100 disabled:text-gray-500"
                   >
-                    <option value="">اختر المدينة</option>
-                    {availableCities.map((item) => (
+                    <option value="">{region && !hasVerifiedCities ? 'لا توجد مدن موثقة بعد' : 'اختر المدينة'}</option>
+                    {city && !availableCities.includes(city) ? (
+                      <option value={city}>القيمة القديمة: {city}</option>
+                    ) : null}
+                    {cityOptions.map((item) => (
                       <option key={item} value={item}>{item}</option>
                     ))}
                   </select>
+                  {region && !hasVerifiedCities ? (
+                    <p className="mt-1 text-[11px] text-amber-700">بيانات المدن لهذه المنطقة لم تُربط بعد بمصدر موثوق.</p>
+                  ) : null}
                 </div>
                 <div>
                   <label className="block text-xs font-semibold text-gray-700 mb-1">الحي</label>
                   <select
                     value={district}
-                    disabled={!city}
-                    onChange={(e) => setDistrict(e.target.value)}
-                    className="w-full p-2.5 border rounded-xl text-sm bg-white disabled:bg-gray-50"
+                    disabled={!city || !hasVerifiedDistricts}
+                    onChange={(e) => {
+                      setDistrict(e.target.value);
+                      setStreet('');
+                    }}
+                    className="w-full p-2.5 border rounded-xl text-sm bg-white disabled:bg-gray-100 disabled:text-gray-500"
                   >
-                    <option value="">اختر الحي</option>
-                    {availableDistricts.map((item) => (
+                    <option value="">{city && !hasVerifiedDistricts ? 'لا توجد أحياء موثقة بعد' : 'اختر الحي'}</option>
+                    {district && !availableDistricts.includes(district) ? (
+                      <option value={district}>القيمة القديمة: {district}</option>
+                    ) : null}
+                    {districtOptions.map((item) => (
                       <option key={item} value={item}>{item}</option>
                     ))}
                   </select>
+                  {city && !hasVerifiedDistricts ? (
+                    <p className="mt-1 text-[11px] text-amber-700">بيانات الأحياء لهذه المدينة لم تُربط بعد بمصدر موثوق.</p>
+                  ) : null}
                 </div>
                 <div>
                   <label className="block text-xs font-semibold text-gray-700 mb-1">الشارع</label>
-                  <input
+                  <select
                     value={street}
-                    onChange={(e) => setStreet(e.target.value)}
-                    className="w-full p-2.5 border rounded-xl text-sm"
-                  />
+                    disabled
+                    className="w-full p-2.5 border rounded-xl text-sm bg-gray-100 text-gray-500"
+                  >
+                    <option value="">{street ? `القيمة القديمة: ${street}` : 'بيانات الشوارع غير متاحة'}</option>
+                    {street ? <option value={street}>القيمة القديمة: {street}</option> : null}
+                    {availableStreets.map((item) => <option key={item} value={item}>{item}</option>)}
+                  </select>
+                  <p className="mt-1 text-[11px] text-amber-700">بيانات الشوارع غير متاحة حاليًا من مصدر موثوق.</p>
                 </div>
                 <div>
                   <label className="block text-xs font-semibold text-gray-700 mb-1">رقم القطعة</label>
@@ -839,6 +874,26 @@ export default function ClientDetailModal({
                   />
                 </div>
                 <div>
+                  <label className="block text-xs font-semibold text-gray-700 mb-1">البلدية</label>
+                  <input value={municipality} onChange={(e) => setMunicipality(e.target.value)} className="w-full p-2.5 border rounded-xl text-sm" />
+                </div>
+                <div>
+                  <label className="block text-xs font-semibold text-gray-700 mb-1">البلدية الفرعية</label>
+                  <input value={subMunicipality} onChange={(e) => setSubMunicipality(e.target.value)} className="w-full p-2.5 border rounded-xl text-sm" />
+                </div>
+                <div>
+                  <label className="block text-xs font-semibold text-gray-700 mb-1">رقم المخطط</label>
+                  <input value={planNumber} onChange={(e) => setPlanNumber(e.target.value)} className="w-full p-2.5 border rounded-xl text-sm" />
+                </div>
+                <div>
+                  <label className="block text-xs font-semibold text-gray-700 mb-1">رقم الكروكي</label>
+                  <input value={sketchNumber} onChange={(e) => setSketchNumber(e.target.value)} className="w-full p-2.5 border rounded-xl text-sm" />
+                </div>
+                <div>
+                  <label className="block text-xs font-semibold text-gray-700 mb-1">رقم الصك</label>
+                  <input value={deedNumber} onChange={(e) => setDeedNumber(e.target.value)} className="w-full p-2.5 border rounded-xl text-sm" />
+                </div>
+                <div>
                   <label className="block text-xs font-semibold text-gray-700 mb-1">السجل التجاري (للعقود)</label>
                   <input
                     value={commercialRegister}
@@ -846,6 +901,14 @@ export default function ClientDetailModal({
                     dir="ltr"
                     className="w-full p-2.5 border rounded-xl text-sm"
                   />
+                </div>
+                <div>
+                  <label className="block text-xs font-semibold text-gray-700 mb-1">الشماليات (Northing)</label>
+                  <NumericInput mode="decimal" value={northing} onChange={setNorthing} className="w-full p-2.5 border rounded-xl text-sm" />
+                </div>
+                <div>
+                  <label className="block text-xs font-semibold text-gray-700 mb-1">الشرقيات (Easting)</label>
+                  <NumericInput mode="decimal" value={easting} onChange={setEasting} className="w-full p-2.5 border rounded-xl text-sm" />
                 </div>
                 <div>
                   <label className="block text-xs font-semibold text-gray-700 mb-1">الرقم الضريبي للعميل (VAT)</label>
@@ -876,6 +939,38 @@ export default function ClientDetailModal({
                     className="w-full p-2.5 border rounded-xl text-sm"
                   />
                 </div>
+              </div>
+
+              <div className="rounded-xl border border-slate-200 bg-white p-4 space-y-3">
+                <h3 className="text-sm font-bold text-slate-900">بيانات رخصة البناء</h3>
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+                  <div>
+                    <label className="block text-xs font-semibold text-gray-700 mb-1">رقم رخصة البناء</label>
+                    <input value={buildingPermitNumber} onChange={(e) => setBuildingPermitNumber(e.target.value)} className="w-full p-2.5 border rounded-xl text-sm bg-white" />
+                  </div>
+                  <div>
+                    <label className="block text-xs font-semibold text-gray-700 mb-1">تاريخ الرخصة (ميلادي)</label>
+                    <input type="date" value={buildingPermitDate} onChange={(e) => setBuildingPermitDate(e.target.value)} className="w-full p-2.5 border rounded-xl text-sm bg-white" />
+                  </div>
+                  <div>
+                    <label className="block text-xs font-semibold text-gray-700 mb-1">تاريخ الرخصة (هجري)</label>
+                    <input value={buildingPermitDateHijri} onChange={(e) => setBuildingPermitDateHijri(e.target.value)} className="w-full p-2.5 border rounded-xl text-sm bg-white" placeholder="اختياري" dir="ltr" />
+                  </div>
+                  <div>
+                    <label className="block text-xs font-semibold text-gray-700 mb-1">صلاحية الرخصة</label>
+                    <input type="date" value={buildingPermitExpiryDate} onChange={(e) => setBuildingPermitExpiryDate(e.target.value)} className="w-full p-2.5 border rounded-xl text-sm bg-white" />
+                  </div>
+                  <div>
+                    <label className="block text-xs font-semibold text-gray-700 mb-1">نوع الرخصة</label>
+                    <select value={permitType} onChange={(e) => setPermitType(e.target.value)} className="w-full p-2.5 border rounded-xl text-sm bg-white">
+                      <option value="">اختر نوع الرخصة</option><option value="جديدة">جديدة</option><option value="تجديد">تجديد</option><option value="تعديل">تعديل</option><option value="أخرى">أخرى</option>
+                    </select>
+                  </div>
+                </div>
+              </div>
+
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div className="md:col-span-2 rounded-lg bg-slate-50 px-3 py-2 text-sm font-bold text-slate-900">بيانات النشاط والمبنى</div>
                 <div>
                   <label className="block text-xs font-semibold text-gray-700 mb-1">اسم النشاط</label>
                   <input
@@ -896,6 +991,37 @@ export default function ClientDetailModal({
                       <option key={key} value={key}>{rule.label}</option>
                     ))}
                   </select>
+                </div>
+                <div>
+                  <label className="block text-xs font-semibold text-gray-700 mb-1">النشاط الفرعي / الرئيسي</label>
+                  <select value={buildingUse} onChange={(e) => setBuildingUse(e.target.value)} className="w-full p-2.5 border rounded-xl text-sm bg-white">
+                    <option value="">اختر استخدام المبنى</option>
+                    <option value="سكني">سكني</option>
+                    <option value="تجاري">تجاري</option>
+                    <option value="إداري">إداري</option>
+                    <option value="صناعي">صناعي</option>
+                    <option value="تعليمي">تعليمي</option>
+                    <option value="مواقف">مواقف</option>
+                    <option value="أخرى">أخرى</option>
+                  </select>
+                </div>
+                <div>
+                  <label className="block text-xs font-semibold text-gray-700 mb-1">نوع المبنى</label>
+                  <select value={buildingType} onChange={(e) => setBuildingType(e.target.value)} className="w-full p-2.5 border rounded-xl text-sm bg-white">
+                    <option value="">اختر نوع المبنى</option>
+                    <option value="مبنى مستقل">مبنى مستقل</option>
+                    <option value="مجمع">مجمع</option>
+                    <option value="مبنى متعدد الاستخدام">مبنى متعدد الاستخدام</option>
+                    <option value="أخرى">أخرى</option>
+                  </select>
+                </div>
+                <div>
+                  <label className="block text-xs font-semibold text-gray-700 mb-1">ارتفاع المبنى (م)</label>
+                  <NumericInput mode="decimal" value={buildingHeight} onChange={setBuildingHeight} className="w-full p-2.5 border rounded-xl text-sm" />
+                </div>
+                <div>
+                  <label className="block text-xs font-semibold text-gray-700 mb-1">عدد الأدوار المرخص</label>
+                  <NumericInput value={licensedFloorCount} onChange={setLicensedFloorCount} className="w-full p-2.5 border rounded-xl text-sm" />
                 </div>
                 <div>
                   <label className="block text-xs font-semibold text-gray-700 mb-1">مساحة الأرض (م²)</label>
@@ -937,18 +1063,32 @@ export default function ClientDetailModal({
                 </div>
               </div>
 
-              <ActivityRequirementsPanel
-                activityType={activityType}
-                floorsCount={computedFloorsCount}
-                buildingArea={computedBuildingArea}
-                landArea={parseLocalizedInteger(landArea)}
-              />
-
               <FloorLevelsEditor
                 levels={floorLevels}
                 onChange={setFloorLevels}
                 maxFloors={activityRule?.maxFloors}
               />
+
+              <div className="rounded-xl border border-slate-200 bg-slate-50 p-4">
+                <h3 className="text-sm font-bold text-slate-900">ملخص البيانات</h3>
+                <div className="mt-3 grid grid-cols-1 gap-2 text-xs sm:grid-cols-3">
+                  <div><span className="text-slate-500">مساحة الأرض:</span> <strong>{landArea || '—'} م²</strong></div>
+                  <div><span className="text-slate-500">إجمالي مساحة المبنى:</span> <strong>{computedBuildingArea || '—'} م²</strong></div>
+                  <div><span className="text-slate-500">عدد الأدوار المرخص:</span> <strong>{licensedFloorCount || '—'}</strong></div>
+                  <div><span className="text-slate-500">عدد مستويات النموذج:</span> <strong>{computedFloorsCount || '—'}</strong></div>
+                </div>
+              </div>
+
+              <section className="space-y-2">
+                <h3 className="text-sm font-bold text-slate-900">اشتراطات مرتبطة بالخيارات</h3>
+                <p className="text-xs text-slate-500">تظهر بعد اكتمال الموقع والرخصة والنشاط وبيانات المبنى والأدوار.</p>
+                <ActivityRequirementsPanel
+                  activityType={activityType}
+                  floorsCount={licensedFloorCount ? parseLocalizedInteger(licensedFloorCount) : computedFloorsCount}
+                  buildingArea={computedBuildingArea}
+                  landArea={parseLocalizedInteger(landArea)}
+                />
+              </section>
 
               <button
                 type="button"

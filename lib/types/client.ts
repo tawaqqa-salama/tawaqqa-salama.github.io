@@ -12,7 +12,18 @@ export type PipelineStage = 'marketing' | 'sales' | 'finance' | 'projects' | 'co
 
 export type DepartmentMode = 'marketing' | 'sales' | 'finance' | 'hr' | 'projects' | 'full';
 
-export type FloorLevelKind = 'ground' | 'typical' | 'basement' | 'roof' | 'custom';
+export type FloorLevelKind =
+  | 'ground'
+  | 'typical'
+  | 'basement'
+  | 'mezzanine'
+  | 'first'
+  | 'second'
+  | 'service'
+  | 'parking'
+  | 'roof'
+  | 'upper_annex'
+  | 'custom';
 
 /** مستوى دور: المتكرر يُمثَّل كصف واحد مع repeat_count */
 export interface FloorLevel {
@@ -23,6 +34,7 @@ export interface FloorLevel {
   repeat_count: number;
   /** تصنيف النشاط للدور كما ورد في الرخصة، إن كان مذكورًا */
   activity_type?: string | null;
+  floor_use?: string | null;
 }
 
 export interface ClientRecord {

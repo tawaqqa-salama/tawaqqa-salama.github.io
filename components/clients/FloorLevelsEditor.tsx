@@ -1,6 +1,6 @@
 'use client';
 
-import { FLOOR_KIND_OPTIONS } from '@/lib/constants/clients';
+import { ACTIVITY_RULES, FLOOR_KIND_OPTIONS } from '@/lib/constants/clients';
 import {
   calcBuildingArea,
   calcFloorsCount,
@@ -88,7 +88,7 @@ export default function FloorLevelsEditor({ levels, onChange, maxFloors }: Floor
           {levels.map((level, index) => (
             <div
               key={level.id}
-              className="grid grid-cols-1 md:grid-cols-12 gap-2 items-end border border-gray-100 rounded-xl p-3 bg-gray-50"
+              className="grid grid-cols-1 md:grid-cols-14 gap-2 items-end border border-gray-100 rounded-xl p-3 bg-gray-50"
             >
               <div className="md:col-span-3">
                 <label className="block text-xs text-gray-600 mb-1">نوع الدور</label>
@@ -145,6 +145,31 @@ export default function FloorLevelsEditor({ levels, onChange, maxFloors }: Floor
                   className={`w-full p-2 border rounded-lg text-sm ${
                     level.kind === 'typical' ? 'bg-white' : 'bg-gray-100 text-gray-500'
                   }`}
+                />
+              </div>
+
+              <div className="md:col-span-2">
+                <label className="block text-xs text-gray-600 mb-1">نشاط الدور</label>
+                <select
+                  value={level.activity_type || ''}
+                  onChange={(e) => updateLevel(level.id, { activity_type: e.target.value || null })}
+                  className="w-full p-2 border rounded-lg text-sm bg-white"
+                >
+                  <option value="">اختر النشاط</option>
+                  {Object.entries(ACTIVITY_RULES).map(([key, rule]) => (
+                    <option key={key} value={key}>{rule.label}</option>
+                  ))}
+                  <option value="other">أخرى</option>
+                </select>
+              </div>
+
+              <div className="md:col-span-2">
+                <label className="block text-xs text-gray-600 mb-1">استخدام الدور عند الحاجة</label>
+                <input
+                  value={level.floor_use || ''}
+                  onChange={(e) => updateLevel(level.id, { floor_use: e.target.value || null })}
+                  className="w-full p-2 border rounded-lg text-sm bg-white"
+                  placeholder="اختياري"
                 />
               </div>
 

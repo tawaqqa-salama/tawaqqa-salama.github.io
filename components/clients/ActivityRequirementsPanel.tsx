@@ -21,6 +21,23 @@ const SEVERITY_BADGE = {
   warning: 'تنبيه',
 } as const;
 
+function groupRequirements(items: import('@/lib/business/sbc-requirements').DerivedRequirement[]) {
+  const groups = new Map<string, import('@/lib/business/sbc-requirements').DerivedRequirement[]>();
+  for (const item of items) {
+    const label = item.id.startsWith('sprinkler') || item.id.includes('standpipe')
+      ? 'أنظمة الإطفاء المطلوبة'
+      : item.id.startsWith('alarm') || item.id.includes('ind-alarm')
+        ? 'أنظمة الإنذار المطلوبة'
+        : item.id.startsWith('stair')
+          ? 'متطلبات الأدراج ومخارج الهروب'
+          : item.id.startsWith('occupancy') || item.id.startsWith('land-floors')
+            ? 'اشتراطات البلدية / النشاط'
+            : 'متطلبات SBC وملاحظات هندسية';
+    groups.set(label, [...(groups.get(label) || []), item]);
+  }
+  return Array.from(groups, ([label, groupedItems]) => ({ label, items: groupedItems }));
+}
+
 export default function ActivityRequirementsPanel({
   activityType,
   floorsCount,
@@ -68,27 +85,32 @@ export default function ActivityRequirementsPanel({
         </span>
       </div>
 
-      <ul className="space-y-2">
-        {result.requirements.map((item) => (
-          <li
-            key={item.id}
-            className={`rounded-lg border p-3 text-sm ${SEVERITY_STYLES[item.severity]}`}
-          >
-            <div className="flex items-center gap-2 mb-1">
-              <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-white/70">
-                {SEVERITY_BADGE[item.severity]}
-              </span>
-              <p className="font-semibold">{item.title}</p>
-            </div>
-            <p className="text-xs leading-relaxed opacity-90">{item.detail}</p>
-            {item.refs.length > 0 && (
-              <p className="text-[10px] mt-1.5 opacity-70 font-mono">
-                {item.refs.join(' · ')}
-              </p>
-            )}
-          </li>
+      <div className="space-y-4">
+        {groupRequirements(result.requirements).map((group) => (
+          <section key={group.label}>
+            <h4 className="mb-2 text-xs font-bold text-slate-800">{group.label}</h4>
+            <ul className="space-y-2">
+              {group.items.map((item) => (
+                <li
+                  key={item.id}
+                  className={`rounded-lg border p-3 text-sm ${SEVERITY_STYLES[item.severity]}`}
+                >
+                  <div className="flex items-center gap-2 mb-1">
+                    <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-white/70">
+                      {SEVERITY_BADGE[item.severity]}
+                    </span>
+                    <p className="font-semibold">{item.title}</p>
+                  </div>
+                  <p className="text-xs leading-relaxed opacity-90">{item.detail}</p>
+                  {item.refs.length > 0 && (
+                    <p className="text-[10px] mt-1.5 opacity-70 font-mono">{item.refs.join(' · ')}</p>
+                  )}
+                </li>
+              ))}
+            </ul>
+          </section>
         ))}
-      </ul>
+      </div>
 
       <p className="text-[11px] text-gray-500 leading-relaxed">
         المرجع التنفيذي: موجز SBC 801 وخريطة متطلبات SBC 201/801 داخل وثائق المنصة. يُراجع المهندس

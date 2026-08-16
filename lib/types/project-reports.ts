@@ -52,6 +52,17 @@ export interface BuildingPlanReport extends ReportMeta {
   building_permit_date?: string;
   /** تاريخ رخصة البناء الهجري كما استُخرج من الوثيقة */
   building_permit_date_hijri?: string;
+  building_permit_expiry_date?: string;
+  permit_type?: string;
+  municipality?: string;
+  sub_municipality?: string;
+  plan_number?: string;
+  sketch_number?: string;
+  deed_number?: string;
+  northing?: string;
+  easting?: string;
+  licensed_floor_count?: number | null;
+  building_use?: string;
   /** ملف رخصة البناء المرفق في مرحلة المخطط */
   building_permit_file?: PlanAttachmentFile | null;
   /** ملخص آخر استخراج OCR للرخصة */
