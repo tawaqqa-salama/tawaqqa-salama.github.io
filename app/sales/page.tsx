@@ -61,6 +61,15 @@ async function printContractLazy(
   await printContract(contract, client);
 }
 
+function ActionIcon({ kind }: { kind: 'folder' | 'tag' | 'file' }) {
+  const paths = {
+    folder: <><path d="M3.5 6.5h6l1.6 1.8h9.4v9.2a2 2 0 0 1-2 2h-15a2 2 0 0 1-2-2v-11a2 2 0 0 1 2-2Z" /><path d="M2.5 8.3h18" /></>,
+    tag: <><path d="m3.5 4.5 7.7.2 8.1 8.1a2 2 0 0 1 0 2.8l-3.7 3.7a2 2 0 0 1-2.8 0L4.7 11.2l-1.2-6.7Z" /><circle cx="8" cy="8.2" r="1.2" /></>,
+    file: <><path d="M6 2.8h8l4 4v14.4H6a2 2 0 0 1-2-2V4.8a2 2 0 0 1 2-2Z" /><path d="M14 2.8v4h4M8 12h8M8 16h6" /></>,
+  }[kind];
+  return <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" className="h-4 w-4" aria-hidden="true">{paths}</svg>;
+}
+
 function SalesTableSkeleton({ columns = 5 }: { columns?: number }) {
   return (
     <tr aria-label="جاري تحميل بيانات المبيعات">
@@ -350,18 +359,21 @@ export default function SalesPage() {
                             label: 'البيانات الأساسية',
                             onClick: () => router.push(`/sales/client-basic-data?clientId=${encodeURIComponent(c.id)}`),
                             tone: 'primary',
+                            icon: <ActionIcon kind="folder" />,
                           },
                           {
                             id: 'quotation',
                             label: 'عرض السعر',
                             onClick: () => router.push(`/sales/client-quotation?clientId=${encodeURIComponent(c.id)}`),
                             tone: 'primary',
+                            icon: <ActionIcon kind="tag" />,
                           },
                           {
                             id: 'contract',
                             label: 'عقد',
                             onClick: () => setContractClient(c),
                             tone: 'success',
+                            icon: <ActionIcon kind="file" />,
                           },
                         ]}
                       />
