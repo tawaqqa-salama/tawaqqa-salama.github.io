@@ -6,6 +6,8 @@ import { shouldShowInProjects } from '@/lib/business/pipeline';
 import {
   ARCHIVE_PAGE_SIZE,
   CLIENT_LIST_COLUMNS,
+  CLIENT_LIST_CORE_FALLBACK_COLUMNS,
+  CLIENT_LIST_FALLBACK_COLUMNS,
   LIST_PAGE_SIZE,
   PROJECT_LIST_COLUMNS,
   PROJECTS_PAGE_SIZE,
@@ -64,24 +66,42 @@ export async function fetchClientsList(options: ListFetchOptions = {}): Promise<
 
   if (error) {
     console.warn('[fetchClientsList]', error.message);
-    // إن فشل جلب أعمدة معيّنة (مثل JSON الهندسي) جرّب * 
+    // Compatibility retry remains explicitly lightweight; never fall back to unrestricted selection.
     let fallback = supabase
       .from('clients')
-      .select('*')
+      .select(CLIENT_LIST_FALLBACK_COLUMNS)
       .order('created_at', { ascending: false })
       .range(offset, offset + limit - 1);
     fallback = applyCompanyFilter(fallback, companyId);
-          const { data: allData, error: allError } = await measureRequest(
-        'clients:list:fallback',
-        fallback,
-        { cacheStatus: 'miss', route: '/data/clients/fallback', includePayloadMetrics: true }
-      );
+    const { data: fallbackData, error: fallbackError } = await measureRequest(
+      'clients:list:fallback-safe',
+      fallback,
+      { cacheStatus: 'miss', route: '/data/clients/fallback-safe', includePayloadMetrics: true }
+    );
 
-    if (allError) {
-      console.warn('[fetchClientsList] * fallback failed:', allError.message);
+    if (!fallbackError) {
+      return ((fallbackData || []) as unknown as ClientRecord[]).map((row) =>
+        mergeLocalClientOverrides(row)
+      );
+    }
+
+    // Final legacy retry uses only the minimal columns required by the Sales list.
+    let coreFallback = supabase
+      .from('clients')
+      .select(CLIENT_LIST_CORE_FALLBACK_COLUMNS)
+      .order('created_at', { ascending: false })
+      .range(offset, offset + limit - 1);
+    coreFallback = applyCompanyFilter(coreFallback, companyId);
+    const { data: coreData, error: coreError } = await measureRequest(
+      'clients:list:fallback-core',
+      coreFallback,
+      { cacheStatus: 'miss', route: '/data/clients/fallback-core', includePayloadMetrics: true }
+    );
+    if (coreError) {
+      console.warn('[fetchClientsList] safe fallbacks failed:', coreError.message);
       return [];
     }
-    return ((allData || []) as unknown as ClientRecord[]).map((row) =>
+    return ((coreData || []) as unknown as ClientRecord[]).map((row) =>
       mergeLocalClientOverrides(row)
     );
   }
