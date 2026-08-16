@@ -1,6 +1,7 @@
 'use client';
 
 import { deriveActivityRequirements } from '@/lib/business/sbc-requirements';
+import type { FloorLevel } from '@/lib/types/client';
 
 interface ActivityRequirementsPanelProps {
   activityType?: string | null;
@@ -8,6 +9,7 @@ interface ActivityRequirementsPanelProps {
   buildingArea?: number | null;
   landArea?: number | null;
   electricalRoomsCount?: number | null;
+  floorLevels?: FloorLevel[];
 }
 
 const SEVERITY_STYLES = {
@@ -45,6 +47,7 @@ export default function ActivityRequirementsPanel({
   buildingArea,
   landArea,
   electricalRoomsCount,
+  floorLevels,
 }: ActivityRequirementsPanelProps) {
   const result = deriveActivityRequirements({
     activity_type: activityType,
@@ -52,6 +55,7 @@ export default function ActivityRequirementsPanel({
     building_area: buildingArea,
     land_area: landArea,
     electrical_rooms_count: electricalRoomsCount,
+    floor_levels: floorLevels,
   });
 
   if (!activityType) {

@@ -25,16 +25,30 @@ export type FloorLevelKind =
   | 'upper_annex'
   | 'custom';
 
-/** مستوى دور: المتكرر يُمثَّل كصف واحد مع repeat_count */
+/** سطر مساحة/نشاط داخل الدور؛ التسمية وصفية ولا تُعامل وحدها كتصنيف كودي. */
+export interface FloorUsage {
+  id: string;
+  area_m2: number;
+  /** مفتاح النشاط/التصنيف الموجود في النظام، أو other عند عدم وجود تصنيف مناسب. */
+  activity_type?: string | null;
+  /** تسمية وصفية مستقلة مثل معرض تجاري أو مكاتب إدارية. */
+  label?: string | null;
+}
+
+/** مستوى دور: المتكرر يُمثَّل كصف واحد مع repeat_count. */
 export interface FloorLevel {
   id: string;
   label: string;
   kind: FloorLevelKind;
+  /** الحقل legacy؛ يُشتق من usage rows عند القراءة ولا يُدخل إجماليًا يدويًا. */
   area_m2: number;
   repeat_count: number;
-  /** تصنيف النشاط للدور كما ورد في الرخصة، إن كان مذكورًا */
+  /** التصنيف legacy للدور القديم. */
   activity_type?: string | null;
+  /** الاستخدام legacy؛ يُحفظ للقراءة القديمة ولا يظهر في الواجهة الجديدة. */
   floor_use?: string | null;
+  /** البنية الجديدة: أكثر من مساحة/نشاط داخل الدور الواحد. */
+  usages?: FloorUsage[];
 }
 
 export interface ClientRecord {

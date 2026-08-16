@@ -1,4 +1,5 @@
 import { ACTIVITY_RULES } from '@/lib/constants/activity-rules';
+import type { FloorLevel } from '@/lib/types/client';
 import {
   RISK_LABEL_AR,
   SBC_OCCUPANCIES,
@@ -27,6 +28,7 @@ export type ActivityRequirementsResult = {
   buildingArea: number;
   landArea: number;
   electricalRoomsCount: number;
+  floorLevels: FloorLevel[];
   requirements: DerivedRequirement[];
 };
 
@@ -36,6 +38,7 @@ export function deriveActivityRequirements(input: {
   building_area?: number | null;
   land_area?: number | null;
   electrical_rooms_count?: number | null;
+  floor_levels?: FloorLevel[] | null;
 }): ActivityRequirementsResult | null {
   const key = input.activity_type || '';
   const rule = ACTIVITY_RULES[key];
@@ -46,6 +49,7 @@ export function deriveActivityRequirements(input: {
   const buildingArea = Math.max(0, Number(input.building_area) || 0);
   const landArea = Math.max(0, Number(input.land_area) || 0);
   const electricalRoomsCount = Math.max(0, Math.floor(Number(input.electrical_rooms_count) || 0));
+  const floorLevels = Array.isArray(input.floor_levels) ? input.floor_levels : [];
   const requirements: DerivedRequirement[] = [];
 
   requirements.push({
@@ -232,6 +236,7 @@ export function deriveActivityRequirements(input: {
     buildingArea,
     landArea,
     electricalRoomsCount,
+    floorLevels,
     requirements,
   };
 }

@@ -1,11 +1,12 @@
 import { describe, expect, it } from 'vitest';
 import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
-import { calcBuildingArea, calcFloorsCount } from '@/lib/business/floors';
+import { calcBuildingArea, calcFloorsCount, floorUsageArea, normalizeFloorLevels } from '@/lib/business/floors';
 import { getCities, getDistricts, getRegions, getStreets, isValidLocation } from '@/lib/data/saudi-location-provider';
 import { mergeBuildingPlanDefaults } from '@/lib/projects/building-plan';
 import { formatHijriParts, hijriToGregorian, parseHijriParts } from '@/lib/date/hijri';
 import { deriveActivityRequirements } from '@/lib/business/sbc-requirements';
+import { sanitizeQuotationDocumentsForLocal } from '@/lib/supabase/safe-client-write';
 
 const root = resolve(__dirname, '..');
 const read = (relative: string) => readFileSync(resolve(root, relative), 'utf8');
@@ -99,6 +100,78 @@ describe('manual building permit form', () => {
     expect(licensedFloorCount).not.toBe(calcFloorsCount(levels));
   });
 
+  it('supports multiple usage rows per floor and computes repeated totals from rows', () => {
+    const levels = normalizeFloorLevels([
+      {
+        id: 'ground',
+        kind: 'ground' as const,
+        label: 'الدور الأرضي',
+        area_m2: 0,
+        repeat_count: 1,
+        usages: [
+          { id: 'u1', area_m2: 600, activity_type: 'commercial', label: 'معرض تجاري' },
+          { id: 'u2', area_m2: 200, activity_type: 'administrative', label: 'مكاتب' },
+        ],
+      },
+      {
+        id: 'typical',
+        kind: 'typical' as const,
+        label: 'الدور المتكرر',
+        area_m2: 0,
+        repeat_count: 2,
+        usages: [{ id: 'u3', area_m2: 300, activity_type: 'commercial', label: 'معرض' }],
+      },
+    ]);
+    expect(floorUsageArea(levels[0])).toBe(800);
+    expect(calcBuildingArea(levels)).toBe(1400);
+    expect(levels[0].usages).toHaveLength(2);
+    expect(levels[1].usages).toHaveLength(1);
+  });
+
+  it('normalizes a legacy floor into one usage row without losing its area or label', () => {
+    const [legacy] = normalizeFloorLevels([{ id: 'legacy', kind: 'ground', label: 'أرضي', area_m2: 450, repeat_count: 1, activity_type: 'commercial', floor_use: 'معرض' }]);
+    expect(legacy.usages).toEqual([{ id: 'legacy-usage-1', area_m2: 450, activity_type: 'commercial', label: 'معرض' }]);
+  });
+
+  it('keeps Storage-backed attachment metadata without persisting dataUrl/base64', () => {
+    const safe = sanitizeQuotationDocumentsForLocal({
+      building_permit: {
+        id: 'permit-1', fileName: 'permit.pdf', format: 'pdf', sizeBytes: 100, mimeType: 'application/pdf',
+        storageBucket: 'project-files', storagePath: 'tenant/project/permit.pdf',
+        dataUrl: `data:application/pdf;base64,${'x'.repeat(10000)}`, uploadedAt: '2026-08-16T00:00:00Z', kind: 'building_permit',
+      },
+      owner_id: null,
+      commercial_register: null,
+    });
+    expect(safe?.building_permit?.storageBucket).toBe('project-files');
+    expect(safe?.building_permit?.storagePath).toBe('tenant/project/permit.pdf');
+    expect(safe?.building_permit?.fileName).toBe('permit.pdf');
+    expect(safe?.building_permit?.mimeType).toBe('application/pdf');
+    expect(safe?.building_permit?.sizeBytes).toBe(100);
+    expect(safe?.building_permit).not.toHaveProperty('dataUrl');
+
+    const localOnly = sanitizeQuotationDocumentsForLocal({
+      building_permit: {
+        id: 'local-1', fileName: 'local.pdf', format: 'pdf', sizeBytes: 50, mimeType: 'application/pdf',
+        dataUrl: 'data:application/pdf;base64,local-only', uploadedAt: '2026-08-16T00:00:00Z', kind: 'building_permit',
+      },
+      owner_id: null,
+      commercial_register: null,
+    });
+    expect(localOnly?.building_permit?.dataUrl).toBe('data:application/pdf;base64,local-only');
+
+    const incompleteStorage = sanitizeQuotationDocumentsForLocal({
+      building_permit: {
+        id: 'incomplete-1', fileName: 'incomplete.pdf', format: 'pdf', sizeBytes: 50, storageBucket: 'project-files',
+        dataUrl: 'data:application/pdf;base64,incomplete', uploadedAt: '2026-08-16T00:00:00Z', kind: 'building_permit',
+      },
+      owner_id: null,
+      commercial_register: null,
+    });
+    expect(incompleteStorage?.building_permit?.dataUrl).toBe('data:application/pdf;base64,incomplete');
+    expect(read('lib/supabase/safe-client-write.ts')).toContain('canonical engineering live store');
+  });
+
   it('keeps the requested page order and manual-only attachment flow', () => {
     const modal = read('components/clients/ClientDetailModal.tsx');
     const upload = read('components/sales/QuotationDocumentsUpload.tsx');
@@ -117,9 +190,17 @@ describe('manual building permit form', () => {
     expect(upload).not.toContain('extractBuildingPermitFromFile');
     expect(upload).not.toContain('building-permit-ocr');
     expect(floorEditor).toContain('activity_type');
-    expect(floorEditor).toContain('floor_use');
+    expect(floorEditor).toContain('usages');
+    expect(floorEditor).toContain('+ إضافة مساحة / نشاط');
+    expect(floorEditor).not.toContain('استخدام الدور عند الحاجة');
+    expect(modal).not.toContain('>البلدية</label>');
+    expect(modal).toContain('>البلدية الفرعية</label>');
+    expect(modal).toContain('aria-label="فتح تاريخ الرخصة الهجري"');
     const rules = read('components/clients/ActivityRequirementsPanel.tsx');
     expect(rules).toContain('electricalRoomsCount');
     expect(rules).toContain('electrical_rooms_count');
+    expect(rules).toContain('floor_levels');
+    expect(read('lib/constants/activity-rules.ts')).toContain("label: 'تجاري'");
+    expect(read('lib/constants/activity-rules.ts')).toContain("label: 'مجمع تجاري'");
   });
 });
