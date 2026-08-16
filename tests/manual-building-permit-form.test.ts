@@ -4,6 +4,8 @@ import { resolve } from 'node:path';
 import { calcBuildingArea, calcFloorsCount } from '@/lib/business/floors';
 import { getCities, getDistricts, getRegions, getStreets, isValidLocation } from '@/lib/data/saudi-location-provider';
 import { mergeBuildingPlanDefaults } from '@/lib/projects/building-plan';
+import { formatHijriParts, hijriToGregorian, parseHijriParts } from '@/lib/date/hijri';
+import { deriveActivityRequirements } from '@/lib/business/sbc-requirements';
 
 const root = resolve(__dirname, '..');
 const read = (relative: string) => readFileSync(resolve(root, relative), 'utf8');
@@ -42,10 +44,26 @@ describe('manual building permit form', () => {
     expect(modal).toContain('بيانات المدن لهذه المنطقة لم تُربط بعد بمصدر موثوق.');
     expect(modal).toContain('بيانات الأحياء لهذه المدينة لم تُربط بعد بمصدر موثوق.');
     expect(modal).toContain('بيانات الشوارع غير متاحة حاليًا من مصدر موثوق.');
-    expect(modal).toContain('القيمة القديمة:');
-    expect(modal).toContain('disabled\n                    className="w-full p-2.5 border rounded-xl text-sm bg-gray-100 text-gray-500"');
-    expect(modal).not.toContain('setStreet(\'\');\n                    }}\n                    className="w-full p-2.5 border rounded-xl text-sm"');
+    expect(modal).toContain('option value="أخرى">أخرى</option>');
+    expect(modal).toContain('placeholder="اسم المدينة"');
+    expect(modal).toContain('placeholder="اسم الحي"');
+    expect(modal).toContain('placeholder="أدخل اسم الشارع"');
     expect(modal).toContain('street: street.trim() || null');
+    expect(modal).toContain('setManualCity(\'\');');
+    expect(modal).toContain('setManualDistrict(\'\');');
+  });
+
+  it('converts known Hijri dates and rejects invalid dates without inventing Gregorian values', () => {
+    expect(parseHijriParts('1/1/1445')).toEqual({ day: 1, month: 1, year: 1445 });
+    expect(formatHijriParts({ day: 1, month: 1, year: 1445 })).toBe('1/1/1445');
+    expect(hijriToGregorian({ day: 1, month: 1, year: 1445 })).toBe('2023-07-19');
+    expect(hijriToGregorian({ day: 31, month: 1, year: 1445 })).toBeNull();
+  });
+
+  it('passes electrical rooms count through the existing Rule Engine context', () => {
+    const result = deriveActivityRequirements({ activity_type: 'restaurant', electrical_rooms_count: 3 });
+    expect(result?.electricalRoomsCount).toBe(3);
+    expect(result?.requirements.some((item) => item.id === 'electrical-rooms')).toBe(false);
   });
 
   it('keeps coordinates and permit fields in the existing building plan model', () => {
@@ -55,12 +73,18 @@ describe('manual building permit form', () => {
       licensed_floor_count: 2,
       plan_number: '491/3',
       municipality: 'بلدية الاختبار',
+      electrical_rooms_count: 2,
+      manual_city: 'مدينة يدوية',
+      manual_district: 'حي يدوي',
     });
     expect(plan.northing).toBe('2391979.9527');
     expect(plan.easting).toBe('513415.8874');
     expect(plan.licensed_floor_count).toBe(2);
     expect(plan.plan_number).toBe('491/3');
     expect(plan.municipality).toBe('بلدية الاختبار');
+    expect(plan.electrical_rooms_count).toBe(2);
+    expect(plan.manual_city).toBe('مدينة يدوية');
+    expect(plan.manual_district).toBe('حي يدوي');
   });
 
   it('calculates total building area while keeping licensed floor count independent', () => {
@@ -94,5 +118,8 @@ describe('manual building permit form', () => {
     expect(upload).not.toContain('building-permit-ocr');
     expect(floorEditor).toContain('activity_type');
     expect(floorEditor).toContain('floor_use');
+    const rules = read('components/clients/ActivityRequirementsPanel.tsx');
+    expect(rules).toContain('electricalRoomsCount');
+    expect(rules).toContain('electrical_rooms_count');
   });
 });

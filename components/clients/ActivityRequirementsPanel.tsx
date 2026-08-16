@@ -7,6 +7,7 @@ interface ActivityRequirementsPanelProps {
   floorsCount?: number | null;
   buildingArea?: number | null;
   landArea?: number | null;
+  electricalRoomsCount?: number | null;
 }
 
 const SEVERITY_STYLES = {
@@ -43,12 +44,14 @@ export default function ActivityRequirementsPanel({
   floorsCount,
   buildingArea,
   landArea,
+  electricalRoomsCount,
 }: ActivityRequirementsPanelProps) {
   const result = deriveActivityRequirements({
     activity_type: activityType,
     floors_count: floorsCount,
     building_area: buildingArea,
     land_area: landArea,
+    electrical_rooms_count: electricalRoomsCount,
   });
 
   if (!activityType) {
