@@ -126,6 +126,9 @@ export default function ClientDetailModal({
   const [quotationEditMode, setQuotationEditMode] = useState(false);
   const [contractLinked, setContractLinked] = useState(false);
   const [contractCheckLoading, setContractCheckLoading] = useState(false);
+  const [baselineRevision, setBaselineRevision] = useState(0);
+  const persistedSnapshotRef = useRef<string | null>(null);
+  const baselineSyncPendingRef = useRef(false);
 
   const [quotationNumber, setQuotationNumber] = useState('');
   const [quotationAmount, setQuotationAmount] = useState('');
@@ -331,10 +334,81 @@ export default function ClientDetailModal({
     setBuildingHeight(eng.building_plan.building_height_m || '');
     setBuildingUse(eng.building_plan.building_use || '');
     setBuildingType(eng.building_plan.building_type_code || '');
+    baselineSyncPendingRef.current = true;
+    setBaselineRevision((revision) => revision + 1);
     return () => {
       active = false;
     };
   }, [client, department, pricePerM2]);
+
+  const currentDraftSnapshot = JSON.stringify({
+    quotationNumber,
+    quotationAmount,
+    quotationStatus,
+    financialStatus,
+    paymentReference,
+    paidAmount,
+    quotationVisitsCount,
+    quotationServices,
+    quotationDocuments,
+    salesPaymentType,
+    assignedEngineer,
+    engineeringStatus,
+    engineeringNotes,
+    visitDate,
+    visitStatus,
+    checklist,
+    finalReportStatus,
+    licenseNumber,
+    licenseExpiryDate,
+    ownerName,
+    phone,
+    region,
+    city,
+    citySelection,
+    manualCity,
+    districtSelection,
+    district,
+    manualDistrict,
+    street,
+    plotNumber,
+    commercialRegister,
+    clientTaxNumber,
+    clientKind,
+    nationalAddress,
+    businessName,
+    activityType,
+    landArea,
+    projectStatus,
+    floorLevels,
+    buildingPermitNumber,
+    buildingPermitDate,
+    buildingPermitDateHijri,
+    hijriDay,
+    hijriMonth,
+    hijriYear,
+    buildingPermitExpiryDate,
+    permitType,
+    municipality,
+    subMunicipality,
+    planNumber,
+    sketchNumber,
+    deedNumber,
+    northing,
+    easting,
+    licensedFloorCount,
+    buildingHeight,
+    buildingUse,
+    buildingType,
+    electricalRoomsCount,
+  });
+
+  useEffect(() => {
+    if (!client || !baselineSyncPendingRef.current) return;
+    baselineSyncPendingRef.current = false;
+    persistedSnapshotRef.current = currentDraftSnapshot;
+    setIsDirty(false);
+  }, [baselineRevision, client, currentDraftSnapshot]);
 
   useEffect(() => {
     if (!hijriDay || !hijriMonth || !hijriYear) {
@@ -372,11 +446,19 @@ export default function ClientDetailModal({
 
   const requestClose = () => {
     if (saving) return;
-    if (isDirty) {
+    const hasSnapshotChanges =
+      persistedSnapshotRef.current !== null && currentDraftSnapshot !== persistedSnapshotRef.current;
+    if (isDirty || hasSnapshotChanges) {
       setUnsavedWarningOpen(true);
       return;
     }
     onClose();
+  };
+
+  const handleInvoicePromptClose = () => {
+    setInvoicePromptOpen(false);
+    setPromptInvoice(null);
+    requestClose();
   };
 
   const handleTabChange = (tab: TabId) => {
@@ -455,6 +537,8 @@ export default function ClientDetailModal({
         (quotationApprovedNow || financiallyApprovedNow) && Number(merged.quotation_amount || 0) > 0;
 
       // Keep the modal open so the user can see the successful persistence confirmation.
+      baselineSyncPendingRef.current = true;
+      setBaselineRevision((revision) => revision + 1);
       setIsDirty(false);
       setSuccessMessage('تم حفظ البيانات بنجاح');
 
@@ -870,8 +954,7 @@ export default function ClientDetailModal({
           )}
           {unsavedWarningOpen && (
             <div role="alertdialog" aria-modal="true" className="mb-4 rounded-xl border border-amber-300 bg-amber-50 p-4 text-sm text-amber-950">
-              <p className="font-semibold">لديك تغييرات غير محفوظة</p>
-              <p className="mt-1 text-amber-900/80">هل تريد الخروج دون حفظ البيانات؟</p>
+              <p className="font-semibold">لديك تغييرات غير محفوظة. هل تريد الخروج بدون حفظ؟</p>
               <div className="mt-3 flex gap-2">
                 <button type="button" onClick={() => setUnsavedWarningOpen(false)} className="rounded-lg bg-white px-3 py-2 font-semibold border border-amber-200">متابعة التعديل</button>
                 <button type="button" onClick={onClose} className="rounded-lg bg-amber-700 px-3 py-2 font-semibold text-white">خروج دون حفظ</button>
@@ -1673,11 +1756,7 @@ export default function ClientDetailModal({
         message={invoicePromptMessage}
         invoice={promptInvoice}
         loading={invoiceBusy}
-        onClose={() => {
-          setInvoicePromptOpen(false);
-          setPromptInvoice(null);
-          onClose();
-        }}
+        onClose={handleInvoicePromptClose}
         onIssue={() => {
           void (async () => {
             setInvoiceBusy(true);
