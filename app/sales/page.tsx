@@ -12,7 +12,7 @@ import ModuleSubNavSlot from '@/components/layout/ModuleSubNavSlot';
 import ModuleTabBar from '@/components/layout/ModuleTabBar';
 import ResponsiveTable from '@/components/ui/ResponsiveTable';
 import RowActionsMenu from '@/components/ui/RowActionsMenu';
-import { insertClientSafe } from '@/lib/supabase/safe-client-write';
+import { insertClientSafe, mergeLocalClientOverrides } from '@/lib/supabase/safe-client-write';
 import { logActivity } from '@/lib/activity/logger';
 import { formatCurrency } from '@/lib/format/currency';
 import { parseLocalizedInteger, parseLocalizedNumber } from '@/lib/validation/client';
@@ -85,7 +85,14 @@ export default function SalesPage() {
     await refresh();
   }, [refresh]);
 
-  const salesClients = useMemo(() => allClients.filter(shouldShowInSales), [allClients]);
+  // The list query can return a stale row immediately after a modal save. Merge the
+  // durable local fallback fields before deriving rows, maps, or reopening modals.
+  const hydratedClients = useMemo(
+    () => allClients.map((client) => mergeLocalClientOverrides(client)),
+    [allClients]
+  );
+
+  const salesClients = useMemo(() => hydratedClients.filter(shouldShowInSales), [hydratedClients]);
 
   const clients = useMemo(
     () => salesClients.filter((c) => inDateRange(c.created_at, dateFrom, dateTo)),
@@ -97,7 +104,7 @@ export default function SalesPage() {
     [documents, dateFrom, dateTo]
   );
 
-  const clientMap = useMemo(() => new Map(allClients.map((c) => [c.id, c])), [allClients]);
+  const clientMap = useMemo(() => new Map(hydratedClients.map((c) => [c.id, c])), [hydratedClients]);
 
   const handleAdd = async (formData: ClientFormData) => {
     setIsSubmitting(true);
@@ -490,7 +497,7 @@ export default function SalesPage() {
         </ResponsiveTable>
       )}
 
-      {tab === 'tax-invoices' && <TaxInvoicesPanel clients={allClients} />}
+      {tab === 'tax-invoices' && <TaxInvoicesPanel clients={hydratedClients} />}
 
       {tab === 'accounts' && (
         <div className="grid gap-4">

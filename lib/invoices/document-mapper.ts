@@ -58,5 +58,16 @@ export function clientToFinancialDocument(
         ? options.visitsCount
         : Number(client.quotation_visits_count || 1),
     pricePerM2: options?.pricePerM2 ?? null,
+    projectName: client.business_name || client.name || null,
+    saleType: client.sales_payment_type || null,
+    quotationValidityDays: null,
+    generalTerms: [
+      'الأسعار الموضحة لا تشمل أي أعمال إضافية خارج نطاق الخدمات المذكورة.',
+      'أي أعمال أو زيارات إضافية يتم الاتفاق عليها بعرض مستقل أو أمر تغيير.',
+      'يبدأ تنفيذ الأعمال بعد اعتماد عرض السعر واستلام الدفعة المستحقة.',
+      'مدة التنفيذ تحدد وفق نطاق المشروع واستلام جميع المستندات والمعلومات المطلوبة من العميل.',
+      'الرسوم الحكومية ورسوم الجهات الخارجية غير مشمولة ما لم يُذكر خلاف ذلك صراحة.',
+      'يكون الاعتماد النهائي للأعمال وفق الأنظمة والاشتراطات المعمول بها والجهات ذات العلاقة.',
+    ],
   };
 }

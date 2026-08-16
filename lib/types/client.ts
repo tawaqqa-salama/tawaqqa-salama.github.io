@@ -184,4 +184,8 @@ export interface FinancialDocument {
   quotationServices?: string[] | null;
   quotationVisitsCount?: number | null;
   pricePerM2?: number | null;
+  projectName?: string | null;
+  saleType?: string | null;
+  quotationValidityDays?: number | null;
+  generalTerms?: string[];
 }

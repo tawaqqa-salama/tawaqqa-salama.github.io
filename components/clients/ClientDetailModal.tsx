@@ -97,7 +97,7 @@ interface ClientDetailModalProps {
   client: ClientRecord | null;
   department?: DepartmentMode;
   onClose: () => void;
-  onUpdated: () => void;
+  onUpdated: () => void | Promise<void>;
 }
 
 function normalizeChecklist(value: ClientRecord['inspection_checklist']): InspectionChecklistItem[] {
@@ -400,6 +400,14 @@ export default function ClientDetailModal({
         return false;
       }
 
+      // Persistence is complete only after the saved row has been propagated to the parent list.
+      // A refresh failure must not turn a successful database write into a false save failure.
+      try {
+        await onUpdated();
+      } catch {
+        // The next open still reads from Supabase/local fallback; keep the successful save.
+      }
+
       const quotationApprovedNow = ['معتمد', 'بانتظار السداد'].includes(
         String(finalPayload.quotation_status || quotationStatus)
       );
@@ -471,9 +479,6 @@ export default function ClientDetailModal({
           },
         });
 
-        requestAnimationFrame(() => {
-          onUpdated();
-        });
       })();
 
       return true;
