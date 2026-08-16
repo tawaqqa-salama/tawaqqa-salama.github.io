@@ -117,21 +117,52 @@ describe('basic data persistence and professional quotation', () => {
     expect(html).toContain("font-family: 'Noto Naskh Arabic'");
     expect(html).toContain('منصة توقع سلامة لاستشارات السلامة والوقاية من الحريق');
     expect(html).toContain('عرض سعر');
-    expect(html).toContain('خدمات هندسية واستشارية في مجال السلامة والوقاية من الحريق');
+    expect(html).toContain(DEFAULT_COMPANY_PROFILE.tagline);
     expect(html).toContain('مخططات الإطفاء');
-    expect(html).toContain('عدد الزيارات');
+    expect(html).toContain('2 زيارة');
+    expect(html).toContain('مشمول');
     expect(html).toContain('ضريبة القيمة المضافة 15%');
     expect(html).toContain('المبلغ كتابة');
     expect(html).toContain('شروط وآلية السداد');
-    expect(html).toContain('الشروط والأحكام');
-    expect(html).toContain('البيانات البنكية والضريبية');
+    expect(html).toContain('الشروط العامة');
+    expect(html).toContain('البيانات البنكية');
     expect(html).toContain('اعتماد العميل');
     expect(html).toContain('اعتماد الشركة');
     expect(html).toContain('size: A4 portrait');
     expect(html).not.toContain('SERVER OCR');
     expect(html).not.toContain('LOCAL OCR');
+    expect(html).toContain('@page { size: A4 portrait; margin: 5mm; }');
     expect(html).not.toContain('page-break-after: always');
+    expect(html).not.toContain('page-counter');
+    expect(html).not.toContain('googleapis.com');
     expect(html).not.toContain('مخططات الإنذار');
+  });
+
+  it('uses tenant branding safely and keeps the quotation number consistent', () => {
+    const document = clientToFinancialDocument(populatedClient(), {
+      documentType: 'quotation',
+      documentNumber: 'Q-2026-006',
+    });
+    const html = buildPrintHtml(document, {
+      ...DEFAULT_COMPANY_PROFILE,
+      name: 'شركة اختبار فعلية',
+      legal_name: 'شركة اختبار فعلية ذات مسؤولية محدودة',
+      logo_url: '',
+      phone: '',
+      email: '',
+      tax_number: '',
+      bank_name: '',
+      bank_account: '',
+      iban: '',
+    });
+
+    expect(html).toContain('Q-2026-006');
+    expect(html).toContain('<title>عرض سعر - Q-2026-006</title>');
+    expect(html).toContain('logo-fallback');
+    expect(html).not.toContain('src=""');
+    expect(html).not.toContain('0555555555');
+    expect(html).not.toContain('page-counter');
+    expect(html).toContain('@page { size: A4 portrait; margin: 5mm; }');
   });
 
   it('uses a single persisted save path and refreshes parent data after successful save', () => {
