@@ -348,7 +348,7 @@ export default function SalesPage() {
                           {
                             id: 'manage',
                             label: 'إدارة',
-                            onClick: () => router.push(`/sales/clients/${c.id}/basic-data`),
+                            onClick: () => router.push(`/sales/client-basic-data?clientId=${encodeURIComponent(c.id)}`),
                             tone: 'primary',
                           },
                           {
@@ -409,7 +409,7 @@ export default function SalesPage() {
                           {
                             id: 'manage',
                             label: 'تحرير العرض',
-                            onClick: () => router.push(`/sales/clients/${c.id}/basic-data`),
+                            onClick: () => router.push(`/sales/client-basic-data?clientId=${encodeURIComponent(c.id)}`),
                             tone: 'primary',
                           },
                           {

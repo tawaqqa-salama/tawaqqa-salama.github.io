@@ -168,14 +168,17 @@ describe('basic data persistence and professional quotation', () => {
   it('uses a single persisted save path and refreshes parent data after successful save', () => {
     const modal = read('components/clients/ClientDetailModal.tsx');
     const salesPage = read('app/sales/page.tsx');
-    const basicPage = read('app/sales/clients/[clientId]/basic-data/page.tsx');
+    const basicPage = read('app/sales/client-basic-data/page.tsx');
     expect(modal).toContain('await onUpdated(nextClient);');
     expect(modal).toContain('return await saveUpdate(');
     expect(modal).toContain('floor_levels: floorLevels');
     expect(modal).toContain('mergeProjectEngineeringData(eng, { building_plan, technical_report })');
-    expect(salesPage).toContain('router.push(`/sales/clients/${c.id}/basic-data`)');
+    expect(salesPage).toContain('router.push(`/sales/client-basic-data?clientId=${encodeURIComponent(c.id)}`)');
+    expect(salesPage).not.toContain('/sales/clients/');
     expect(salesPage).toContain('mutateSalesBundle');
     expect(basicPage).toContain('useClientDetail');
+    expect(basicPage).toContain('useSearchParams');
+    expect(basicPage).toContain("searchParams.get('clientId')");
     expect(basicPage).not.toContain('useSalesBundle');
     expect(basicPage).toContain('presentation="page"');
   });

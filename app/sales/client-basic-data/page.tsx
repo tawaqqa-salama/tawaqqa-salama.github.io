@@ -1,10 +1,9 @@
 'use client';
 
 import { useCallback, useEffect, useState } from 'react';
-import { useParams, useRouter } from 'next/navigation';
+import { useSearchParams, useRouter } from 'next/navigation';
 import dynamic from 'next/dynamic';
-import { useClientDetail } from '@/lib/data/hooks';
-import { invalidateClient } from '@/lib/data/hooks';
+import { useClientDetail, invalidateClient } from '@/lib/data/hooks';
 import { mergeLocalClientOverrides } from '@/lib/supabase/safe-client-write';
 import type { ClientRecord } from '@/lib/types/client';
 
@@ -14,8 +13,8 @@ const ClientDetailModal = dynamic(() => import('@/components/clients/ClientDetai
 
 export default function BasicClientDataPage() {
   const router = useRouter();
-  const params = useParams<{ clientId: string }>();
-  const clientId = typeof params.clientId === 'string' ? params.clientId : '';
+  const searchParams = useSearchParams();
+  const clientId = searchParams.get('clientId') || '';
   const { client, loading, error, mutate } = useClientDetail(clientId || null);
   const [isDirty, setIsDirty] = useState(false);
 
@@ -41,6 +40,19 @@ export default function BasicClientDataPage() {
     await invalidateClient(clientId);
     router.push(`/projects/file?id=${encodeURIComponent(clientId)}&stage=projects`);
   }, [clientId, router]);
+
+  if (!clientId) {
+    return (
+      <main className="min-h-screen bg-slate-50 p-4 sm:p-6">
+        <div className="mx-auto max-w-5xl space-y-4 rounded-2xl border border-amber-200 bg-amber-50 p-6 text-amber-900">
+          <p>لم يتم تحديد عميل لعرض بياناته الأساسية.</p>
+          <button type="button" onClick={() => router.push('/sales')} className="rounded-xl bg-slate-900 px-4 py-2 text-sm font-semibold text-white">
+            العودة إلى المبيعات
+          </button>
+        </div>
+      </main>
+    );
+  }
 
   if (loading) {
     return (
