@@ -1,6 +1,6 @@
 import { ACTIVITY_RULES } from '@/lib/constants/clients';
 import type { ClientFormData, FloorLevel } from '@/lib/types/client';
-import { calcBuildingArea, calcFloorsCount, normalizeFloorLevels } from '@/lib/business/floors';
+import { calcBuildingArea, calcFloorsCount, floorUsageArea, normalizeFloorLevels } from '@/lib/business/floors';
 import {
   parseLocalizedInteger,
   sanitizeDecimalInput,
@@ -33,11 +33,20 @@ export function validateFloorLevels(levels: FloorLevel[]): string | null {
     if (!level.label.trim()) {
       return 'كل مستوى دور يحتاج اسماً/تسمية.';
     }
-    if (!(level.area_m2 > 0)) {
-      return `مساحة الدور «${level.label}» يجب أن تكون أكبر من صفر.`;
+    if (!(level.repeat_count >= 1) || !Number.isInteger(level.repeat_count)) {
+      return `عدد التكرار لـ «${level.label}» يجب أن يكون عددًا صحيحًا لا يقل عن 1.`;
     }
-    if (!(level.repeat_count >= 1)) {
-      return `عدد التكرار لـ «${level.label}» يجب ألا يقل عن 1.`;
+    const usages = level.usages?.length ? level.usages : [{ area_m2: level.area_m2, activity_type: level.activity_type, label: level.floor_use }];
+    for (const usage of usages) {
+      if (!(usage.area_m2 > 0)) {
+        return `كل مساحة داخل الدور «${level.label}» يجب أن تكون أكبر من صفر.`;
+      }
+      if (!usage.activity_type || !usage.label?.trim()) {
+        return `أكمل النشاط/التصنيف والتسمية لكل مساحة داخل الدور «${level.label}».`;
+      }
+    }
+    if (!(floorUsageArea(level) > 0)) {
+      return `مساحة الدور «${level.label}» يجب أن تكون أكبر من صفر.`;
     }
   }
 

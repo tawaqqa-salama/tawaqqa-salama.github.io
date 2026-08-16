@@ -79,6 +79,13 @@ export const ACTIVITY_RULES: Record<string, ActivityRule> = {
     fire_separation_hours: 2,
     ekb_activity_code: 'ACT-RES',
   },
+  commercial: {
+    minLandArea: 100,
+    maxFloors: 6,
+    label: 'تجاري',
+    occupancy: 'mercantile',
+    ekb_activity_code: 'ACT-COMM',
+  },
   commercial_complex: {
     minLandArea: 1000,
     maxFloors: 20,

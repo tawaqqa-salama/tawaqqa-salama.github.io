@@ -180,6 +180,7 @@ export default function ClientDetailModal({
   const [hijriMonth, setHijriMonth] = useState('');
   const [hijriYear, setHijriYear] = useState('');
   const [hijriConversionError, setHijriConversionError] = useState('');
+  const [hijriPickerOpen, setHijriPickerOpen] = useState(false);
   const [buildingPermitExpiryDate, setBuildingPermitExpiryDate] = useState('');
   const [permitType, setPermitType] = useState('');
   const [municipality, setMunicipality] = useState('');
@@ -961,10 +962,6 @@ export default function ClientDetailModal({
                   />
                 </div>
                 <div>
-                  <label className="block text-xs font-semibold text-gray-700 mb-1">البلدية</label>
-                  <input value={municipality} onChange={(e) => setMunicipality(e.target.value)} className="w-full p-2.5 border rounded-xl text-sm" />
-                </div>
-                <div>
                   <label className="block text-xs font-semibold text-gray-700 mb-1">البلدية الفرعية</label>
                   <input value={subMunicipality} onChange={(e) => setSubMunicipality(e.target.value)} className="w-full p-2.5 border rounded-xl text-sm" />
                 </div>
@@ -1040,22 +1037,36 @@ export default function ClientDetailModal({
                     <input type="date" value={buildingPermitDate} readOnly className="w-full p-2.5 border rounded-xl text-sm bg-gray-100" />
                     {hijriConversionError ? <p className="mt-1 text-[11px] text-red-700">{hijriConversionError}</p> : null}
                   </div>
-                  <div className="md:col-span-2">
+                  <div className="md:col-span-2 relative">
                     <label className="block text-xs font-semibold text-gray-700 mb-1">تاريخ الرخصة (هجري)</label>
-                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
-                      <select value={hijriDay} onChange={(e) => setHijriDay(e.target.value)} className="w-full p-2.5 border rounded-xl text-sm bg-white">
-                        <option value="">اليوم</option>
-                        {Array.from({ length: 30 }, (_, index) => index + 1).map((day) => <option key={day} value={day}>{day}</option>)}
-                      </select>
-                      <select value={hijriMonth} onChange={(e) => setHijriMonth(e.target.value)} className="w-full p-2.5 border rounded-xl text-sm bg-white">
-                        <option value="">الشهر</option>
-                        {HIJRI_MONTHS.map((month, index) => <option key={month} value={index + 1}>{month}</option>)}
-                      </select>
-                      <select value={hijriYear} onChange={(e) => setHijriYear(e.target.value)} className="w-full p-2.5 border rounded-xl text-sm bg-white">
-                        <option value="">السنة</option>
-                        {Array.from({ length: 101 }, (_, index) => 1350 + index).map((year) => <option key={year} value={year}>{year}</option>)}
-                      </select>
-                    </div>
+                    <button
+                      type="button"
+                      onClick={() => setHijriPickerOpen((open) => !open)}
+                      className="w-full p-2.5 border rounded-xl text-sm bg-white text-right"
+                      aria-label="فتح تاريخ الرخصة الهجري"
+                    >
+                      {buildingPermitDateHijri || 'اختر التاريخ الهجري'}
+                    </button>
+                    {hijriPickerOpen ? (
+                      <div className="mt-2 rounded-xl border border-slate-200 bg-white p-3 shadow-sm">
+                        <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
+                          <select value={hijriDay} onChange={(e) => setHijriDay(e.target.value)} className="w-full p-2.5 border rounded-xl text-sm bg-white">
+                            <option value="">اليوم</option>
+                            {Array.from({ length: 30 }, (_, index) => index + 1).map((day) => <option key={day} value={day}>{day}</option>)}
+                          </select>
+                          <select value={hijriMonth} onChange={(e) => setHijriMonth(e.target.value)} className="w-full p-2.5 border rounded-xl text-sm bg-white">
+                            <option value="">الشهر</option>
+                            {HIJRI_MONTHS.map((month, index) => <option key={month} value={index + 1}>{month}</option>)}
+                          </select>
+                          <select value={hijriYear} onChange={(e) => setHijriYear(e.target.value)} className="w-full p-2.5 border rounded-xl text-sm bg-white">
+                            <option value="">السنة</option>
+                            {Array.from({ length: 101 }, (_, index) => 1350 + index).map((year) => <option key={year} value={year}>{year}</option>)}
+                          </select>
+                        </div>
+                        <button type="button" onClick={() => setHijriPickerOpen(false)} className="mt-2 text-xs text-indigo-700 hover:underline">تم</button>
+                      </div>
+                    ) : null}
+                    {hijriConversionError ? <p className="mt-1 text-[11px] text-red-700">{hijriConversionError}</p> : null}
                   </div>
                   <div>
                     <label className="block text-xs font-semibold text-gray-700 mb-1">صلاحية الرخصة</label>
@@ -1099,6 +1110,7 @@ export default function ClientDetailModal({
                     <option value="">اختر استخدام المبنى</option>
                     <option value="سكني">سكني</option>
                     <option value="تجاري">تجاري</option>
+                    <option value="مجمع تجاري">مجمع تجاري</option>
                     <option value="إداري">إداري</option>
                     <option value="صناعي">صناعي</option>
                     <option value="تعليمي">تعليمي</option>
@@ -1201,6 +1213,7 @@ export default function ClientDetailModal({
                   buildingArea={computedBuildingArea}
                   landArea={parseLocalizedInteger(landArea)}
                   electricalRoomsCount={electricalRoomsCount ? parseLocalizedInteger(electricalRoomsCount) : null}
+                  floorLevels={floorLevels}
                 />
               </section>
 

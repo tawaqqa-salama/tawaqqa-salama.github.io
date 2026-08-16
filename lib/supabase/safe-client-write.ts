@@ -3,6 +3,7 @@ import { saveEngineeringLive } from '@/lib/projects/engineering-live-store';
 import { sanitizeEngineeringDataForPersist } from '@/lib/projects/sanitize-engineering-files';
 import type { ProjectEngineeringData } from '@/lib/types/project-reports';
 import { parseProjectEngineeringData } from '@/lib/business/project-reports';
+import type { QuotationDocumentsState } from '@/lib/types/quotation-documents';
 
 const LOCAL_CLIENT_OVERRIDES_KEY = 'tawaqqa_client_field_overrides_v1';
 const LOCAL_ENGINEERING_BACKUP_KEY = 'tawaqqa_engineering_backup_v1';
@@ -45,9 +46,60 @@ function loadOverrides(): Record<string, Record<string, unknown>> {
   }
 }
 
+export function sanitizeQuotationDocumentsForLocal(value: unknown): QuotationDocumentsState | null {
+  if (!value || typeof value !== 'object') return null;
+  const source = value as Record<string, unknown>;
+  const result: Record<string, unknown> = {};
+  for (const [kind, rawFile] of Object.entries(source)) {
+    if (!rawFile || typeof rawFile !== 'object') {
+      result[kind] = rawFile ?? null;
+      continue;
+    }
+    const file = rawFile as Record<string, unknown>;
+    const hasValidStorageReference =
+      typeof file.storageBucket === 'string' && file.storageBucket.trim().length > 0 &&
+      typeof file.storagePath === 'string' && file.storagePath.trim().length > 0;
+    if (hasValidStorageReference) {
+      const { dataUrl: _dataUrl, ...metadata } = file;
+      result[kind] = metadata;
+    } else {
+      // Without both Storage fields, this may be the only durable attachment copy.
+      result[kind] = { ...file };
+    }
+  }
+  return result as QuotationDocumentsState;
+}
+
+function compactLocalOverrides(map: Record<string, Record<string, unknown>>) {
+  return Object.fromEntries(
+    Object.entries(map).map(([clientId, fields]) => {
+      const next = { ...fields };
+      if ('quotation_documents' in next) {
+        next.quotation_documents = sanitizeQuotationDocumentsForLocal(next.quotation_documents);
+      }
+      // The canonical engineering live store is the source of truth; never duplicate its full payload locally.
+      delete next.project_engineering_data;
+      return [clientId, next];
+    })
+  );
+}
+
 function saveOverrides(map: Record<string, Record<string, unknown>>) {
   if (typeof window === 'undefined') return;
-  localStorage.setItem(LOCAL_CLIENT_OVERRIDES_KEY, JSON.stringify(map));
+  const compact = compactLocalOverrides(map);
+  try {
+    localStorage.setItem(LOCAL_CLIENT_OVERRIDES_KEY, JSON.stringify(compact));
+  } catch {
+    // A legacy oversized map must not make a successful Supabase save appear to fail.
+    try {
+      localStorage.setItem(
+        LOCAL_CLIENT_OVERRIDES_KEY,
+        JSON.stringify(Object.fromEntries(Object.entries(compact).slice(-100)))
+      );
+    } catch {
+      // Local fallback is optional; the remote write remains authoritative.
+    }
+  }
 }
 
 export function mergeLocalClientOverrides<T extends { id: string }>(client: T): T {
@@ -74,28 +126,31 @@ export function mergeLocalClientOverrides<T extends { id: string }>(client: T): 
   return merged;
 }
 
-/** يحفظ نسخة احتياطية محلية للتقارير الهندسية بعد كل حفظ ناجح */
+/** النسخة المحلية القديمة لا تتكرر؛ التخزين القانوني للتقارير الهندسية هو live store. */
 export function backupEngineeringDataLocally(clientId: string, data: unknown) {
   if (typeof window === 'undefined' || !clientId || data == null) return;
   try {
-    const raw = localStorage.getItem(LOCAL_ENGINEERING_BACKUP_KEY);
-    const map = raw ? (JSON.parse(raw) as Record<string, unknown>) : {};
-    map[clientId] = data;
-    localStorage.setItem(LOCAL_ENGINEERING_BACKUP_KEY, JSON.stringify(map));
-    saveLocalClientOverrides(clientId, {
-      project_engineering_data: data,
-      pipeline_stage: 'projects',
-    });
+    localStorage.removeItem(LOCAL_ENGINEERING_BACKUP_KEY);
   } catch {
-    // قد يفشل إن تجاوز الحجم — لا نكسر الحفظ الرئيسي
+    // تجاهل تنظيف النسخة القديمة، ولا نكسر الحفظ الرئيسي.
   }
+  saveLocalClientOverrides(clientId, {
+    pipeline_stage: 'projects',
+  });
 }
 
 export function saveLocalClientOverrides(clientId: string, fields: Record<string, unknown>) {
   const map = loadOverrides();
   const next: Record<string, unknown> = { ...(map[clientId] || {}) };
   for (const [key, value] of Object.entries(fields)) {
-    if (LOCAL_FALLBACK_FIELDS.has(key)) next[key] = value;
+    if (!LOCAL_FALLBACK_FIELDS.has(key)) continue;
+    if (key === 'quotation_documents') {
+      next[key] = sanitizeQuotationDocumentsForLocal(value);
+    } else if (key === 'project_engineering_data') {
+      continue;
+    } else {
+      next[key] = value;
+    }
   }
   map[clientId] = next;
   saveOverrides(map);
