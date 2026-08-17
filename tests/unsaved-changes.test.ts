@@ -16,15 +16,16 @@ describe('client modal unsaved-changes regression guard', () => {
   });
 
   it('detects real edits using the persisted snapshot before closing', () => {
-    expect(modal).toContain('const hasSnapshotChanges =');
     expect(modal).toContain('currentDraftSnapshot !== persistedSnapshotRef.current');
-    expect(modal).toContain('if (isDirty || hasSnapshotChanges)');
+    expect(modal).toContain('hasUnsavedChanges');
+    expect(modal).toContain('isDirty || (persistedSnapshotRef.current !== null');
     expect(modal).toContain('لديك تغييرات غير محفوظة. هل تريد الخروج بدون حفظ؟');
   });
 
   it('keeps the modal open or explicitly discards through the warning actions', () => {
     expect(modal).toContain('onClick={() => setUnsavedWarningOpen(false)}');
-    expect(modal).toContain('onClick={onClose}');
+    expect(modal).toContain('setPendingNavigation(null)');
+    expect(modal).toContain('if (pendingNavigation) completeNavigation(pendingNavigation)');
     expect(modal).toContain('متابعة التعديل');
     expect(modal).toContain('خروج دون حفظ');
   });

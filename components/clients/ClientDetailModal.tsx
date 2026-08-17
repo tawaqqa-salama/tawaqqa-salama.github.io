@@ -50,6 +50,8 @@ import {
 } from '@/lib/constants/quotation-services';
 import { loadCompanyProfile } from '@/lib/company-profile';
 import QuotationDocumentsUpload from '@/components/sales/QuotationDocumentsUpload';
+import ClientPageNavigation from '@/components/sales/ClientPageNavigation';
+import ContractModal from '@/components/sales/ContractModal';
 import { processZatcaOnQuotationApproval } from '@/lib/zatca/submit';
 import { findExistingContractForQuote, processAutoContractOnApproval } from '@/lib/business/contract-service';
 import {
@@ -102,6 +104,7 @@ interface ClientDetailModalProps {
   presentation?: 'modal' | 'page' | 'quotation';
   onSaveAndContinue?: () => void | Promise<void>;
   onDirtyChange?: (dirty: boolean) => void;
+  onNavigate?: (target: 'basic' | 'quotation') => void;
 }
 
 function normalizeChecklist(value: ClientRecord['inspection_checklist']): InspectionChecklistItem[] {
@@ -123,6 +126,7 @@ export default function ClientDetailModal({
   presentation = 'modal',
   onSaveAndContinue,
   onDirtyChange,
+  onNavigate,
 }: ClientDetailModalProps) {
   const isPagePresentation = presentation === 'page';
   const isQuotationPresentation = presentation === 'quotation';
@@ -137,6 +141,8 @@ export default function ClientDetailModal({
   const [contractLinked, setContractLinked] = useState(false);
   const [contractCheckLoading, setContractCheckLoading] = useState(false);
   const [baselineRevision, setBaselineRevision] = useState(0);
+  const [contractModalOpen, setContractModalOpen] = useState(false);
+  const [pendingNavigation, setPendingNavigation] = useState<'basic' | 'quotation' | 'contract' | null>(null);
 
   useEffect(() => {
     onDirtyChange?.(isDirty);
@@ -474,11 +480,32 @@ export default function ClientDetailModal({
 
   if (!client) return null;
 
+  const hasUnsavedChanges = () =>
+    isDirty || (persistedSnapshotRef.current !== null && currentDraftSnapshot !== persistedSnapshotRef.current);
+
+  const completeNavigation = (target: 'basic' | 'quotation' | 'contract') => {
+    setPendingNavigation(null);
+    if (target === 'contract') {
+      setContractModalOpen(true);
+      return;
+    }
+    onNavigate?.(target);
+  };
+
+  const requestClientNavigation = (target: 'basic' | 'quotation' | 'contract') => {
+    if (saving) return;
+    if (hasUnsavedChanges()) {
+      setPendingNavigation(target);
+      setUnsavedWarningOpen(true);
+      return;
+    }
+    completeNavigation(target);
+  };
+
   const requestClose = () => {
     if (saving) return;
-    const hasSnapshotChanges =
-      persistedSnapshotRef.current !== null && currentDraftSnapshot !== persistedSnapshotRef.current;
-    if (isDirty || hasSnapshotChanges) {
+    if (hasUnsavedChanges()) {
+      setPendingNavigation(null);
       setUnsavedWarningOpen(true);
       return;
     }
@@ -941,9 +968,15 @@ export default function ClientDetailModal({
               </p>
             </div>
             {isStandalonePresentation ? (
-              <button type="button" onClick={requestClose} disabled={saving} className="rounded-xl border border-slate-300 px-3 py-2 text-sm font-semibold text-slate-700 disabled:opacity-40">
-                العودة
-              </button>
+              <div className="flex items-start gap-2">
+                <ClientPageNavigation
+                  active={isPagePresentation ? 'basic' : 'quotation'}
+                  onNavigate={requestClientNavigation}
+                />
+                <button type="button" onClick={requestClose} disabled={saving} className="rounded-xl border border-slate-300 px-3 py-2 text-sm font-semibold text-slate-700 disabled:opacity-40">
+                  العودة
+                </button>
+              </div>
             ) : (
               <button onClick={requestClose} disabled={saving} className="text-gray-400 hover:text-gray-600 text-2xl leading-none disabled:opacity-40">
                 ×
@@ -995,7 +1028,17 @@ export default function ClientDetailModal({
               <p className="font-semibold">لديك تغييرات غير محفوظة. هل تريد الخروج بدون حفظ؟</p>
               <div className="mt-3 flex gap-2">
                 <button type="button" onClick={() => setUnsavedWarningOpen(false)} className="rounded-lg bg-white px-3 py-2 font-semibold border border-amber-200">متابعة التعديل</button>
-                <button type="button" onClick={onClose} className="rounded-lg bg-amber-700 px-3 py-2 font-semibold text-white">خروج دون حفظ</button>
+                <button
+                    type="button"
+                    onClick={() => {
+                      setUnsavedWarningOpen(false);
+                      if (pendingNavigation) completeNavigation(pendingNavigation);
+                      else onClose();
+                    }}
+                    className="rounded-lg bg-amber-700 px-3 py-2 font-semibold text-white"
+                  >
+                    خروج دون حفظ
+                  </button>
               </div>
             </div>
           )}
@@ -1410,14 +1453,6 @@ export default function ClientDetailModal({
                 />
               </section>
 
-              <button
-                type="button"
-                disabled={saving}
-                onClick={() => void handleSaveBasic()}
-                className="w-full md:w-auto bg-[#635bdb] text-white rounded-xl px-5 py-2.5 font-semibold disabled:opacity-60"
-              >
-                {saving ? 'جاري الحفظ...' : 'حفظ البيانات الأساسية'}
-              </button>
               {isPagePresentation && onSaveAndContinue && (
                 <button
                   type="button"
@@ -1853,6 +1888,16 @@ export default function ClientDetailModal({
           </div>
         </div>
       )}
+      {isStandalonePresentation && contractModalOpen ? (
+        <ContractModal
+          client={client}
+          onClose={() => setContractModalOpen(false)}
+          onCreated={() => {
+            setContractModalOpen(false);
+            void onUpdated();
+          }}
+        />
+      ) : null}
     </div>
   );
 }

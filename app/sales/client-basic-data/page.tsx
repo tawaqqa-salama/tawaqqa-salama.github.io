@@ -85,6 +85,10 @@ export default function BasicClientDataPage() {
       onClose={() => router.back()}
       onUpdated={handleUpdated}
       onDirtyChange={setIsDirty}
+      onNavigate={(target) => {
+        const path = target === 'quotation' ? '/sales/client-quotation' : '/sales/client-basic-data';
+        router.push(`${path}?clientId=${encodeURIComponent(clientId)}`);
+      }}
       onSaveAndContinue={handleContinue}
     />
   );
