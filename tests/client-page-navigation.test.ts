@@ -45,9 +45,15 @@ describe('client page navigation', () => {
     expect(modal).toContain('if (pendingNavigation) completeNavigation(pendingNavigation)');
   });
 
-  it('keeps exactly one basic-data save action in the modal', () => {
+  it('places the menu trigger explicitly at the right side of standalone client pages', () => {
+    expect(modal).toContain('absolute right-6 top-6 flex items-start gap-2');
+    expect(modal).toContain("isStandalonePresentation ? 'pr-24 sm:pr-28' : undefined");
+  });
+
+  it('keeps one basic-data save action beside Save and Continue at the end of the form', () => {
     expect(modal.match(/saving \? 'جاري الحفظ\.\.\.' : 'حفظ البيانات الأساسية'/g) || []).toHaveLength(1);
-    expect(modal).toContain('fixed inset-x-0 bottom-0');
-    expect(modal).not.toContain('w-full md:w-auto bg-[#635bdb]');
+    expect(modal).toContain('flex flex-wrap items-center gap-3 pt-2');
+    expect(modal).toContain('حفظ ومتابعة');
+    expect(modal).not.toContain('fixed inset-x-0 bottom-0');
   });
 });
