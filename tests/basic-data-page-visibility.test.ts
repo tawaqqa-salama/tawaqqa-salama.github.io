@@ -45,10 +45,11 @@ describe('standalone basic-data page visibility', () => {
     expect(modal).toContain('<fieldset disabled={quotationLocked}');
   });
 
-  it('lets only the sticky save controls receive pointer events', () => {
-    expect(modal).toContain('pointer-events-none fixed inset-x-0 bottom-0');
-    expect(modal).toContain('pointer-events-auto mx-auto flex max-w-5xl');
-    expect(modal).toContain('pb-28');
+  it('keeps save controls at the end of the form without a fixed page bar', () => {
+    expect(modal).toContain('flex flex-wrap items-center gap-3 pt-2');
+    expect(modal).toContain('حفظ البيانات الأساسية');
+    expect(modal).toContain('حفظ ومتابعة');
+    expect(modal).not.toContain('pointer-events-none fixed inset-x-0 bottom-0');
   });
 });
 

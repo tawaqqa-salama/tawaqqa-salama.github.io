@@ -959,16 +959,16 @@ export default function ClientDetailModal({
   return (
     <div className={isStandalonePresentation ? 'min-h-screen bg-slate-50' : 'fixed inset-0 bg-black/50 flex items-end sm:items-center justify-center z-50 p-0 sm:p-4'}>
       <div className={isStandalonePresentation ? 'min-h-screen w-full bg-white' : 'bg-white rounded-t-2xl sm:rounded-2xl shadow-xl w-full max-w-4xl max-h-[94vh] overflow-hidden flex flex-col'}>
-        <div className="p-6 border-b">
+        <div className="relative p-6 border-b">
           <div className="flex justify-between items-start gap-4">
-            <div>
+            <div className={isStandalonePresentation ? 'pr-24 sm:pr-28' : undefined}>
               <h2 className="text-xl font-bold text-gray-800">{isPagePresentation ? 'البيانات الأساسية للعميل' : isQuotationPresentation ? 'عرض السعر للعميل' : 'متابعة معاملة العميل'}</h2>
               <p className="text-sm text-gray-500 mt-1">
                 {client.business_name || client.name} — {client.client_code}
               </p>
             </div>
             {isStandalonePresentation ? (
-              <div className="flex items-start gap-2">
+              <div className="absolute right-6 top-6 flex items-start gap-2">
                 <ClientPageNavigation
                   active={isPagePresentation ? 'basic' : 'quotation'}
                   onNavigate={requestClientNavigation}
@@ -1454,17 +1454,27 @@ export default function ClientDetailModal({
               </section>
 
               {isPagePresentation && onSaveAndContinue && (
-                <button
-                  type="button"
-                  disabled={saving}
-                  onClick={async () => {
-                    const saved = await handleSaveBasic();
-                    if (saved) await onSaveAndContinue();
-                  }}
-                  className="w-full md:w-auto border border-[#635bdb] text-[#635bdb] rounded-xl px-5 py-2.5 font-semibold disabled:opacity-60"
-                >
-                  {saving ? 'جاري الحفظ...' : 'حفظ ومتابعة'}
-                </button>
+                <div className="flex flex-wrap items-center gap-3 pt-2">
+                  <button
+                    type="button"
+                    disabled={saving}
+                    onClick={() => void handleSaveBasic()}
+                    className="rounded-xl bg-[#635bdb] px-5 py-2.5 text-sm font-semibold text-white disabled:opacity-60"
+                  >
+                    {saving ? 'جاري الحفظ...' : 'حفظ البيانات الأساسية'}
+                  </button>
+                  <button
+                    type="button"
+                    disabled={saving}
+                    onClick={async () => {
+                      const saved = await handleSaveBasic();
+                      if (saved) await onSaveAndContinue();
+                    }}
+                    className="rounded-xl border border-[#635bdb] px-5 py-2.5 text-sm font-semibold text-[#635bdb] disabled:opacity-60"
+                  >
+                    {saving ? 'جاري الحفظ...' : 'حفظ ومتابعة'}
+                  </button>
+                </div>
               )}
             </div>
           )}
@@ -1878,16 +1888,6 @@ export default function ClientDetailModal({
           if (promptInvoice) void shareTaxInvoiceWhatsApp(promptInvoice, client.phone);
         }}
       />
-      {isPagePresentation && (
-        <div className="pointer-events-none fixed inset-x-0 bottom-0 z-40 border-t bg-white/95 backdrop-blur px-4 py-3 shadow-[0_-4px_16px_rgba(15,23,42,0.08)] sm:px-6">
-          <div className="pointer-events-auto mx-auto flex max-w-5xl items-center justify-between gap-3">
-            <span className="text-xs text-slate-500">تُحفظ البيانات في السجل المستمر قبل متابعة المرحلة التالية.</span>
-            <button type="button" disabled={saving} onClick={() => void handleSaveBasic()} className="rounded-xl bg-[#635bdb] px-5 py-2.5 text-sm font-semibold text-white disabled:opacity-60">
-              {saving ? 'جاري الحفظ...' : 'حفظ البيانات الأساسية'}
-            </button>
-          </div>
-        </div>
-      )}
       {isStandalonePresentation && contractModalOpen ? (
         <ContractModal
           client={client}
