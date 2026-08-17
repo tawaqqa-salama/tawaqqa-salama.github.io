@@ -6,6 +6,7 @@ export interface ChartOfAccount {
   name: string;
   account_type: AccountTypeId;
   parent_id: string | null;
+  company_id: string;
   is_active: boolean;
   created_at?: string;
 }
@@ -16,6 +17,7 @@ export interface CostCenter {
   name: string;
   department: string | null;
   branch: string | null;
+  company_id: string;
   is_active: boolean;
   created_at?: string;
 }

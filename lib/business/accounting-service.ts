@@ -2,6 +2,7 @@ import { supabase } from '@/lib/supabase';
 import { DEFAULT_ACCOUNT_CODES, getJournalEntryTypeLabel } from '@/lib/constants/accounting';
 import { isFinancialApproved } from '@/lib/business/workflow-stages';
 import { nextJournalNumber, nextVoucherNumber } from '@/lib/business/document-numbers';
+import { resolveFetchCompanyId } from '@/lib/data/fetchers';
 import type { ClientRecord } from '@/lib/types/client';
 import type {
   AccountingDashboardStats,
@@ -41,12 +42,42 @@ export function isJournalBalanced(lines: Pick<JournalEntryLine, 'debit' | 'credi
 }
 
 async function getAccountByCode(code: string): Promise<ChartOfAccount | null> {
-  const { data } = await supabase.from('chart_of_accounts').select('*').eq('code', code).maybeSingle();
+  const companyId = resolveFetchCompanyId();
+  if (!companyId) {
+    console.warn('[accounting] default account lookup skipped: company_id_required');
+    return null;
+  }
+  const { data, error } = await supabase
+    .from('chart_of_accounts')
+    .select('*')
+    .eq('company_id', companyId)
+    .eq('code', code)
+    .eq('is_active', true)
+    .maybeSingle();
+  if (error) {
+    console.error('[accounting] default account lookup failed', { code, message: error.message });
+    return null;
+  }
   return (data as ChartOfAccount | null) || null;
 }
 
 async function getDefaultCostCenterId(): Promise<string | null> {
-  const { data } = await supabase.from('cost_centers').select('id').eq('is_active', true).order('code').limit(1);
+  const companyId = resolveFetchCompanyId();
+  if (!companyId) {
+    console.warn('[accounting] default cost-center lookup skipped: company_id_required');
+    return null;
+  }
+  const { data, error } = await supabase
+    .from('cost_centers')
+    .select('id')
+    .eq('company_id', companyId)
+    .eq('is_active', true)
+    .order('code')
+    .limit(1);
+  if (error) {
+    console.error('[accounting] default cost-center lookup failed', { message: error.message });
+    return null;
+  }
   return data?.[0]?.id || null;
 }
 
@@ -342,7 +373,11 @@ export async function processSalesAccountingAutomation(
   ]);
 
   if (!cashAccount || !revenueAccount || !vatAccount || !arAccount) {
-    return { updates, messages, error: 'تعذر العثور على حسابات المحاسبة الافتراضية. يرجى تشغيل سكربت الإعداد.' };
+    return {
+      updates,
+      messages,
+      error: 'تعذر الوصول إلى إعدادات الحسابات المحاسبية للشركة. يرجى مراجعة إعدادات المحاسبة.',
+    };
   }
 
   const referenceId = merged.quotation_number;
