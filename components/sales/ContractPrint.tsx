@@ -135,7 +135,7 @@ export function buildContractPrintHtml(
     html, body {
       margin: 0; padding: 0; background: #fff; color: #111827;
       font-family: "Tahoma", "Segoe UI", Arial, sans-serif;
-      font-size: 10px; line-height: 1.42;
+      font-size: 9.2px; line-height: 1.28;
       -webkit-print-color-adjust: exact; print-color-adjust: exact;
     }
     header, footer { display: none !important; }
@@ -143,31 +143,30 @@ export function buildContractPrintHtml(
     .header {
       display: grid; grid-template-columns: 58px 1fr 72px; gap: 6px;
       align-items: center; border-bottom: 2px solid #635bdb;
-      padding-bottom: 5px; margin-bottom: 6px;
+      padding-bottom: 4px; margin-bottom: 5px;
     }
-    .logo, .logo-fallback { width: 54px; height: 54px; object-fit: contain; }
+    .logo, .logo-fallback { width: 50px; height: 50px; object-fit: contain; }
     .logo-fallback {
       border: 1px solid #cbd5e1; border-radius: 6px; display: flex; align-items: center;
       justify-content: center; text-align: center; font-size: 8px; font-weight: 700; color: #635bdb; padding: 3px;
     }
     .head-center { text-align: center; }
-    .brand { margin: 0; font-size: 13px; font-weight: 800; color: #635bdb; }
-    .doc-title { margin: 2px 0 0; font-size: 18px; font-weight: 900; color: #0f172a; }
+    .brand { margin: 0; font-size: 12px; font-weight: 800; color: #635bdb; }
+    .doc-title { margin: 2px 0 0; font-size: 17px; font-weight: 900; color: #0f172a; }
     .license { text-align: left; font-size: 8.5px; color: #334155; line-height: 1.35; }
     .meta {
       display: grid; grid-template-columns: 1fr 1fr; gap: 3px 10px;
       background: #f8fafc; border: 1px solid #dbe3ea; border-radius: 6px;
-      padding: 5px 8px; margin-bottom: 6px; font-size: 10px;
+      padding: 4px 7px; margin-bottom: 5px; font-size: 9.2px;
     }
-    .section { margin: 0 0 6px; }
+    .section { margin: 0 0 4px; }
     .section h3 {
-      margin: 0 0 3px; font-size: 11px; color: #635bdb;
-      border-right: 3px solid #635bdb; padding-right: 6px;
-    }
+      margin: 0 0 2px; font-size: 10.5px; color: #635bdb;
+      border-right: 3px solid #635bdb; padding-right: 5px; }
     .section p { margin: 0; }
-    .party-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; }
+    .party-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 5px; }
     .card {
-      border: 1px solid #cbd5e1; border-radius: 6px; padding: 5px 7px; background: #fff;
+      border: 1px solid #cbd5e1; border-radius: 6px; padding: 4px 6px; background: #fff;
     }
     .card .t { font-weight: 800; margin-bottom: 2px; color: #0f172a; }
     .card p { margin: 0 0 1px; }
@@ -178,20 +177,20 @@ export function buildContractPrintHtml(
       list-style-type: decimal;
       list-style-position: outside;
     }
-    ol.clean li { margin: 0 0 2px; padding: 0; }
-    ol.terms li { margin: 0 0 2.5px; }
+    ol.clean li { margin: 0 0 1px; padding: 0; }
+    ol.terms li { margin: 0 0 2px; }
     .money-table { width: 100%; border-collapse: collapse; margin-top: 2px; }
     .money-table th, .money-table td {
-      border: 1px solid #94a3b8; padding: 3px 6px; text-align: right;
+      border: 1px solid #94a3b8; padding: 2.5px 5px; text-align: right;
     }
     .money-table th { background: #635bdb; color: #fff; }
     .money-table .due { background: #e8f5ef; font-weight: 800; }
     .words {
-      margin-top: 4px; padding: 4px 7px; border-radius: 6px;
+      margin-top: 3px; padding: 3px 6px; border-radius: 6px;
       background: #fffbeb; border: 1px solid #fcd34d; font-weight: 700;
     }
     .bank {
-      margin-top: 4px; padding: 5px 7px; border: 1px solid #cbd5e1; border-radius: 6px; background: #f8fafc;
+      margin-top: 3px; padding: 4px 6px; border: 1px solid #cbd5e1; border-radius: 6px; background: #f8fafc;
     }
     .bank div { margin: 0 0 1px; }
     .page-two { break-before: page; page-break-before: always; }
@@ -217,8 +216,11 @@ export function buildContractPrintHtml(
       header, footer { display: none !important; }
       a[href]::after { content: none !important; }
       .sheet { width: auto; max-width: none; }
-      .page-two { break-before: page; page-break-before: always; }
-      .signs { break-inside: avoid; page-break-inside: avoid; }
+    .payment-section { break-inside: avoid; page-break-inside: avoid; }
+    .payment-section h3 { break-after: avoid; page-break-after: avoid; }
+    .payment-list { break-inside: avoid; page-break-inside: avoid; }
+    .page-two { break-before: page; page-break-before: always; }
+    .signs { break-inside: avoid; page-break-inside: avoid; }
     }
   </style>
 </head>
@@ -304,10 +306,10 @@ export function buildContractPrintHtml(
       </div>
     </div>
 
-    <div class="section">
+    <div class="section payment-section">
       <h3>سادساً: طريقة السداد</h3>
       <p class="muted">نوع البيع: ${escapeHtml(displayOrDash(contract.sales_payment_type, client.sales_payment_type, 'نقدي'))}</p>
-      ${paymentItems ? `<ol class="clean">${paymentItems}</ol>` : '<p>حسب الاتفاق بين الطرفين.</p>'}
+      ${paymentItems ? `<ol class="clean payment-list">${paymentItems}</ol>` : '<p class="payment-list">حسب الاتفاق بين الطرفين.</p>'}
       ${paymentTerms ? `<p>${escapeHtml(stripLeadingNumber(paymentTerms))}</p>` : ''}
     </div>
 
