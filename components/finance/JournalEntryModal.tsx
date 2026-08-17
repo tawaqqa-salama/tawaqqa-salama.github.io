@@ -6,6 +6,7 @@ import { createJournalEntry, isJournalBalanced } from '@/lib/business/accounting
 import NumericInput from '@/components/ui/NumericInput';
 import { parseLocalizedNumber } from '@/lib/validation/client';
 import { formatCurrency } from '@/lib/format/currency';
+import { resolveFetchCompanyId } from '@/lib/data/fetchers';
 import type { ChartOfAccount, CostCenter, JournalEntryLine } from '@/lib/types/accounting';
 import type { ClientRecord } from '@/lib/types/client';
 
@@ -42,10 +43,12 @@ export default function JournalEntryModal({ onClose, onCreated }: JournalEntryMo
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
+    const companyId = resolveFetchCompanyId();
+    if (!companyId) return;
     Promise.all([
-      supabase.from('chart_of_accounts').select('*').eq('is_active', true).order('code'),
-      supabase.from('cost_centers').select('*').eq('is_active', true).order('code'),
-      supabase.from('clients').select('id, client_code, name, business_name, quotation_number').order('created_at', { ascending: false }).limit(100),
+      supabase.from('chart_of_accounts').select('*').eq('company_id', companyId).eq('is_active', true).order('code'),
+      supabase.from('cost_centers').select('*').eq('company_id', companyId).eq('is_active', true).order('code'),
+      supabase.from('clients').select('id, client_code, name, business_name, quotation_number').eq('company_id', companyId).order('created_at', { ascending: false }).limit(100),
     ]).then(([accountsRes, centersRes, clientsRes]) => {
       setAccounts((accountsRes.data || []) as ChartOfAccount[]);
       setCostCenters((centersRes.data || []) as CostCenter[]);

@@ -40,6 +40,7 @@ export interface JournalEntry {
   entry_date: string;
   description: string | null;
   client_id: string | null;
+  company_id: string;
   client_name?: string | null;
   reference_type: string | null;
   reference_id: string | null;
@@ -56,6 +57,7 @@ export interface Voucher {
   voucher_type: VoucherTypeId;
   voucher_date: string;
   client_id: string | null;
+  company_id: string;
   client_name?: string | null;
   amount: number;
   vat_amount: number;

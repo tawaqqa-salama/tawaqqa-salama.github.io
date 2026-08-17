@@ -6,6 +6,7 @@ import { createJournalEntry, createVoucher } from '@/lib/business/accounting-ser
 import { DEFAULT_ACCOUNT_CODES } from '@/lib/constants/accounting';
 import NumericInput from '@/components/ui/NumericInput';
 import { parseLocalizedNumber } from '@/lib/validation/client';
+import { resolveFetchCompanyId } from '@/lib/data/fetchers';
 import type { ChartOfAccount, CostCenter } from '@/lib/types/accounting';
 import type { ClientRecord } from '@/lib/types/client';
 import type { VoucherTypeId } from '@/lib/constants/accounting';
@@ -35,10 +36,12 @@ export default function VoucherModal({ type, onClose, onCreated }: VoucherModalP
   const total = subtotal + vatValue;
 
   useEffect(() => {
+    const companyId = resolveFetchCompanyId();
+    if (!companyId) return;
     Promise.all([
-      supabase.from('chart_of_accounts').select('*').eq('is_active', true).order('code'),
-      supabase.from('cost_centers').select('*').eq('is_active', true).order('code'),
-      supabase.from('clients').select('id, client_code, name, business_name, quotation_number, total_amount, vat_amount, quotation_amount').order('created_at', { ascending: false }).limit(100),
+      supabase.from('chart_of_accounts').select('*').eq('company_id', companyId).eq('is_active', true).order('code'),
+      supabase.from('cost_centers').select('*').eq('company_id', companyId).eq('is_active', true).order('code'),
+      supabase.from('clients').select('id, client_code, name, business_name, quotation_number, total_amount, vat_amount, quotation_amount').eq('company_id', companyId).order('created_at', { ascending: false }).limit(100),
     ]).then(([accountsRes, centersRes, clientsRes]) => {
       setAccounts((accountsRes.data || []) as ChartOfAccount[]);
       setCostCenters((centersRes.data || []) as CostCenter[]);
