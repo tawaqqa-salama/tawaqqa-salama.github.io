@@ -135,11 +135,19 @@ export async function fetchVouchers(
   return (data || []) as Voucher[];
 }
 
-function mapDbAccountsToEnterprise(rows: ChartOfAccount[]): ChartAccount[] {
+export function mapDbAccountsToEnterprise(rows: ChartOfAccount[]): ChartAccount[] {
   const template = buildDefaultChartOfAccounts();
   const byCode = new Map(template.map((a) => [a.code, a]));
+  const parentIds = new Set(
+    rows.map((row) => row.parent_id).filter((id): id is string => Boolean(id))
+  );
   return rows.map((row) => {
     const seeded = byCode.get(row.code);
+    const isActive = row.is_active !== false;
+    // Legacy Production rows do not persist postability/lock flags. Derive
+    // postability from the actual hierarchy: leaf accounts may receive lines;
+    // accounts with children remain protected headers.
+    const isPostable = isActive && !parentIds.has(row.id);
     return {
       id: row.id,
       code: row.code,
@@ -150,8 +158,8 @@ function mapDbAccountsToEnterprise(rows: ChartOfAccount[]): ChartAccount[] {
       parentId: row.parent_id,
       parentCode: seeded?.parentCode ?? null,
       level: seeded?.level ?? 1,
-      isPostable: seeded?.isPostable ?? true,
-      isActive: row.is_active !== false,
+      isPostable,
+      isActive,
       isLocked: false,
       currencyCode: 'SAR',
       vatCategory: seeded?.vatCategory ?? 'not_applicable',
