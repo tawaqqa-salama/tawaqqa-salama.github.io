@@ -2,6 +2,7 @@ import { supabase } from '@/lib/supabase';
 import { DEFAULT_ACCOUNT_CODES, getJournalEntryTypeLabel } from '@/lib/constants/accounting';
 import { isFinancialApproved } from '@/lib/business/workflow-stages';
 import { nextJournalNumber, nextVoucherNumber } from '@/lib/business/document-numbers';
+import { resolveFetchCompanyId } from '@/lib/data/fetchers';
 import type { ClientRecord } from '@/lib/types/client';
 import type {
   AccountingDashboardStats,
@@ -41,22 +42,64 @@ export function isJournalBalanced(lines: Pick<JournalEntryLine, 'debit' | 'credi
 }
 
 async function getAccountByCode(code: string): Promise<ChartOfAccount | null> {
-  const { data } = await supabase.from('chart_of_accounts').select('*').eq('code', code).maybeSingle();
+  const companyId = resolveFetchCompanyId();
+  if (!companyId) {
+    console.warn('[accounting] default account lookup skipped: company_id_required');
+    return null;
+  }
+  const { data, error } = await supabase
+    .from('chart_of_accounts')
+    .select('*')
+    .eq('company_id', companyId)
+    .eq('code', code)
+    .eq('is_active', true)
+    .maybeSingle();
+  if (error) {
+    console.error('[accounting] default account lookup failed', { code, message: error.message });
+    return null;
+  }
   return (data as ChartOfAccount | null) || null;
 }
 
 async function getDefaultCostCenterId(): Promise<string | null> {
-  const { data } = await supabase.from('cost_centers').select('id').eq('is_active', true).order('code').limit(1);
+  const companyId = resolveFetchCompanyId();
+  if (!companyId) {
+    console.warn('[accounting] default cost-center lookup skipped: company_id_required');
+    return null;
+  }
+  const { data, error } = await supabase
+    .from('cost_centers')
+    .select('id')
+    .eq('company_id', companyId)
+    .eq('is_active', true)
+    .order('code')
+    .limit(1);
+  if (error) {
+    console.error('[accounting] default cost-center lookup failed', { message: error.message });
+    return null;
+  }
   return data?.[0]?.id || null;
 }
 
 export async function fetchAccounts(): Promise<ChartOfAccount[]> {
-  const { data } = await supabase.from('chart_of_accounts').select('*').order('code');
+  const companyId = resolveFetchCompanyId();
+  if (!companyId) return [];
+  const { data } = await supabase
+    .from('chart_of_accounts')
+    .select('*')
+    .eq('company_id', companyId)
+    .order('code');
   return (data || []) as ChartOfAccount[];
 }
 
 export async function fetchCostCenters(): Promise<CostCenter[]> {
-  const { data } = await supabase.from('cost_centers').select('*').order('code');
+  const companyId = resolveFetchCompanyId();
+  if (!companyId) return [];
+  const { data } = await supabase
+    .from('cost_centers')
+    .select('*')
+    .eq('company_id', companyId)
+    .order('code');
   return (data || []) as CostCenter[];
 }
 
@@ -191,6 +234,7 @@ export async function validateJournalAgainstRules(input: {
 
 export async function createJournalEntry(input: {
   description: string;
+  companyId?: string | null;
   clientId?: string | null;
   referenceType?: string | null;
   referenceId?: string | null;
@@ -209,6 +253,11 @@ export async function createJournalEntry(input: {
     return { entry: null, error: rulesCheck.error };
   }
 
+  const companyId = input.companyId || resolveFetchCompanyId();
+  if (!companyId) {
+    return { entry: null, error: 'تعذر تحديد الشركة الحالية لإنشاء القيد.' };
+  }
+
   const status =
     rulesCheck.requiresApproval && !input.approved
       ? 'بانتظار الاعتماد'
@@ -219,6 +268,7 @@ export async function createJournalEntry(input: {
     .from('journal_entries')
     .insert({
       entry_number: entryNumber,
+      company_id: companyId,
       entry_date: new Date().toISOString().slice(0, 10),
       description: input.description,
       client_id: input.clientId || null,
@@ -253,6 +303,7 @@ export async function createJournalEntry(input: {
 
 export async function createVoucher(input: {
   type: 'receipt' | 'payment';
+  companyId?: string | null;
   clientId?: string | null;
   amount: number;
   vatAmount: number;
@@ -264,11 +315,16 @@ export async function createVoucher(input: {
   status?: string;
   journalEntryId?: string | null;
 }): Promise<{ voucher: Voucher | null; error: string | null }> {
+  const companyId = input.companyId || resolveFetchCompanyId();
+  if (!companyId) {
+    return { voucher: null, error: 'تعذر تحديد الشركة الحالية لإنشاء السند.' };
+  }
   const voucherNumber = await generateVoucherNumber(input.type);
   const { data, error } = await supabase
     .from('vouchers')
     .insert({
       voucher_number: voucherNumber,
+      company_id: companyId,
       voucher_type: input.type,
       voucher_date: new Date().toISOString().slice(0, 10),
       client_id: input.clientId || null,
@@ -290,9 +346,12 @@ export async function createVoucher(input: {
 }
 
 async function findExistingSalesVoucher(clientId: string, quotationNumber: string): Promise<Voucher | null> {
+  const companyId = resolveFetchCompanyId();
+  if (!companyId) return null;
   const { data } = await supabase
     .from('vouchers')
     .select('*')
+    .eq('company_id', companyId)
     .eq('client_id', clientId)
     .eq('voucher_type', 'receipt')
     .ilike('description', `%${quotationNumber}%`)
@@ -303,9 +362,12 @@ async function findExistingSalesVoucher(clientId: string, quotationNumber: strin
 }
 
 async function findExistingSalesJournal(clientId: string, referenceId: string): Promise<JournalEntry | null> {
+  const companyId = resolveFetchCompanyId();
+  if (!companyId) return null;
   const { data } = await supabase
     .from('journal_entries')
     .select('*')
+    .eq('company_id', companyId)
     .eq('client_id', clientId)
     .eq('reference_id', referenceId)
     .order('created_at', { ascending: false })
@@ -333,6 +395,11 @@ export async function processSalesAccountingAutomation(
     return { updates, messages, error: null };
   }
 
+  const companyId = resolveFetchCompanyId();
+  if (!companyId) {
+    return { updates, messages, error: 'تعذر تحديد الشركة الحالية للأتمتة المحاسبية.' };
+  }
+
   const [cashAccount, revenueAccount, vatAccount, arAccount, costCenterId] = await Promise.all([
     getAccountByCode(DEFAULT_ACCOUNT_CODES.CASH),
     getAccountByCode(DEFAULT_ACCOUNT_CODES.SERVICE_REVENUE),
@@ -342,7 +409,11 @@ export async function processSalesAccountingAutomation(
   ]);
 
   if (!cashAccount || !revenueAccount || !vatAccount || !arAccount) {
-    return { updates, messages, error: 'تعذر العثور على حسابات المحاسبة الافتراضية. يرجى تشغيل سكربت الإعداد.' };
+    return {
+      updates,
+      messages,
+      error: 'تعذر الوصول إلى إعدادات الحسابات المحاسبية للشركة. يرجى مراجعة إعدادات المحاسبة.',
+    };
   }
 
   const referenceId = merged.quotation_number;
@@ -355,6 +426,7 @@ export async function processSalesAccountingAutomation(
   if (!existingVoucher && !voucherId) {
     const voucherResult = await createVoucher({
       type: 'receipt',
+      companyId,
       clientId: client.id,
       amount: subtotal,
       vatAmount,
@@ -390,6 +462,7 @@ export async function processSalesAccountingAutomation(
         ];
 
     const journalResult = await createJournalEntry({
+      companyId,
       description: `قيد تلقائي — ${referenceId}`,
       clientId: client.id,
       referenceType: 'quotation',

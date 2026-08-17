@@ -6,6 +6,7 @@ export interface ChartOfAccount {
   name: string;
   account_type: AccountTypeId;
   parent_id: string | null;
+  company_id: string;
   is_active: boolean;
   created_at?: string;
 }
@@ -16,6 +17,7 @@ export interface CostCenter {
   name: string;
   department: string | null;
   branch: string | null;
+  company_id: string;
   is_active: boolean;
   created_at?: string;
 }
@@ -38,6 +40,7 @@ export interface JournalEntry {
   entry_date: string;
   description: string | null;
   client_id: string | null;
+  company_id: string;
   client_name?: string | null;
   reference_type: string | null;
   reference_id: string | null;
@@ -54,6 +57,7 @@ export interface Voucher {
   voucher_type: VoucherTypeId;
   voucher_date: string;
   client_id: string | null;
+  company_id: string;
   client_name?: string | null;
   amount: number;
   vat_amount: number;
