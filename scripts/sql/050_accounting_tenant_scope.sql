@@ -27,16 +27,21 @@ DECLARE
   unresolved_journals integer;
   unresolved_vouchers integer;
 BEGIN
-  SELECT count(*)::integer, min(id)
-    INTO company_count, target_company_id
+  SELECT count(*)::integer
+    INTO company_count
   FROM public.companies
   WHERE code = 'TWAQQA';
 
-  IF company_count <> 1 OR target_company_id IS NULL THEN
+  IF company_count <> 1 THEN
     RAISE EXCEPTION
       'Accounting tenant backfill requires exactly one company with code TWAQQA; found %',
       company_count;
   END IF;
+
+  SELECT id
+    INTO STRICT target_company_id
+  FROM public.companies
+  WHERE code = 'TWAQQA';
 
   UPDATE public.chart_of_accounts
   SET company_id = target_company_id

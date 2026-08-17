@@ -11,10 +11,20 @@ describe('accounting tenant RLS hardening', () => {
     expect(migration).toContain('ADD COLUMN IF NOT EXISTS company_id uuid');
     expect(migration).toContain("WHERE code = 'TWAQQA'");
     expect(migration).toContain('company_count <> 1');
+    expect(migration).toContain('INTO STRICT target_company_id');
     expect(migration).toContain('WHERE company_id IS NULL');
     expect(migration).toContain('SET company_id = target_company_id');
     expect(migration).toContain('company_id SET NOT NULL');
+    expect(migration).not.toMatch(/\b(min|max)\s*\(\s*id\s*\)/i);
     expect(migration).not.toMatch(/[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}/i);
+    expect(migration).not.toMatch(/LIMIT\s+1/i);
+  });
+
+  it('protects zero and multiple company matches before selecting a UUID', () => {
+    const countGuard = migration.indexOf('IF company_count <> 1 THEN');
+    const strictSelection = migration.indexOf('INTO STRICT target_company_id');
+    expect(countGuard).toBeGreaterThan(-1);
+    expect(strictSelection).toBeGreaterThan(countGuard);
   });
 
   it('replaces global uniqueness with tenant-local uniqueness and RLS', () => {
