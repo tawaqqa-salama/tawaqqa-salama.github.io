@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
 import { seedBuildingPlanFromClient } from '@/lib/projects/building-plan';
+import { seedSpaceSafetyFromClient } from '@/lib/projects/design-center/space-safety';
 import {
   parseProjectEngineeringData,
   syncProjectVisitsFromQuotation,
@@ -24,6 +25,7 @@ import FinalInspectionSection from '@/components/projects/FinalInspectionSection
 import CompletionCertificateSection from '@/components/projects/CompletionCertificateSection';
 import SupervisionReportSection from '@/components/projects/SupervisionReportSection';
 import DesignCenterSection from '@/components/projects/DesignCenterSection';
+import BuildingPlanReportSection from '@/components/projects/BuildingPlanReportSection';
 import WorkflowStageRail from '@/components/projects/WorkflowStageRail';
 import { useProjectStagesDrawer } from '@/components/layout/ProjectStagesDrawerContext';
 import InvoicePromptModal from '@/components/invoices/InvoicePromptModal';
@@ -163,6 +165,20 @@ export default function ProjectReportModal({
       synced = hydrateEngineeringWithStage4(synced, stage4);
       synced = hydrateEngineeringWithStage5(synced, stage5);
       synced = hydrateEngineeringWithLive(synced, live);
+      const hasPersistedSpaceSafety = Boolean(synced.design_center.space_safety?.floors.length);
+      synced = {
+        ...synced,
+        design_center: {
+          ...synced.design_center,
+          space_safety: seedSpaceSafetyFromClient(client, synced.design_center.space_safety),
+          ui: {
+            ...synced.design_center.ui,
+            active_tab: hasPersistedSpaceSafety
+              ? synced.design_center.ui?.active_tab || 'space_safety'
+              : 'space_safety',
+          },
+        },
+      };
       setData(synced);
       const savedChapter = synced.workflow?.tech_report_chapter;
       setTechReportChapter(isTechReportChapterId(savedChapter) ? savedChapter : 'facility');
@@ -510,7 +526,41 @@ export default function ProjectReportModal({
                         );
                       }
                     }}
-                    onSaveBuildingPlan={(building_plan, successText) =>
+                    onPersistBlueprints={async (safety_blueprints) => {
+                      await save(
+                        { ...data, safety_blueprints },
+                        'تم حفظ مخططات السلامة وتشغيل الفحص الآلي.',
+                        { stayOpen: true }
+                      );
+                    }}
+                  />
+                </div>
+              )}
+
+              {activeStage === 'plan_info' && (
+                <div className="space-y-4">
+                  <div className="rounded-xl border border-indigo-100 bg-indigo-50 px-3 py-2 text-xs text-indigo-950 leading-relaxed">
+                    مرحلة معلومات المخطط مستقلة عن التصاميم. الحقول العامة ورخصة البناء تُقرأ من المبيعات للعرض فقط، بينما تحفظ البيانات الفنية داخل ملف المشروع.
+                  </div>
+                  <BuildingPlanReportSection
+                    client={client}
+                    report={data.building_plan}
+                    saving={saving}
+                    onChange={(building_plan) =>
+                      patch({
+                        building_plan,
+                        technical_report: {
+                          ...data.technical_report,
+                          building_permit_number:
+                            building_plan.building_permit_number ||
+                            data.technical_report.building_permit_number,
+                          building_permit_date:
+                            building_plan.building_permit_date ||
+                            data.technical_report.building_permit_date,
+                        },
+                      })
+                    }
+                    onSave={(building_plan, successText) =>
                       save(
                         {
                           ...data,
@@ -529,13 +579,6 @@ export default function ProjectReportModal({
                         { stayOpen: true }
                       )
                     }
-                    onPersistBlueprints={async (safety_blueprints) => {
-                      await save(
-                        { ...data, safety_blueprints },
-                        'تم حفظ مخططات السلامة وتشغيل الفحص الآلي.',
-                        { stayOpen: true }
-                      );
-                    }}
                   />
                 </div>
               )}

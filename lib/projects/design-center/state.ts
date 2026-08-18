@@ -1,5 +1,6 @@
 import type { PlanAttachmentFile } from '@/lib/types/project-reports';
 import { humanizeFetchError, isHtmlAsJsonError } from '@/lib/api/safe-json';
+import { normalizeSpaceSafetyWorkingCopy } from '@/lib/projects/design-center/space-safety';
 import {
   DESIGN_ANALYSIS_STEPS,
   DESIGN_EXPORT_DEFS,
@@ -115,7 +116,7 @@ export const EMPTY_DESIGN_CENTER: DesignCenterState = {
   readiness: null,
   ui: {
     dark_mode: false,
-    active_tab: 'drawings',
+    active_tab: 'space_safety',
     compare_version_a: null,
     compare_version_b: null,
     viewer_sheet_id: null,
@@ -211,6 +212,7 @@ export function mergeDesignCenterDefaults(
         : [],
     },
     readiness: base.readiness ?? null,
+    space_safety: normalizeSpaceSafetyWorkingCopy(base.space_safety),
     ui: { ...EMPTY_DESIGN_CENTER.ui, ...(base.ui || {}) },
   };
 }

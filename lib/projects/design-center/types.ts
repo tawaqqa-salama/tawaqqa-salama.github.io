@@ -7,6 +7,7 @@
 import type { PlanAttachmentFile, ReportMeta } from '@/lib/types/project-reports';
 
 export type DesignCenterTabId =
+  | 'space_safety'
   | 'drawings'
   | 'ai_center'
   | 'smart_design'
@@ -263,6 +264,55 @@ export type DesignExportJob = {
   updatedAt?: string | null;
 };
 
+/**
+ * Project-scoped engineering working copy of Sales floor/usage data.
+ * It is inherited once from Basic Data and never writes back to Sales.
+ */
+export type DesignSpaceSafetyQuantities = {
+  sprinklers: number;
+  smoke_detectors: number;
+  fire_alarm_panels: number;
+  alarm_panel_locations: string[];
+  signs: number;
+  emergency_lights: number;
+  emergency_exits: number;
+  alarm_bells: number;
+  emergency_stairs: number;
+  elevators: number;
+  public_facilities: number;
+};
+
+export type DesignSpaceSafetyArea = {
+  id: string;
+  source_usage_id?: string | null;
+  label: string;
+  activity_type?: string | null;
+  area_m2: number;
+  hazard_suggested: string;
+  hazard_approved?: string | null;
+  hazard_source?: string | null;
+  suppression_suggested: string[];
+  suppression_approved?: string[] | null;
+  suppression_source?: string | null;
+  quantities: DesignSpaceSafetyQuantities;
+};
+
+export type DesignSpaceSafetyFloor = {
+  id: string;
+  source_floor_id?: string | null;
+  label: string;
+  kind?: string | null;
+  repeat_count: number;
+  areas: DesignSpaceSafetyArea[];
+};
+
+export type DesignSpaceSafetyWorkingCopy = {
+  inherited_from_sales_at?: string | null;
+  source: 'sales_basic_data' | 'project_engineering';
+  updated_at?: string | null;
+  floors: DesignSpaceSafetyFloor[];
+};
+
 export type DesignCenterUiPrefs = {
   dark_mode?: boolean;
   active_tab?: DesignCenterTabId;
@@ -281,6 +331,8 @@ export type DesignCenterState = ReportMeta & {
   exports: DesignExportJob[];
   knowledge_links?: DesignKnowledgeLinks;
   readiness?: DesignReadinessSnapshot | null;
+  /** Independent, editable project copy seeded once from Sales Basic Data. */
+  space_safety?: DesignSpaceSafetyWorkingCopy | null;
   ui?: DesignCenterUiPrefs;
 };
 
@@ -348,7 +400,7 @@ export const DESIGN_CENTER_TABS: {
   label_ar: string;
   label_en: string;
 }[] = [
-  { id: 'drawings', label_ar: 'إدارة المخططات', label_en: 'Drawing Management' },
+  { id: 'space_safety', label_ar: 'بيانات المساحات وأنظمة السلامة', label_en: 'Space & Safety Data' },
   { id: 'ai_center', label_ar: 'مركز الذكاء التصميمي', label_en: 'AI Design Center' },
   { id: 'smart_design', label_ar: 'التصميم الذكي', label_en: 'Smart Design' },
   { id: 'calculations', label_ar: 'الحسابات الهندسية', label_en: 'Engineering Calculations' },
@@ -359,6 +411,7 @@ export const DESIGN_CENTER_TABS: {
   },
   { id: 'review', label_ar: 'مراجعة التصميم', label_en: 'Design Review' },
   { id: 'exports', label_ar: 'المخرجات', label_en: 'Outputs' },
+  { id: 'drawings', label_ar: 'المخططات', label_en: 'Drawings' },
 ];
 
 export const ENGINE_NOT_CONFIGURED = 'ENGINE_NOT_CONFIGURED' as const;

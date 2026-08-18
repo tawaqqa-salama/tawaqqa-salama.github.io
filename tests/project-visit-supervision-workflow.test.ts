@@ -136,7 +136,7 @@ describe('project visits and supervision unified workflow', () => {
   it('derives workflow progress from the current stage collection, not a hardcoded count', () => {
     const c = client();
     const data = approvedVisitData();
-    expect(WORKFLOW_STAGE_IDS).toHaveLength(7);
+    expect(WORKFLOW_STAGE_IDS).toHaveLength(8);
     expect(gatedPipeline).toContain('WORKFLOW_STAGE_IDS.length');
     expect(workflowProgressPercent(c, data)).toBeGreaterThanOrEqual(0);
     expect(workflowProgressPercent(c, data)).toBeLessThanOrEqual(100);

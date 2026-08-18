@@ -16,6 +16,7 @@ import {
   applyPipelineInheritance,
   normalizeWorkflowState,
   workflowProgressPercent,
+  WORKFLOW_STAGE_IDS,
 } from '@/lib/projects/gated-pipeline';
 import { mergeBuildingPlanDefaults } from '@/lib/projects/building-plan';
 import { seedTechnicalReportFromClient } from '@/lib/projects/technical-report';
@@ -218,17 +219,20 @@ export function getProjectReportProgress(
     data.field_visits.every((visit) => visit.status === 'مكتمل' || visit.status === 'معتمد') &&
     ['مكتمل', 'معتمد'].includes(data.supervision_report?.status || '') &&
     ['مكتمل', 'معتمد'].includes(data.technical_notes.status || '');
-  const sections = [
-    data.technical_report.status,
+  const stages = [
+    data.design_center.status,
     data.building_plan.status,
-    data.boq.status,
-    data.timeline.status,
+    data.boq.status === 'مكتمل' || data.boq.status === 'معتمد'
+      ? data.timeline.status
+      : data.boq.status,
+    data.technical_report.status,
     visitsAndSupervisionReady ? 'معتمد' : 'مسودة',
-    data.engineering_delivery.status,
-    data.cd_cover_letter?.status,
+    data.engineering_delivery.status === 'مكتمل' || data.engineering_delivery.status === 'معتمد'
+      ? data.cd_cover_letter?.status
+      : data.engineering_delivery.status,
     data.final_inspection.status,
     data.completion_certificate.status,
   ];
-  const done = sections.filter((s) => s === 'مكتمل' || s === 'معتمد').length;
-  return Math.round((done / Math.max(sections.length, 1)) * 100);
+  const done = stages.filter((status) => status === 'مكتمل' || status === 'معتمد').length;
+  return Math.round((done / WORKFLOW_STAGE_IDS.length) * 100);
 }

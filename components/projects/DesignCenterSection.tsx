@@ -32,7 +32,6 @@ import {
   downloadPreDesignAuditHtml,
   openPreDesignAuditPrint,
   inspectDrawing,
-  buildingPlanPatchFromInspection,
   type CADAnalysisResult,
   type DesignCenterState,
   type DesignCenterTabId,
@@ -46,16 +45,16 @@ import { useLanguage } from '@/lib/i18n/LanguageProvider';
 import { uploadPlanAttachmentDetailed, getPlanFileUrl } from '@/lib/storage/project-files';
 import { isDemoMode } from '@/lib/supabase';
 import { humanizeFetchError } from '@/lib/api/safe-json';
-import BuildingPlanReportSection from '@/components/projects/BuildingPlanReportSection';
 import PlanAttachmentsUpload from '@/components/projects/PlanAttachmentsUpload';
 import SafetyBlueprintsUpload from '@/components/projects/SafetyBlueprintsUpload';
 import CadZoneOverlay from '@/components/projects/CadZoneOverlay';
 import DrawingInspectionCard from '@/components/projects/DrawingInspectionCard';
+import DesignSpaceSafetySection from '@/components/projects/DesignSpaceSafetySection';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { EMPTY_PLAN_ATTACHMENTS, EMPTY_SAFETY_BLUEPRINTS } from '@/lib/types/project-reports';
+import { seedSpaceSafetyFromClient } from '@/lib/projects/design-center/space-safety';
 import type { ClientRecord } from '@/lib/types/client';
 import type {
-  BuildingPlanReport,
   PlanAttachmentsState,
   ProjectEngineeringData,
   SafetyBlueprintsState,
@@ -66,7 +65,6 @@ type Props = {
   data: ProjectEngineeringData;
   saving: boolean;
   onPatch: (partial: Partial<ProjectEngineeringData>) => void;
-  onSaveBuildingPlan: (building_plan: BuildingPlanReport, successText: string) => void;
   onPersistBlueprints: (safety_blueprints: SafetyBlueprintsState) => Promise<void>;
   /** Persist design_center (and optional plan_attachments) to Supabase after upload */
   onPersistDesignCenter: (
@@ -117,7 +115,6 @@ export default function DesignCenterSection({
   data,
   saving,
   onPatch,
-  onSaveBuildingPlan,
   onPersistBlueprints,
   onPersistDesignCenter,
 }: Props) {
@@ -125,11 +122,12 @@ export default function DesignCenterSection({
   const ar = lang === 'ar';
   const design = data.design_center;
   const dark = Boolean(design.ui?.dark_mode);
-  const tab = (design.ui?.active_tab || 'drawings') as DesignCenterTabId;
+  const tab = (design.ui?.active_tab || 'space_safety') as DesignCenterTabId;
   const [busy, setBusy] = useState<string | null>(null);
   const [hint, setHint] = useState<string | null>(null);
   const [hintTone, setHintTone] = useState<'ok' | 'warn' | 'error'>('warn');
   const [viewerUrl, setViewerUrl] = useState<string | null>(null);
+  const [drawingFormat, setDrawingFormat] = useState<DesignDrawingFormat>('pdf');
   const fileInputRefs = useRef<Partial<Record<DesignDrawingFormat, HTMLInputElement | null>>>({});
 
   const shell = dark
@@ -170,6 +168,10 @@ export default function DesignCenterSection({
   }, [client.id]);
 
   const knowledge = design.knowledge_links;
+  const spaceSafety = useMemo(
+    () => seedSpaceSafetyFromClient(client, design.space_safety),
+    [client, design.space_safety]
+  );
 
   const uploadFormat = async (files: FileList | null, format: DesignDrawingFormat) => {
     if (!files?.length) return;
@@ -823,35 +825,6 @@ export default function DesignCenterSection({
     };
   }, [design.analysis]);
 
-  const feedInspectionToAnalysis = () => {
-    const report = cadVisionMeta.inspection;
-    if (!report) {
-      setHint(
-        ar
-          ? 'لا توجد بيانات فحص بعد — شغّل التحليل المحلي أولاً.'
-          : 'No inspection data yet — run local analysis first.'
-      );
-      setHintTone('warn');
-      return;
-    }
-    const nextPlan = {
-      ...data.building_plan,
-      ...buildingPlanPatchFromInspection(report),
-    } as BuildingPlanReport;
-    onSaveBuildingPlan(
-      nextPlan,
-      ar
-        ? 'تم تغذية بيانات المخطط المستخرجة لحقول المشروع ومحرك القابلية للتطبيق.'
-        : 'Fed extracted drawing metadata into project fields for the Applicability Engine.'
-    );
-    setHint(
-      ar
-        ? 'تم تحديث مخطط المبنى من فحص الرسم — أعد تشغيل تحليل النظام لتحديث المعايير المنطبقة.'
-        : 'Building plan updated from drawing inspection — re-run system analysis to refresh applicable standards.'
-    );
-    setHintTone('ok');
-  };
-
   return (
     <div className={`${shell} overflow-hidden`} data-design-center data-theme={dark ? 'dark' : 'light'}>
       <header className={`px-4 py-5 sm:px-6 border-b ${dark ? 'border-slate-800' : 'border-slate-200'}`}>
@@ -959,42 +932,61 @@ export default function DesignCenterSection({
           </div>
         ) : null}
 
+        {tab === 'space_safety' && (
+          <DesignSpaceSafetySection
+            client={client}
+            value={spaceSafety}
+            saving={saving}
+            onChange={(space_safety) =>
+              setDesign({
+                ...design,
+                space_safety: { ...space_safety, source: 'project_engineering' },
+              })
+            }
+          />
+        )}
+
         {tab === 'drawings' && (
           <div className="space-y-5">
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
-              {(
-                [
-                  ['pdf', 'رفع PDF', 'Upload PDF'],
-                  ['dwg', 'رفع DWG', 'Upload DWG'],
-                  ['dxf', 'رفع DXF', 'Upload DXF'],
-                  ['ifc', 'رفع IFC', 'Upload IFC'],
-                  ['rvt', 'رفع Revit', 'Upload Revit'],
-                ] as const
-              ).map(([fmt, arLabel, enLabel]) => (
-                <label
-                  key={fmt}
-                  className={`${card} p-4 cursor-pointer hover:border-sky-500 transition block`}
-                >
-                  <div className="text-sm font-bold">{ar ? arLabel : enLabel}</div>
-                  <p className={`text-xs mt-1 ${muted}`}>{fmt.toUpperCase()}</p>
+            <section className={`${card} p-4 space-y-3`}>
+              <div>
+                <h3 className="text-sm font-bold">{ar ? 'المخططات' : 'Drawings'}</h3>
+                <p className={`mt-1 text-xs ${muted}`}>
+                  {ar
+                    ? 'ارفع إصدارًا جديدًا من PDF أو DWG أو DXF أو IFC أو RVT. لا يُعد الملف محفوظًا إلا بعد ظهوره في إدارة الإصدارات.'
+                    : 'Upload a new PDF, DWG, DXF, IFC, or RVT version. It is saved only after appearing in version management.'}
+                </p>
+              </div>
+              <div className="grid grid-cols-1 gap-3 sm:grid-cols-[12rem_1fr]">
+                <label className="text-xs font-semibold">
+                  {ar ? 'نوع الملف' : 'File type'}
+                  <select
+                    value={drawingFormat}
+                    onChange={(event) => setDrawingFormat(event.target.value as DesignDrawingFormat)}
+                    className={`mt-1 w-full rounded-lg border px-3 py-2 text-sm ${dark ? 'bg-slate-950 border-slate-700' : 'bg-white border-slate-300'}`}
+                  >
+                    <option value="pdf">PDF</option>
+                    <option value="dwg">DWG</option>
+                    <option value="dxf">DXF</option>
+                    <option value="ifc">IFC</option>
+                    <option value="rvt">RVT / Revit</option>
+                  </select>
+                </label>
+                <label className="text-xs font-semibold">
+                  {ar ? 'رفع إصدار جديد' : 'Upload new version'}
                   <input
                     ref={(el) => {
-                      fileInputRefs.current[fmt] = el;
+                      fileInputRefs.current[drawingFormat] = el;
                     }}
                     type="file"
-                    className="mt-3 w-full text-xs"
-                    accept={FORMAT_ACCEPT[fmt]}
+                    className="mt-1 block w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-xs"
+                    accept={FORMAT_ACCEPT[drawingFormat]}
                     disabled={busy === 'upload'}
-                    onChange={(e) => void uploadFormat(e.target.files, fmt)}
+                    onChange={(event) => void uploadFormat(event.target.files, drawingFormat)}
                   />
-                  <p className={`text-[10px] mt-2 ${muted}`}>
-                    {ar
-                      ? 'اسم الملف في الخانة ≠ حفظ. النجاح = ظهوره تحت إدارة الإصدارات.'
-                      : 'Filename in the picker ≠ saved. Success = listed under versions.'}
-                  </p>
                 </label>
-              ))}
-            </div>
+              </div>
+            </section>
 
             <section className={`${card} p-4 space-y-3`}>
               <h3 className="text-sm font-bold">
@@ -1160,44 +1152,24 @@ export default function DesignCenterSection({
             </section>
 
             <section className={`${card} p-4 space-y-4`}>
-              <h3 className="text-sm font-bold">
-                {ar ? 'بيانات المبنى وتصنيف الإشغال' : 'Building data & occupancy'}
-              </h3>
-              <BuildingPlanReportSection
-                client={client}
-                report={data.building_plan}
-                saving={saving}
-                onChange={(building_plan) =>
-                  onPatch({
-                    building_plan,
-                    technical_report: {
-                      ...data.technical_report,
-                      building_permit_number:
-                        building_plan.building_permit_number ||
-                        data.technical_report.building_permit_number,
-                      building_permit_date:
-                        building_plan.building_permit_date ||
-                        data.technical_report.building_permit_date,
-                    },
-                  })
-                }
-                onSave={(building_plan, successText) => onSaveBuildingPlan(building_plan, successText)}
+              <div>
+                <h3 className="text-sm font-bold">{ar ? 'مرفقات المخططات والحسابات' : 'Drawing attachments & calculations'}</h3>
+                <p className={`mt-1 text-xs ${muted}`}>
+                  {ar
+                    ? 'تظل المرفقات والإصدارات محفوظة في المشروع. بيانات المخطط والتصنيف انتقلت إلى مرحلة «معلومات المخطط» المستقلة.'
+                    : 'Attachments and versions remain stored on the project. Building-plan data now lives in its separate stage.'}
+                </p>
+              </div>
+              <PlanAttachmentsUpload
+                value={data.plan_attachments || EMPTY_PLAN_ATTACHMENTS}
+                onChange={(plan_attachments: PlanAttachmentsState) => {
+                  onPatch({ plan_attachments });
+                  void onPersistDesignCenter(design, { plan_attachments });
+                }}
+                clientId={client.id}
               />
               <div className="border-t pt-4 space-y-3">
-                <h4 className="text-sm font-bold">
-                  {ar ? 'مرفقات إضافية وحسابات هيدروليكية' : 'Legacy attachments & hydraulics'}
-                </h4>
-                <PlanAttachmentsUpload
-                  value={data.plan_attachments || EMPTY_PLAN_ATTACHMENTS}
-                  onChange={(plan_attachments: PlanAttachmentsState) => {
-                    onPatch({ plan_attachments });
-                    void onPersistDesignCenter(design, { plan_attachments });
-                  }}
-                  clientId={client.id}
-                />
-                <h4 className="text-sm font-bold">
-                  {ar ? 'مخططات السلامة' : 'Safety blueprints'}
-                </h4>
+                <h4 className="text-sm font-bold">{ar ? 'مخططات السلامة' : 'Safety blueprints'}</h4>
                 <SafetyBlueprintsUpload
                   client={client}
                   buildingPlan={data.building_plan}
@@ -1217,7 +1189,6 @@ export default function DesignCenterSection({
               preferAr={ar}
               dark={dark}
               busy={saving}
-              onFeedToAnalysis={cadVisionMeta.inspection ? feedInspectionToAnalysis : undefined}
             />
 
             {cadVisionMeta.active ? (
