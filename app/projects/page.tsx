@@ -205,8 +205,8 @@ export default function ProjectsPage() {
         </div>
       ) : (
         <div className="rounded-xl border border-indigo-100 bg-indigo-50 p-4 text-sm text-indigo-800">
-          كل مشروع يحتوي: العقد، <strong>التصاميم (Design Center)</strong>، BOQ، الجدول الزمني،
-          الزيارات، الملاحظات، خطاب التسليم، التقرير النهائي، وشهادة إنهاء الأعمال.
+          كل مشروع يحتوي: <strong>التصاميم (Design Center)</strong>، BOQ، الجدول الزمني،
+          الزيارات والإشراف مع ملاحظات الموقع، خطاب التسليم، التقرير النهائي، وشهادة إنهاء الأعمال.
         </div>
       )}
 

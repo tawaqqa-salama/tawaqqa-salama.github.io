@@ -14,6 +14,7 @@ import { mergeDesignCenterDefaults } from '@/lib/projects/design-center/state';
 import { syncKnowledgeLinksToDesignCenterSync } from '@/lib/design-intelligence/project-knowledge-bridge';
 import {
   applyPipelineInheritance,
+  normalizeWorkflowState,
   workflowProgressPercent,
 } from '@/lib/projects/gated-pipeline';
 import { mergeBuildingPlanDefaults } from '@/lib/projects/building-plan';
@@ -152,7 +153,7 @@ export function parseProjectEngineeringData(raw: ClientRecord['project_engineeri
         }
       : undefined,
     report_pdf_archive: Array.isArray(data.report_pdf_archive) ? data.report_pdf_archive : [],
-    workflow: { ...(data.workflow || {}) },
+    workflow: normalizeWorkflowState(data.workflow),
   };
 }
 
@@ -212,19 +213,21 @@ export function getProjectReportProgress(
   client?: ClientRecord | null
 ): number {
   if (client) return workflowProgressPercent(client, data);
+  const visitsAndSupervisionReady =
+    data.field_visits.length > 0 &&
+    data.field_visits.every((visit) => visit.status === 'مكتمل' || visit.status === 'معتمد') &&
+    ['مكتمل', 'معتمد'].includes(data.supervision_report?.status || '') &&
+    ['مكتمل', 'معتمد'].includes(data.technical_notes.status || '');
   const sections = [
-    data.contract_onboarding?.status,
     data.technical_report.status,
     data.building_plan.status,
     data.boq.status,
     data.timeline.status,
-    data.technical_notes.status,
+    visitsAndSupervisionReady ? 'معتمد' : 'مسودة',
     data.engineering_delivery.status,
     data.cd_cover_letter?.status,
     data.final_inspection.status,
     data.completion_certificate.status,
-    data.supervision_report?.status,
-    ...data.field_visits.map((v) => v.status),
   ];
   const done = sections.filter((s) => s === 'مكتمل' || s === 'معتمد').length;
   return Math.round((done / Math.max(sections.length, 1)) * 100);

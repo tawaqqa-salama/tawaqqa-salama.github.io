@@ -37,24 +37,28 @@ function baseData(partial?: Partial<ProjectEngineeringData>): ProjectEngineering
 }
 
 describe('designs stage pipeline', () => {
-  it('orders designs as stage 2 after contract', () => {
+  it('uses seven consecutively numbered visible stages without a project contract stage', () => {
     expect(WORKFLOW_STAGE_IDS).toEqual([
-      'contract',
       'designs',
       'boq_schedule',
       'technical_report',
-      'inspections',
-      'deficiencies',
+      'visits_supervision',
       'transmittals',
       'final_report',
       'completion',
     ]);
-    expect(WORKFLOW_STAGES[1].id).toBe('designs');
-    expect(WORKFLOW_STAGES[1].label_ar).toContain('التصاميم');
+    expect(WORKFLOW_STAGES.map((stage) => stage.order)).toEqual([1, 2, 3, 4, 5, 6, 7]);
+    expect(WORKFLOW_STAGE_IDS).not.toContain('contract');
+    expect(WORKFLOW_STAGES.find((stage) => stage.id === 'visits_supervision')?.label_ar).toBe(
+      'الزيارات والإشراف'
+    );
   });
 
-  it('normalizes legacy plans stage id to designs', () => {
+  it('normalizes legacy project stage ids into the visible workflow', () => {
     expect(normalizeWorkflowStageId('plans')).toBe('designs');
+    expect(normalizeWorkflowStageId('contract')).toBe('designs');
+    expect(normalizeWorkflowStageId('inspections')).toBe('visits_supervision');
+    expect(normalizeWorkflowStageId('deficiencies')).toBe('visits_supervision');
     expect(normalizeWorkflowStageId('designs')).toBe('designs');
     expect(normalizeWorkflowStageId('unknown')).toBeNull();
   });
@@ -63,7 +67,7 @@ describe('designs stage pipeline', () => {
     const c = client();
     const data = baseData();
     expect(canUnlockStage('designs', c, data)).toBe(false);
-    expect(resolveActiveStage(c, data)).toBe('contract');
+    expect(resolveActiveStage(c, data)).toBe('designs');
   });
 
   it('requires occupancy + drawings + Design Readiness before approving designs', async () => {
