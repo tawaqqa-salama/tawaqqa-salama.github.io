@@ -1,0 +1,228 @@
+import { ensureFloorLevels } from '@/lib/business/floors';
+import { defaultZoneUseForActivity } from '@/lib/constants/zone-uses';
+import { createZone } from '@/lib/projects/sbc-classification';
+import type { ClientRecord, FloorUsage } from '@/lib/types/client';
+import type {
+  DesignSpaceSafetyArea,
+  DesignSpaceSafetyFloor,
+  DesignSpaceSafetyQuantities,
+  DesignSpaceSafetyWorkingCopy,
+} from '@/lib/projects/design-center/types';
+
+function id(prefix: string): string {
+  if (typeof crypto !== 'undefined' && 'randomUUID' in crypto) return `${prefix}-${crypto.randomUUID()}`;
+  return `${prefix}-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+}
+
+export function emptySafetyQuantities(): DesignSpaceSafetyQuantities {
+  return {
+    sprinklers: 0,
+    smoke_detectors: 0,
+    fire_alarm_panels: 0,
+    alarm_panel_locations: [],
+    signs: 0,
+    emergency_lights: 0,
+    emergency_exits: 0,
+    alarm_bells: 0,
+    emergency_stairs: 0,
+    elevators: 0,
+    public_facilities: 0,
+  };
+}
+
+export function nonNegativeInteger(value: unknown): number {
+  return Math.max(0, Math.floor(Number(value) || 0));
+}
+
+function normalizeQuantities(raw?: Partial<DesignSpaceSafetyQuantities> | null): DesignSpaceSafetyQuantities {
+  return {
+    sprinklers: nonNegativeInteger(raw?.sprinklers),
+    smoke_detectors: nonNegativeInteger(raw?.smoke_detectors),
+    fire_alarm_panels: nonNegativeInteger(raw?.fire_alarm_panels),
+    alarm_panel_locations: Array.isArray(raw?.alarm_panel_locations)
+      ? raw!.alarm_panel_locations.map((item) => String(item || '').trim()).filter(Boolean)
+      : [],
+    signs: nonNegativeInteger(raw?.signs),
+    emergency_lights: nonNegativeInteger(raw?.emergency_lights),
+    emergency_exits: nonNegativeInteger(raw?.emergency_exits),
+    alarm_bells: nonNegativeInteger(raw?.alarm_bells),
+    emergency_stairs: nonNegativeInteger(raw?.emergency_stairs),
+    elevators: nonNegativeInteger(raw?.elevators),
+    public_facilities: nonNegativeInteger(raw?.public_facilities),
+  };
+}
+
+function suggestedArea(
+  usage: Pick<FloorUsage, 'id' | 'label' | 'activity_type' | 'area_m2'>
+): DesignSpaceSafetyArea {
+  const activity = usage.activity_type || null;
+  const zone = createZone({
+    id: usage.id || id('area'),
+    label: usage.label || 'مساحة غير مسماة',
+    area_m2: String(Math.max(0, Number(usage.area_m2) || 0)),
+    use_code: defaultZoneUseForActivity(activity),
+  });
+  const suppression = zone.suppression_label ? [zone.suppression_label] : [];
+  return {
+    id: usage.id || id('area'),
+    source_usage_id: usage.id || null,
+    label: usage.label || 'مساحة غير مسماة',
+    activity_type: activity,
+    area_m2: Math.max(0, Number(usage.area_m2) || 0),
+    hazard_suggested: zone.risk_label || 'تتطلب مراجعة مهندس',
+    hazard_approved: null,
+    hazard_source: 'قواعد تصنيف الإشغال SBC/NFPA الحالية — اقتراح قابل للمراجعة',
+    suppression_suggested: suppression,
+    suppression_approved: null,
+    suppression_source: 'قواعد استخدام المنطقة الحالية — اقتراح قابل للمراجعة',
+    quantities: emptySafetyQuantities(),
+  };
+}
+
+export function suggestAreaSafety(
+  area: Pick<DesignSpaceSafetyArea, 'id' | 'label' | 'activity_type' | 'area_m2'>
+): Pick<
+  DesignSpaceSafetyArea,
+  'hazard_suggested' | 'hazard_source' | 'suppression_suggested' | 'suppression_source'
+> {
+  const suggested = suggestedArea({
+    id: area.id,
+    label: area.label,
+    activity_type: area.activity_type,
+    area_m2: area.area_m2,
+  });
+  return {
+    hazard_suggested: suggested.hazard_suggested,
+    hazard_source: suggested.hazard_source,
+    suppression_suggested: suggested.suppression_suggested,
+    suppression_source: suggested.suppression_source,
+  };
+}
+
+function normalizeArea(raw: Partial<DesignSpaceSafetyArea>, fallback?: DesignSpaceSafetyArea): DesignSpaceSafetyArea {
+  return {
+    id: String(raw.id || fallback?.id || id('area')),
+    source_usage_id: raw.source_usage_id ?? fallback?.source_usage_id ?? null,
+    label: String(raw.label || fallback?.label || 'مساحة غير مسماة'),
+    activity_type: raw.activity_type ?? fallback?.activity_type ?? null,
+    area_m2: Math.max(0, Number(raw.area_m2 ?? fallback?.area_m2) || 0),
+    hazard_suggested: String(raw.hazard_suggested || fallback?.hazard_suggested || 'تتطلب مراجعة مهندس'),
+    hazard_approved: raw.hazard_approved ?? fallback?.hazard_approved ?? null,
+    hazard_source: raw.hazard_source ?? fallback?.hazard_source ?? null,
+    suppression_suggested: Array.isArray(raw.suppression_suggested)
+      ? raw.suppression_suggested.map(String)
+      : fallback?.suppression_suggested || [],
+    suppression_approved: Array.isArray(raw.suppression_approved)
+      ? raw.suppression_approved.map(String)
+      : fallback?.suppression_approved ?? null,
+    suppression_source: raw.suppression_source ?? fallback?.suppression_source ?? null,
+    quantities: normalizeQuantities(raw.quantities ?? fallback?.quantities),
+  };
+}
+
+export function normalizeSpaceSafetyWorkingCopy(
+  raw?: Partial<DesignSpaceSafetyWorkingCopy> | null
+): DesignSpaceSafetyWorkingCopy | null {
+  if (!raw || !Array.isArray(raw.floors)) return null;
+  return {
+    source: raw.source === 'project_engineering' ? 'project_engineering' : 'sales_basic_data',
+    inherited_from_sales_at: raw.inherited_from_sales_at ?? null,
+    updated_at: raw.updated_at ?? null,
+    floors: raw.floors.map((floor, floorIndex) => ({
+      id: String(floor.id || `floor-${floorIndex}`),
+      source_floor_id: floor.source_floor_id ?? null,
+      label: String(floor.label || 'دور غير مسمى'),
+      kind: floor.kind ?? null,
+      repeat_count: Math.max(1, nonNegativeInteger(floor.repeat_count) || 1),
+      areas: Array.isArray(floor.areas) ? floor.areas.map((area) => normalizeArea(area)) : [],
+    })),
+  };
+}
+
+/** One-way initial inheritance. Existing project copy always wins over later Sales edits. */
+export function seedSpaceSafetyFromClient(
+  client: ClientRecord,
+  existing?: Partial<DesignSpaceSafetyWorkingCopy> | null
+): DesignSpaceSafetyWorkingCopy {
+  const normalized = normalizeSpaceSafetyWorkingCopy(existing);
+  if (normalized?.floors.length) return normalized;
+
+  const floors = ensureFloorLevels(client.floor_levels, client.floors_count, client.building_area);
+  return {
+    source: 'sales_basic_data',
+    inherited_from_sales_at: new Date().toISOString(),
+    updated_at: new Date().toISOString(),
+    floors: floors.map((floor): DesignSpaceSafetyFloor => ({
+      id: floor.id,
+      source_floor_id: floor.id,
+      label: floor.label,
+      kind: floor.kind,
+      repeat_count: Math.max(1, floor.repeat_count || 1),
+      areas: (floor.usages || []).map((usage) => suggestedArea(usage)),
+    })),
+  };
+}
+
+export function createProjectArea(): DesignSpaceSafetyArea {
+  return {
+    id: id('area'),
+    source_usage_id: null,
+    label: 'مساحة جديدة',
+    activity_type: null,
+    area_m2: 0,
+    hazard_suggested: 'تتطلب مراجعة مهندس',
+    hazard_approved: null,
+    hazard_source: null,
+    suppression_suggested: [],
+    suppression_approved: null,
+    suppression_source: null,
+    quantities: emptySafetyQuantities(),
+  };
+}
+
+export function createProjectFloor(): DesignSpaceSafetyFloor {
+  return {
+    id: id('floor'),
+    source_floor_id: null,
+    label: 'دور / منطقة جديدة',
+    kind: 'custom',
+    repeat_count: 1,
+    areas: [createProjectArea()],
+  };
+}
+
+export type SafetyQuantityTotals = Omit<DesignSpaceSafetyQuantities, 'alarm_panel_locations'> & {
+  alarm_panel_locations: string[];
+  total_area_m2: number;
+  areas_count: number;
+};
+
+export function safetyTotals(areas: DesignSpaceSafetyArea[]): SafetyQuantityTotals {
+  return areas.reduce<SafetyQuantityTotals>(
+    (total, area) => ({
+      sprinklers: total.sprinklers + nonNegativeInteger(area.quantities.sprinklers),
+      smoke_detectors: total.smoke_detectors + nonNegativeInteger(area.quantities.smoke_detectors),
+      fire_alarm_panels: total.fire_alarm_panels + nonNegativeInteger(area.quantities.fire_alarm_panels),
+      alarm_panel_locations: [...total.alarm_panel_locations, ...area.quantities.alarm_panel_locations],
+      signs: total.signs + nonNegativeInteger(area.quantities.signs),
+      emergency_lights: total.emergency_lights + nonNegativeInteger(area.quantities.emergency_lights),
+      emergency_exits: total.emergency_exits + nonNegativeInteger(area.quantities.emergency_exits),
+      alarm_bells: total.alarm_bells + nonNegativeInteger(area.quantities.alarm_bells),
+      emergency_stairs: total.emergency_stairs + nonNegativeInteger(area.quantities.emergency_stairs),
+      elevators: total.elevators + nonNegativeInteger(area.quantities.elevators),
+      public_facilities: total.public_facilities + nonNegativeInteger(area.quantities.public_facilities),
+      total_area_m2: total.total_area_m2 + Math.max(0, Number(area.area_m2) || 0),
+      areas_count: total.areas_count + 1,
+    }),
+    {
+      ...emptySafetyQuantities(),
+      alarm_panel_locations: [],
+      total_area_m2: 0,
+      areas_count: 0,
+    }
+  );
+}
+
+export function projectSafetyTotals(copy: DesignSpaceSafetyWorkingCopy): SafetyQuantityTotals {
+  return safetyTotals(copy.floors.flatMap((floor) => floor.areas));
+}

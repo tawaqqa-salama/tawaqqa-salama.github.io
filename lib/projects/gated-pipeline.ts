@@ -1,5 +1,5 @@
 /**
- * Strict sequential 7-stage visible engineering workflow.
+ * Strict sequential 8-stage visible engineering workflow.
  * Stages stay LOCKED until the previous stage is Approved/Completed.
  * Approving a stage runs forward data inheritance into later stages.
  */
@@ -13,6 +13,7 @@ import type {
 } from '@/lib/types/project-reports';
 import { EMPTY_PROJECT_ENGINEERING_DATA } from '@/lib/types/project-reports';
 import { hasDesignCenterDrawings } from '@/lib/projects/design-center/state';
+import { seedSpaceSafetyFromClient } from '@/lib/projects/design-center/space-safety';
 import {
   computeDesignReadiness,
   readinessAllowsStageApproval,
@@ -43,6 +44,7 @@ import { AUTHORITATIVE_COMPLIANCE_MODULE } from '@/lib/projects/canonical-engine
 
 export const WORKFLOW_STAGE_IDS = [
   'designs',
+  'plan_info',
   'boq_schedule',
   'technical_report',
   'visits_supervision',
@@ -61,7 +63,8 @@ export function normalizeWorkflowStageId(
   id: string | null | undefined
 ): WorkflowStageId | null {
   if (!id) return null;
-  if (id === LEGACY_PLANS_STAGE_ID || id === LEGACY_CONTRACT_STAGE_ID) return 'designs';
+  if (id === LEGACY_PLANS_STAGE_ID) return 'plan_info';
+  if (id === LEGACY_CONTRACT_STAGE_ID) return 'designs';
   if (id === LEGACY_INSPECTIONS_STAGE_ID || id === LEGACY_DEFICIENCIES_STAGE_ID) {
     return 'visits_supervision';
   }
@@ -70,7 +73,7 @@ export function normalizeWorkflowStageId(
     : null;
 }
 
-/** Maps historical workflow pointers and approval dates into the visible seven-stage flow. */
+/** Maps historical workflow pointers and approval dates into the visible eight-stage flow. */
 export function normalizeWorkflowState(
   workflow: ProjectEngineeringData['workflow'] | null | undefined
 ): ProjectEngineeringData['workflow'] {
@@ -111,46 +114,53 @@ export const WORKFLOW_STAGES: WorkflowStageDef[] = [
     short_ar: '1. التصاميم',
   },
   {
-    id: 'boq_schedule',
+    id: 'plan_info',
     order: 2,
+    label_ar: 'معلومات المخطط',
+    label_en: 'Building Plan Information',
+    short_ar: '2. معلومات المخطط',
+  },
+  {
+    id: 'boq_schedule',
+    order: 3,
     label_ar: 'جدول الكميات والجدول الزمني',
     label_en: 'BOQ & Master Schedule',
-    short_ar: '2. الكميات',
+    short_ar: '3. الكميات',
   },
   {
     id: 'technical_report',
-    order: 3,
+    order: 4,
     label_ar: 'التقرير الفني والدراسة',
     label_en: 'Technical Report & SBC',
-    short_ar: '3. الفني',
+    short_ar: '4. الفني',
   },
   {
     id: 'visits_supervision',
-    order: 4,
+    order: 5,
     label_ar: 'الزيارات والإشراف',
     label_en: 'Visits & Supervision',
-    short_ar: '4. الزيارات',
+    short_ar: '5. الزيارات',
   },
   {
     id: 'transmittals',
-    order: 5,
-    label_ar: 'خطابات تسليم الدراسة والرد الفني',
-    label_en: 'Study Delivery & Technical Response Letters',
-    short_ar: '5. الخطابات',
+    order: 6,
+    label_ar: 'خطابات تسليم الدراسة وارد الدفاع المدني',
+    label_en: 'Study Delivery & Civil Defense Response Letters',
+    short_ar: '6. الخطابات',
   },
   {
     id: 'final_report',
-    order: 6,
+    order: 7,
     label_ar: 'التقرير النهائي',
     label_en: 'Final Technical Report',
-    short_ar: '6. النهائي',
+    short_ar: '7. النهائي',
   },
   {
     id: 'completion',
-    order: 7,
+    order: 8,
     label_ar: 'شهادة إنهاء الأعمال',
     label_en: 'Final Completion Certificate',
-    short_ar: '7. الشهادة',
+    short_ar: '8. الشهادة',
   },
 ];
 
@@ -205,11 +215,17 @@ export function isStageApproved(
 ): boolean {
   switch (stageId) {
     case 'designs': {
+      const legacyDesignApproved = Boolean(data.workflow?.approved_at?.designs);
+      const approvedDesign = isApprovedStatus(data.design_center.status) || legacyDesignApproved;
+      const hasSpaceSafety = Boolean(data.design_center.space_safety?.floors.some((floor) => floor.areas.length));
+      const hasLegacyAreas = Boolean(client.floor_levels?.length || data.technical_report.floor_uses?.length);
+      return approvedDesign && (hasSpaceSafety || hasLegacyAreas) && hasAnyBlueprint(data);
+    }
+    case 'plan_info': {
       const legacyPlansApproved = Boolean(data.workflow?.approved_at?.[LEGACY_PLANS_STAGE_ID]);
       return (
         (isApprovedStatus(data.building_plan.status) || legacyPlansApproved) &&
-        !!String(data.building_plan.occupancy_classification || '').trim() &&
-        hasAnyBlueprint(data)
+        !!String(data.building_plan.occupancy_classification || '').trim()
       );
     }
     case 'boq_schedule':
@@ -302,13 +318,13 @@ export function stageApprovalBlockers(
       if (!isContractGateSatisfied(client, data)) {
         blockers.push('اعتماد العقد أو الحالة المالية من المبيعات مطلوب قبل بدء المشروع');
       }
-      if (!String(data.building_plan.occupancy_classification || '').trim()) {
-        blockers.push('تصنيف الإشغال (SBC/NFPA) مطلوب');
+      if (!data.design_center.space_safety?.floors.some((floor) => floor.areas.length)) {
+        blockers.push('أدخل أو راجع بيانات المساحات وأنظمة السلامة داخل التصاميم');
       }
       if (!hasAnyBlueprint(data)) {
-        blockers.push('ارفع المخططات الهندسية في مركز التصاميم و/أو الحسابات الهيدروليكية');
+        blockers.push('ارفع مخططًا واحدًا على الأقل ضمن قسم المخططات في التصاميم');
       }
-      // Design required projects cannot leave this stage before engineer-review readiness
+      // Keep Design Intelligence readiness as an existing independent gate.
       const readiness = computeDesignReadiness(client, data);
       if (!readinessAllowsStageApproval(readiness.level)) {
         blockers.push(
@@ -317,6 +333,11 @@ export function stageApprovalBlockers(
       }
       break;
     }
+    case 'plan_info':
+      if (!String(data.building_plan.occupancy_classification || '').trim()) {
+        blockers.push('تصنيف الإشغال (SBC/NFPA) مطلوب في معلومات المخطط');
+      }
+      break;
     case 'boq_schedule':
       if (!(data.boq.items || []).length) blockers.push('أضف بنود جدول الكميات');
       if (!data.timeline.project_start || !data.timeline.project_end) {
@@ -392,11 +413,13 @@ export function approveWorkflowStage(params: {
 
   switch (stageId) {
     case 'designs':
-      data.building_plan = markApproved(data.building_plan);
       data.design_center = markApproved({
         ...EMPTY_PROJECT_ENGINEERING_DATA.design_center,
         ...data.design_center,
       });
+      break;
+    case 'plan_info':
+      data.building_plan = markApproved(data.building_plan);
       break;
     case 'boq_schedule':
       data.boq = markApproved(data.boq);
@@ -519,6 +542,11 @@ export function applyPipelineInheritance(
     project_name_snapshot: identity.facility_name,
   };
 
+  next.design_center = {
+    ...next.design_center,
+    space_safety: seedSpaceSafetyFromClient(client, next.design_center.space_safety),
+  };
+
   next.building_plan = seedBuildingPlanFromClient(client, {
     ...next.building_plan,
     office_name: next.building_plan.office_name || company?.legal_name || company?.name || '',
@@ -546,7 +574,7 @@ export function applyPipelineInheritance(
       '',
   });
 
-  // Stage 2 designs / drawings → Stage 7 CD letter + delivery
+  // Designs and plan information → later delivery-letter context
   next.engineering_delivery = seedEngineeringDelivery(client, next, next.engineering_delivery);
   next.cd_cover_letter = seedCdCoverLetter(client, next, {
     ...next.cd_cover_letter,
@@ -626,7 +654,7 @@ export function applyPipelineInheritance(
     };
   }
 
-  // Stage 9: completion certificate identity from Sales
+  // Completion certificate identity inherited from Sales
   next.completion_certificate = seedCompletionCertificate(
     client,
     next,

@@ -14,7 +14,9 @@ import {
   type ProjectEngineeringData,
 } from '@/lib/types/project-reports';
 import { mergeDesignCenterDefaults, addDrawingVersion } from '@/lib/projects/design-center/state';
+import { seedSpaceSafetyFromClient } from '@/lib/projects/design-center/space-safety';
 import { runPlanAnalysis } from '@/lib/projects/design-center/engine';
+import { runKnowledgeBackedSystemDesign } from '@/lib/projects/design-center/knowledge-engine';
 import type { ClientRecord } from '@/lib/types/client';
 
 function client(partial?: Partial<ClientRecord>): ClientRecord {
@@ -37,9 +39,10 @@ function baseData(partial?: Partial<ProjectEngineeringData>): ProjectEngineering
 }
 
 describe('designs stage pipeline', () => {
-  it('uses seven consecutively numbered visible stages without a project contract stage', () => {
+  it('uses eight consecutively numbered visible stages without a project contract stage', () => {
     expect(WORKFLOW_STAGE_IDS).toEqual([
       'designs',
+      'plan_info',
       'boq_schedule',
       'technical_report',
       'visits_supervision',
@@ -47,7 +50,8 @@ describe('designs stage pipeline', () => {
       'final_report',
       'completion',
     ]);
-    expect(WORKFLOW_STAGES.map((stage) => stage.order)).toEqual([1, 2, 3, 4, 5, 6, 7]);
+    expect(WORKFLOW_STAGES.map((stage) => stage.order)).toEqual([1, 2, 3, 4, 5, 6, 7, 8]);
+    expect(WORKFLOW_STAGES.find((stage) => stage.id === 'plan_info')?.label_ar).toBe('معلومات المخطط');
     expect(WORKFLOW_STAGE_IDS).not.toContain('contract');
     expect(WORKFLOW_STAGES.find((stage) => stage.id === 'visits_supervision')?.label_ar).toBe(
       'الزيارات والإشراف'
@@ -55,7 +59,7 @@ describe('designs stage pipeline', () => {
   });
 
   it('normalizes legacy project stage ids into the visible workflow', () => {
-    expect(normalizeWorkflowStageId('plans')).toBe('designs');
+    expect(normalizeWorkflowStageId('plans')).toBe('plan_info');
     expect(normalizeWorkflowStageId('contract')).toBe('designs');
     expect(normalizeWorkflowStageId('inspections')).toBe('visits_supervision');
     expect(normalizeWorkflowStageId('deficiencies')).toBe('visits_supervision');
@@ -70,7 +74,7 @@ describe('designs stage pipeline', () => {
     expect(resolveActiveStage(c, data)).toBe('designs');
   });
 
-  it('requires occupancy + drawings + Design Readiness before approving designs', async () => {
+  it('requires the project space copy and drawings before approving designs', async () => {
     const c = client({
       quotation_status: 'معتمد',
       financial_status: 'معتمد مالياً',
@@ -89,21 +93,16 @@ describe('designs stage pipeline', () => {
     expect(canUnlockStage('designs', c, data)).toBe(true);
     expect(stageApprovalBlockers('designs', c, data).length).toBeGreaterThan(0);
 
-    const withOcc: ProjectEngineeringData = {
+    const withSpaceSafety: ProjectEngineeringData = {
       ...data,
-      building_plan: {
-        ...data.building_plan,
-        occupancy_classification: 'Mercantile',
-        floors_description: 'Retail · Storage',
-        stairs_count: '2',
-        exits_count: '3',
-        building_height_m: '12',
-        fire_alarm_system: 'نعم' as const,
+      design_center: {
+        ...data.design_center,
+        space_safety: seedSpaceSafetyFromClient(c),
       },
     };
-    expect(stageApprovalBlockers('designs', c, withOcc).some((b) => /مخطط/.test(b))).toBe(true);
+    expect(stageApprovalBlockers('designs', c, withSpaceSafety).some((b) => /مخطط/.test(b))).toBe(true);
 
-    const withFile = addDrawingVersion(withOcc.design_center, {
+    const withFile = addDrawingVersion(withSpaceSafety.design_center, {
       id: 'f1',
       fileName: 'plan.pdf',
       format: 'pdf',
@@ -111,16 +110,9 @@ describe('designs stage pipeline', () => {
       uploadedAt: new Date().toISOString(),
       kind: 'engineering_drawing',
     });
-    const withDrawing = { ...withOcc, design_center: withFile };
-    // Drawing + occupancy alone is not enough — need READY_FOR_ENGINEER_REVIEW
-    expect(
-      stageApprovalBlockers('designs', c, withDrawing).some((b) => /جاهزية|READY/.test(b))
-    ).toBe(true);
+    const withDrawing = { ...withSpaceSafety, design_center: withFile };
+    expect(stageApprovalBlockers('designs', c, withDrawing).some((b) => /READY FOR ENGINEER REVIEW|جاهزية/.test(b))).toBe(true);
 
-    const { runPlanAnalysis } = await import('@/lib/projects/design-center/engine');
-    const { runKnowledgeBackedSystemDesign } = await import(
-      '@/lib/projects/design-center/knowledge-engine'
-    );
     const analysis = await runPlanAnalysis({
       projectId: c.id,
       context: { client: c, data: withDrawing },
@@ -130,26 +122,54 @@ describe('designs stage pipeline', () => {
       kind: 'fire_alarm',
       context: { client: c, data: withDrawing },
     });
-    const ready = {
+    const readyForApproval = {
       ...withDrawing,
       design_center: {
         ...withDrawing.design_center,
         analysis,
-        systems: withDrawing.design_center.systems.map((s) =>
-          s.kind === 'fire_alarm' ? system : s
+        systems: withDrawing.design_center.systems.map((candidate) =>
+          candidate.kind === 'fire_alarm' ? system : candidate
         ),
       },
     };
-    expect(stageApprovalBlockers('designs', c, ready)).toEqual([]);
+    expect(stageApprovalBlockers('designs', c, readyForApproval)).toEqual([]);
 
-    const approved = approveWorkflowStage({ stageId: 'designs', client: c, data: ready });
+    const approved = approveWorkflowStage({ stageId: 'designs', client: c, data: readyForApproval });
     expect(approved.ok).toBe(true);
-    expect(approved.nextStage).toBe('boq_schedule');
+    expect(approved.nextStage).toBe('plan_info');
     expect(isStageApproved('designs', c, approved.data)).toBe(true);
     expect(approved.data.design_center.status).toBe('معتمد');
   });
 
-  it('treats legacy approved_at.plans as designs gate', () => {
+  it('keeps a legacy approved design valid when it has historical floor data', () => {
+    const c = client({
+      floor_levels: [
+        {
+          id: 'legacy-floor',
+          kind: 'ground',
+          label: 'أرضي',
+          area_m2: 100,
+          repeat_count: 1,
+          usages: [{ id: 'legacy-usage', area_m2: 100, label: 'محل' }],
+        },
+      ],
+    });
+    const data = baseData({
+      design_center: {
+        ...mergeDesignCenterDefaults(EMPTY_PROJECT_ENGINEERING_DATA.design_center),
+        status: 'معتمد',
+      },
+      plan_attachments: {
+        engineering_drawings: [
+          { id: 'legacy-drawing', fileName: 'legacy.pdf', format: 'pdf', sizeBytes: 1, uploadedAt: '2024-01-01', kind: 'engineering_drawing' },
+        ],
+        hydraulic_calculations: [],
+      },
+    });
+    expect(isStageApproved('designs', c, data)).toBe(true);
+  });
+
+  it('treats legacy approved_at.plans as the separate plan-info gate', () => {
     const c = client();
     const data = baseData({
       building_plan: {
@@ -172,7 +192,7 @@ describe('designs stage pipeline', () => {
       },
       workflow: { approved_at: { plans: '2024-01-01T00:00:00.000Z' } },
     });
-    expect(isStageApproved('designs', c, data)).toBe(true);
+    expect(isStageApproved('plan_info', c, data)).toBe(true);
   });
 });
 
