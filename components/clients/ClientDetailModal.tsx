@@ -232,6 +232,10 @@ export default function ClientDetailModal({
   useEffect(() => {
     if (!client || lastHydratedClientIdRef.current === client.id) return;
     lastHydratedClientIdRef.current = client.id;
+    // Ignore the previous client's baseline until the full new-client hydration
+    // has completed; SWR object changes for the same client intentionally keep
+    // a user draft intact.
+    persistedSnapshotRef.current = null;
     let active = true;
     const hydrated = mergeLocalClientOverrides(client);
     const allowed = DEPARTMENT_TABS[department];
@@ -375,6 +379,10 @@ export default function ClientDetailModal({
     if (areaForPricing <= 0) return;
     const auto = Math.round(areaForPricing * pricePerM2 * 100) / 100;
     setQuotationAmount(String(auto));
+    // This is a display-only derived value. Rebase the persisted comparison after
+    // it arrives so navigation is not blocked before the user has edited a field.
+    baselineSyncPendingRef.current = true;
+    setBaselineRevision((revision) => revision + 1);
   }, [client?.id, client?.building_area, client?.quotation_amount, floorLevels, isDirty, pricePerM2, quotationAmount]);
 
   const currentDraftSnapshot = JSON.stringify({
@@ -447,6 +455,12 @@ export default function ClientDetailModal({
   }, [baselineRevision, client, currentDraftSnapshot]);
 
   useEffect(() => {
+    if (persistedSnapshotRef.current === null) return;
+    const differsFromBaseline = currentDraftSnapshot !== persistedSnapshotRef.current;
+    if (isDirty !== differsFromBaseline) setIsDirty(differsFromBaseline);
+  }, [currentDraftSnapshot, isDirty]);
+
+  useEffect(() => {
     if (!hijriDay || !hijriMonth || !hijriYear) {
       setHijriConversionError('');
       return;
@@ -480,8 +494,7 @@ export default function ClientDetailModal({
 
   if (!client) return null;
 
-  const hasUnsavedChanges = () =>
-    isDirty || (persistedSnapshotRef.current !== null && currentDraftSnapshot !== persistedSnapshotRef.current);
+  const hasUnsavedChanges = () => isDirty;
 
   const completeNavigation = (target: 'basic' | 'quotation' | 'contract') => {
     setPendingNavigation(null);

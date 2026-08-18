@@ -75,6 +75,8 @@ export type AppUser = {
   role_code: AppRoleCode | string;
   job_title?: string | null;
   is_active: boolean;
+  /** وقت الحذف المنطقي؛ المستخدم المحذوف لا يملك جلسة صالحة. */
+  deleted_at?: string | null;
   /** صلاحيات إضافية فوق الدور (اختياري) */
   extra_permissions?: PermissionCode[];
   /** أقسام تظهر في الصفحة الشخصية */

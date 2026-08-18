@@ -6,7 +6,6 @@ import { isDemoMode, supabase } from '@/lib/supabase';
 /** Demo / bootstrap defaults — production uses the actor's session company */
 const DEMO_COMPANY_ID = 'co-tawaqqa';
 const DEMO_BRANCH_ID = 'br-hq';
-const BOOTSTRAP_COMPANY_CODE = process.env.DEFAULT_TENANT_CODE || 'TWAQQA';
 const AUTH_TIMEOUT_MS = 12_000;
 
 type AuthResult = { session: AuthSession | null; error: string | null; demoOtp?: string };
@@ -84,29 +83,11 @@ async function resolveTenantIds(preferredCompanyId?: string | null): Promise<{
     };
   }
 
-  // Bootstrap fallback for first install / migration only
-  const { data: company, error: companyError } = await supabase
-    .from('companies')
-    .select('id')
-    .eq('code', BOOTSTRAP_COMPANY_CODE)
-    .maybeSingle();
-
-  if (companyError || !company?.id) {
-    return {
-      companyId: '',
-      branchId: null,
-      error: 'Unable to resolve company. Sign in with a tenant membership or set DEFAULT_TENANT_CODE.',
-    };
-  }
-
-  const { data: branch } = await supabase
-    .from('branches')
-    .select('id')
-    .eq('company_id', company.id)
-    .eq('code', 'HQ')
-    .maybeSingle();
-
-  return { companyId: company.id as string, branchId: (branch?.id as string) || null, error: null };
+  return {
+    companyId: '',
+    branchId: null,
+    error: 'تعذر تحديد شركة المستخدم من الجلسة المعتمدة.',
+  };
 }
 
 function toSession(user: AppUser, permissions: PermissionCode[], method: 'email' | 'phone'): AuthSession {
@@ -171,7 +152,7 @@ export async function restoreAuthSession(): Promise<AuthResult> {
   if (!existing) return { session: null, error: null };
 
   const user = await fetchUserById(existing.userId);
-  if (!user || !user.is_active) {
+  if (!user || !user.is_active || user.deleted_at) {
     clearSession();
     return { session: null, error: null };
   }
@@ -205,19 +186,13 @@ export async function signInWithEmailPassword(email: string, password: string): 
         authData = result.data;
         authError = result.error;
       } catch (e) {
-        // Network / timeout — try legacy demo_credentials row as last resort on Pages
-        const legacy = await tryLegacyPasswordLoginSafe(trimmedEmail, password);
-        if (legacy.session) return legacy;
-        return { session: null, error: legacy.error || authErrorMessage(e, 'فشل الاتصال بخادم الدخول') };
+        return { session: null, error: authErrorMessage(e, 'فشل الاتصال بخادم الدخول') };
       }
 
       if (authError || !authData?.user) {
-        // Wrong password in Auth: still allow demo_credentials match for migrated rows
-        const legacy = await tryLegacyPasswordLoginSafe(trimmedEmail, password);
-        if (legacy.session) return legacy;
         return {
           session: null,
-          error: legacy.error || authErrorMessage(authError, 'فشل تسجيل الدخول'),
+          error: authErrorMessage(authError, 'فشل تسجيل الدخول'),
         };
       }
 
@@ -228,12 +203,12 @@ export async function signInWithEmailPassword(email: string, password: string): 
           8000,
           'profile_timeout'
         );
-        user = (profile as AppUser | null) ?? (await fetchUserByEmail(trimmedEmail));
+        user = profile as AppUser | null;
       } catch {
-        user = await fetchUserByEmail(trimmedEmail).catch(() => null);
+        return { session: null, error: 'تعذر التحقق من ملف الموظف المرتبط بحساب الدخول.' };
       }
 
-      if (!user || !user.is_active) {
+      if (!user || !user.is_active || user.deleted_at) {
         return { session: null, error: 'لا يوجد ملف موظف مرتبط بهذا الحساب' };
       }
       const role = await fetchRole(user.role_code, user.company_id).catch(() => null);
@@ -244,6 +219,7 @@ export async function signInWithEmailPassword(email: string, password: string): 
       return { session, error: null };
     }
 
+    // Local development only: the in-memory demo data may use demo credentials.
     return tryLegacyPasswordLoginSafe(trimmedEmail, password);
   } catch (e) {
     return {
@@ -298,26 +274,6 @@ export async function requestPhoneOtp(phone: string): Promise<{ error: string | 
     const e164 = `+966${normalized.slice(1)}`;
     const { error } = await supabase.auth.signInWithOtp({ phone: e164 });
     if (!error) {
-      // Optional parallel WhatsApp/SMS webhook (Twilio/Unifonic/etc.) when configured
-      await dispatchOtpWebhook(normalized, null, 'supabase_otp');
-      return { error: null };
-    }
-
-    // Fallback: custom OTP + SMS/WhatsApp webhook when Supabase SMS provider is not configured
-    const smsWebhook = process.env.SMS_OTP_WEBHOOK_URL || process.env.WHATSAPP_WEBHOOK_URL;
-    if (smsWebhook) {
-      const code = randomOtp();
-      await supabase.from('demo_otps').upsert({
-        id: `otp-${normalized}`,
-        phone: normalized,
-        code,
-        expires_at: new Date(Date.now() + 5 * 60 * 1000).toISOString(),
-        created_at: new Date().toISOString(),
-      });
-      const dispatched = await dispatchOtpWebhook(normalized, code, 'custom_otp');
-      if (!dispatched.ok) {
-        return { error: dispatched.error || error.message };
-      }
       return { error: null };
     }
 
@@ -335,49 +291,6 @@ export async function requestPhoneOtp(phone: string): Promise<{ error: string | 
   return { error: null, demoOtp: code };
 }
 
-async function dispatchOtpWebhook(
-  phone05: string,
-  code: string | null,
-  mode: 'supabase_otp' | 'custom_otp'
-): Promise<{ ok: boolean; error?: string }> {
-  const webhook =
-    process.env.SMS_OTP_WEBHOOK_URL ||
-    process.env.WHATSAPP_WEBHOOK_URL ||
-    process.env.NEXT_PUBLIC_WHATSAPP_WEBHOOK_URL;
-  if (!webhook) return { ok: true };
-
-  try {
-    const res = await fetch(webhook, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        ...(process.env.SMS_OTP_WEBHOOK_TOKEN || process.env.WHATSAPP_WEBHOOK_TOKEN
-          ? {
-              Authorization: `Bearer ${
-                process.env.SMS_OTP_WEBHOOK_TOKEN || process.env.WHATSAPP_WEBHOOK_TOKEN
-              }`,
-            }
-          : {}),
-      },
-      body: JSON.stringify({
-        channel: process.env.SMS_OTP_WEBHOOK_URL ? 'sms' : 'whatsapp',
-        to: phone05,
-        e164: `+966${phone05.slice(1)}`,
-        template: 'tawaqqa_otp',
-        code,
-        mode,
-        message: code
-          ? `رمز التحقق لمنصة تَوَقَّعَ: ${code}`
-          : 'تم إرسال رمز التحقق عبر مزوّد OTP',
-      }),
-    });
-    if (!res.ok) return { ok: false, error: `OTP webhook HTTP ${res.status}` };
-    return { ok: true };
-  } catch (e) {
-    return { ok: false, error: e instanceof Error ? e.message : 'فشل إرسال OTP' };
-  }
-}
-
 export async function verifyPhoneOtp(phone: string, code: string): Promise<AuthResult> {
   const normalized = phone.replace(/\s+/g, '');
   if (!normalized || !code.trim()) {
@@ -392,22 +305,7 @@ export async function verifyPhoneOtp(phone: string, code: string): Promise<AuthR
     });
     if (!error && data.user) {
       const user = await fetchUserByPhone(normalized);
-      if (!user || !user.is_active) {
-        return { session: null, error: 'لا يوجد ملف موظف مرتبط بهذا الرقم' };
-      }
-      const role = await fetchRole(user.role_code, user.company_id);
-      const permissions = resolveUserPermissions(user, role);
-      const session = toSession(user, permissions, 'phone');
-      saveSession(session, user.company_id);
-      void supabase.from('users').update({ last_login_at: session.loggedInAt }).eq('id', user.id);
-      return { session, error: null };
-    }
-
-    // Custom OTP webhook path (stored in demo_otps when Supabase SMS is unavailable)
-    const customOk = await verifyStoredOtp(normalized, code.trim());
-    if (customOk) {
-      const user = await fetchUserByPhone(normalized);
-      if (!user || !user.is_active) {
+      if (!user || !user.is_active || user.deleted_at) {
         return { session: null, error: 'لا يوجد ملف موظف مرتبط بهذا الرقم' };
       }
       const role = await fetchRole(user.role_code, user.company_id);
@@ -427,7 +325,7 @@ export async function verifyPhoneOtp(phone: string, code: string): Promise<AuthR
   }
 
   const user = await fetchUserByPhone(normalized);
-  if (!user || !user.is_active) {
+  if (!user || !user.is_active || user.deleted_at) {
     return { session: null, error: 'رقم الجوال غير مسجّل' };
   }
   const role = await fetchRole(user.role_code, user.company_id);
@@ -675,10 +573,3 @@ export async function updateEmployeeHr(
   }
   return { user: data as AppUser, error: null };
 }
-
-export const DEMO_LOGIN_HINTS = [
-  { label: 'مدير النظام', email: 'admin@tawaqqa.sa', password: 'Admin@123', phone: '0599776676' },
-  { label: 'مهندس', email: 'engineer@tawaqqa.sa', password: 'Eng@123', phone: '0500000002' },
-  { label: 'مبيعات', email: 'sales@tawaqqa.sa', password: 'Sales@123', phone: '0500000003' },
-  { label: 'محاسب', email: 'finance@tawaqqa.sa', password: 'Fin@123', phone: '0500000004' },
-] as const;
