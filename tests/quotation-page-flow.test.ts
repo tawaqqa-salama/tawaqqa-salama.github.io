@@ -23,11 +23,11 @@ describe('standalone quotation page flow', () => {
     expect(basicPage).toContain("searchParams.get('clientId') || ''");
     expect(quotationPage).toContain("useSearchParams");
     expect(quotationPage).toContain("searchParams.get('clientId') || ''");
-    expect(quotationPage).toContain('useClientDetail(clientId || null)');
+    expect(quotationPage).toContain("useClientDetail(clientId || null, 'quotation')");
     expect(quotationPage).toContain('لم يتم تحديد عميل لعرض سعره.');
     expect(quotationPage).toContain('تعذر الوصول إلى بيانات العميل أو عرض السعر.');
     expect(quotationPage).toContain("router.push('/sales')");
-    expect(quotationPage).not.toContain('[clientId]');
+    expect(quotationPage).not.toContain('/sales/clients/[clientId]');
   });
 
   it('exposes both actions from Sales without replacing one page with the other', () => {
@@ -68,8 +68,8 @@ describe('standalone quotation page flow', () => {
   });
 
   it('keeps the static routes free of dynamic client segments', () => {
-    expect(read('app/sales/client-basic-data/page.tsx')).not.toContain('[clientId]');
-    expect(quotationPage).not.toContain('[clientId]');
+    expect(read('app/sales/client-basic-data/page.tsx')).not.toContain('/sales/clients/[clientId]');
+    expect(quotationPage).not.toContain('/sales/clients/[clientId]');
     expect(quotationPage).toContain('presentation="quotation"');
   });
 

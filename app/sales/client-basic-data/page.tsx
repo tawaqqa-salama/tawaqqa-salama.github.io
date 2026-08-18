@@ -6,6 +6,7 @@ import dynamic from 'next/dynamic';
 import { useClientDetail, invalidateClient } from '@/lib/data/hooks';
 import { mergeLocalClientOverrides } from '@/lib/supabase/safe-client-write';
 import type { ClientRecord } from '@/lib/types/client';
+import { markPageLoad } from '@/lib/performance/page-load-marks';
 
 const ClientDetailModal = dynamic(() => import('@/components/clients/ClientDetailModal'), {
   ssr: false,
@@ -15,8 +16,19 @@ export default function BasicClientDataPage() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const clientId = searchParams.get('clientId') || '';
-  const { client, loading, error, mutate } = useClientDetail(clientId || null);
+  const { client, loading, error, mutate } = useClientDetail(clientId || null, 'basic');
   const [isDirty, setIsDirty] = useState(false);
+
+  useEffect(() => {
+    markPageLoad('page-data-start');
+  }, [clientId]);
+
+  useEffect(() => {
+    if (!loading && client) {
+      markPageLoad('page-data-ready');
+      markPageLoad('first-usable');
+    }
+  }, [client, loading]);
 
   useEffect(() => {
     if (!isDirty) return;

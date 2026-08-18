@@ -9,7 +9,7 @@ describe('standalone basic-data page visibility', () => {
   it('uses the static route and passes page presentation', () => {
     expect(basicPage).toContain("const clientId = searchParams.get('clientId') || ''");
     expect(basicPage).toContain("presentation=\"page\"");
-    expect(basicPage).toContain('useClientDetail(clientId || null)');
+    expect(basicPage).toContain("useClientDetail(clientId || null, 'basic')");
   });
 
   it('opens the complete basic-data sections instead of the quotation tab', () => {

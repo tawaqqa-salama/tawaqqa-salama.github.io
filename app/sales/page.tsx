@@ -22,6 +22,7 @@ import { printSavedQuotation, validateSavedQuotationForPrint } from '@/lib/invoi
 import { useSalesBundle, invalidateErpLists } from '@/lib/data/hooks';
 import { LIST_PAGE_SIZE } from '@/lib/data/query-config';
 import { markSalesLoadStage } from '@/lib/performance/sales-load';
+import { markPageLoad } from '@/lib/performance/page-load-marks';
 import { useLanguage } from '@/lib/i18n/LanguageProvider';
 import type { ClientFormData, ClientRecord, FinancialDocument } from '@/lib/types/client';
 import type { SalesReturn } from '@/lib/types/sales';
@@ -92,6 +93,9 @@ export default function SalesPage() {
   const { t } = useLanguage();
   useEffect(() => {
     markSalesLoadStage('route-mounted');
+    // Same opt-in instrumentation used by the other initial-load paths.
+    // It neither awaits nor changes the sales query lifecycle.
+    markPageLoad('page-data-start');
   }, []);
   const router = useRouter();
   const [tab, setTab] = useState<TabId>('sales');
@@ -158,6 +162,14 @@ export default function SalesPage() {
     () => salesClients.filter((c) => inDateRange(c.created_at, dateFrom, dateTo)),
     [salesClients, dateFrom, dateTo]
   );
+
+  useEffect(() => {
+    // `loading` becomes false only after the initial sales list has resolved.
+    // Mark after the derived list is available, never for the shell or skeleton.
+    if (tab !== 'sales' || loading) return;
+    markPageLoad('page-data-ready');
+    markPageLoad('first-usable');
+  }, [tab, loading, clients]);
 
   const filteredDocuments = useMemo(
     () => documents.filter((doc) => inDateRange(doc.created_at, dateFrom, dateTo)),

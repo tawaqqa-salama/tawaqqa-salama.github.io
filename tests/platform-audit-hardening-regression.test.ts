@@ -58,8 +58,8 @@ describe('platform audit hardening regressions', () => {
     expect(listSection).toContain('.range(');
     expect(basicPage).toContain("useSearchParams");
     expect(quotationPage).toContain("useSearchParams");
-    expect(basicPage).not.toContain('[clientId]');
-    expect(quotationPage).not.toContain('[clientId]');
+    expect(basicPage).not.toContain('/sales/clients/[clientId]');
+    expect(quotationPage).not.toContain('/sales/clients/[clientId]');
   });
 
   it('retains one non-sticky basic save action and a contract-only quotation lock', () => {

@@ -152,6 +152,33 @@ function pickTextAny(
 }
 
 /** يحمّل من جدول companies للشركة الحالية (session)، مع دمج التخزين المحلي */
+/**
+ * Minimal company lookup for interactive forms. Full company data (including logo)
+ * remains available through loadCompanyProfile for printing and previews.
+ */
+export async function loadCompanyPricing(companyId?: string | null): Promise<number> {
+  const tenantId = resolveProfileCompanyId(companyId);
+  const local = loadLocalCompanyProfile(tenantId);
+  if (isDemoMode) return Number(local.price_per_m2) || 0;
+
+  if (tenantId) {
+    const { data } = await supabase
+      .from('companies')
+      .select('price_per_m2')
+      .eq('id', tenantId)
+      .maybeSingle();
+    if (data?.price_per_m2 != null) return Number(data.price_per_m2) || 0;
+  }
+
+  // Legacy single-tenant fallback keeps the existing behavior without a full row.
+  const { data } = await supabase
+    .from('companies')
+    .select('price_per_m2')
+    .eq('code', 'TWAQQA')
+    .maybeSingle();
+  return data?.price_per_m2 != null ? Number(data.price_per_m2) || 0 : Number(local.price_per_m2) || 0;
+}
+
 export async function loadCompanyProfile(companyId?: string | null): Promise<CompanyProfile> {
   const tenantId = resolveProfileCompanyId(companyId);
   const local = loadLocalCompanyProfile(tenantId);

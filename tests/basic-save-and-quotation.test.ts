@@ -172,7 +172,7 @@ describe('basic data persistence and professional quotation', () => {
     expect(modal).toContain('await onUpdated(nextClient);');
     expect(modal).toContain('return await saveUpdate(');
     expect(modal).toContain('floor_levels: floorLevels');
-    expect(modal).toContain('mergeProjectEngineeringData(eng, { building_plan, technical_report })');
+    expect(modal).toContain('project_engineering_patch: { building_plan, technical_report }');
     expect(salesPage).toContain('router.push(`/sales/client-basic-data?clientId=${encodeURIComponent(c.id)}`)');
     expect(salesPage).not.toContain('/sales/clients/');
     expect(salesPage).toContain('mutateSalesBundle');
