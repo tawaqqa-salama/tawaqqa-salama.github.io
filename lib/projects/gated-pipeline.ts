@@ -1,5 +1,5 @@
 /**
- * Strict sequential 9-stage gated engineering workflow.
+ * Strict sequential 7-stage visible engineering workflow.
  * Stages stay LOCKED until the previous stage is Approved/Completed.
  * Approving a stage runs forward data inheritance into later stages.
  */
@@ -42,28 +42,52 @@ import {
 import { AUTHORITATIVE_COMPLIANCE_MODULE } from '@/lib/projects/canonical-engineering';
 
 export const WORKFLOW_STAGE_IDS = [
-  'contract',
   'designs',
   'boq_schedule',
   'technical_report',
-  'inspections',
-  'deficiencies',
+  'visits_supervision',
   'transmittals',
   'final_report',
   'completion',
 ] as const;
 
-/** Legacy stage id from older project records */
+/** Legacy stage ids retained for loading older project records safely. */
 export const LEGACY_PLANS_STAGE_ID = 'plans';
+export const LEGACY_CONTRACT_STAGE_ID = 'contract';
+export const LEGACY_INSPECTIONS_STAGE_ID = 'inspections';
+export const LEGACY_DEFICIENCIES_STAGE_ID = 'deficiencies';
 
 export function normalizeWorkflowStageId(
   id: string | null | undefined
 ): WorkflowStageId | null {
   if (!id) return null;
-  if (id === LEGACY_PLANS_STAGE_ID) return 'designs';
+  if (id === LEGACY_PLANS_STAGE_ID || id === LEGACY_CONTRACT_STAGE_ID) return 'designs';
+  if (id === LEGACY_INSPECTIONS_STAGE_ID || id === LEGACY_DEFICIENCIES_STAGE_ID) {
+    return 'visits_supervision';
+  }
   return (WORKFLOW_STAGE_IDS as readonly string[]).includes(id)
     ? (id as WorkflowStageId)
     : null;
+}
+
+/** Maps historical workflow pointers and approval dates into the visible seven-stage flow. */
+export function normalizeWorkflowState(
+  workflow: ProjectEngineeringData['workflow'] | null | undefined
+): ProjectEngineeringData['workflow'] {
+  if (!workflow) return {};
+  const approved_at: Record<string, string> = {};
+  for (const [stage, timestamp] of Object.entries(workflow.approved_at || {})) {
+    const normalized = normalizeWorkflowStageId(stage);
+    if (!normalized) continue;
+    const prior = approved_at[normalized];
+    approved_at[normalized] = !prior || timestamp > prior ? timestamp : prior;
+  }
+  return {
+    ...workflow,
+    active_stage: normalizeWorkflowStageId(workflow.active_stage) || undefined,
+    last_approved_stage: normalizeWorkflowStageId(workflow.last_approved_stage) || undefined,
+    approved_at,
+  };
 }
 
 export type WorkflowStageId = (typeof WORKFLOW_STAGE_IDS)[number];
@@ -80,67 +104,53 @@ export type WorkflowStageDef = {
 
 export const WORKFLOW_STAGES: WorkflowStageDef[] = [
   {
-    id: 'contract',
-    order: 1,
-    label_ar: 'العقد',
-    label_en: 'Contract',
-    short_ar: '1. العقد',
-  },
-  {
     id: 'designs',
-    order: 2,
+    order: 1,
     label_ar: 'التصاميم',
     label_en: 'Designs — Design Center',
-    short_ar: '2. التصاميم',
+    short_ar: '1. التصاميم',
   },
   {
     id: 'boq_schedule',
-    order: 3,
+    order: 2,
     label_ar: 'جدول الكميات والجدول الزمني',
     label_en: 'BOQ & Master Schedule',
-    short_ar: '3. الكميات',
+    short_ar: '2. الكميات',
   },
   {
     id: 'technical_report',
-    order: 4,
+    order: 3,
     label_ar: 'التقرير الفني والدراسة',
     label_en: 'Technical Report & SBC',
-    short_ar: '4. الفني',
+    short_ar: '3. الفني',
   },
   {
-    id: 'inspections',
-    order: 5,
-    label_ar: 'الزيارات الميدانية وتقرير الإشراف',
-    label_en: 'Site Inspections & Supervision',
-    short_ar: '5. الإشراف',
-  },
-  {
-    id: 'deficiencies',
-    order: 6,
-    label_ar: 'الملاحظات الفنية واشتراطات الموقع',
-    label_en: 'Technical Deficiencies & Snag List',
-    short_ar: '6. الملاحظات',
+    id: 'visits_supervision',
+    order: 4,
+    label_ar: 'الزيارات والإشراف',
+    label_en: 'Visits & Supervision',
+    short_ar: '4. الزيارات',
   },
   {
     id: 'transmittals',
-    order: 7,
+    order: 5,
     label_ar: 'خطابات تسليم الدراسة والرد الفني',
     label_en: 'Study Delivery & Technical Response Letters',
-    short_ar: '7. الخطابات',
+    short_ar: '5. الخطابات',
   },
   {
     id: 'final_report',
-    order: 8,
+    order: 6,
     label_ar: 'التقرير النهائي',
     label_en: 'Final Technical Report',
-    short_ar: '8. النهائي',
+    short_ar: '6. النهائي',
   },
   {
     id: 'completion',
-    order: 9,
+    order: 7,
     label_ar: 'شهادة إنهاء الأعمال',
     label_en: 'Final Completion Certificate',
-    short_ar: '9. الشهادة',
+    short_ar: '7. الشهادة',
   },
 ];
 
@@ -150,6 +160,24 @@ const APPROVED: ReportMeta['status'][] = ['مكتمل', 'معتمد'];
 
 export function isApprovedStatus(status?: string | null): boolean {
   return APPROVED.includes((status || '') as ReportMeta['status']);
+}
+
+/**
+ * Contract readiness remains governed by Sales/Finance, but is intentionally not
+ * rendered as a project workflow stage.
+ */
+export function isContractGateSatisfied(client: ClientRecord, data: ProjectEngineeringData): boolean {
+  const onboarding = data.contract_onboarding;
+  if (isApprovedStatus(onboarding?.status)) return true;
+  if (onboarding?.contract_status === 'signed' || onboarding?.contract_status === 'approved') {
+    return true;
+  }
+  const quotation = String(client.quotation_status || '');
+  const financial = String(client.financial_status || '');
+  return /موقع|معتمد|signed|approved/i.test(quotation) || [
+    'تم السداد',
+    'معتمد مالياً',
+  ].includes(financial);
 }
 
 function hasAttachment(list?: PlanAttachmentFile[] | null): boolean {
@@ -176,18 +204,6 @@ export function isStageApproved(
   data: ProjectEngineeringData
 ): boolean {
   switch (stageId) {
-    case 'contract': {
-      const c = data.contract_onboarding;
-      if (isApprovedStatus(c?.status)) return true;
-      if (c?.contract_status === 'signed' || c?.contract_status === 'approved') return true;
-      // Legacy: financially approved / signed quotation treated as contract gate
-      const q = String(client.quotation_status || '');
-      const f = String(client.financial_status || '');
-      return (
-        /موقع|معتمد|signed|approved/i.test(q) ||
-        ['تم السداد', 'معتمد مالياً'].includes(f)
-      );
-    }
     case 'designs': {
       const legacyPlansApproved = Boolean(data.workflow?.approved_at?.[LEGACY_PLANS_STAGE_ID]);
       return (
@@ -200,18 +216,15 @@ export function isStageApproved(
       return isApprovedStatus(data.boq.status) && isApprovedStatus(data.timeline.status);
     case 'technical_report':
       return isApprovedStatus(data.technical_report.status);
-    case 'inspections': {
+    case 'visits_supervision': {
       const visitsOk =
         data.field_visits.length > 0 &&
         data.field_visits.every((v) => isApprovedStatus(v.status));
-      return visitsOk && isApprovedStatus(data.supervision_report?.status);
-    }
-    case 'deficiencies': {
+      if (!visitsOk || !isApprovedStatus(data.supervision_report?.status)) return false;
       if (!isApprovedStatus(data.technical_notes.status)) return false;
       const critical = (data.technical_notes.deficiencies || []).filter(
         (d) => /critical|حرج|عالي|high/i.test(d.severity || '')
       );
-      if (!critical.length) return true;
       return critical.every((d) => d.resolved);
     }
     case 'transmittals':
@@ -234,8 +247,9 @@ export function canUnlockStage(
   data: ProjectEngineeringData
 ): boolean {
   const idx = WORKFLOW_STAGE_IDS.indexOf(stageId);
+  if (stageId === 'designs') return isContractGateSatisfied(client, data);
   if (idx <= 0) return true;
-  // Stage 9: all previous must be approved
+  // Completion requires every visible predecessor to be approved.
   if (stageId === 'completion') {
     return WORKFLOW_STAGE_IDS.slice(0, -1).every((id) => isStageApproved(id, client, data));
   }
@@ -260,12 +274,14 @@ export function resolveActiveStage(
   data: ProjectEngineeringData,
   preferred?: WorkflowStageId | null
 ): WorkflowStageId {
-  const preferredNorm = preferred
-    ? preferred
-    : normalizeWorkflowStageId(data.workflow?.active_stage);
+  const preferredNorm =
+    normalizeWorkflowStageId(preferred) ||
+    normalizeWorkflowStageId(data.workflow?.active_stage);
   if (preferredNorm && canUnlockStage(preferredNorm, client, data)) return preferredNorm;
   for (const id of WORKFLOW_STAGE_IDS) {
-    if (!isStageApproved(id, client, data) && canUnlockStage(id, client, data)) return id;
+    // Keep the first incomplete visible stage selected even when it is locked by
+    // the Sales/Finance contract gate; this never unlocks or approves it.
+    if (!isStageApproved(id, client, data)) return id;
   }
   return 'completion';
 }
@@ -282,18 +298,10 @@ export function stageApprovalBlockers(
 ): string[] {
   const blockers: string[] = [];
   switch (stageId) {
-    case 'contract':
-      if (
-        !(
-          data.contract_onboarding?.project_name_snapshot ||
-          client.business_name ||
-          client.name
-        )
-      ) {
-        blockers.push('اسم المشروع مطلوب');
-      }
-      break;
     case 'designs': {
+      if (!isContractGateSatisfied(client, data)) {
+        blockers.push('اعتماد العقد أو الحالة المالية من المبيعات مطلوب قبل بدء المشروع');
+      }
       if (!String(data.building_plan.occupancy_classification || '').trim()) {
         blockers.push('تصنيف الإشغال (SBC/NFPA) مطلوب');
       }
@@ -315,7 +323,7 @@ export function stageApprovalBlockers(
         blockers.push('حدد بداية ونهاية الجدول الزمني');
       }
       break;
-    case 'deficiencies': {
+    case 'visits_supervision': {
       const openCritical = (data.technical_notes.deficiencies || []).filter(
         (d) => /critical|حرج|عالي|high/i.test(d.severity || '') && !d.resolved
       );
@@ -383,23 +391,6 @@ export function approveWorkflowStage(params: {
   }
 
   switch (stageId) {
-    case 'contract':
-      data.contract_onboarding = markApproved({
-        ...EMPTY_PROJECT_ENGINEERING_DATA.contract_onboarding,
-        ...data.contract_onboarding,
-        contract_status: 'signed',
-        client_name_snapshot:
-          data.contract_onboarding?.client_name_snapshot || client.name || '',
-        project_name_snapshot:
-          data.contract_onboarding?.project_name_snapshot ||
-          client.business_name ||
-          client.name ||
-          '',
-        contract_value:
-          data.contract_onboarding?.contract_value ?? client.quotation_amount ?? null,
-        signed_at: new Date().toISOString().slice(0, 10),
-      });
-      break;
     case 'designs':
       data.building_plan = markApproved(data.building_plan);
       data.design_center = markApproved({
@@ -414,11 +405,9 @@ export function approveWorkflowStage(params: {
     case 'technical_report':
       data.technical_report = markApproved(data.technical_report);
       break;
-    case 'inspections':
+    case 'visits_supervision':
       data.field_visits = data.field_visits.map((v) => markApproved(v));
       data.supervision_report = markApproved(data.supervision_report);
-      break;
-    case 'deficiencies':
       data.technical_notes = markApproved(data.technical_notes);
       break;
     case 'transmittals':

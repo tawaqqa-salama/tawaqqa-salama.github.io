@@ -23,7 +23,6 @@ import CdCoverLetterSection from '@/components/projects/CdCoverLetterSection';
 import FinalInspectionSection from '@/components/projects/FinalInspectionSection';
 import CompletionCertificateSection from '@/components/projects/CompletionCertificateSection';
 import SupervisionReportSection from '@/components/projects/SupervisionReportSection';
-import ContractOnboardingSection from '@/components/projects/ContractOnboardingSection';
 import DesignCenterSection from '@/components/projects/DesignCenterSection';
 import WorkflowStageRail from '@/components/projects/WorkflowStageRail';
 import { useProjectStagesDrawer } from '@/components/layout/ProjectStagesDrawerContext';
@@ -100,7 +99,7 @@ export default function ProjectReportModal({
   variant = 'modal',
 }: ProjectReportModalProps) {
   const isPage = variant === 'page';
-  const [activeStage, setActiveStage] = useState<WorkflowStageId>('contract');
+  const [activeStage, setActiveStage] = useState<WorkflowStageId>('designs');
   const [techReportChapter, setTechReportChapter] = useState<TechReportChapterId>('facility');
   const [data, setData] = useState<ProjectEngineeringData | null>(null);
   const [saving, setSaving] = useState(false);
@@ -174,7 +173,7 @@ export default function ProjectReportModal({
         resolved !== 'designs' &&
         !canUnlockStage('designs', client, synced)
       ) {
-        setMessage('مرحلة التصاميم مقفلة — اعتمد مرحلة «العقد» أولاً ثم افتح مركز التصاميم.');
+        setMessage('مرحلة التصاميم مقفلة — اعتمد العقد أو الحالة المالية من المبيعات أولاً ثم افتح مركز التصاميم.');
       } else {
         setMessage(null);
       }
@@ -331,7 +330,7 @@ export default function ProjectReportModal({
   const handleApproveAndProceed = async () => {
     // Inside technical report: advance chapters first
     // facility → firefighting → ventilation → alarm → exits → recommendations
-    // then leave to workflow stage 5 (inspections / field visits)
+    // then leave to the unified visits and supervision stage
     if (activeStage === 'technical_report') {
       const nextChapter = nextTechReportChapter(techReportChapter);
       if (nextChapter) {
@@ -360,7 +359,6 @@ export default function ProjectReportModal({
       }
     }
 
-    const approvingInspections = activeStage === 'inspections';
     const result = approveWorkflowStage({
       stageId: activeStage,
       client,
@@ -380,7 +378,7 @@ export default function ProjectReportModal({
     };
     setData(withChapterReset);
     setActiveStage(result.nextStage);
-    if (result.nextStage === 'inspections') {
+    if (result.nextStage === 'visits_supervision') {
       setTechReportChapter('facility');
     }
     await save(
@@ -390,8 +388,9 @@ export default function ProjectReportModal({
       }`,
       {
         stayOpen: true,
-        // Stage 5 approval must not rewrite the fat engineering JSONB
-        supervisionFocus: approvingInspections,
+        // Unified visits stage persists its legacy visit and observation records together.
+        supervisionFocus: false,
+        techReportFocus: false,
       }
     );
   };
@@ -484,14 +483,6 @@ export default function ProjectReportModal({
                 </div>
               ) : null}
 
-              {activeStage === 'contract' && (
-                <ContractOnboardingSection
-                  client={client}
-                  report={data.contract_onboarding}
-                  onChange={(contract_onboarding) => patch({ contract_onboarding })}
-                />
-              )}
-
               {activeStage === 'designs' && (
                 <div className="space-y-4">
                   <div className="rounded-xl border border-sky-100 bg-sky-50 px-3 py-2 text-xs text-sky-950 leading-relaxed">
@@ -552,7 +543,7 @@ export default function ProjectReportModal({
               {activeStage === 'boq_schedule' && (
                 <div className="space-y-4">
                   <div className="rounded-xl border border-indigo-100 bg-indigo-50 px-3 py-2 text-xs text-indigo-950">
-                    يرث نطاق الإشغال من مرحلة التصاميم. بنود BOQ تُمرَّر تلقائياً إلى جدول الإشراف في المرحلة 5.
+                    يرث نطاق الإشغال من مرحلة التصاميم. بنود BOQ تُمرَّر تلقائياً إلى جدول الزيارات والإشراف.
                   </div>
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
                     <StatusSelect
@@ -676,7 +667,7 @@ export default function ProjectReportModal({
                 </div>
               )}
 
-              {activeStage === 'inspections' && (
+              {activeStage === 'visits_supervision' && (
                 <div className="space-y-6">
                   <div className="rounded-xl border border-sky-100 bg-sky-50 px-3 py-2 text-xs text-sky-950 leading-relaxed">
                     كل زيارة تُحفظ كـ <strong>PDF ثابت مستقل</strong> في مرفقات المشروع. عدد
@@ -684,7 +675,25 @@ export default function ProjectReportModal({
                     دون استبدال تقارير الزيارات السابقة.
                   </div>
                   <div className="space-y-4">
-                    <h3 className="text-sm font-bold">الزيارات الميدانية</h3>
+                    <div className="flex flex-wrap items-center justify-between gap-2">
+                      <h3 className="text-sm font-bold">سجل الزيارات</h3>
+                      <button
+                        type="button"
+                        className="rounded-xl border border-[#635bdb]/30 bg-white px-3 py-2 text-sm font-semibold text-[#635bdb]"
+                        onClick={() => {
+                          const nextVisitNumber =
+                            Math.max(0, ...data.field_visits.map((visit) => visit.visit_number || 0)) + 1;
+                          patch({
+                            field_visits: [
+                              ...data.field_visits,
+                              { visit_number: nextVisitNumber, status: 'مسودة', checklist: [] },
+                            ],
+                          });
+                        }}
+                      >
+                        + إضافة زيارة جديدة
+                      </button>
+                    </div>
                     {data.field_visits.map((visit) => (
                       <div key={visit.visit_number} className="border rounded-xl p-4 bg-gray-50">
                         <h4 className="font-bold text-sm mb-3">
@@ -736,6 +745,21 @@ export default function ProjectReportModal({
                               field_visits: data.field_visits.map((x) =>
                                 x.visit_number === visit.visit_number
                                   ? { ...x, findings: e.target.value }
+                                  : x
+                              ),
+                            });
+                          }}
+                          className="w-full p-2.5 border rounded-xl text-sm mt-3"
+                        />
+                        <textarea
+                          rows={2}
+                          placeholder="الإجراء المطلوب أو التوصية"
+                          value={visit.recommendations || ''}
+                          onChange={(e) => {
+                            patch({
+                              field_visits: data.field_visits.map((x) =>
+                                x.visit_number === visit.visit_number
+                                  ? { ...x, recommendations: e.target.value }
                                   : x
                               ),
                             });
@@ -909,10 +933,10 @@ export default function ProjectReportModal({
                 </div>
               )}
 
-              {activeStage === 'deficiencies' && (
-                <div className="space-y-4">
+              {activeStage === 'visits_supervision' && (
+                <div className="space-y-4 rounded-xl border border-amber-100 bg-amber-50/40 p-4">
                   <div className="rounded-xl border border-amber-100 bg-amber-50 px-3 py-2 text-xs text-amber-950">
-                    لا تُفتح خطابات التسليم إلا بعد حل جميع الملاحظات الحرجة.
+                    ملاحظات الموقع والتوصيات جزء من تقرير الزيارة والإشراف. لا تُفتح خطابات التسليم إلا بعد حل جميع الملاحظات الحرجة.
                   </div>
                   <StatusSelect
                     value={data.technical_notes.status}
@@ -1103,7 +1127,7 @@ export default function ProjectReportModal({
                   </p>
                 ) : activeStage === 'technical_report' ? (
                   <p className="text-xs text-emerald-800">
-                    اكتملت أبواب التقرير الفني — الاعتماد ينقل إلى القسم 5: الزيارات الميدانية.
+                    اكتملت أبواب التقرير الفني — الاعتماد ينقل إلى قسم الزيارات والإشراف.
                   </p>
                 ) : (
                   <p className="text-xs text-emerald-800">المرحلة جاهزة للاعتماد والانتقال.</p>
@@ -1113,31 +1137,12 @@ export default function ProjectReportModal({
                     type="button"
                     disabled={saving}
                     onClick={() => {
-                      if (activeStage === 'inspections') {
-                        void (async () => {
-                          setSaving(true);
-                          setMessage(null);
-                          const pipelineStage =
-                            client.pipeline_stage === 'completed' ? 'completed' : 'projects';
-                          const result = await saveSupervisionAsPdfAttachment({
-                            client,
-                            data,
-                            company,
-                            pipelineStage,
-                          });
-                          setData(result.data);
-                          setSaving(false);
-                          if (result.error) {
-                            setMessage(
-                              `تعذّر الحفظ — تم حفظ نسخة محلية: ${humanizeFetchError(result.error)}`
-                            );
-                            return;
-                          }
-                          setMessage(
-                            'تم حفظ مرحلة الإشراف/الزيارات. استخدم «حفظ الزيارة كـ PDF» لكل زيارة لإصدار مرفقها.'
-                          );
-                          requestAnimationFrame(() => onUpdated());
-                        })();
+                      if (activeStage === 'visits_supervision') {
+                        void save(
+                          data,
+                          'تم حفظ الزيارات والإشراف وملاحظات الموقع. استخدم «حفظ الزيارة كـ PDF» لكل زيارة لإصدار مرفقها.',
+                          { stayOpen: true }
+                        );
                         return;
                       }
                       void save(data, 'تم حفظ بيانات المرحلة.', { stayOpen: true });
