@@ -26,13 +26,12 @@ export function areApiRoutesAvailable(): boolean {
   return true;
 }
 
-/** Explicit allow-list for demo data in production builds (e.g. GitHub Pages showcase). */
+/**
+ * Demo data is a local-development aid only. It must never be enabled in a
+ * production build, including a GitHub Pages static export.
+ */
 export function isDemoAllowed(): boolean {
-  if (process.env.ALLOW_DEMO_MODE === 'true') return true;
-  if (process.env.NEXT_PUBLIC_ALLOW_DEMO_MODE === 'true') return true;
-  if (isStaticPagesBuild()) return true;
-  if (process.env.NODE_ENV !== 'production') return true;
-  return false;
+  return process.env.NODE_ENV !== 'production';
 }
 
 /**

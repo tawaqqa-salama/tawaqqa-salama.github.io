@@ -3,8 +3,6 @@
 import { FormEvent, useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { useAuth } from '@/lib/auth/AuthProvider';
-import { DEMO_LOGIN_HINTS } from '@/lib/auth/service';
-import { isDemoMode } from '@/lib/supabase';
 import { PLATFORM_NAME, PLATFORM_SHORT_NAME } from '@/lib/constants/branding';
 import { useLanguage } from '@/lib/i18n/LanguageProvider';
 
@@ -15,9 +13,9 @@ export default function LoginPage() {
   const { loginWithEmail, sendPhoneCode, loginWithPhone, session, loading } = useAuth();
   const { t } = useLanguage();
   const [mode, setMode] = useState<Mode>('email');
-  const [email, setEmail] = useState('admin@tawaqqa.sa');
-  const [password, setPassword] = useState('Admin@123');
-  const [phone, setPhone] = useState('0599776676');
+  const [email, setEmail] = useState('');
+  const [password, setPassword] = useState('');
+  const [phone, setPhone] = useState('');
   const [otp, setOtp] = useState('');
   const [otpSent, setOtpSent] = useState(false);
   const [demoOtp, setDemoOtp] = useState<string | null>(null);
@@ -230,24 +228,6 @@ export default function LoginPage() {
             )}
           </div>
 
-          {isDemoMode && (
-            <div className="mt-5 bg-white/80 border border-dashed border-gray-300 rounded-2xl p-4 text-sm">
-              <p className="font-semibold text-gray-800 mb-2">{t('login.demoHint')}</p>
-              <ul className="space-y-2 text-gray-600">
-                {DEMO_LOGIN_HINTS.map((hint) => (
-                  <li
-                    key={hint.email}
-                    className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-1"
-                  >
-                    <span>{hint.label}</span>
-                    <span className="font-mono text-xs text-gray-500 isolate-ltr">
-                      {hint.email} / {hint.password} · {hint.phone}
-                    </span>
-                  </li>
-                ))}
-              </ul>
-            </div>
-          )}
         </div>
       </section>
     </div>

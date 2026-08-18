@@ -85,6 +85,9 @@ describe('standalone quotation page flow', () => {
     expect(modal).toContain('const quotationLocked = contractLinked || contractCheckLoading;');
     expect(modal).not.toContain('(quotationIsIssued && !quotationEditMode)');
     expect(modal).toContain('findExistingContractForQuote');
+    expect(modal).toContain("'العرض صادر ويمكن تعديله قبل إنشاء العقد.'");
+    expect(modal).toContain('onClick={() => void handlePrintQuotation()}');
+    expect(modal).toContain('disabled={saving || quotationLocked}');
   });
 
   it('keeps print read-only and preserves the existing quotation number on edit', () => {

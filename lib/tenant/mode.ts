@@ -1,8 +1,7 @@
-import { isDemoMode, isSupabaseConfigured } from '@/lib/supabase';
+import { isDemoMode } from '@/lib/supabase';
 
-/** Prefer in-memory tenant store for tests/demo (not a React hook). */
+/** Prefer in-memory tenant store for tests/local demo, never for production. */
 export function isTenantMemoryMode(): boolean {
-  if (process.env.TENANT_FORCE_MEMORY === 'true') return true;
-  if (!isSupabaseConfigured || isDemoMode) return true;
-  return false;
+  if (process.env.NODE_ENV === 'production') return false;
+  return process.env.TENANT_FORCE_MEMORY === 'true' || isDemoMode;
 }

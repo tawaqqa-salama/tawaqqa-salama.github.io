@@ -15,11 +15,18 @@ describe('client modal unsaved-changes regression guard', () => {
     expect(modal).toContain('mergeLocalClientOverrides(client)');
   });
 
-  it('detects real edits using the persisted snapshot before closing', () => {
-    expect(modal).toContain('currentDraftSnapshot !== persistedSnapshotRef.current');
-    expect(modal).toContain('hasUnsavedChanges');
-    expect(modal).toContain('isDirty || (persistedSnapshotRef.current !== null');
+  it('derives dirty-state only from the hydrated persisted baseline and real form changes', () => {
+    expect(modal).toContain('const differsFromBaseline = currentDraftSnapshot !== persistedSnapshotRef.current;');
+    expect(modal).toContain('if (isDirty !== differsFromBaseline) setIsDirty(differsFromBaseline);');
+    expect(modal).toContain('const hasUnsavedChanges = () => isDirty;');
     expect(modal).toContain('لديك تغييرات غير محفوظة. هل تريد الخروج بدون حفظ؟');
+  });
+
+  it('rebases the persisted comparison after automatic quotation pricing', () => {
+    expect(modal).toContain('This is a display-only derived value.');
+    expect(modal).toContain('setQuotationAmount(String(auto));');
+    expect(modal).toContain('baselineSyncPendingRef.current = true;');
+    expect(modal).toContain('setBaselineRevision((revision) => revision + 1);');
   });
 
   it('keeps the modal open or explicitly discards through the warning actions', () => {

@@ -8,6 +8,7 @@ import type { NextConfig } from "next";
 const isGithubPages = process.env.GITHUB_PAGES === "true";
 const isUserPages = process.env.USER_PAGES === "true";
 const isStaticExport = isGithubPages || isUserPages;
+const isProductionBuild = process.env.NODE_ENV === "production";
 const repoName = process.env.GITHUB_REPOSITORY?.split("/")[1] || "tawaqqa-salama";
 
 /**
@@ -59,6 +60,16 @@ const nextConfig: NextConfig = {
           images: { unoptimized: true },
         }
       : {}),
+  // Production bundles must not include local seed credentials or demo data.
+  // Local development keeps the real in-memory implementation for demos/tests.
+  turbopack: isProductionBuild
+    ? {
+        resolveAlias: {
+          "@/lib/demo/memory-client": "@/lib/demo/production-disabled",
+          "@/lib/tenant/memory": "@/lib/tenant/production-disabled",
+        },
+      }
+    : undefined,
   allowedDevOrigins: [
     "*.trycloudflare.com",
     "*.loca.lt",
