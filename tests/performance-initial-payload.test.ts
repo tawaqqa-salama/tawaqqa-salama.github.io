@@ -16,6 +16,7 @@ const basicPage = read('app/sales/client-basic-data/page.tsx');
 const quotationPage = read('app/sales/client-quotation/page.tsx');
 const modal = read('components/clients/ClientDetailModal.tsx');
 const safeWrite = read('lib/supabase/safe-client-write.ts');
+const salesPage = read('app/sales/page.tsx');
 const authProvider = read('lib/auth/AuthProvider.tsx');
 const companyProfile = read('lib/company-profile.ts');
 const activityLogger = read('lib/activity/logger.ts');
@@ -101,6 +102,21 @@ describe('Initial payload performance boundaries', () => {
     expect(authProvider).toContain('result.profile !== undefined');
     expect(activityLogger).toContain('void resolveIp()');
     expect(activityLogger).toContain('remoteActivityUnavailable');
+  });
+
+  it('marks Sales list data start and first usability only after the real list resolves', () => {
+    expect(salesPage).toContain("import { markPageLoad } from '@/lib/performance/page-load-marks'");
+    expect(salesPage).toContain("markPageLoad('page-data-start')");
+    expect(salesPage).toContain("markPageLoad('page-data-ready')");
+    expect(salesPage).toContain("markPageLoad('first-usable')");
+
+    const listReadyEffect = salesPage.slice(
+      salesPage.indexOf("const clients = useMemo"),
+      salesPage.indexOf("const filteredDocuments")
+    );
+    expect(listReadyEffect).toContain("if (tab !== 'sales' || loading) return;");
+    expect(listReadyEffect.indexOf("markPageLoad('page-data-ready')")).toBeGreaterThan(0);
+    expect(listReadyEffect.indexOf("markPageLoad('first-usable')")).toBeGreaterThan(0);
   });
 
   it('provides privacy-safe marks only in development or opt-in measurement mode', () => {
