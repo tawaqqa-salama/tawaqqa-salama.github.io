@@ -8,7 +8,13 @@ const DEMO_COMPANY_ID = 'co-tawaqqa';
 const DEMO_BRANCH_ID = 'br-hq';
 const AUTH_TIMEOUT_MS = 12_000;
 
-type AuthResult = { session: AuthSession | null; error: string | null; demoOtp?: string };
+type AuthResult = {
+  session: AuthSession | null;
+  error: string | null;
+  /** المستخدم الذي تم التحقق منه أثناء restoreAuthSession فقط؛ يمنع قراءة users مكررة. */
+  profile?: AppUser | null;
+  demoOtp?: string;
+};
 
 async function withTimeout<T>(promise: PromiseLike<T>, ms: number, label: string): Promise<T> {
   let timer: ReturnType<typeof setTimeout> | undefined;
@@ -161,7 +167,7 @@ export async function restoreAuthSession(): Promise<AuthResult> {
   const permissions = resolveUserPermissions(user, role);
   const session = toSession(user, permissions, existing.method);
   saveSession(session, user.company_id);
-  return { session, error: null };
+  return { session, profile: user, error: null };
 }
 
 export async function signInWithEmailPassword(email: string, password: string): Promise<AuthResult> {

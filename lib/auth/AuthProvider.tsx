@@ -27,6 +27,7 @@ import {
 import { syncSessionCookie } from '@/lib/auth/session';
 import { logActivity } from '@/lib/activity/logger';
 import { roleLabel } from '@/lib/activity/labels';
+import { markPageLoad } from '@/lib/performance/page-load-marks';
 
 type AuthContextValue = {
   session: AuthSession | null;
@@ -64,10 +65,14 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       setSession(next);
       if (next) {
         try {
-          const user = await Promise.race([
-            getUserProfile(next.userId),
-            new Promise<null>((resolve) => setTimeout(() => resolve(null), 4000)),
-          ]);
+          // restoreAuthSession already validates and loads this user before resolving
+          // the active company and role. Reuse it to avoid a second users request.
+          const user = result.profile !== undefined
+            ? result.profile
+            : await Promise.race([
+                getUserProfile(next.userId),
+                new Promise<null>((resolve) => setTimeout(() => resolve(null), 4000)),
+              ]);
           setProfile(user);
           // Never block UI on cookie sync (absent on GitHub Pages)
           void syncSessionCookie(next, user?.company_id || next.companyId || undefined);
@@ -81,6 +86,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       setSession(null);
       setProfile(null);
     } finally {
+      markPageLoad('auth-ready');
       setLoading(false);
     }
   }, []);

@@ -1,8 +1,9 @@
 import { supabase } from '@/lib/supabase';
-import { saveEngineeringLive } from '@/lib/projects/engineering-live-store';
+import { loadEngineeringLive, saveEngineeringLive } from '@/lib/projects/engineering-live-store';
 import { sanitizeEngineeringDataForPersist } from '@/lib/projects/sanitize-engineering-files';
 import type { ProjectEngineeringData } from '@/lib/types/project-reports';
 import { parseProjectEngineeringData } from '@/lib/business/project-reports';
+import { mergeProjectEngineeringData } from '@/lib/projects/merge-engineering-data';
 import type { QuotationDocumentsState } from '@/lib/types/quotation-documents';
 
 const LOCAL_CLIENT_OVERRIDES_KEY = 'tawaqqa_client_field_overrides_v1';
@@ -203,19 +204,27 @@ export async function updateClientSafe(
   delete current.id;
   delete current.created_at;
 
-  // Radical: never UPDATE fat project_engineering_data on clients — use live table
+  // Never UPDATE fat project_engineering_data on clients — use the live store.
+  // A Basic Data projection can submit a small patch; hydrate the canonical source
+  // only at save time and deep-merge the patch so unseen reports/designs survive.
   let engineeringLiveError: string | null = null;
-  if ('project_engineering_data' in current) {
-    const rawEng = current.project_engineering_data;
-    delete current.project_engineering_data;
-    const parsed = parseProjectEngineeringData(
-      (rawEng && typeof rawEng === 'object'
-        ? rawEng
-        : null) as ProjectEngineeringData | null
-    );
+  const rawEngineeringPatch = current.project_engineering_patch;
+  delete current.project_engineering_patch;
+  const rawFullEngineering = current.project_engineering_data;
+  delete current.project_engineering_data;
+
+  let engineeringToPersist: ProjectEngineeringData | null = null;
+  if (rawEngineeringPatch && typeof rawEngineeringPatch === 'object') {
+    const existingLive = await loadEngineeringLive(clientId);
+    engineeringToPersist = mergeProjectEngineeringData(existingLive, rawEngineeringPatch as Record<string, unknown>);
+  } else if (rawFullEngineering && typeof rawFullEngineering === 'object') {
+    engineeringToPersist = parseProjectEngineeringData(rawFullEngineering as ProjectEngineeringData);
+  }
+
+  if (engineeringToPersist) {
     const live = await saveEngineeringLive({
       clientId,
-      data: sanitizeEngineeringDataForPersist(parsed, {
+      data: sanitizeEngineeringDataForPersist(engineeringToPersist, {
         aggressive: true,
       }),
       pipelineStage:

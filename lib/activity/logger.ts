@@ -8,6 +8,13 @@ const MAX_LOCAL = 500;
 
 let cachedIp: string | null | undefined;
 let ipPromise: Promise<string | null> | null = null;
+// The production schema does not expose activity_logs. Local audit remains the
+// durable UI fallback; a deployment may opt in only after the relation exists.
+const REMOTE_ACTIVITY_LOGS_ENABLED = process.env.NEXT_PUBLIC_ACTIVITY_LOGS_REMOTE === 'true';
+// Production can intentionally omit the optional activity_logs table. Once the
+// endpoint is confirmed unavailable, retain the local audit fallback and avoid
+// adding repeat 404s to every initial page load.
+let remoteActivityUnavailable = false;
 
 function readLocalLogs(): ActivityLog[] {
   if (typeof window === 'undefined') return [];
@@ -79,7 +86,10 @@ export async function logActivity(input: LogActivityInput): Promise<void> {
     (typeof window !== 'undefined' ? `${window.location.pathname}${window.location.search}` : null);
   const moduleName = input.module ?? (pageUrl ? moduleFromPath(pageUrl.split('?')[0] || '/') : null);
 
-  const ip = await resolveIp();
+  // Never wait for an external IP service before writing local audit state or
+  // returning control to the page. A later event can reuse the cached value.
+  const ip = cachedIp === undefined ? null : cachedIp;
+  void resolveIp();
   const userAgent = typeof navigator !== 'undefined' ? navigator.userAgent : null;
   const createdAt = new Date().toISOString();
 
@@ -112,6 +122,8 @@ export async function logActivity(input: LogActivityInput): Promise<void> {
     return;
   }
 
+  if (!REMOTE_ACTIVITY_LOGS_ENABLED || remoteActivityUnavailable) return;
+
   try {
     const { error } = await supabase.from('activity_logs').insert([
       {
@@ -129,9 +141,20 @@ export async function logActivity(input: LogActivityInput): Promise<void> {
       },
     ]);
     if (error) {
+      // PostgREST uses 404 when the optional relation is absent from its schema.
+      // Preserve the local copy and avoid repeatedly retrying an unavailable path.
+      if (/404|relation .*activity_logs|schema cache/i.test(error.message)) {
+        remoteActivityUnavailable = true;
+        return;
+      }
       console.warn('[activity_logs]', error.message);
     }
   } catch (error) {
+    const message = error instanceof Error ? error.message : String(error || '');
+    if (/404|relation .*activity_logs|schema cache/i.test(message)) {
+      remoteActivityUnavailable = true;
+      return;
+    }
     console.warn('[activity_logs]', error);
   }
 }

@@ -48,7 +48,7 @@ import {
   normalizeQuotationServices,
   type QuotationServiceId,
 } from '@/lib/constants/quotation-services';
-import { loadCompanyProfile } from '@/lib/company-profile';
+import { loadCompanyPricing } from '@/lib/company-profile';
 import QuotationDocumentsUpload from '@/components/sales/QuotationDocumentsUpload';
 import ClientPageNavigation from '@/components/sales/ClientPageNavigation';
 import ContractModal from '@/components/sales/ContractModal';
@@ -150,6 +150,7 @@ export default function ClientDetailModal({
   const persistedSnapshotRef = useRef<string | null>(null);
   const baselineSyncPendingRef = useRef(false);
   const lastHydratedClientIdRef = useRef<string | null>(null);
+  const quotationDocumentsTouchedRef = useRef(false);
 
   const [quotationNumber, setQuotationNumber] = useState('');
   const [quotationAmount, setQuotationAmount] = useState('');
@@ -162,6 +163,8 @@ export default function ClientDetailModal({
   const [quotationDocuments, setQuotationDocuments] = useState<QuotationDocumentsState>(() =>
     normalizeQuotationDocuments(null)
   );
+  const [quotationDocumentsLoaded, setQuotationDocumentsLoaded] = useState(false);
+  const [quotationDocumentsLoading, setQuotationDocumentsLoading] = useState(false);
   const [pricePerM2, setPricePerM2] = useState(0);
   const [salesPaymentType, setSalesPaymentType] = useState<'نقدي' | 'آجل'>('نقدي');
 
@@ -224,9 +227,49 @@ export default function ClientDetailModal({
   const [buildingUse, setBuildingUse] = useState('');
   const [buildingType, setBuildingType] = useState('');
   const [electricalRoomsCount, setElectricalRoomsCount] = useState('');
+  const [engineeringBasicLoading, setEngineeringBasicLoading] = useState(false);
+  const basicEngineeringRef = useRef<ReturnType<typeof parseProjectEngineeringData> | null>(null);
+
+  const hydrateEngineeringBasic = (source: unknown) => {
+    const eng = parseProjectEngineeringData(source as Parameters<typeof parseProjectEngineeringData>[0]);
+    basicEngineeringRef.current = eng;
+    setBuildingPermitNumber(
+      eng.building_plan.building_permit_number || eng.technical_report.building_permit_number || ''
+    );
+    setBuildingPermitDate(
+      eng.building_plan.building_permit_date || eng.technical_report.building_permit_date || ''
+    );
+    const loadedHijri = eng.building_plan.building_permit_date_hijri || '';
+    setBuildingPermitDateHijri(loadedHijri);
+    const loadedHijriParts = parseHijriParts(loadedHijri);
+    setHijriDay(loadedHijriParts ? String(loadedHijriParts.day) : '');
+    setHijriMonth(loadedHijriParts ? String(loadedHijriParts.month) : '');
+    setHijriYear(loadedHijriParts ? String(loadedHijriParts.year) : '');
+    setHijriConversionError('');
+    setBuildingPermitExpiryDate(eng.building_plan.building_permit_expiry_date || '');
+    setPermitType(eng.building_plan.permit_type || '');
+    setMunicipality(eng.building_plan.municipality || '');
+    setSubMunicipality(eng.building_plan.sub_municipality || '');
+    setPlanNumber(eng.building_plan.plan_number || '');
+    setSketchNumber(eng.building_plan.sketch_number || '');
+    setDeedNumber(eng.building_plan.deed_number || '');
+    setNorthing(eng.building_plan.northing || '');
+    setEasting(eng.building_plan.easting || '');
+    setLicensedFloorCount(
+      eng.building_plan.licensed_floor_count != null ? String(eng.building_plan.licensed_floor_count) : ''
+    );
+    setElectricalRoomsCount(
+      eng.building_plan.electrical_rooms_count != null ? String(eng.building_plan.electrical_rooms_count) : ''
+    );
+    setBuildingHeight(eng.building_plan.building_height_m || '');
+    setBuildingUse(eng.building_plan.building_use || '');
+    setBuildingType(eng.building_plan.building_type_code || '');
+  };
 
   useEffect(() => {
-    void loadCompanyProfile().then((profile) => setPricePerM2(Number(profile.price_per_m2) || 0));
+    // Pricing is the only company field required to open this form. Logos and
+    // print-only metadata remain lazy through the full profile loader.
+    void loadCompanyPricing().then(setPricePerM2);
   }, []);
 
   useEffect(() => {
@@ -267,7 +310,10 @@ export default function ClientDetailModal({
     }
     setQuotationNumber(hydrated.quotation_number || '');
     setQuotationServices(normalizeQuotationServices(hydrated.quotation_services));
+    quotationDocumentsTouchedRef.current = false;
+    const hasInitialDocuments = Object.prototype.hasOwnProperty.call(hydrated, 'quotation_documents');
     setQuotationDocuments(normalizeQuotationDocuments(hydrated.quotation_documents));
+    setQuotationDocumentsLoaded(hasInitialDocuments);
     const hydratedLevels = ensureFloorLevels(
       hydrated.floor_levels,
       hydrated.floors_count,
@@ -334,44 +380,56 @@ export default function ClientDetailModal({
       ensureFloorLevels(hydrated.floor_levels, hydrated.floors_count, hydrated.building_area)
     );
 
-    const eng = parseProjectEngineeringData(hydrated.project_engineering_data);
-    setBuildingPermitNumber(
-      eng.building_plan.building_permit_number || eng.technical_report.building_permit_number || ''
-    );
-    setBuildingPermitDate(
-      eng.building_plan.building_permit_date || eng.technical_report.building_permit_date || ''
-    );
-    const loadedHijri = eng.building_plan.building_permit_date_hijri || '';
-    setBuildingPermitDateHijri(loadedHijri);
-    const loadedHijriParts = parseHijriParts(loadedHijri);
-    setHijriDay(loadedHijriParts ? String(loadedHijriParts.day) : '');
-    setHijriMonth(loadedHijriParts ? String(loadedHijriParts.month) : '');
-    setHijriYear(loadedHijriParts ? String(loadedHijriParts.year) : '');
-    setHijriConversionError('');
-    setBuildingPermitExpiryDate(eng.building_plan.building_permit_expiry_date || '');
-    setPermitType(eng.building_plan.permit_type || '');
-    setMunicipality(eng.building_plan.municipality || '');
-    setSubMunicipality(eng.building_plan.sub_municipality || '');
-    setPlanNumber(eng.building_plan.plan_number || '');
-    setSketchNumber(eng.building_plan.sketch_number || '');
-    setDeedNumber(eng.building_plan.deed_number || '');
-    setNorthing(eng.building_plan.northing || '');
-    setEasting(eng.building_plan.easting || '');
-    setLicensedFloorCount(
-      eng.building_plan.licensed_floor_count != null ? String(eng.building_plan.licensed_floor_count) : ''
-    );
-    setElectricalRoomsCount(
-      eng.building_plan.electrical_rooms_count != null ? String(eng.building_plan.electrical_rooms_count) : ''
-    );
-    setBuildingHeight(eng.building_plan.building_height_m || '');
-    setBuildingUse(eng.building_plan.building_use || '');
-    setBuildingType(eng.building_plan.building_type_code || '');
+    hydrateEngineeringBasic(hydrated.project_engineering_data);
     baselineSyncPendingRef.current = true;
     setBaselineRevision((revision) => revision + 1);
     return () => {
       active = false;
     };
   }, [client?.id]);
+
+  useEffect(() => {
+    // Basic fields render immediately from the lightweight client projection. The
+    // permit/engineering segment hydrates independently and never blocks the form.
+    if (!isPagePresentation || !client?.id || client.project_engineering_data) return;
+    let active = true;
+    setEngineeringBasicLoading(true);
+    void import('@/lib/data/fetchers')
+      .then(({ fetchClientEngineeringLive }) => fetchClientEngineeringLive(client.id))
+      .then((engineering) => {
+        if (!active || !engineering) return;
+        hydrateEngineeringBasic(engineering);
+        baselineSyncPendingRef.current = true;
+        setBaselineRevision((revision) => revision + 1);
+      })
+      .finally(() => {
+        if (active) setEngineeringBasicLoading(false);
+      });
+    return () => {
+      active = false;
+    };
+  }, [client?.id, client?.project_engineering_data, isPagePresentation]);
+
+  useEffect(() => {
+    // Legacy attachment metadata may include oversized data URLs. Fetch it after
+    // the form appears, and never overwrite a document the user just changed.
+    if (!client?.id || Object.prototype.hasOwnProperty.call(client, 'quotation_documents')) return;
+    let active = true;
+    setQuotationDocumentsLoading(true);
+    void import('@/lib/data/fetchers')
+      .then(({ fetchClientQuotationDocuments }) => fetchClientQuotationDocuments(client.id))
+      .then((documents) => {
+        if (!active || quotationDocumentsTouchedRef.current || documents == null) return;
+        setQuotationDocuments(normalizeQuotationDocuments(documents));
+        setQuotationDocumentsLoaded(true);
+      })
+      .finally(() => {
+        if (active) setQuotationDocumentsLoading(false);
+      });
+    return () => {
+      active = false;
+    };
+  }, [client?.id, client?.quotation_documents]);
 
   useEffect(() => {
     if (!client || isDirty || quotationAmount || Number(client.quotation_amount || 0) > 0 || pricePerM2 <= 0) return;
@@ -909,7 +967,7 @@ export default function ClientDetailModal({
       return;
     }
 
-    const eng = parseProjectEngineeringData(client.project_engineering_data);
+    const eng = basicEngineeringRef.current || parseProjectEngineeringData(client.project_engineering_data);
     const building_plan = {
       ...eng.building_plan,
       building_permit_number: buildingPermitNumber.trim() || eng.building_plan.building_permit_number,
@@ -962,8 +1020,10 @@ export default function ClientDetailModal({
         floors_count: computedFloorsCount,
         floor_levels: floorLevels,
         project_status: projectStatus || null,
-        quotation_documents: quotationDocuments,
-        project_engineering_data: mergeProjectEngineeringData(eng, { building_plan, technical_report }),
+        ...(quotationDocumentsLoaded ? { quotation_documents: quotationDocuments } : {}),
+        // The loaded projection is intentionally partial. updateClientSafe reloads
+        // and deep-merges this patch only at save time, preserving reports/designs.
+        project_engineering_patch: { building_plan, technical_report },
       },
       'تم حفظ البيانات الأساسية وتفصيل الأدوار وبيانات رخصة البناء.'
     );
@@ -1064,12 +1124,17 @@ export default function ClientDetailModal({
                   <p className="text-[11px] text-emerald-800/80 mt-0.5">
                     أرفق المستندات لمراجعتها يدويًا، ثم أدخل بيانات الرخصة في الأقسام التالية.
                   </p>
+                  {quotationDocumentsLoading ? (
+                    <p className="text-[11px] text-emerald-800/80" role="status">جاري تحميل بيانات المرفقات…</p>
+                  ) : null}
                 </div>
                 <QuotationDocumentsUpload
                   value={quotationDocuments}
                   clientId={client.id}
                   disabled={saving}
                   onChange={(next) => {
+                    quotationDocumentsTouchedRef.current = true;
+                    setQuotationDocumentsLoaded(true);
                     setIsDirty(true);
                     setQuotationDocuments(next);
                     void updateClientSafe(client.id, { quotation_documents: next }).then((result) => {
@@ -1275,7 +1340,12 @@ export default function ClientDetailModal({
               </div>
 
               <div className="rounded-xl border border-slate-200 bg-white p-4 space-y-3">
-                <h3 className="text-sm font-bold text-slate-900">بيانات رخصة البناء</h3>
+                <div className="flex items-center justify-between gap-3">
+                  <h3 className="text-sm font-bold text-slate-900">بيانات رخصة البناء</h3>
+                  {engineeringBasicLoading ? (
+                    <span className="text-xs text-slate-500" role="status">جاري تحميل تفاصيل الرخصة…</span>
+                  ) : null}
+                </div>
                 <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
                   <div>
                     <label className="block text-xs font-semibold text-gray-700 mb-1">رقم رخصة البناء</label>

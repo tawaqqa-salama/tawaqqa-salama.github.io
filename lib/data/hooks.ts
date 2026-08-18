@@ -6,6 +6,7 @@ import {
   fetchClientById,
   fetchProjectsPage,
   fetchSalesBundle,
+  type ClientDetailScope,
   type SalesBundle,
 } from '@/lib/data/fetchers';
 import type { ClientRecord } from '@/lib/types/client';
@@ -54,10 +55,10 @@ export function useProjectsList(limit = PROJECTS_PAGE_SIZE, offset = 0) {
   };
 }
 
-export function useClientDetail(id: string | null) {
+export function useClientDetail(id: string | null, scope: ClientDetailScope = 'project') {
   const { data, error, isLoading, mutate } = useSWR(
-    id ? swrKeys.client(id) : null,
-    () => fetchClientById(id!),
+    id ? [...swrKeys.client(id), scope] : null,
+    () => fetchClientById(id!, undefined, scope),
     { ...SWR_DEFAULTS, revalidateOnMount: true }
   );
 
@@ -78,5 +79,7 @@ export async function invalidateErpLists() {
 }
 
 export async function invalidateClient(id: string) {
-  await globalMutate(swrKeys.client(id));
+  await globalMutate(
+    (key) => Array.isArray(key) && key[0] === 'client' && key[1] === id
+  );
 }

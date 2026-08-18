@@ -8,13 +8,13 @@ import {
   resolvePipelineStage,
   shouldShowInProjects,
 } from '@/lib/business/pipeline';
-import { getProjectReportProgress, parseProjectEngineeringData } from '@/lib/business/project-reports';
 import ResponsiveTable from '@/components/ui/ResponsiveTable';
 import { useProjectsList } from '@/lib/data/hooks';
 import { PROJECTS_PAGE_SIZE } from '@/lib/data/query-config';
 import { mergeLocalClientOverrides } from '@/lib/supabase/safe-client-write';
 import { useLanguage } from '@/lib/i18n/LanguageProvider';
 import type { ClientRecord } from '@/lib/types/client';
+import { markPageLoad } from '@/lib/performance/page-load-marks';
 
 type StatusFilter = 'all' | 'in_study' | 'completed' | 'archive' | 'everything';
 
@@ -58,17 +58,14 @@ const ProjectRow = memo(function ProjectRow({
   project: ClientRecord;
   onOpen: (project: ClientRecord) => void;
 }) {
-  const { progress, planStatus } = useMemo(() => {
-    try {
-      const parsed = parseProjectEngineeringData(project.project_engineering_data);
-      return {
-        progress: getProjectReportProgress(parsed),
-        planStatus: parsed.design_center?.status || parsed.building_plan?.status || 'مسودة',
-      };
-    } catch {
-      return { progress: 0, planStatus: 'مسودة' };
-    }
-  }, [project.project_engineering_data]);
+  // The list deliberately uses persisted lightweight workflow fields. Full engineering
+  // data is loaded only after the user opens this project's file.
+  const planStatus = project.engineering_status || 'غير متاح';
+  const progress = project.final_report_status === 'معتمد'
+    ? 100
+    : project.engineering_status === 'مكتمل'
+      ? 100
+      : null;
 
   const title = project.business_name || project.name || project.client_code || 'مشروع بدون اسم';
   const subtitle =
@@ -96,9 +93,9 @@ const ProjectRow = memo(function ProjectRow({
       <td className="p-4">
         <div className="flex items-center gap-2">
           <div className="flex-1 h-2 bg-gray-100 rounded-full max-w-[80px]">
-            <div className="h-full bg-indigo-600 rounded-full" style={{ width: `${progress}%` }} />
+            <div className="h-full bg-indigo-600 rounded-full" style={{ width: `${progress ?? 0}%` }} />
           </div>
-          <span className="text-xs">{progress}%</span>
+          <span className="text-xs">{progress == null ? '—' : `${progress}%`}</span>
         </div>
       </td>
       <td className="p-4">{project.assigned_engineer || '—'}</td>
@@ -124,6 +121,17 @@ export default function ProjectsPage() {
     projectPage * PROJECTS_PAGE_SIZE
   );
   const [statusFilter, setStatusFilter] = useState<StatusFilter>('all');
+
+  useEffect(() => {
+    markPageLoad('page-data-start');
+  }, [projectPage]);
+
+  useEffect(() => {
+    if (!loading) {
+      markPageLoad('page-data-ready');
+      markPageLoad('first-usable');
+    }
+  }, [loading]);
 
   const hydrated = useMemo(() => {
     const list = Array.isArray(rawProjects) ? rawProjects : [];
