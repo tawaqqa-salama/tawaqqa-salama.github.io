@@ -695,6 +695,7 @@ export default function ProjectReportModal({
                   />
                   <TechnicalReportSection
                     client={client}
+                    data={data}
                     report={data.technical_report}
                     saving={saving}
                     chapter={techReportChapter}
