@@ -132,7 +132,7 @@ export default function UsersSettingsPage() {
       setError(result.error);
       return;
     }
-    setMessage(form.id ? 'تم تحديث الموظف' : 'تم إضافة الموظف');
+    setMessage(form.id ? 'تم تحديث الموظف.' : result.message || 'تمت إضافة الموظف بنجاح.');
     setForm(EMPTY_FORM);
     await load();
     await refreshProfile();

@@ -96,6 +96,55 @@ async function resolveTenantIds(preferredCompanyId?: string | null): Promise<{
   };
 }
 
+type EmployeeProvisioningResult = {
+  user: AppUser | null;
+  error: string | null;
+  message?: string;
+};
+
+async function provisionEmployeeServerSide(input: {
+  full_name: string;
+  email: string;
+  phone: string;
+  username: string;
+  role_code: string;
+  job_title?: string;
+  password?: string;
+  extra_permissions?: PermissionCode[];
+  page_modules?: AppUser['page_modules'];
+  page_title?: string;
+  page_bio?: string;
+  is_active?: boolean;
+}): Promise<EmployeeProvisioningResult> {
+  const { data, error } = await supabase.functions.invoke('employee-provision', {
+    body: {
+      full_name: input.full_name,
+      email: input.email,
+      phone: input.phone,
+      username: input.username,
+      role_code: input.role_code,
+      job_title: input.job_title,
+      password: input.password,
+      extra_permissions: input.extra_permissions,
+      page_modules: input.page_modules,
+      page_title: input.page_title,
+      page_bio: input.page_bio,
+      is_active: input.is_active,
+    },
+  });
+  if (error) {
+    return { user: null, error: 'تعذر الاتصال بخدمة إضافة الموظفين. حاول مرة أخرى.' };
+  }
+  const result = data as { ok?: boolean; message?: string; user?: AppUser; code?: string } | null;
+  if (!result?.ok || !result.user) {
+    return {
+      user: null,
+      error: result?.message || 'تعذر إكمال إضافة الموظف. حاول مرة أخرى.',
+    };
+  }
+  return { user: result.user, error: null, message: result.message };
+}
+
 function toSession(user: AppUser, permissions: PermissionCode[], method: 'email' | 'phone'): AuthSession {
   const isPlatformAdmin = user.role_code === 'super_admin';
   return {
@@ -405,7 +454,7 @@ export async function upsertEmployee(input: {
   national_id?: string | null;
   iban?: string | null;
   hr_notes?: string | null;
-}): Promise<{ user: AppUser | null; error: string | null }> {
+}): Promise<EmployeeProvisioningResult> {
   const isUpdate = Boolean(input.id);
   const email = input.email.trim().toLowerCase();
   const phone = input.phone.replace(/\s+/g, '');
@@ -422,6 +471,25 @@ export async function upsertEmployee(input: {
       user: null,
       error: 'رقم الجوال غير صالح — استخدم 05xxxxxxxx أو صيغة دولية مثل +62812…',
     };
+  }
+
+  // Production provisioning is server-side only: the Edge Function derives company
+  // from the verified actor JWT and never receives a company identifier from this client.
+  if (!isUpdate && !isDemoMode) {
+    return provisionEmployeeServerSide({
+      full_name: input.full_name,
+      email,
+      phone,
+      username,
+      role_code: input.role_code || 'staff',
+      job_title: input.job_title,
+      password: input.password,
+      extra_permissions: input.extra_permissions,
+      page_modules: input.page_modules,
+      page_title: input.page_title,
+      page_bio: input.page_bio,
+      is_active: input.is_active,
+    });
   }
 
   const tenant = await resolveTenantIds(input.company_id || loadSession()?.companyId);
