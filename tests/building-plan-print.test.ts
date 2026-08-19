@@ -101,6 +101,18 @@ describe('Building plan print template', () => {
     expect((html.match(/<tr\b/g) || []).length).toBe(18);
   });
 
+  it('uses the reference A4 coordinate anchors and dynamic approval zones', () => {
+    const html = buildBuildingPlanPrintHtml(client, report, getBuildingPlanGeneralInfo(client), company);
+
+    expect(html).toContain('.project-info { left: 10.75mm; top: 37.08mm; width: 191.95mm; height: 31.24mm; }');
+    expect(html).toContain('.plan-table { position: absolute; left: 10.75mm; top: 69.51mm; width: 191.95mm; height: 87.79mm; }');
+    expect(html).toContain('.office-section { position: absolute; left: 10.75mm; top: 165.61mm; width: 191.95mm; height: 34.38mm; direction: rtl; }');
+    expect(html).toContain('.report-footer { position: absolute; left: 10.75mm; top: 254mm; width: 191.95mm;');
+    expect(html).toContain('class="stamp-zone"');
+    expect(html).toContain('class="signature-zone"');
+    expect(html).toContain('شركة السلامة الحالية');
+  });
+
   it('does not render fields or sections absent from the reference model', () => {
     const html = buildBuildingPlanPrintHtml(client, report, getBuildingPlanGeneralInfo(client), company);
 

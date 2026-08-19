@@ -38,7 +38,7 @@ function projectInfoRows(client: ClientRecord, report: BuildingPlanReport, gener
   const districtStreet = [general.district, general.street].filter((item) => item && item !== '—').join(' — ') || '—';
 
   return `
-    <table class="project-info">
+    <table class="project-info ref-table">
       <tr class="project-main">
         <td class="project-name"><strong>اسم المبنى:</strong><span>${isolateLatin(general.business_name)}</span></td>
         <td class="project-activity">${isolateLatin(general.activity_type_label)}</td>
@@ -84,16 +84,20 @@ function officeRows(client: ClientRecord, report: BuildingPlanReport, company: C
   const date = report.certification_date || report.report_date || '—';
   const stamp = company.stamp_url
     ? `<img class="office-stamp" src="${esc(company.stamp_url)}" alt="ختم المكتب" />`
-    : '<div class="stamp-fallback">—</div>';
+    : `<div class="stamp-text">${isolateLatin(company.stamp_text || company.name || '—')}</div>`;
 
   return `
-    <table class="office-table">
-      <tr class="office-head"><th>اسم المكتب</th><th>رقم السجل التجاري</th><th>الختم</th></tr>
-      <tr><td>${isolateLatin(officeName)}</td><td>${isolateLatin(registration)}</td><td class="stamp-cell" rowspan="3">${stamp}</td></tr>
-      <tr class="office-head"><th>ممثل المكتب</th><th>رقم العضوية الهندسية</th></tr>
-      <tr><td>${isolateLatin(engineer)}</td><td>${isolateLatin(membership)}</td></tr>
-      <tr class="office-head"><th>التاريخ</th><td>${isolateLatin(date)}</td><th>التوقيع</th></tr>
-    </table>`;
+    <section class="office-section">
+      <table class="office-table ref-table">
+        <tr class="office-head"><th>اسم المكتب</th><th>رقم السجل التجاري</th><th>الختم</th></tr>
+        <tr><td>${isolateLatin(officeName)}</td><td>${isolateLatin(registration)}</td><td class="stamp-grid-cell"></td></tr>
+        <tr class="office-head"><th>ممثل المكتب</th><th>رقم العضوية الهندسية</th><td class="stamp-grid-cell"></td></tr>
+        <tr><td>${isolateLatin(engineer)}</td><td>${isolateLatin(membership)}</td><td class="stamp-grid-cell"></td></tr>
+        <tr class="office-head"><th>التاريخ</th><td>${isolateLatin(date)}</td><th>التوقيع</th></tr>
+      </table>
+      <div class="stamp-zone">${stamp}</div>
+      <div class="signature-zone"><span>${isolateLatin(engineer)}</span></div>
+    </section>`;
 }
 
 function footerDetails(company: CompanyProfile): string {
@@ -121,49 +125,71 @@ export function buildBuildingPlanPrintHtml(
   <style>
     @page { size: A4 portrait; margin: 0; }
     * { box-sizing: border-box; }
-    html, body { width: 210mm; min-height: 0; margin: 0; padding: 0; background: #fff; color: #101010; font-family: Tahoma, Arial, sans-serif; font-size: 8.4px; }
-    .sheet { width: 210mm; height: 297mm; margin: 0; padding: 7mm 7.7mm 7mm 10.7mm; overflow: hidden; background: #fff; }
-    table { width: 100%; border-collapse: collapse; table-layout: fixed; }
+    html, body { width: 210mm; height: 297mm; min-height: 0; margin: 0; padding: 0; background: #fff; color: #0c0c0c; font-family: Tahoma, Arial, sans-serif; font-size: 8.4px; }
+    .sheet { width: 210mm; height: 297mm; position: relative; margin: 0; overflow: hidden; background: #fff; }
+    table { border-collapse: collapse; table-layout: fixed; }
     td, th { border: .5px solid #0e0e0e; vertical-align: middle; overflow-wrap: anywhere; }
+    .ref-table { position: absolute; direction: rtl; }
     .latin-term { direction: ltr; unicode-bidi: isolate; display: inline-block; text-align: left; }
-    .reference-header { height: 28.58mm; position: relative; direction: ltr; display: flex; align-items: flex-start; }
-    .brand { width: 54mm; height: 18mm; display: flex; align-items: flex-start; justify-content: flex-start; padding-top: 1.5mm; }
-    .company-logo { max-width: 48mm; max-height: 17mm; object-fit: contain; }
-    .company-wordmark { color: #267154; font-size: 11px; font-weight: 800; line-height: 1.25; }
-    .ornament { position: absolute; left: 0; right: 0; bottom: 9.1mm; height: 4mm; border-bottom: .5px solid #408469; }
-    .project-info { margin-top: 1.2mm; }
-    .project-main td { height: 14.3mm; background: #92d050; text-align: center; font-size: 10px; font-weight: 700; }
-    .project-main span { display: block; margin-top: 1mm; font-size: 9.4px; }
-    .project-name { width: 33.2%; text-align: right !important; padding: 1.6mm 2mm; }
-    .project-activity { width: 27.45%; }
+
+    /* إحداثيات الترويسة المرجعية */
+    .reference-header { position: absolute; left: 10.75mm; top: 3.4mm; width: 191.95mm; height: 28.2mm; direction: ltr; }
+    .brand { position: absolute; left: 0; top: 0; width: 58mm; height: 21mm; display: flex; align-items: flex-start; justify-content: flex-start; }
+    .company-logo { width: 58mm; height: 21mm; object-fit: contain; object-position: left top; }
+    .company-wordmark { width: 58mm; min-height: 18mm; color: #267154; font-size: 16px; font-weight: 800; line-height: 1.2; padding: 2.5mm 0 0 1mm; }
+    .ornament { position: absolute; left: 0; right: 0; top: 18.25mm; border-top: .55px solid #3d7e67; }
+
+    /* جدول بيانات المنشأة: صف أخضر 14.14mm وصف بيانات أبيض 17.1mm وفق المرجع */
+    .project-info { left: 10.75mm; top: 37.08mm; width: 191.95mm; height: 31.24mm; }
+    .project-main { height: 14.14mm; }
+    .project-detail { height: 17.1mm; }
+    .project-main td { background: #92d050; text-align: center; font-size: 10px; font-weight: 700; line-height: 1.12; padding: .55mm 1.25mm; }
+    .project-main span { display: block; margin-top: .55mm; font-size: 9.2px; }
+    .project-name { width: 33.35%; text-align: right !important; }
+    .project-activity { width: 27.5%; }
     .project-permit { width: 14.65%; }
-    .project-date { width: 24.7%; }
-    .project-detail td { height: 18.35mm; background: #fff; padding: 1.5mm 2.2mm; font-size: 9.6px; font-weight: 700; line-height: 1.65; vertical-align: top; }
-    .project-location { width: 33.2%; }
-    .project-city { width: 27.4%; text-align: center; }
-    .project-address { width: 39.4%; }
-    .plan-table { margin-top: 6.75mm; }
-    .plan-table td { height: 8.12mm; padding: .35mm 1.2mm; font-size: 10.2px; font-weight: 700; white-space: nowrap; }
+    .project-date { width: 24.5%; }
+    .project-detail td { background: #fff; padding: 1.1mm 1.55mm; font-size: 9.2px; font-weight: 700; line-height: 1.55; vertical-align: top; }
+    .project-location { width: 33.35%; }
+    .project-city { width: 27.5%; text-align: center; }
+    .project-address { width: 39.15%; }
+
+    /* جدول المخطط: x=10.75mm, y=69.51mm, 191.95 × 87.79mm */
+    .plan-table { position: absolute; left: 10.75mm; top: 69.51mm; width: 191.95mm; height: 87.79mm; }
+    .plan-table table { width: 100%; height: 100%; border-collapse: collapse; table-layout: fixed; }
+    .plan-table tr { height: 7.98mm; }
+    .plan-table td { padding: .28mm 1.15mm; font-size: 10.05px; font-weight: 700; line-height: 1.12; white-space: nowrap; }
     .plan-table tr:nth-child(odd) td { background: #92d050; }
-    .plan-label { width: 26.2%; text-align: right; }
+    .plan-label { width: 26.16%; text-align: right; }
     .plan-value { width: 26.47%; text-align: center; font-size: 11px !important; }
     .plan-bool-label { width: 28.13%; text-align: right; }
-    .choice { width: 9.6%; text-align: center; }
-    .office-section { margin-top: 12.1mm; }
-    .office-table { width: calc(100% + 1mm); position: relative; right: -1.04mm; }
-    .office-table th, .office-table td { padding: .25mm 1.2mm; font-size: 9.6px; height: 3.1mm; }
-    .office-table .office-head th, .office-table .office-head td { background: #92d050; font-size: 10px; font-weight: 800; }
+    .choice { width: 9.62%; text-align: center; }
+
+    /* اعتماد المكتب: x=10.75mm, y=165.61mm، الختم والتوقيع بمنطقة ثابتة */
+    .office-section { position: absolute; left: 10.75mm; top: 165.61mm; width: 191.95mm; height: 34.38mm; direction: rtl; }
+    .office-table { position: absolute; top: 0; right: 0; width: 100%; height: 20.3mm; }
+    .office-table tr:nth-child(1) { height: 3.65mm; }
+    .office-table tr:nth-child(2) { height: 4.65mm; }
+    .office-table tr:nth-child(3) { height: 3.65mm; }
+    .office-table tr:nth-child(4) { height: 4.65mm; }
+    .office-table tr:nth-child(5) { height: 3.7mm; }
+    .office-table th, .office-table td { padding: .2mm 1.1mm; font-size: 9.25px; line-height: 1.08; }
+    .office-table .office-head th, .office-table .office-head td { background: #92d050; font-size: 9.8px; font-weight: 800; }
     .office-table th:nth-child(1), .office-table td:nth-child(1) { width: 34.7%; }
-    .office-table th:nth-child(2), .office-table td:nth-child(2) { width: 32.585%; text-align: center; }
-    .office-table th:nth-child(3), .office-table td:nth-child(3) { width: 32.715%; text-align: center; }
-    .stamp-cell { height: 9.3mm; padding: .5mm !important; position: relative; overflow: visible; }
-    .office-stamp { display: block; max-width: 30mm; max-height: 22mm; margin: 0 auto; object-fit: contain; }
-    .stamp-fallback { width: 100%; height: 13.3mm; margin: 0; border: 0; color: #111; font-size: 10px; display: grid; place-items: center; text-align: center; padding: 0; }
-    .report-footer { margin-top: 53.75mm; border-top: 1px solid #3c846c; padding-top: 1.8mm; color: #3a6d5c; direction: rtl; font-size: 9.2px; font-weight: 700; line-height: 1.45; text-align: right; }
+    .office-table th:nth-child(2), .office-table td:nth-child(2) { width: 32.6%; text-align: center; }
+    .office-table th:nth-child(3), .office-table td:nth-child(3) { width: 32.7%; text-align: center; }
+    .stamp-grid-cell { color: transparent; }
+    .stamp-zone { position: absolute; left: 0; top: 3.65mm; width: 32.7%; height: 46mm; display: flex; align-items: flex-start; justify-content: center; padding: 1.2mm; background: transparent; }
+    .office-stamp { display: block; width: 100%; max-width: 30.8mm; height: 42mm; object-fit: contain; object-position: center top; }
+    .stamp-text { width: 30mm; min-height: 38mm; display: flex; align-items: center; justify-content: center; border: .5px solid #3c846c; color: #267154; font-size: 10px; font-weight: 800; text-align: center; padding: 2mm; line-height: 1.3; }
+    .signature-zone { position: absolute; left: 0; top: 29.1mm; width: 32.7%; height: 4.1mm; display: flex; align-items: center; justify-content: center; border-top: .5px solid #0e0e0e; font-size: 7.4px; color: #2e6552; background: #fff; }
+
+    /* التذييل المرجعي: خط ثابت عند y≈254mm، ومعلومات شركة ديناميكية */
+    .report-footer { position: absolute; left: 10.75mm; top: 254mm; width: 191.95mm; height: 15mm; border-top: 1px solid #3c846c; padding-top: 1.8mm; color: #3a6d5c; direction: rtl; font-size: 9.2px; font-weight: 700; line-height: 1.45; text-align: right; }
     .no-print { margin: 0; text-align: center; }
     .no-print button { padding: 7px 12px; font-size: 12px; }
     @media screen { body { background: #e5e7eb; padding: 10px 0 16px; } .sheet { margin: 0 auto; box-shadow: 0 8px 20px rgba(0,0,0,.12); } }
-    @media print { html, body { width: 210mm; height: auto; min-height: 0; overflow: visible; background: #fff; } body { margin: 0; padding: 0; } .no-print { display: none !important; } .sheet { width: 210mm; height: 297mm; min-height: 0; max-height: none; margin: 0; padding: 7mm 7.7mm 7mm 10.7mm; overflow: hidden; break-after: avoid-page; page-break-after: avoid; } }
+    @media print { html, body { width: 210mm; height: 297mm; overflow: hidden; background: #fff; } body { margin: 0; padding: 0; } .no-print { display: none !important; } .sheet { margin: 0; break-after: avoid-page; page-break-after: avoid; } }
   </style>
 </head>
 <body>
@@ -172,7 +198,7 @@ export function buildBuildingPlanPrintHtml(
     <header class="reference-header"><div class="brand">${logo}</div><div class="ornament"></div></header>
     ${projectInfoRows(client, report, general)}
     <section class="plan-table"><table>${planInfoRows(report, general)}</table></section>
-    <section class="office-section">${officeRows(client, report, company)}</section>
+    ${officeRows(client, report, company)}
     ${footerDetails(company)}
   </main>
 </body>
