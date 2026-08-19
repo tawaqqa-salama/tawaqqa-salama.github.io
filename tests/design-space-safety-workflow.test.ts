@@ -254,9 +254,13 @@ describe('Design Center space and safety working copy', () => {
     expect(design.space_safety?.floors).toHaveLength(2);
   });
 
-  it('keeps space safety first and drawings last with unified attachments only', () => {
+  it('keeps drawings and calculations second with a final unified hydraulic upload card', () => {
     expect(DESIGN_CENTER_TABS[0].id).toBe('space_safety');
-    expect(DESIGN_CENTER_TABS.at(-1)?.id).toBe('drawings');
+    expect(DESIGN_CENTER_TABS[1]).toMatchObject({
+      id: 'drawings',
+      label_ar: 'المخططات والحسابات',
+      label_en: 'Drawings & Calculations',
+    });
     const section = readFileSync(
       resolve(process.cwd(), 'components/projects/DesignCenterSection.tsx'),
       'utf8'
@@ -264,6 +268,7 @@ describe('Design Center space and safety working copy', () => {
     expect(section).not.toContain("['pdf', 'رفع PDF'");
     expect(section).toContain("tab === 'space_safety'");
     expect(section).toContain("tab === 'drawings'");
+    expect(section).toContain("'المخططات والحسابات'");
     expect(section).not.toContain('PlanAttachmentsUpload');
     expect(section).toContain('planAttachments={data.plan_attachments}');
     expect(section).toContain('onPlanAttachmentsChange');
@@ -275,12 +280,19 @@ describe('Design Center space and safety working copy', () => {
       'utf8'
     );
     expect(attachments).toContain('إرفاق ملف الحسابات الهيدروليكية');
+    expect(attachments).toContain("variant?: 'standard' | 'blueprint-card'");
+    const hydraulicCardStart = attachments.indexOf('function HydraulicCalculationsCard');
+    expect(hydraulicCardStart).toBeGreaterThan(-1);
+    expect(attachments.indexOf('إرفاق ملف الحسابات الهيدروليكية (PDF / CALC)', hydraulicCardStart)).toBeGreaterThan(hydraulicCardStart);
+    expect(attachments).toContain('اسحب الملف أو اختر للرفع');
     expect(attachments).toContain("'hydraulic_calculation', 'hydraulic_calculations'");
     const blueprints = readFileSync(
       resolve(process.cwd(), 'components/projects/SafetyBlueprintsUpload.tsx'),
       'utf8'
     );
     expect(blueprints).toContain("sections={['hydraulic_calculations']}");
+    expect(blueprints).toContain('variant="blueprint-card"');
+    expect(blueprints.indexOf('variant="blueprint-card"')).toBeGreaterThan(blueprints.indexOf('{SLOTS.map'));
     expect(blueprints).not.toContain('أقصى مسافة سفر (م) — لفحص Life Safety');
     expect(blueprints).not.toContain('عدد الشاغلين التقديري</span>');
     const spaceSection = readFileSync(

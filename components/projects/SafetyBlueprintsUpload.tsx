@@ -226,15 +226,6 @@ export default function SafetyBlueprintsUpload({
         ارفع المخطط المعماري ومخططات السلامة المعتمدة. عند اكتمال الرفع يُشغَّل فحص تلقائي وفق SBC وNFPA.
       </div>
 
-      {onPlanAttachmentsChange ? (
-        <PlanAttachmentsUpload
-          value={planAttachments || EMPTY_PLAN_ATTACHMENTS}
-          onChange={onPlanAttachmentsChange}
-          clientId={client.id}
-          sections={['hydraulic_calculations']}
-        />
-      ) : null}
-
       {error && (
         <div className="rounded-xl border border-rose-100 bg-rose-50 px-3 py-2 text-sm text-rose-700">
           {error}
@@ -305,6 +296,16 @@ export default function SafetyBlueprintsUpload({
           );
         })}
       </div>
+
+      {onPlanAttachmentsChange ? (
+        <PlanAttachmentsUpload
+          value={planAttachments || EMPTY_PLAN_ATTACHMENTS}
+          onChange={onPlanAttachmentsChange}
+          clientId={client.id}
+          sections={['hydraulic_calculations']}
+          variant="blueprint-card"
+        />
+      ) : null}
 
       <AiAuditReportModal
         open={reportOpen}

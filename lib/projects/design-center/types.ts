@@ -409,6 +409,7 @@ export const DESIGN_CENTER_TABS: {
   label_en: string;
 }[] = [
   { id: 'space_safety', label_ar: 'بيانات المساحات وأنظمة السلامة', label_en: 'Space & Safety Data' },
+  { id: 'drawings', label_ar: 'المخططات والحسابات', label_en: 'Drawings & Calculations' },
   { id: 'ai_center', label_ar: 'مركز الذكاء التصميمي', label_en: 'AI Design Center' },
   { id: 'smart_design', label_ar: 'التصميم الذكي', label_en: 'Smart Design' },
   { id: 'calculations', label_ar: 'الحسابات الهندسية', label_en: 'Engineering Calculations' },
@@ -419,7 +420,6 @@ export const DESIGN_CENTER_TABS: {
   },
   { id: 'review', label_ar: 'مراجعة التصميم', label_en: 'Design Review' },
   { id: 'exports', label_ar: 'المخرجات', label_en: 'Outputs' },
-  { id: 'drawings', label_ar: 'المخططات', label_en: 'Drawings' },
 ];
 
 export const ENGINE_NOT_CONFIGURED = 'ENGINE_NOT_CONFIGURED' as const;
