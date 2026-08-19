@@ -1,6 +1,6 @@
 'use client';
 
-import { getBuildingPlanGeneralInfo, formatYesNo } from '@/lib/projects/building-plan';
+import { formatYesNo, getBuildingPlanGeneralInfo } from '@/lib/projects/building-plan';
 import { DEFAULT_COMPANY_PROFILE, loadCompanyProfile, type CompanyProfile } from '@/lib/company-profile';
 import type { ClientRecord } from '@/lib/types/client';
 import type { BuildingPlanGeneralInfo, BuildingPlanReport } from '@/lib/types/project-reports';
@@ -23,57 +23,85 @@ function isolateLatin(value: string | number | null | undefined): string {
   return safe.replace(/([A-Za-z][A-Za-z0-9 .\/-]*)/g, '<bdi class="latin-term" dir="ltr">$1</bdi>');
 }
 
-function cell(label: string, value: string | number | null | undefined): string {
-  return `<td class="label">${isolateLatin(label)}</td><td class="value">${isolateLatin(value)}</td>`;
+function optionCells(value: string | null | undefined, header = false): string {
+  if (header) return '<td class="choice yes">نعم</td><td class="choice no">لا</td>';
+  const normalized = formatYesNo(value);
+  if (normalized === 'نعم') return '<td class="choice yes">نعم</td><td class="choice no"></td>';
+  if (normalized === 'لا') return '<td class="choice yes"></td><td class="choice no">لا</td>';
+  return '<td class="choice yes"></td><td class="choice no">—</td>';
 }
 
-function yesNoCell(label: string, value: string | null | undefined): string {
-  return `<td class="label">${isolateLatin(label)}</td><td class="yesno">${isolateLatin(formatYesNo(value))}</td>`;
-}
+function projectInfoRows(client: ClientRecord, report: BuildingPlanReport, general: BuildingPlanGeneralInfo): string {
+  const permitNumber = report.building_permit_number || client.license_number || '—';
+  const permitDate = report.building_permit_date_hijri || report.building_permit_date || '—';
+  const location = [general.city, general.district].filter((item) => item && item !== '—').join(' — ') || '—';
+  const districtStreet = [general.district, general.street].filter((item) => item && item !== '—').join(' — ') || '—';
 
-function approvalValue(preferred: string | null | undefined, fallback: string | null | undefined): string {
-  return text(preferred || fallback || '');
-}
-
-function optionalImage(source: string | null | undefined, className: string, alt: string): string {
-  return source ? `<img class="${className}" src="${esc(source)}" alt="${esc(alt)}" />` : '';
+  return `
+    <table class="project-info ref-table">
+      <tr class="project-main">
+        <td class="project-name"><strong>اسم المبنى:</strong><span>${isolateLatin(general.business_name)}</span></td>
+        <td class="project-activity">${isolateLatin(general.activity_type_label)}</td>
+        <td class="project-permit"><strong>رخصة البناء</strong><span>${isolateLatin(permitNumber)}</span></td>
+        <td class="project-date"><strong>تاريخ:</strong><span>${isolateLatin(permitDate)}</span></td>
+      </tr>
+      <tr class="project-detail">
+        <td class="project-location"><strong>الموقع:</strong> ${isolateLatin(location)}</td>
+        <td class="project-city"><strong>المدينة:</strong> ${isolateLatin(general.city)}<br/><strong>رقم القطعة:</strong> ${isolateLatin(general.plot_number)}</td>
+        <td class="project-address" colspan="2"><strong>الحي والشارع:</strong> ${isolateLatin(districtStreet)}<br/><strong>العنوان الوطني:</strong> ${isolateLatin(general.national_address)}</td>
+      </tr>
+    </table>`;
 }
 
 function planInfoRows(report: BuildingPlanReport, general: BuildingPlanGeneralInfo): string {
-  const leftRows: Array<[string, string]> = [
-    ['تصنيف الإشغال', report.occupancy_classification || ''],
-    ['نوع البناء', report.building_type_code || ''],
-    ['مساحة الموقع العام (م²)', report.total_site_area_m2 || general.land_area],
-    ['عدد الأدوار', report.floors_description || general.floors_count],
-    ['الارتفاع (م)', report.building_height_m || ''],
-    ['عدد أدوار القبو', report.basement_floors_count || ''],
-    ['العمق تحت الأرض (م)', report.underground_depth_m || ''],
-    ['عدد المخارج', report.exits_count || ''],
-    ['عدد السلالم', report.stairs_count || ''],
-    ['عدد السلالم الكهربائية', report.escalators_count || ''],
-    ['عدد المصاعد', report.elevators_count || ''],
+  const rows: Array<{ label: string; value: string; booleanLabel?: string; booleanValue?: string }> = [
+    { label: 'تصنيف الإشغال', value: report.occupancy_classification || '', booleanLabel: '', booleanValue: '__header__' },
+    { label: 'نوع البناء', value: report.building_type_code || '', booleanLabel: 'المبنى عالي (High Rise)', booleanValue: report.high_rise_building },
+    { label: 'مساحة الموقع العام (م²)', value: report.total_site_area_m2 || general.land_area, booleanLabel: 'يوجد بهو (Atrium)', booleanValue: report.atrium_exists },
+    { label: 'عدد الأدوار', value: report.floors_description || general.floors_count, booleanLabel: 'المبنى تحت الأرض', booleanValue: report.underground_building },
+    { label: 'الارتفاع (م)', value: report.building_height_m || '', booleanLabel: 'المبنى بلا نوافذ', booleanValue: report.windowless_building },
+    { label: 'عدد أدوار القبو', value: report.basement_floors_count || '', booleanLabel: 'يوجد نظام تأريض كهربائي', booleanValue: report.electrical_grounding },
+    { label: 'العمق تحت الأرض', value: report.underground_depth_m || '', booleanLabel: 'يوجد نظام حماية من الصواعق', booleanValue: report.lightning_protection },
+    { label: 'عدد المخارج', value: report.exits_count || '', booleanLabel: 'يوجد مولد احتياطي', booleanValue: report.backup_generator },
+    { label: 'عدد السلالم', value: report.stairs_count || '', booleanLabel: 'تم إضافة أو استثناء متطلبات بالكود', booleanValue: report.sbc_code_exceptions },
+    { label: 'عدد السلالم الكهربائية', value: report.escalators_count || '', booleanLabel: 'يلزم توفير فرق إطفاء وإنقاذ خاصة', booleanValue: report.special_rescue_team_required },
+    { label: 'عدد المصاعد', value: report.elevators_count || '', booleanLabel: '', booleanValue: '' },
   ];
 
-  const rightRows: Array<[string, string]> = [
-    ['المبنى عالي (High Rise)', formatYesNo(report.high_rise_building)],
-    ['يوجد بهو (Atrium)', formatYesNo(report.atrium_exists)],
-    ['المبنى تحت الأرض', formatYesNo(report.underground_building)],
-    ['المبنى بلا نوافذ', formatYesNo(report.windowless_building)],
-    ['يوجد تأريض كهربائي', formatYesNo(report.electrical_grounding)],
-    ['يوجد حماية من الصواعق', formatYesNo(report.lightning_protection)],
-    ['يوجد مولد احتياطي', formatYesNo(report.backup_generator)],
-    ['إضافة/استثناء متطلبات بالكود', formatYesNo(report.sbc_code_exceptions)],
-    ['يلزم فرق إطفاء وإنقاذ خاصة', formatYesNo(report.special_rescue_team_required)],
-    ['—', ''],
-    ['—', ''],
-  ];
-
-  return leftRows
-    .map((left, index) => {
-      const right = rightRows[index];
-      return `<tr>${cell(left[0], left[1])}${yesNoCell(right[0], right[1])}</tr>`;
+  return rows
+    .map((row, index) => {
+      const choices = index === 0 ? optionCells('', true) : optionCells(row.booleanValue);
+      return `<tr><td class="plan-label">${isolateLatin(row.label)}</td><td class="plan-value">${isolateLatin(row.value)}</td><td class="plan-bool-label">${isolateLatin(row.booleanLabel || '')}</td>${choices}</tr>`;
     })
     .join('');
+}
+
+function officeRows(client: ClientRecord, report: BuildingPlanReport, company: CompanyProfile): string {
+  const officeName = company.legal_name || company.name || report.office_name || '—';
+  const engineer = report.engineer_representative || client.assigned_engineer || '—';
+  const registration = company.commercial_register || report.commercial_registration || '—';
+  const membership = company.membership_id || report.engineering_membership_no || '—';
+  const date = report.certification_date || report.report_date || '—';
+  const stamp = company.stamp_url
+    ? `<img class="office-stamp" src="${esc(company.stamp_url)}" alt="ختم المكتب" />`
+    : '';
+
+  return `
+    <section class="office-section">
+      <table class="office-table ref-table">
+        <tr class="office-head"><th>اسم المكتب</th><th>رقم السجل التجاري</th><th>الختم</th></tr>
+        <tr><td>${isolateLatin(officeName)}</td><td>${isolateLatin(registration)}</td><td class="stamp-cell" rowspan="3">${stamp}</td></tr>
+        <tr class="office-head"><th>ممثل المكتب</th><th>رقم العضوية الهندسية</th></tr>
+        <tr><td>${isolateLatin(engineer)}</td><td>${isolateLatin(membership)}</td></tr>
+        <tr class="office-head"><th>التاريخ</th><td>${isolateLatin(date)}</td><th class="signature-cell"><span>التوقيع</span><small>${isolateLatin(engineer)}</small></th></tr>
+      </table>
+    </section>`;
+}
+
+function footerDetails(company: CompanyProfile): string {
+  const lineOne = [company.legal_name || company.name, company.address, company.city].filter(Boolean).join(' — ') || '—';
+  const lineTwo = [company.phone ? `جوال الإدارة: ${company.phone}` : '', company.fax ? `فاكس: ${company.fax}` : '', company.email || ''].filter(Boolean).join(' — ') || '—';
+  return `<footer class="report-footer"><div>${isolateLatin(lineOne)}</div><div>${isolateLatin(lineTwo)}</div></footer>`;
 }
 
 export function buildBuildingPlanPrintHtml(
@@ -82,134 +110,94 @@ export function buildBuildingPlanPrintHtml(
   general: BuildingPlanGeneralInfo,
   company: CompanyProfile = DEFAULT_COMPANY_PROFILE
 ): string {
-  const officeName = approvalValue(company.legal_name || company.name, report.office_name);
-  const commercialRegistration = approvalValue(company.commercial_register, report.commercial_registration);
-  const membership = approvalValue(company.membership_id, report.engineering_membership_no);
-  const engineer = approvalValue(report.engineer_representative || client.assigned_engineer, '');
-  const reportDate = text(report.report_date || report.certification_date);
-  const city = text(report.manual_city || general.city);
-  const district = text(report.manual_district || general.district);
-  const location = [city, district, general.street !== '—' ? general.street : ''].filter((item) => item && item !== '—').join(' — ') || '—';
-  const permitNumber = report.building_permit_number || client.license_number || '—';
-  const permitDate = report.building_permit_date || '—';
-  const officeLogo = optionalImage(company.logo_url, 'company-logo', 'شعار الشركة');
-  const officeStamp = optionalImage(company.stamp_url, 'company-stamp', 'ختم الشركة');
+  const logo = company.logo_url
+    ? `<img class="company-logo" src="${esc(company.logo_url)}" alt="شعار المكتب" />`
+    : `<div class="company-wordmark">${isolateLatin(company.name || '—')}</div>`;
 
   return `<!DOCTYPE html>
 <html lang="ar" dir="rtl">
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>تقرير معلومات المخطط — ${esc(general.business_name)}</title>
+  <title>معلومات المخطط — ${esc(general.business_name)}</title>
   <style>
     @page { size: A4 portrait; margin: 0; }
     * { box-sizing: border-box; }
-    html, body { width: 210mm; min-height: 0; margin: 0; padding: 0; background: #fff; color: #152012; font-family: Tahoma, "Segoe UI", Arial, sans-serif; font-size: 9px; }
-    .sheet { width: 210mm; height: 297mm; margin: 0; padding: 7.5mm 9mm 7mm; overflow: hidden; background: #fff; display: flex; flex-direction: column; }
-    .doc-head { display: grid; grid-template-columns: 44mm 1fr 44mm; align-items: center; min-height: 22mm; border-top: .8px solid #5a7d47; border-bottom: 1.2px solid #5a7d47; padding: 1.5mm 0 2mm; flex: 0 0 auto; }
-    .brand-mark { min-height: 17mm; display: flex; align-items: center; justify-content: flex-start; }
-    .company-logo { max-width: 40mm; max-height: 17mm; object-fit: contain; }
-    .company-fallback { color: #4f7e56; font-size: 10.5px; font-weight: 800; line-height: 1.35; }
-    .doc-title { text-align: center; }
-    .doc-title h1 { margin: 0; font-size: 14.5px; line-height: 1.22; color: #1e3218; }
-    .doc-title p { margin: 1px 0 0; color: #5b6d62; font-size: 8.4px; letter-spacing: .05px; direction: ltr; unicode-bidi: isolate; }
-    .doc-status { text-align: left; color: #4e6b3b; font-size: 8px; font-weight: 700; }
-    .doc-status span { display: inline-block; border: 1px solid #94b772; padding: 1.15mm 2.3mm; background: #f2f8eb; }
-    table { width: 100%; border-collapse: collapse; table-layout: fixed; }
-    th, td { border: .55px solid #557044; vertical-align: middle; line-height: 1.2; overflow-wrap: anywhere; }
-    th { padding: 1.45mm 1.8mm; color: #fff; background: #638b4e; text-align: center; font-size: 9.4px; font-weight: 800; }
-    td { padding: 1.22mm 1.65mm; }
-    .label { width: 17%; background: #e3efd5; font-weight: 700; color: #314923; font-size: 8.3px; }
-    .value { width: 33%; color: #172212; font-size: 8.55px; }
-    .yesno { width: 33%; text-align: center; color: #172212; font-size: 8.7px; font-weight: 700; }
+    html, body { width: 210mm; height: 297mm; min-height: 0; margin: 0; padding: 0; background: #fff; color: #0c0c0c; font-family: Tahoma, Arial, sans-serif; font-size: 8.4px; }
+    .sheet { width: 210mm; height: 297mm; position: relative; margin: 0; overflow: hidden; background: #fff; }
+    table { border-collapse: collapse; table-layout: fixed; }
+    td, th { border: .5px solid #0e0e0e; vertical-align: middle; overflow-wrap: anywhere; }
+    .ref-table { position: absolute; direction: rtl; }
     .latin-term { direction: ltr; unicode-bidi: isolate; display: inline-block; text-align: left; }
-    .building { margin-top: 3.2mm; }
-    .building .label { width: 15%; }
-    .building .value { width: 35%; }
-    .section-title { margin: 0 0 1.35mm; padding: 1.35mm 2.2mm; background: #638b4e; color: #fff; font-size: 9.5px; font-weight: 800; text-align: center; border: .55px solid #557044; }
-    .plan-info { margin-top: 3.2mm; }
-    .plan-info tr { height: 6.1mm; }
-    .plan-info .label { width: 18%; }
-    .plan-info .value, .plan-info .yesno { width: 32%; }
-    .safety { margin-top: 3.2mm; }
-    .safety td { font-size: 8px; padding-top: 1.35mm; padding-bottom: 1.35mm; }
-    .safety .label { width: 18%; }
-    .safety .yesno { width: 32%; }
-    .safety .wide { width: 82%; }
-    .approval { margin-top: auto; padding-top: 4.5mm; }
-    .approval .section-title { background: #635bdb; border-color: #4e47b8; }
-    .approval .label { width: 18%; }
-    .approval .value { width: 32%; }
-    .approval tr { height: 5.7mm; }
-    .approval th, .approval td { border-color: #596d4a; }
-    .approval-grid { display: grid; grid-template-columns: 1fr 1fr 1fr; min-height: 75mm; border: .55px solid #557044; border-top: 0; background: #fbfdf8; }
-    .signature-box { padding: 3mm 2.5mm; text-align: center; border-inline-start: .55px solid #557044; font-size: 8.4px; display: flex; flex-direction: column; justify-content: space-between; }
-    .signature-box:first-child { border-inline-start: 0; }
-    .sign-line { margin-top: 38mm; border-top: .55px solid #697a61; padding-top: 1.25mm; }
-    .company-stamp { max-width: 31mm; max-height: 31mm; object-fit: contain; margin: 0 auto; }
-    .stamp-fallback { width: 29mm; height: 29mm; margin: 0 auto; border: 1.2px dashed #635bdb; border-radius: 50%; display: grid; place-items: center; color: #635bdb; font-size: 7px; line-height: 1.1; padding: 1.8mm; }
+
+    /* إحداثيات الترويسة المرجعية */
+    .reference-header { position: absolute; left: 10.75mm; top: 3.4mm; width: 191.95mm; height: 28.2mm; direction: ltr; }
+    .brand { position: absolute; left: 0; top: 0; width: 58mm; height: 21mm; display: flex; align-items: flex-start; justify-content: flex-start; }
+    .company-logo { width: 58mm; height: 21mm; object-fit: contain; object-position: left top; }
+    .company-wordmark { width: 58mm; min-height: 18mm; color: #267154; font-size: 16px; font-weight: 800; line-height: 1.2; padding: 2.5mm 0 0 1mm; }
+    .ornament { position: absolute; left: 0; right: 0; top: 18.25mm; border-top: .55px solid #3d7e67; }
+
+    /* جدول بيانات المنشأة: صف أخضر 14.14mm وصف بيانات أبيض 17.1mm وفق المرجع */
+    .project-info { left: 10.75mm; top: 37.08mm; width: 191.95mm; height: 31.24mm; }
+    .project-main { height: 14.14mm; }
+    .project-detail { height: 17.1mm; }
+    .project-main td { background: #92d050; text-align: center; font-size: 10px; font-weight: 700; line-height: 1.12; padding: .55mm 1.25mm; }
+    .project-main span { display: block; margin-top: .55mm; font-size: 9.2px; }
+    .project-name { width: 33.35%; text-align: right !important; }
+    .project-activity { width: 27.5%; }
+    .project-permit { width: 14.65%; }
+    .project-date { width: 24.5%; }
+    .project-detail td { background: #fff; padding: 1.1mm 1.55mm; font-size: 9.2px; font-weight: 700; line-height: 1.55; vertical-align: top; }
+    .project-location { width: 33.35%; }
+    .project-city { width: 27.5%; text-align: center; }
+    .project-address { width: 39.15%; }
+
+    /* جدول المخطط: x=10.75mm, y=69.51mm, 191.95 × 87.79mm */
+    .plan-table { position: absolute; left: 10.75mm; top: 69.51mm; width: 191.95mm; height: 87.79mm; }
+    .plan-table table { width: 100%; height: 100%; border-collapse: collapse; table-layout: fixed; }
+    .plan-table tr { height: 7.98mm; }
+    .plan-table td { padding: .28mm 1.15mm; font-size: 10.05px; font-weight: 700; line-height: 1.12; white-space: nowrap; }
+    .plan-table tr:nth-child(odd) td { background: #92d050; }
+    .plan-label { width: 26.16%; text-align: right; }
+    .plan-value { width: 26.47%; text-align: center; font-size: 11px !important; }
+    .plan-bool-label { width: 28.13%; text-align: right; }
+    .choice { width: 9.62%; text-align: center; }
+
+    /* اعتماد المكتب: x=10.75mm, y=165.61mm، الختم والتوقيع بمنطقة ثابتة */
+    .office-section { position: absolute; left: 10.75mm; top: 165.61mm; width: 191.95mm; height: 34.38mm; direction: rtl; }
+    .office-table { position: absolute; top: 0; right: 0; width: 100%; height: 23.8mm; }
+    .office-table tr:nth-child(1) { height: 4.4mm; }
+    .office-table tr:nth-child(2) { height: 5.4mm; }
+    .office-table tr:nth-child(3) { height: 4.3mm; }
+    .office-table tr:nth-child(4) { height: 5.4mm; }
+    .office-table tr:nth-child(5) { height: 4.3mm; }
+    .office-table th, .office-table td { padding: .28mm 1.1mm; font-size: 9.25px; line-height: 1.08; }
+    .office-table .office-head th, .office-table .office-head td { background: #92d050; font-size: 9.8px; font-weight: 800; }
+    .office-table th:nth-child(1), .office-table td:nth-child(1) { width: 34.7%; }
+    .office-table th:nth-child(2), .office-table td:nth-child(2) { width: 32.6%; text-align: center; }
+    .office-table th:nth-child(3), .office-table td:nth-child(3) { width: 32.7%; text-align: center; }
+    .stamp-cell { padding: .7mm !important; background: #fff; text-align: center; vertical-align: top; }
+    .office-stamp { display: block; width: 100%; max-width: 30.8mm; height: 14.2mm; margin: 0 auto; object-fit: contain; object-position: center top; }
+    .signature-cell { text-align: center; vertical-align: middle; }
+    .signature-cell span, .signature-cell small { display: block; }
+    .signature-cell small { margin-top: .45mm; color: #2e6552; font-size: 7.2px; font-weight: 500; }
+
+    /* التذييل المرجعي: خط ثابت عند y≈254mm، ومعلومات شركة ديناميكية */
+    .report-footer { position: absolute; left: 10.75mm; top: 254mm; width: 191.95mm; height: 15mm; border-top: 1px solid #3c846c; padding-top: 1.8mm; color: #3a6d5c; direction: rtl; font-size: 9.2px; font-weight: 700; line-height: 1.45; text-align: right; }
     .no-print { margin: 0; text-align: center; }
     .no-print button { padding: 7px 12px; font-size: 12px; }
-    @media screen {
-      body { background: #e5e7eb; padding: 10px 0 16px; }
-      .sheet { margin: 0 auto; box-shadow: 0 8px 20px rgba(0,0,0,.12); }
-    }
-    @media print {
-      html, body { width: 210mm; height: auto; min-height: 0; overflow: visible; background: #fff; }
-      body { margin: 0; padding: 0; }
-      .no-print { display: none !important; }
-      .sheet { width: 210mm; height: 297mm; min-height: 0; max-height: none; margin: 0; padding: 7.5mm 9mm 7mm; overflow: hidden; break-after: avoid-page; page-break-after: avoid; }
-    }
+    @media screen { body { background: #e5e7eb; padding: 10px 0 16px; } .sheet { margin: 0 auto; box-shadow: 0 8px 20px rgba(0,0,0,.12); } }
+    @media print { html, body { width: 210mm; height: 297mm; overflow: hidden; background: #fff; } body { margin: 0; padding: 0; } .no-print { display: none !important; } .sheet { margin: 0; break-after: avoid-page; page-break-after: avoid; } }
   </style>
 </head>
 <body>
   <div class="no-print"><button onclick="window.print()">طباعة / حفظ PDF</button></div>
   <main class="sheet">
-    <header class="doc-head">
-      <div class="brand-mark">${officeLogo || `<div class="company-fallback">${esc(officeName)}</div>`}</div>
-      <div class="doc-title"><h1>تقرير معلومات المخطط</h1><p>Building Plan Information Report</p></div>
-      <div class="doc-status"><span>${esc(text(report.status))}</span></div>
-    </header>
-
-    <section class="building">
-      <div class="section-title">بيانات المنشأة</div>
-      <table>
-        <tr>${cell('اسم المنشأة / المبنى', general.business_name)}${cell('اسم المالك', general.owner_name)}</tr>
-        <tr>${cell('نوع النشاط', general.activity_type_label)}${cell('الموقع', location)}</tr>
-        <tr>${cell('العنوان الوطني', general.national_address)}${cell('رقم القطعة', general.plot_number)}</tr>
-        <tr>${cell('رقم رخصة البناء', permitNumber)}${cell('تاريخ رخصة البناء', permitDate)}</tr>
-      </table>
-    </section>
-
-    <section class="plan-info">
-      <div class="section-title">معلومات المخطط</div>
-      <table>
-        ${planInfoRows(report, general)}
-      </table>
-      <div class="safety">
-        <div class="section-title">أنظمة السلامة والاعتماد</div>
-        <table>
-          <tr>${yesNoCell('نظام إنذار الحريق', report.fire_alarm_system)}${yesNoCell('نظام رش آلي', report.sprinkler_system)}</tr>
-          <tr><td class="label">${isolateLatin('متطلبات SBC')}</td><td class="wide" colspan="3">${isolateLatin(report.sbc_requirements)}</td></tr>
-          <tr><td class="label">أبواب ومخارج الطوارئ</td><td class="wide" colspan="3">${isolateLatin(report.emergency_exits_doors)}</td></tr>
-          <tr><td class="label">حالة اعتماد المخطط</td><td class="value">${isolateLatin(report.plan_approval_status || report.status)}</td><td class="label">ملاحظات المعالجة الفنية</td><td class="value">${isolateLatin(report.technical_inspection_notes)}</td></tr>
-        </table>
-      </div>
-    </section>
-
-    <footer class="approval">
-      <div class="section-title">اعتماد المكتب الاستشاري</div>
-      <table>
-        <tr>${cell('اسم المكتب', officeName)}${cell('السجل التجاري', commercialRegistration)}</tr>
-        <tr>${cell('ممثل المكتب / المهندس', engineer)}${cell('رقم العضوية الهندسية', membership)}</tr>
-        <tr>${cell('التاريخ', reportDate)}${cell('حالة الاعتماد', report.plan_approval_status || report.status)}</tr>
-      </table>
-      <div class="approval-grid">
-        <div class="signature-box"><span>توقيع المهندس</span><span class="sign-line">${esc(engineer)}</span></div>
-        <div class="signature-box"><span>الختم</span>${officeStamp || `<span class="stamp-fallback">${esc(text(company.stamp_text || officeName))}</span>`}<span>${esc(officeName)}</span></div>
-        <div class="signature-box"><span>اعتماد المكتب</span><span class="sign-line">........................</span></div>
-      </div>
-    </footer>
+    <header class="reference-header"><div class="brand">${logo}</div><div class="ornament"></div></header>
+    ${projectInfoRows(client, report, general)}
+    <section class="plan-table"><table>${planInfoRows(report, general)}</table></section>
+    ${officeRows(client, report, company)}
+    ${footerDetails(company)}
   </main>
 </body>
 </html>`;
@@ -221,7 +209,7 @@ export async function printBuildingPlanReport(client: ClientRecord, report: Buil
   const html = buildBuildingPlanPrintHtml(client, report, general, company);
   const { openDocumentPreview } = await import('@/lib/print/document-preview');
   openDocumentPreview({
-    title: `تقرير معلومات المخطط — ${client.client_code}`,
+    title: `معلومات المخطط — ${client.client_code}`,
     html,
     fileName: `building-plan-${client.client_code}`,
   });

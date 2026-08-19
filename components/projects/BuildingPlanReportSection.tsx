@@ -1,7 +1,11 @@
 'use client';
 
 import { useMemo } from 'react';
-import { getBuildingPlanGeneralInfo } from '@/lib/projects/building-plan';
+import {
+  derivePlanInfoFromSpaceSafety,
+  getBuildingPlanGeneralInfo,
+  resolveBuildingPlanWithSpaceSafety,
+} from '@/lib/projects/building-plan';
 import { printBuildingPlanReport, exportBuildingPlanReport } from '@/components/projects/BuildingPlanPrint';
 import {
   normalizeConstructionValue,
@@ -12,11 +16,13 @@ import {
 } from '@/lib/projects/sbc-recommendation';
 import type { ClientRecord } from '@/lib/types/client';
 import type { BuildingPlanReport, YesNoValue } from '@/lib/types/project-reports';
+import type { DesignSpaceSafetyWorkingCopy } from '@/lib/projects/design-center/types';
 import { normalizeQuotationDocuments } from '@/lib/business/quotation-documents';
 
 interface BuildingPlanReportSectionProps {
   client: ClientRecord;
   report: BuildingPlanReport;
+  spaceSafety?: DesignSpaceSafetyWorkingCopy | null;
   saving: boolean;
   onChange: (report: BuildingPlanReport) => void;
   onSave: (report: BuildingPlanReport, message: string) => void;
@@ -33,6 +39,7 @@ const REPORT_STATUSES = ['مسودة', 'قيد الإعداد', 'مكتمل', '�
 export default function BuildingPlanReportSection({
   client,
   report,
+  spaceSafety,
   saving,
   onChange,
   onSave,
@@ -40,6 +47,11 @@ export default function BuildingPlanReportSection({
   const general = getBuildingPlanGeneralInfo(client);
   const salesDocs = normalizeQuotationDocuments(client.quotation_documents);
   const salesPermitFile = salesDocs.building_permit;
+  const derived = useMemo(() => derivePlanInfoFromSpaceSafety(spaceSafety), [spaceSafety]);
+  const reportForOutput = useMemo(
+    () => resolveBuildingPlanWithSpaceSafety(report, derived),
+    [report, derived]
+  );
 
   const patch = (partial: Partial<BuildingPlanReport>) => onChange({ ...report, ...partial });
 
@@ -96,6 +108,7 @@ export default function BuildingPlanReportSection({
           <ReadOnlyField label="العنوان الوطني" value={general.national_address} />
         </div>
       </section>
+
 
       {/* Building permit — read-only from Sales (no upload here) */}
       <section className="rounded-xl border border-slate-200 bg-slate-50/80 p-4 space-y-3">
@@ -256,10 +269,10 @@ export default function BuildingPlanReportSection({
         <button type="button" onClick={saveApproved} disabled={saving} className="px-4 py-2 bg-[#635bdb] text-white rounded-xl text-sm disabled:opacity-50">
           اعتماد نهائي
         </button>
-        <button type="button" onClick={() => printBuildingPlanReport(client, report)} className="px-4 py-2 bg-indigo-600 text-white rounded-xl text-sm">
+        <button type="button" onClick={() => printBuildingPlanReport(client, reportForOutput)} className="px-4 py-2 bg-indigo-600 text-white rounded-xl text-sm">
           طباعة
         </button>
-        <button type="button" onClick={() => exportBuildingPlanReport(client, report)} className="px-4 py-2 bg-blue-50 text-blue-700 border border-blue-200 rounded-xl text-sm">
+        <button type="button" onClick={() => exportBuildingPlanReport(client, reportForOutput)} className="px-4 py-2 bg-blue-50 text-blue-700 border border-blue-200 rounded-xl text-sm">
           تصدير HTML
         </button>
       </div>

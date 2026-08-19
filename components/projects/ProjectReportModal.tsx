@@ -545,6 +545,7 @@ export default function ProjectReportModal({
                   <BuildingPlanReportSection
                     client={client}
                     report={data.building_plan}
+                    spaceSafety={data.design_center.space_safety}
                     saving={saving}
                     onChange={(building_plan) =>
                       patch({
