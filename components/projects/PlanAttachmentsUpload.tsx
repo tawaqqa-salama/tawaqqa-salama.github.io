@@ -86,7 +86,7 @@ export default function PlanAttachmentsUpload({ value, onChange, clientId }: Pro
       ) : null}
 
       <div className="rounded-xl border p-4 space-y-2">
-        <h4 className="text-sm font-bold text-gray-900">المخططات الهندسية (DWG / PDF)</h4>
+        <h4 className="text-sm font-bold text-gray-900">إرفاق المخططات الهندسية (DWG / PDF)</h4>
         <input
           type="file"
           accept=".dwg,.dxf,.pdf,.png,.jpg,.jpeg"
@@ -99,12 +99,13 @@ export default function PlanAttachmentsUpload({ value, onChange, clientId }: Pro
       </div>
 
       <div className="rounded-xl border p-4 space-y-2">
-        <h4 className="text-sm font-bold text-gray-900">الحسابات الهيدروليكية (PDF / CALC)</h4>
+        <h4 className="text-sm font-bold text-gray-900">إرفاق ملف الحسابات الهيدروليكية (PDF / CALC)</h4>
         <input
           type="file"
           accept=".pdf,.calc,.xlsx,.xls,.csv"
           multiple
           disabled={uploading}
+          aria-label="إرفاق ملف الحسابات الهيدروليكية"
           onChange={(e) =>
             void addFiles(e.target.files, 'hydraulic_calculation', 'hydraulic_calculations')
           }

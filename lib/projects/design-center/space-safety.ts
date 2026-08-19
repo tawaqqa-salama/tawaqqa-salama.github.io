@@ -34,6 +34,13 @@ export function nonNegativeInteger(value: unknown): number {
   return Math.max(0, Math.floor(Number(value) || 0));
 }
 
+/** Preserve an absent engineering metric as null instead of silently turning it into zero. */
+export function optionalNonNegativeNumber(value: unknown): number | null {
+  if (value === null || value === undefined || value === '') return null;
+  const numeric = Number(value);
+  return Number.isFinite(numeric) ? Math.max(0, numeric) : null;
+}
+
 function normalizeQuantities(raw?: Partial<DesignSpaceSafetyQuantities> | null): DesignSpaceSafetyQuantities {
   return {
     sprinklers: nonNegativeInteger(raw?.sprinklers),
@@ -69,6 +76,8 @@ function suggestedArea(
     label: usage.label || 'مساحة غير مسماة',
     activity_type: activity,
     area_m2: Math.max(0, Number(usage.area_m2) || 0),
+    estimated_occupants: null,
+    max_travel_distance_m: null,
     hazard_suggested: zone.risk_label || 'تتطلب مراجعة مهندس',
     hazard_approved: null,
     hazard_source: 'قواعد تصنيف الإشغال SBC/NFPA الحالية — اقتراح قابل للمراجعة',
@@ -106,6 +115,8 @@ function normalizeArea(raw: Partial<DesignSpaceSafetyArea>, fallback?: DesignSpa
     label: String(raw.label || fallback?.label || 'مساحة غير مسماة'),
     activity_type: raw.activity_type ?? fallback?.activity_type ?? null,
     area_m2: Math.max(0, Number(raw.area_m2 ?? fallback?.area_m2) || 0),
+    estimated_occupants: optionalNonNegativeNumber(raw.estimated_occupants ?? fallback?.estimated_occupants),
+    max_travel_distance_m: optionalNonNegativeNumber(raw.max_travel_distance_m ?? fallback?.max_travel_distance_m),
     hazard_suggested: String(raw.hazard_suggested || fallback?.hazard_suggested || 'تتطلب مراجعة مهندس'),
     hazard_approved: raw.hazard_approved ?? fallback?.hazard_approved ?? null,
     hazard_source: raw.hazard_source ?? fallback?.hazard_source ?? null,
@@ -134,6 +145,8 @@ export function normalizeSpaceSafetyWorkingCopy(
       label: String(floor.label || 'دور غير مسمى'),
       kind: floor.kind ?? null,
       repeat_count: Math.max(1, nonNegativeInteger(floor.repeat_count) || 1),
+      estimated_occupants: optionalNonNegativeNumber(floor.estimated_occupants),
+      max_travel_distance_m: optionalNonNegativeNumber(floor.max_travel_distance_m),
       areas: Array.isArray(floor.areas) ? floor.areas.map((area) => normalizeArea(area)) : [],
     })),
   };
@@ -158,6 +171,8 @@ export function seedSpaceSafetyFromClient(
       label: floor.label,
       kind: floor.kind,
       repeat_count: Math.max(1, floor.repeat_count || 1),
+      estimated_occupants: null,
+      max_travel_distance_m: null,
       areas: (floor.usages || []).map((usage) => suggestedArea(usage)),
     })),
   };
@@ -170,6 +185,8 @@ export function createProjectArea(): DesignSpaceSafetyArea {
     label: 'مساحة جديدة',
     activity_type: null,
     area_m2: 0,
+    estimated_occupants: null,
+    max_travel_distance_m: null,
     hazard_suggested: 'تتطلب مراجعة مهندس',
     hazard_approved: null,
     hazard_source: null,
@@ -187,6 +204,8 @@ export function createProjectFloor(): DesignSpaceSafetyFloor {
     label: 'دور / منطقة جديدة',
     kind: 'custom',
     repeat_count: 1,
+    estimated_occupants: null,
+    max_travel_distance_m: null,
     areas: [createProjectArea()],
   };
 }
@@ -195,6 +214,8 @@ export type SafetyQuantityTotals = Omit<DesignSpaceSafetyQuantities, 'alarm_pane
   alarm_panel_locations: string[];
   total_area_m2: number;
   areas_count: number;
+  estimated_occupants: number;
+  max_travel_distance_m: number | null;
 };
 
 export function safetyTotals(areas: DesignSpaceSafetyArea[]): SafetyQuantityTotals {
@@ -213,16 +234,45 @@ export function safetyTotals(areas: DesignSpaceSafetyArea[]): SafetyQuantityTota
       public_facilities: total.public_facilities + nonNegativeInteger(area.quantities.public_facilities),
       total_area_m2: total.total_area_m2 + Math.max(0, Number(area.area_m2) || 0),
       areas_count: total.areas_count + 1,
+      estimated_occupants: total.estimated_occupants + nonNegativeInteger(area.estimated_occupants),
+      max_travel_distance_m: Math.max(
+        total.max_travel_distance_m ?? 0,
+        optionalNonNegativeNumber(area.max_travel_distance_m) ?? 0
+      ) || null,
     }),
     {
       ...emptySafetyQuantities(),
       alarm_panel_locations: [],
       total_area_m2: 0,
       areas_count: 0,
+      estimated_occupants: 0,
+      max_travel_distance_m: null,
     }
   );
 }
 
+/** Floor inputs override derived values from the floor's individual spaces when present. */
+export function floorSafetyTotals(floor: DesignSpaceSafetyFloor): SafetyQuantityTotals {
+  const areaTotals = safetyTotals(floor.areas);
+  return {
+    ...areaTotals,
+    estimated_occupants:
+      optionalNonNegativeNumber(floor.estimated_occupants) ?? areaTotals.estimated_occupants,
+    max_travel_distance_m:
+      optionalNonNegativeNumber(floor.max_travel_distance_m) ?? areaTotals.max_travel_distance_m,
+  };
+}
+
 export function projectSafetyTotals(copy: DesignSpaceSafetyWorkingCopy): SafetyQuantityTotals {
-  return safetyTotals(copy.floors.flatMap((floor) => floor.areas));
+  const allAreas = safetyTotals(copy.floors.flatMap((floor) => floor.areas));
+  const floorTotals = copy.floors.map(floorSafetyTotals);
+  return {
+    ...allAreas,
+    estimated_occupants: floorTotals.reduce((sum, floor) => sum + floor.estimated_occupants, 0),
+    max_travel_distance_m:
+      floorTotals.reduce<number | null>(
+        (maximum, floor) => Math.max(maximum ?? 0, floor.max_travel_distance_m ?? 0) || null,
+        null
+      ),
+  };
 }
