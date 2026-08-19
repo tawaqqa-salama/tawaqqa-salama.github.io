@@ -946,7 +946,7 @@ export default function DesignCenterSection({
 
         {tab === 'drawings' && (
           <section className={`${card} p-4 space-y-3`}>
-            <h3 className="text-sm font-bold">{ar ? 'مخططات السلامة' : 'Safety blueprints'}</h3>
+            <h3 className="text-sm font-bold">{ar ? 'المخططات والحسابات' : 'Drawings & calculations'}</h3>
             <SafetyBlueprintsUpload
               client={client}
               buildingPlan={data.building_plan}

@@ -7,12 +7,17 @@ import type { PlanAttachmentFile, PlanAttachmentsState } from '@/lib/types/proje
 
 type AttachmentSection = keyof PlanAttachmentsState;
 
+const isPdfFile = (file: File) =>
+  file.type === 'application/pdf' || file.name.toLowerCase().endsWith('.pdf');
+
 type Props = {
   value: PlanAttachmentsState;
   onChange: (next: PlanAttachmentsState) => void;
   clientId?: string | null;
   /** Restrict the visible inputs when this uploader is embedded in a focused engineering section. */
   sections?: AttachmentSection[];
+  /** Render focused attachments with the same visual card language as safety blueprints. */
+  variant?: 'standard' | 'blueprint-card';
 };
 
 export default function PlanAttachmentsUpload({
@@ -20,6 +25,7 @@ export default function PlanAttachmentsUpload({
   onChange,
   clientId,
   sections = ['engineering_drawings', 'hydraulic_calculations'],
+  variant = 'standard',
 }: Props) {
   const [uploading, setUploading] = useState(false);
   const [hint, setHint] = useState<string | null>(null);
@@ -37,8 +43,13 @@ export default function PlanAttachmentsUpload({
     try {
       const nextFiles: PlanAttachmentFile[] = [];
       const warnings: string[] = [];
+      const rejectedHydraulicFiles: string[] = [];
       let cloud = 0;
       for (const file of Array.from(files)) {
+        if (kind === 'hydraulic_calculation' && !isPdfFile(file)) {
+          rejectedHydraulicFiles.push(file.name);
+          continue;
+        }
         try {
           const outcome = await uploadPlanAttachmentDetailed(file, kind, { clientId });
           nextFiles.push(outcome.file);
@@ -53,6 +64,9 @@ export default function PlanAttachmentsUpload({
           ...value,
           [key]: [...(value[key] || []), ...nextFiles],
         });
+      }
+      if (rejectedHydraulicFiles.length) {
+        setError(`تم تجاهل ملفات غير PDF: ${rejectedHydraulicFiles.join('، ')}. الحسابات الهيدروليكية تقبل ملفات PDF فقط.`);
       }
       if (isDemoMode) {
         setHint('وضع تجريبي — الملفات تُحفظ محلياً داخل بيانات المشروع ولن تظهر من جهاز آخر');
@@ -110,25 +124,85 @@ export default function PlanAttachmentsUpload({
       ) : null}
 
       {sections.includes('hydraulic_calculations') ? (
-        <div className="rounded-xl border p-4 space-y-2">
-          <h4 className="text-sm font-bold text-gray-900">إرفاق ملف الحسابات الهيدروليكية (PDF / CALC)</h4>
-          <input
-            type="file"
-            accept=".pdf,.calc,.xlsx,.xls,.csv"
-            multiple
-            disabled={uploading}
-            aria-label="إرفاق ملف الحسابات الهيدروليكية"
-            onChange={(e) =>
-              void addFiles(e.target.files, 'hydraulic_calculation', 'hydraulic_calculations')
-            }
-            className="w-full text-sm"
-          />
-          <FileList
+        variant === 'blueprint-card' ? (
+          <HydraulicCalculationsCard
             files={value.hydraulic_calculations || []}
+            uploading={uploading}
+            onUpload={(files) =>
+              void addFiles(files, 'hydraulic_calculation', 'hydraulic_calculations')
+            }
             onRemove={(id) => remove('hydraulic_calculations', id)}
           />
-        </div>
+        ) : (
+          <div className="rounded-xl border p-4 space-y-2">
+            <h4 className="text-sm font-bold text-gray-900">إرفاق ملف الحسابات الهيدروليكية (PDF فقط)</h4>
+            <input
+              type="file"
+              accept=".pdf,application/pdf"
+              multiple
+              disabled={uploading}
+              aria-label="إرفاق ملف الحسابات الهيدروليكية"
+              onChange={(e) =>
+                void addFiles(e.target.files, 'hydraulic_calculation', 'hydraulic_calculations')
+              }
+              className="w-full text-sm"
+            />
+            <FileList
+              files={value.hydraulic_calculations || []}
+              onRemove={(id) => remove('hydraulic_calculations', id)}
+            />
+          </div>
+        )
       ) : null}
+    </div>
+  );
+}
+
+function HydraulicCalculationsCard({
+  files,
+  uploading,
+  onUpload,
+  onRemove,
+}: {
+  files: PlanAttachmentFile[];
+  uploading: boolean;
+  onUpload: (files: FileList | null) => void;
+  onRemove: (id: string) => void;
+}) {
+  return (
+    <div className="rounded-xl border border-sky-100 bg-sky-50/40 p-4">
+      <div className="flex items-start justify-between gap-2 mb-2">
+        <div>
+          <h3 className="text-sm font-bold text-gray-900">إرفاق ملف الحسابات الهيدروليكية (PDF فقط)</h3>
+          <p className="text-xs text-gray-600 mt-1">تقرير الحسابات الهيدروليكية المعتمد وملفات التصميم المساندة</p>
+        </div>
+        <span className="text-xs font-semibold text-gray-400">{files.length ? `${files.length} ملف` : 'لم يُرفع'}</span>
+      </div>
+
+      <label
+        className={`mt-3 flex flex-col items-center justify-center gap-1 rounded-xl border-2 border-dashed border-gray-300 bg-white/80 px-3 py-6 ${
+          uploading ? 'cursor-not-allowed opacity-60' : 'cursor-pointer hover:border-[#635bdb]/50'
+        }`}
+      >
+        <span className="text-xs font-semibold text-[#635bdb]">
+          {uploading ? 'جاري الرفع والحفظ...' : files.length ? 'إضافة ملف أو اختر للرفع' : 'اسحب الملف أو اختر للرفع'}
+        </span>
+        <span className="text-[11px] text-gray-500">PDF فقط</span>
+        <input
+          type="file"
+          className="hidden"
+          accept=".pdf,application/pdf"
+          multiple
+          disabled={uploading}
+          aria-label="إرفاق ملف الحسابات الهيدروليكية"
+          onChange={(e) => {
+            onUpload(e.target.files);
+            e.target.value = '';
+          }}
+        />
+      </label>
+
+      {files.length ? <div className="mt-3"><FileList files={files} onRemove={onRemove} /></div> : null}
     </div>
   );
 }
