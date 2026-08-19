@@ -150,11 +150,12 @@ export function buildBuildingPlanPrintHtml(
     .plan-bool-label { width: 28.13%; text-align: right; }
     .choice { width: 9.6%; text-align: center; }
     .office-section { margin-top: 12.1mm; }
+    .office-table { width: calc(100% + 1mm); position: relative; right: -1.04mm; }
     .office-table th, .office-table td { padding: .25mm 1.2mm; font-size: 9.6px; height: 3.1mm; }
     .office-table .office-head th, .office-table .office-head td { background: #92d050; font-size: 10px; font-weight: 800; }
-    .office-table th:nth-child(1), .office-table td:nth-child(1) { width: 33.333%; }
-    .office-table th:nth-child(2), .office-table td:nth-child(2) { width: 33.333%; text-align: center; }
-    .office-table th:nth-child(3), .office-table td:nth-child(3) { width: 33.334%; text-align: center; }
+    .office-table th:nth-child(1), .office-table td:nth-child(1) { width: 34.7%; }
+    .office-table th:nth-child(2), .office-table td:nth-child(2) { width: 32.585%; text-align: center; }
+    .office-table th:nth-child(3), .office-table td:nth-child(3) { width: 32.715%; text-align: center; }
     .stamp-cell { height: 9.3mm; padding: .5mm !important; position: relative; overflow: visible; }
     .office-stamp { display: block; max-width: 30mm; max-height: 22mm; margin: 0 auto; object-fit: contain; }
     .stamp-fallback { width: 100%; height: 13.3mm; margin: 0; border: 0; color: #111; font-size: 10px; display: grid; place-items: center; text-align: center; padding: 0; }
