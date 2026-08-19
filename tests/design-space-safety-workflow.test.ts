@@ -283,8 +283,11 @@ describe('Design Center space and safety working copy', () => {
     expect(attachments).toContain("variant?: 'standard' | 'blueprint-card'");
     const hydraulicCardStart = attachments.indexOf('function HydraulicCalculationsCard');
     expect(hydraulicCardStart).toBeGreaterThan(-1);
-    expect(attachments.indexOf('إرفاق ملف الحسابات الهيدروليكية (PDF / CALC)', hydraulicCardStart)).toBeGreaterThan(hydraulicCardStart);
+    expect(attachments.indexOf('إرفاق ملف الحسابات الهيدروليكية (PDF فقط)', hydraulicCardStart)).toBeGreaterThan(hydraulicCardStart);
     expect(attachments).toContain('اسحب الملف أو اختر للرفع');
+    expect(attachments).toContain('accept=".pdf,application/pdf"');
+    expect(attachments).toContain("kind === 'hydraulic_calculation' && !isPdfFile(file)");
+    expect(attachments).toContain('الحسابات الهيدروليكية تقبل ملفات PDF فقط');
     expect(attachments).toContain("'hydraulic_calculation', 'hydraulic_calculations'");
     const blueprints = readFileSync(
       resolve(process.cwd(), 'components/projects/SafetyBlueprintsUpload.tsx'),

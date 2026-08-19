@@ -7,6 +7,9 @@ import type { PlanAttachmentFile, PlanAttachmentsState } from '@/lib/types/proje
 
 type AttachmentSection = keyof PlanAttachmentsState;
 
+const isPdfFile = (file: File) =>
+  file.type === 'application/pdf' || file.name.toLowerCase().endsWith('.pdf');
+
 type Props = {
   value: PlanAttachmentsState;
   onChange: (next: PlanAttachmentsState) => void;
@@ -40,8 +43,13 @@ export default function PlanAttachmentsUpload({
     try {
       const nextFiles: PlanAttachmentFile[] = [];
       const warnings: string[] = [];
+      const rejectedHydraulicFiles: string[] = [];
       let cloud = 0;
       for (const file of Array.from(files)) {
+        if (kind === 'hydraulic_calculation' && !isPdfFile(file)) {
+          rejectedHydraulicFiles.push(file.name);
+          continue;
+        }
         try {
           const outcome = await uploadPlanAttachmentDetailed(file, kind, { clientId });
           nextFiles.push(outcome.file);
@@ -56,6 +64,9 @@ export default function PlanAttachmentsUpload({
           ...value,
           [key]: [...(value[key] || []), ...nextFiles],
         });
+      }
+      if (rejectedHydraulicFiles.length) {
+        setError(`تم تجاهل ملفات غير PDF: ${rejectedHydraulicFiles.join('، ')}. الحسابات الهيدروليكية تقبل ملفات PDF فقط.`);
       }
       if (isDemoMode) {
         setHint('وضع تجريبي — الملفات تُحفظ محلياً داخل بيانات المشروع ولن تظهر من جهاز آخر');
@@ -124,10 +135,10 @@ export default function PlanAttachmentsUpload({
           />
         ) : (
           <div className="rounded-xl border p-4 space-y-2">
-            <h4 className="text-sm font-bold text-gray-900">إرفاق ملف الحسابات الهيدروليكية (PDF / CALC)</h4>
+            <h4 className="text-sm font-bold text-gray-900">إرفاق ملف الحسابات الهيدروليكية (PDF فقط)</h4>
             <input
               type="file"
-              accept=".pdf,.calc,.xlsx,.xls,.csv"
+              accept=".pdf,application/pdf"
               multiple
               disabled={uploading}
               aria-label="إرفاق ملف الحسابات الهيدروليكية"
@@ -162,7 +173,7 @@ function HydraulicCalculationsCard({
     <div className="rounded-xl border border-sky-100 bg-sky-50/40 p-4">
       <div className="flex items-start justify-between gap-2 mb-2">
         <div>
-          <h3 className="text-sm font-bold text-gray-900">إرفاق ملف الحسابات الهيدروليكية (PDF / CALC)</h3>
+          <h3 className="text-sm font-bold text-gray-900">إرفاق ملف الحسابات الهيدروليكية (PDF فقط)</h3>
           <p className="text-xs text-gray-600 mt-1">تقرير الحسابات الهيدروليكية المعتمد وملفات التصميم المساندة</p>
         </div>
         <span className="text-xs font-semibold text-gray-400">{files.length ? `${files.length} ملف` : 'لم يُرفع'}</span>
@@ -176,11 +187,11 @@ function HydraulicCalculationsCard({
         <span className="text-xs font-semibold text-[#635bdb]">
           {uploading ? 'جاري الرفع والحفظ...' : files.length ? 'إضافة ملف أو اختر للرفع' : 'اسحب الملف أو اختر للرفع'}
         </span>
-        <span className="text-[11px] text-gray-500">PDF · CALC · XLSX · XLS · CSV</span>
+        <span className="text-[11px] text-gray-500">PDF فقط</span>
         <input
           type="file"
           className="hidden"
-          accept=".pdf,.calc,.xlsx,.xls,.csv"
+          accept=".pdf,application/pdf"
           multiple
           disabled={uploading}
           aria-label="إرفاق ملف الحسابات الهيدروليكية"
