@@ -84,7 +84,7 @@ function officeRows(client: ClientRecord, report: BuildingPlanReport, company: C
   const date = report.certification_date || report.report_date || '—';
   const stamp = company.stamp_url
     ? `<img class="office-stamp" src="${esc(company.stamp_url)}" alt="ختم المكتب" />`
-    : `<div class="stamp-text">${isolateLatin(company.stamp_text || company.name || '—')}</div>`;
+    : '';
 
   return `
     <section class="office-section">
@@ -181,7 +181,7 @@ export function buildBuildingPlanPrintHtml(
     .stamp-grid-cell { color: transparent; }
     .stamp-zone { position: absolute; left: 0; top: 3.65mm; width: 32.7%; height: 46mm; display: flex; align-items: flex-start; justify-content: center; padding: 1.2mm; background: transparent; }
     .office-stamp { display: block; width: 100%; max-width: 30.8mm; height: 42mm; object-fit: contain; object-position: center top; }
-    .stamp-text { width: 30mm; min-height: 38mm; display: flex; align-items: center; justify-content: center; border: .5px solid #3c846c; color: #267154; font-size: 10px; font-weight: 800; text-align: center; padding: 2mm; line-height: 1.3; }
+    .stamp-text { display: none; }
     .signature-zone { position: absolute; left: 0; top: 29.1mm; width: 32.7%; height: 4.1mm; display: flex; align-items: center; justify-content: center; border-top: .5px solid #0e0e0e; font-size: 7.4px; color: #2e6552; background: #fff; }
 
     /* التذييل المرجعي: خط ثابت عند y≈254mm، ومعلومات شركة ديناميكية */
