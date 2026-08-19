@@ -93,4 +93,15 @@ describe('Building plan print template', () => {
     expect(html).toContain('2026-08-01');
     expect(html).not.toContain('TEAM');
   });
+
+  it('isolates English technical terms within the RTL report', () => {
+    const html = buildBuildingPlanPrintHtml(client, report, getBuildingPlanGeneralInfo(client), company);
+
+    expect(html).toContain('.latin-term { direction: ltr; unicode-bidi: isolate;');
+    expect(html).toContain('<bdi class="latin-term" dir="ltr">High Rise</bdi>');
+    expect(html).toContain('<bdi class="latin-term" dir="ltr">Atrium</bdi>');
+    expect(html).toContain('<bdi class="latin-term" dir="ltr">Type I</bdi>');
+    expect(html).toContain('<bdi class="latin-term" dir="ltr">SBC</bdi>');
+    expect(html).toContain('Building Plan Information Report');
+  });
 });

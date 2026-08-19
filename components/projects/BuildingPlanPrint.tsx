@@ -18,12 +18,17 @@ function text(value: string | number | null | undefined): string {
   return normalized || '—';
 }
 
+function isolateLatin(value: string | number | null | undefined): string {
+  const safe = esc(text(value));
+  return safe.replace(/([A-Za-z][A-Za-z0-9 .\/-]*)/g, '<bdi class="latin-term" dir="ltr">$1</bdi>');
+}
+
 function cell(label: string, value: string | number | null | undefined): string {
-  return `<td class="label">${esc(label)}</td><td class="value">${esc(text(value))}</td>`;
+  return `<td class="label">${isolateLatin(label)}</td><td class="value">${isolateLatin(value)}</td>`;
 }
 
 function yesNoCell(label: string, value: string | null | undefined): string {
-  return `<td class="label">${esc(label)}</td><td class="yesno">${esc(formatYesNo(value))}</td>`;
+  return `<td class="label">${isolateLatin(label)}</td><td class="yesno">${isolateLatin(formatYesNo(value))}</td>`;
 }
 
 function approvalValue(preferred: string | null | undefined, fallback: string | null | undefined): string {
@@ -107,7 +112,7 @@ export function buildBuildingPlanPrintHtml(
     .company-fallback { color: #4f7e56; font-size: 10.5px; font-weight: 800; line-height: 1.35; }
     .doc-title { text-align: center; }
     .doc-title h1 { margin: 0; font-size: 14.5px; line-height: 1.22; color: #1e3218; }
-    .doc-title p { margin: 1px 0 0; color: #5b6d62; font-size: 8.4px; letter-spacing: .05px; }
+    .doc-title p { margin: 1px 0 0; color: #5b6d62; font-size: 8.4px; letter-spacing: .05px; direction: ltr; unicode-bidi: isolate; }
     .doc-status { text-align: left; color: #4e6b3b; font-size: 8px; font-weight: 700; }
     .doc-status span { display: inline-block; border: 1px solid #94b772; padding: 1.15mm 2.3mm; background: #f2f8eb; }
     table { width: 100%; border-collapse: collapse; table-layout: fixed; }
@@ -117,6 +122,7 @@ export function buildBuildingPlanPrintHtml(
     .label { width: 17%; background: #e3efd5; font-weight: 700; color: #314923; font-size: 8.3px; }
     .value { width: 33%; color: #172212; font-size: 8.55px; }
     .yesno { width: 33%; text-align: center; color: #172212; font-size: 8.7px; font-weight: 700; }
+    .latin-term { direction: ltr; unicode-bidi: isolate; display: inline-block; text-align: left; }
     .building { margin-top: 3.2mm; }
     .building .label { width: 15%; }
     .building .value { width: 35%; }
@@ -184,9 +190,9 @@ export function buildBuildingPlanPrintHtml(
         <div class="section-title">أنظمة السلامة والاعتماد</div>
         <table>
           <tr>${yesNoCell('نظام إنذار الحريق', report.fire_alarm_system)}${yesNoCell('نظام رش آلي', report.sprinkler_system)}</tr>
-          <tr><td class="label">متطلبات SBC</td><td class="wide" colspan="3">${esc(text(report.sbc_requirements))}</td></tr>
-          <tr><td class="label">أبواب ومخارج الطوارئ</td><td class="wide" colspan="3">${esc(text(report.emergency_exits_doors))}</td></tr>
-          <tr><td class="label">حالة اعتماد المخطط</td><td class="value">${esc(text(report.plan_approval_status || report.status))}</td><td class="label">ملاحظات المعالجة الفنية</td><td class="value">${esc(text(report.technical_inspection_notes))}</td></tr>
+          <tr><td class="label">${isolateLatin('متطلبات SBC')}</td><td class="wide" colspan="3">${isolateLatin(report.sbc_requirements)}</td></tr>
+          <tr><td class="label">أبواب ومخارج الطوارئ</td><td class="wide" colspan="3">${isolateLatin(report.emergency_exits_doors)}</td></tr>
+          <tr><td class="label">حالة اعتماد المخطط</td><td class="value">${isolateLatin(report.plan_approval_status || report.status)}</td><td class="label">ملاحظات المعالجة الفنية</td><td class="value">${isolateLatin(report.technical_inspection_notes)}</td></tr>
         </table>
       </div>
     </section>
