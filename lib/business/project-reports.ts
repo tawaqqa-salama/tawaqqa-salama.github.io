@@ -26,6 +26,7 @@ import { seedFinalInspectionReport } from '@/lib/projects/final-safety-report';
 import { ensureTaskMonths } from '@/lib/projects/supervision-report';
 import { mergeFireProtectionDesign } from '@/lib/projects/admin-uc-report/design';
 import { EMPTY_FIRE_PROTECTION_DESIGN } from '@/lib/types/fire-protection-design';
+import { parseEngineeringStudy } from '@/lib/projects/engineering-study-engine';
 
 export function parseProjectEngineeringData(raw: ClientRecord['project_engineering_data']): ProjectEngineeringData {
   if (!raw || typeof raw !== 'object') {
@@ -121,6 +122,7 @@ export function parseProjectEngineeringData(raw: ClientRecord['project_engineeri
     fire_protection_design: data.fire_protection_design
       ? mergeFireProtectionDesign(data.fire_protection_design)
       : { ...EMPTY_FIRE_PROTECTION_DESIGN },
+    engineering_study: parseEngineeringStudy(data.engineering_study),
     compliance: data.compliance
       ? {
           overrides: Array.isArray(data.compliance.overrides) ? data.compliance.overrides : [],

@@ -24,12 +24,16 @@ import type {
   TechnicalReportSectionItem,
 } from '@/lib/types/project-reports';
 import { uploadTechnicalReportPhoto } from '@/lib/projects/technical-report-photos';
+import EngineeringStudyTab from '@/components/projects/EngineeringStudyTab';
+import type { EngineeringStudyModel } from '@/lib/projects/engineering-study-types';
 
 const REPORT_STATUSES = ['مسودة', 'قيد الإعداد', 'مكتمل', 'معتمد'] as const;
 
 type Props = {
   client: ClientRecord;
   report: TechnicalReport;
+  engineeringStudy?: EngineeringStudyModel;
+  onEngineeringStudyChange?: (next: EngineeringStudyModel) => void;
   onChange: (next: TechnicalReport) => void;
   onSave: () => void;
   onPrint: () => void;
@@ -42,6 +46,8 @@ type Props = {
 export default function TechnicalReportSection({
   client,
   report,
+  engineeringStudy,
+  onEngineeringStudyChange,
   onChange,
   onSave,
   onPrint,
@@ -172,6 +178,45 @@ export default function TechnicalReportSection({
           </button>
         ))}
       </div>
+
+      {chapter === 'engineering_study' && engineeringStudy && onEngineeringStudyChange && (
+        <EngineeringStudyTab
+          study={engineeringStudy}
+          onChange={onEngineeringStudyChange}
+          isEngineerApproved={!!engineeringStudy.engineer_approval?.approved}
+          onEngineerApprovalToggle={(approved) =>
+            onEngineeringStudyChange({
+              ...engineeringStudy,
+              engineer_approval: {
+                ...(engineeringStudy.engineer_approval || { approved: false }),
+                approved,
+                approval_timestamp: approved ? new Date().toISOString() : undefined,
+              },
+            })
+          }
+          reviewerName={engineeringStudy.engineer_approval?.reviewer_name}
+          onReviewerNameChange={(reviewer_name) =>
+            onEngineeringStudyChange({
+              ...engineeringStudy,
+              engineer_approval: {
+                ...(engineeringStudy.engineer_approval || { approved: false }),
+                reviewer_name,
+              },
+            })
+          }
+          reviewNotes={engineeringStudy.engineer_approval?.review_notes}
+          onReviewNotesChange={(review_notes) =>
+            onEngineeringStudyChange({
+              ...engineeringStudy,
+              engineer_approval: {
+                ...(engineeringStudy.engineer_approval || { approved: false }),
+                review_notes,
+              },
+            })
+          }
+          approvalTimestamp={engineeringStudy.engineer_approval?.approval_timestamp}
+        />
+      )}
 
       {chapter === 'facility' && (
         <div className="space-y-4">

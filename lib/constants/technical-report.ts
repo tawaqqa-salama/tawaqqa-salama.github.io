@@ -2,6 +2,7 @@
 
 export type TechReportChapterId =
   | 'facility'
+  | 'engineering_study'
   | 'firefighting'
   | 'ventilation'
   | 'alarm'
@@ -10,7 +11,7 @@ export type TechReportChapterId =
 
 export type TechReportItemCatalog = {
   id: string;
-  chapter: Exclude<TechReportChapterId, 'facility' | 'recommendations'>;
+  chapter: Exclude<TechReportChapterId, 'facility' | 'engineering_study' | 'recommendations'>;
   title: string;
   /** خيارات فرعية يختار منها المهندس (تظهر في التقرير إن اختيرت) */
   optionChoices: string[];
@@ -20,6 +21,7 @@ export type TechReportItemCatalog = {
 
 export const TECH_REPORT_CHAPTERS: { id: TechReportChapterId; title: string; color: string }[] = [
   { id: 'facility', title: 'الباب الأول: عن المنشأة', color: '#c0392b' },
+  { id: 'engineering_study', title: 'الدراسة الهندسية ومعايير الكود', color: '#1f4d3a' },
   { id: 'firefighting', title: 'مكافحة الحريق', color: '#1f4d3a' },
   { id: 'ventilation', title: 'التهوية الميكانيكية', color: '#1f4d3a' },
   { id: 'alarm', title: 'الإنذار المبكر', color: '#1f4d3a' },

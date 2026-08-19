@@ -695,6 +695,8 @@ export default function ProjectReportModal({
                   <TechnicalReportSection
                     client={client}
                     report={data.technical_report}
+                    engineeringStudy={data.engineering_study}
+                    onEngineeringStudyChange={(engineering_study) => patch({ engineering_study })}
                     saving={saving}
                     chapter={techReportChapter}
                     onChapterChange={setTechReportChapterAndPersist}
