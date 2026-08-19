@@ -90,13 +90,11 @@ function officeRows(client: ClientRecord, report: BuildingPlanReport, company: C
     <section class="office-section">
       <table class="office-table ref-table">
         <tr class="office-head"><th>اسم المكتب</th><th>رقم السجل التجاري</th><th>الختم</th></tr>
-        <tr><td>${isolateLatin(officeName)}</td><td>${isolateLatin(registration)}</td><td class="stamp-grid-cell"></td></tr>
-        <tr class="office-head"><th>ممثل المكتب</th><th>رقم العضوية الهندسية</th><td class="stamp-grid-cell"></td></tr>
-        <tr><td>${isolateLatin(engineer)}</td><td>${isolateLatin(membership)}</td><td class="stamp-grid-cell"></td></tr>
-        <tr class="office-head"><th>التاريخ</th><td>${isolateLatin(date)}</td><th>التوقيع</th></tr>
+        <tr><td>${isolateLatin(officeName)}</td><td>${isolateLatin(registration)}</td><td class="stamp-cell" rowspan="3">${stamp}</td></tr>
+        <tr class="office-head"><th>ممثل المكتب</th><th>رقم العضوية الهندسية</th></tr>
+        <tr><td>${isolateLatin(engineer)}</td><td>${isolateLatin(membership)}</td></tr>
+        <tr class="office-head"><th>التاريخ</th><td>${isolateLatin(date)}</td><th class="signature-cell"><span>التوقيع</span><small>${isolateLatin(engineer)}</small></th></tr>
       </table>
-      <div class="stamp-zone">${stamp}</div>
-      <div class="signature-zone"><span>${isolateLatin(engineer)}</span></div>
     </section>`;
 }
 
@@ -167,22 +165,22 @@ export function buildBuildingPlanPrintHtml(
 
     /* اعتماد المكتب: x=10.75mm, y=165.61mm، الختم والتوقيع بمنطقة ثابتة */
     .office-section { position: absolute; left: 10.75mm; top: 165.61mm; width: 191.95mm; height: 34.38mm; direction: rtl; }
-    .office-table { position: absolute; top: 0; right: 0; width: 100%; height: 20.3mm; }
-    .office-table tr:nth-child(1) { height: 3.65mm; }
-    .office-table tr:nth-child(2) { height: 4.65mm; }
-    .office-table tr:nth-child(3) { height: 3.65mm; }
-    .office-table tr:nth-child(4) { height: 4.65mm; }
-    .office-table tr:nth-child(5) { height: 3.7mm; }
-    .office-table th, .office-table td { padding: .2mm 1.1mm; font-size: 9.25px; line-height: 1.08; }
+    .office-table { position: absolute; top: 0; right: 0; width: 100%; height: 23.8mm; }
+    .office-table tr:nth-child(1) { height: 4.4mm; }
+    .office-table tr:nth-child(2) { height: 5.4mm; }
+    .office-table tr:nth-child(3) { height: 4.3mm; }
+    .office-table tr:nth-child(4) { height: 5.4mm; }
+    .office-table tr:nth-child(5) { height: 4.3mm; }
+    .office-table th, .office-table td { padding: .28mm 1.1mm; font-size: 9.25px; line-height: 1.08; }
     .office-table .office-head th, .office-table .office-head td { background: #92d050; font-size: 9.8px; font-weight: 800; }
     .office-table th:nth-child(1), .office-table td:nth-child(1) { width: 34.7%; }
     .office-table th:nth-child(2), .office-table td:nth-child(2) { width: 32.6%; text-align: center; }
     .office-table th:nth-child(3), .office-table td:nth-child(3) { width: 32.7%; text-align: center; }
-    .stamp-grid-cell { color: transparent; }
-    .stamp-zone { position: absolute; left: 0; top: 3.65mm; width: 32.7%; height: 46mm; display: flex; align-items: flex-start; justify-content: center; padding: 1.2mm; background: transparent; }
-    .office-stamp { display: block; width: 100%; max-width: 30.8mm; height: 42mm; object-fit: contain; object-position: center top; }
-    .stamp-text { display: none; }
-    .signature-zone { position: absolute; left: 0; top: 29.1mm; width: 32.7%; height: 4.1mm; display: flex; align-items: center; justify-content: center; border-top: .5px solid #0e0e0e; font-size: 7.4px; color: #2e6552; background: #fff; }
+    .stamp-cell { padding: .7mm !important; background: #fff; text-align: center; vertical-align: top; }
+    .office-stamp { display: block; width: 100%; max-width: 30.8mm; height: 14.2mm; margin: 0 auto; object-fit: contain; object-position: center top; }
+    .signature-cell { text-align: center; vertical-align: middle; }
+    .signature-cell span, .signature-cell small { display: block; }
+    .signature-cell small { margin-top: .45mm; color: #2e6552; font-size: 7.2px; font-weight: 500; }
 
     /* التذييل المرجعي: خط ثابت عند y≈254mm، ومعلومات شركة ديناميكية */
     .report-footer { position: absolute; left: 10.75mm; top: 254mm; width: 191.95mm; height: 15mm; border-top: 1px solid #3c846c; padding-top: 1.8mm; color: #3a6d5c; direction: rtl; font-size: 9.2px; font-weight: 700; line-height: 1.45; text-align: right; }
