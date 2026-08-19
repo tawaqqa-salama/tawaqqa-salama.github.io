@@ -1,6 +1,26 @@
 import { ACTIVITY_RULES } from '@/lib/constants/clients';
+import { projectSafetyTotals } from '@/lib/projects/design-center/space-safety';
+import { hazardClassificationLabel } from '@/lib/projects/design-center/safety-rules';
+import type { DesignSpaceSafetyWorkingCopy } from '@/lib/projects/design-center/types';
 import type { ClientRecord } from '@/lib/types/client';
-import type { BuildingPlanGeneralInfo, BuildingPlanReport } from '@/lib/types/project-reports';
+import type { BuildingPlanGeneralInfo, BuildingPlanReport, YesNoValue } from '@/lib/types/project-reports';
+
+export type DerivedPlanInfoFromSpaceSafety = {
+  hasSource: boolean;
+  estimatedOccupants: number | null;
+  exitsCount: number | null;
+  stairsCount: number | null;
+  fireAlarmSystem: YesNoValue;
+  sprinklerSystem: YesNoValue;
+  hazardSummary: string | null;
+  quantitiesSummary: string | null;
+};
+
+/** Ephemeral display fields used by the print/export view only; never persisted into the report. */
+export type BuildingPlanReportWithSpaceSafety = BuildingPlanReport & {
+  derived_space_safety_occupants?: string;
+  derived_space_safety_quantities?: string;
+};
 
 export function getBuildingPlanGeneralInfo(client: ClientRecord): BuildingPlanGeneralInfo {
   const activityLabel = ACTIVITY_RULES[client.activity_type || '']?.label || client.activity_type || '—';
@@ -27,6 +47,88 @@ export function getBuildingPlanGeneralInfo(client: ClientRecord): BuildingPlanGe
     floors_count: client.floors_count != null ? String(client.floors_count) : '—',
     location_summary: locationParts.length ? locationParts.join(' — ') : '—',
     national_address: nationalAddress,
+  };
+}
+
+/**
+ * Read-only engineering derivation for plan information.
+ * It intentionally does not write to the report or Sales. An empty field in the
+ * engineer report may display these values, while an explicit engineer value always wins.
+ */
+export function derivePlanInfoFromSpaceSafety(
+  spaceSafety?: DesignSpaceSafetyWorkingCopy | null
+): DerivedPlanInfoFromSpaceSafety {
+  // Seeded Sales data is a starting point only. The bridge activates after the engineer saves a project-scoped copy.
+  const hasSource = Boolean(
+    spaceSafety?.source === 'project_engineering' && spaceSafety.floors.some((floor) => floor.areas.length)
+  );
+  if (!spaceSafety || !hasSource) {
+    return {
+      hasSource: false,
+      estimatedOccupants: null,
+      exitsCount: null,
+      stairsCount: null,
+      fireAlarmSystem: '',
+      sprinklerSystem: '',
+      hazardSummary: null,
+      quantitiesSummary: null,
+    };
+  }
+
+  const totals = projectSafetyTotals(spaceSafety);
+  const hasFireAlarmEvidence =
+    totals.smoke_detectors > 0 ||
+    totals.heat_detectors > 0 ||
+    totals.fire_alarm_panels > 0 ||
+    totals.alarm_bells > 0;
+  const hasSprinklerEvidence =
+    totals.sprinklers > 0 ||
+    spaceSafety.floors.some((floor) =>
+      floor.areas.some((area) => (area.suppression_approved ?? area.suppression_suggested).includes('رش آلي'))
+    );
+  const hazardLabels = [...new Set(
+    spaceSafety.floors.flatMap((floor) =>
+      floor.areas.map((area) => hazardClassificationLabel(area.hazard_approved || area.hazard_suggested))
+    )
+  )];
+  const quantityParts = [
+    `الشاغلون التقديريون: ${totals.estimated_occupants}`,
+    `المرشات: ${totals.sprinklers}`,
+    `كواشف الدخان: ${totals.smoke_detectors}`,
+    `كواشف الحرارة: ${totals.heat_detectors}`,
+    `لوحات الإنذار: ${totals.fire_alarm_panels}`,
+    `الطفايات اليدوية: ${totals.manual_extinguishers}`,
+  ];
+
+  return {
+    hasSource: true,
+    estimatedOccupants: totals.estimated_occupants,
+    exitsCount: totals.emergency_exits,
+    stairsCount: totals.emergency_stairs,
+    // Absence of equipment is not evidence of a negative compliance decision.
+    fireAlarmSystem: hasFireAlarmEvidence ? 'نعم' : '',
+    sprinklerSystem: hasSprinklerEvidence ? 'نعم' : '',
+    hazardSummary: hazardLabels.length ? `تصنيفات الخطورة المسجلة للمساحات: ${hazardLabels.join(' · ')}` : null,
+    quantitiesSummary: quantityParts.join(' · '),
+  };
+}
+
+/** Apply derived values only to fields that the engineer left empty. */
+export function resolveBuildingPlanWithSpaceSafety(
+  report: BuildingPlanReport,
+  derived: DerivedPlanInfoFromSpaceSafety
+): BuildingPlanReportWithSpaceSafety {
+  if (!derived.hasSource) return report;
+  return {
+    ...report,
+    exits_count: report.exits_count || (derived.exitsCount === null ? undefined : String(derived.exitsCount)),
+    stairs_count: report.stairs_count || (derived.stairsCount === null ? undefined : String(derived.stairsCount)),
+    fire_alarm_system: report.fire_alarm_system || derived.fireAlarmSystem,
+    sprinkler_system: report.sprinkler_system || derived.sprinklerSystem,
+    sbc_requirements: report.sbc_requirements || derived.hazardSummary || undefined,
+    derived_space_safety_occupants:
+      derived.estimatedOccupants === null ? undefined : String(derived.estimatedOccupants),
+    derived_space_safety_quantities: derived.quantitiesSummary || undefined,
   };
 }
 

@@ -1,7 +1,11 @@
 'use client';
 
 import { useMemo } from 'react';
-import { getBuildingPlanGeneralInfo } from '@/lib/projects/building-plan';
+import {
+  derivePlanInfoFromSpaceSafety,
+  getBuildingPlanGeneralInfo,
+  resolveBuildingPlanWithSpaceSafety,
+} from '@/lib/projects/building-plan';
 import { printBuildingPlanReport, exportBuildingPlanReport } from '@/components/projects/BuildingPlanPrint';
 import {
   normalizeConstructionValue,
@@ -12,11 +16,13 @@ import {
 } from '@/lib/projects/sbc-recommendation';
 import type { ClientRecord } from '@/lib/types/client';
 import type { BuildingPlanReport, YesNoValue } from '@/lib/types/project-reports';
+import type { DesignSpaceSafetyWorkingCopy } from '@/lib/projects/design-center/types';
 import { normalizeQuotationDocuments } from '@/lib/business/quotation-documents';
 
 interface BuildingPlanReportSectionProps {
   client: ClientRecord;
   report: BuildingPlanReport;
+  spaceSafety?: DesignSpaceSafetyWorkingCopy | null;
   saving: boolean;
   onChange: (report: BuildingPlanReport) => void;
   onSave: (report: BuildingPlanReport, message: string) => void;
@@ -33,6 +39,7 @@ const REPORT_STATUSES = ['مسودة', 'قيد الإعداد', 'مكتمل', '�
 export default function BuildingPlanReportSection({
   client,
   report,
+  spaceSafety,
   saving,
   onChange,
   onSave,
@@ -40,6 +47,11 @@ export default function BuildingPlanReportSection({
   const general = getBuildingPlanGeneralInfo(client);
   const salesDocs = normalizeQuotationDocuments(client.quotation_documents);
   const salesPermitFile = salesDocs.building_permit;
+  const derived = useMemo(() => derivePlanInfoFromSpaceSafety(spaceSafety), [spaceSafety]);
+  const reportForOutput = useMemo(
+    () => resolveBuildingPlanWithSpaceSafety(report, derived),
+    [report, derived]
+  );
 
   const patch = (partial: Partial<BuildingPlanReport>) => onChange({ ...report, ...partial });
 
@@ -96,6 +108,15 @@ export default function BuildingPlanReportSection({
           <ReadOnlyField label="العنوان الوطني" value={general.national_address} />
         </div>
       </section>
+
+      {derived.hasSource ? (
+        <section className="rounded-xl border border-emerald-200 bg-emerald-50 p-3 text-xs text-emerald-950">
+          <p className="font-bold">بيانات هندسية مساندة من المساحات وأنظمة السلامة</p>
+          <p className="mt-1 leading-relaxed">
+            تظهر القيم المشتقة أسفل الحقول ذات الصلة وفي الطباعة إذا ترك المهندس الحقل فارغًا. أي قيمة يكتبها المهندس في تقرير معلومات المخطط تبقى هي المرجع ولا تُستبدل تلقائيًا.
+          </p>
+        </section>
+      ) : null}
 
       {/* Building permit — read-only from Sales (no upload here) */}
       <section className="rounded-xl border border-slate-200 bg-slate-50/80 p-4 space-y-3">
@@ -215,9 +236,19 @@ export default function BuildingPlanReportSection({
               <EngineerRow label="تأريض كهربائي" yesNo={report.electrical_grounding} onYesNo={(v) => patch({ electrical_grounding: v })} />
               <EngineerRow label="عمق تحت الأرض (m)" value={report.underground_depth_m || ''} onValue={(v) => patch({ underground_depth_m: v })} />
               <EngineerRow label="حماية صواعق" yesNo={report.lightning_protection} onYesNo={(v) => patch({ lightning_protection: v })} />
-              <EngineerRow label="عدد المخارج" value={report.exits_count || ''} onValue={(v) => patch({ exits_count: v })} />
+              <EngineerRow
+                label="عدد المخارج"
+                value={report.exits_count || ''}
+                onValue={(v) => patch({ exits_count: v })}
+                derivedValue={derived.exitsCount === null ? undefined : String(derived.exitsCount)}
+              />
               <EngineerRow label="مولد احتياطي" yesNo={report.backup_generator} onYesNo={(v) => patch({ backup_generator: v })} />
-              <EngineerRow label="عدد السلالم" value={report.stairs_count || ''} onValue={(v) => patch({ stairs_count: v })} />
+              <EngineerRow
+                label="عدد السلالم"
+                value={report.stairs_count || ''}
+                onValue={(v) => patch({ stairs_count: v })}
+                derivedValue={derived.stairsCount === null ? undefined : String(derived.stairsCount)}
+              />
               <EngineerRow label="استثناءات الكود" yesNo={report.sbc_code_exceptions} onYesNo={(v) => patch({ sbc_code_exceptions: v })} />
               <EngineerRow label="سلالم كهربائية" value={report.escalators_count || ''} onValue={(v) => patch({ escalators_count: v })} />
               <EngineerRow label="فرق إطفاء خاصة" yesNo={report.special_rescue_team_required} onYesNo={(v) => patch({ special_rescue_team_required: v })} />
@@ -231,9 +262,31 @@ export default function BuildingPlanReportSection({
       <section className="space-y-3">
         <h3 className="text-sm font-bold text-gray-800">أنظمة السلامة والاعتماد</h3>
         <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-          <YesNoField label="نظام إنذار حريق" value={report.fire_alarm_system} onChange={(v) => patch({ fire_alarm_system: v })} />
-          <YesNoField label="نظام رش آلي" value={report.sprinkler_system} onChange={(v) => patch({ sprinkler_system: v })} />
+          <YesNoField
+            label="نظام إنذار حريق"
+            value={report.fire_alarm_system}
+            onChange={(v) => patch({ fire_alarm_system: v })}
+            derivedValue={derived.fireAlarmSystem || undefined}
+          />
+          <YesNoField
+            label="نظام رش آلي"
+            value={report.sprinkler_system}
+            onChange={(v) => patch({ sprinkler_system: v })}
+            derivedValue={derived.sprinklerSystem || undefined}
+          />
         </div>
+        {derived.hasSource ? (
+          <div className="grid grid-cols-1 gap-3 rounded-xl border border-emerald-200 bg-emerald-50 p-3 md:grid-cols-2">
+            <DerivedReadOnlyField
+              label="إجمالي الشاغلين التقديريين"
+              value={derived.estimatedOccupants === null ? '—' : String(derived.estimatedOccupants)}
+            />
+            <DerivedReadOnlyField label="ملخص الكميات المسجلة" value={derived.quantitiesSummary || '—'} />
+            <div className="md:col-span-2">
+              <DerivedReadOnlyField label="ملخص درجات الخطورة (SBC)" value={derived.hazardSummary || '—'} />
+            </div>
+          </div>
+        ) : null}
         <EditableField label="متطلبات كود البناء SBC" value={report.sbc_requirements || ''} onChange={(v) => patch({ sbc_requirements: v })} multiline />
         <EditableField label="أبواب ومخارج الطوارئ" value={report.emergency_exits_doors || ''} onChange={(v) => patch({ emergency_exits_doors: v })} multiline />
         <EditableField label="حالة اعتماد المخطط" value={report.plan_approval_status || ''} onChange={(v) => patch({ plan_approval_status: v })} />
@@ -256,10 +309,10 @@ export default function BuildingPlanReportSection({
         <button type="button" onClick={saveApproved} disabled={saving} className="px-4 py-2 bg-[#635bdb] text-white rounded-xl text-sm disabled:opacity-50">
           اعتماد نهائي
         </button>
-        <button type="button" onClick={() => printBuildingPlanReport(client, report)} className="px-4 py-2 bg-indigo-600 text-white rounded-xl text-sm">
+        <button type="button" onClick={() => printBuildingPlanReport(client, reportForOutput)} className="px-4 py-2 bg-indigo-600 text-white rounded-xl text-sm">
           طباعة
         </button>
-        <button type="button" onClick={() => exportBuildingPlanReport(client, report)} className="px-4 py-2 bg-blue-50 text-blue-700 border border-blue-200 rounded-xl text-sm">
+        <button type="button" onClick={() => exportBuildingPlanReport(client, reportForOutput)} className="px-4 py-2 bg-blue-50 text-blue-700 border border-blue-200 rounded-xl text-sm">
           تصدير HTML
         </button>
       </div>
@@ -301,13 +354,39 @@ function EditableField({
   );
 }
 
-function YesNoField({ label, value, onChange }: { label: string; value?: YesNoValue; onChange: (v: YesNoValue) => void }) {
+function DerivedReadOnlyField({ label, value }: { label: string; value: string }) {
+  return (
+    <div>
+      <p className="text-[11px] font-semibold text-emerald-900">{label}</p>
+      <p className="mt-1 text-sm text-emerald-950">{value}</p>
+      <p className="mt-1 text-[10px] text-emerald-700">مشتق من بيانات المساحات وأنظمة السلامة</p>
+    </div>
+  );
+}
+
+function YesNoField({
+  label,
+  value,
+  onChange,
+  derivedValue,
+}: {
+  label: string;
+  value?: YesNoValue;
+  onChange: (v: YesNoValue) => void;
+  derivedValue?: YesNoValue;
+}) {
   return (
     <div>
       <label className="block text-xs font-semibold mb-1">{label}</label>
       <select value={value ?? ''} onChange={(e) => onChange(e.target.value as YesNoValue)} className="w-full p-2.5 border rounded-xl text-sm bg-white">
         {YES_NO_OPTIONS.map((o) => <option key={o.label} value={o.value}>{o.label}</option>)}
       </select>
+      {!value && derivedValue ? (
+        <p className="mt-1 text-[10px] font-medium text-emerald-700">مشتق من بيانات المساحات: {derivedValue}</p>
+      ) : null}
+      {value && derivedValue ? (
+        <p className="mt-1 text-[10px] text-slate-500">قيمة المهندس اليدوية لها الأولوية على القيمة المشتقة: {derivedValue}</p>
+      ) : null}
     </div>
   );
 }
@@ -319,6 +398,7 @@ function EngineerRow({
   yesNo,
   onYesNo,
   placeholder,
+  derivedValue,
 }: {
   label: string;
   value?: string;
@@ -326,13 +406,18 @@ function EngineerRow({
   yesNo?: YesNoValue;
   onYesNo?: (v: YesNoValue) => void;
   placeholder?: string;
+  derivedValue?: string;
 }) {
   return (
     <tr className="border-b">
       <td className="p-2 bg-[#eef5e6] text-xs font-semibold">{label}</td>
       <td className="p-2">
         {onValue ? (
-          <input value={value || ''} placeholder={placeholder} onChange={(e) => onValue(e.target.value)} className="w-full p-1.5 border rounded text-sm" />
+          <>
+            <input value={value || ''} placeholder={placeholder} onChange={(e) => onValue(e.target.value)} className="w-full p-1.5 border rounded text-sm" />
+            {!value && derivedValue ? <p className="mt-1 text-[10px] font-medium text-emerald-700">مشتق من بيانات المساحات: {derivedValue}</p> : null}
+            {value && derivedValue ? <p className="mt-1 text-[10px] text-slate-500">القيمة اليدوية لها الأولوية على: {derivedValue}</p> : null}
+          </>
         ) : (
           <span className="text-gray-400 text-xs">—</span>
         )}

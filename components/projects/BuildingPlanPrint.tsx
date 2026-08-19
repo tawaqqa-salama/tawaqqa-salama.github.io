@@ -1,9 +1,13 @@
 'use client';
 
-import { getBuildingPlanGeneralInfo, formatYesNo } from '@/lib/projects/building-plan';
+import {
+  getBuildingPlanGeneralInfo,
+  formatYesNo,
+  type BuildingPlanReportWithSpaceSafety,
+} from '@/lib/projects/building-plan';
 import { DEFAULT_COMPANY_PROFILE, loadCompanyProfile, type CompanyProfile } from '@/lib/company-profile';
 import type { ClientRecord } from '@/lib/types/client';
-import type { BuildingPlanGeneralInfo, BuildingPlanReport } from '@/lib/types/project-reports';
+import type { BuildingPlanGeneralInfo } from '@/lib/types/project-reports';
 
 function esc(value: string | number | null | undefined): string {
   return String(value ?? '')
@@ -39,7 +43,7 @@ function optionalImage(source: string | null | undefined, className: string, alt
   return source ? `<img class="${className}" src="${esc(source)}" alt="${esc(alt)}" />` : '';
 }
 
-function planInfoRows(report: BuildingPlanReport, general: BuildingPlanGeneralInfo): string {
+function planInfoRows(report: BuildingPlanReportWithSpaceSafety, general: BuildingPlanGeneralInfo): string {
   const leftRows: Array<[string, string]> = [
     ['تصنيف الإشغال', report.occupancy_classification || ''],
     ['نوع البناء', report.building_type_code || ''],
@@ -78,7 +82,7 @@ function planInfoRows(report: BuildingPlanReport, general: BuildingPlanGeneralIn
 
 export function buildBuildingPlanPrintHtml(
   client: ClientRecord,
-  report: BuildingPlanReport,
+  report: BuildingPlanReportWithSpaceSafety,
   general: BuildingPlanGeneralInfo,
   company: CompanyProfile = DEFAULT_COMPANY_PROFILE
 ): string {
@@ -190,6 +194,8 @@ export function buildBuildingPlanPrintHtml(
         <div class="section-title">أنظمة السلامة والاعتماد</div>
         <table>
           <tr>${yesNoCell('نظام إنذار الحريق', report.fire_alarm_system)}${yesNoCell('نظام رش آلي', report.sprinkler_system)}</tr>
+          ${report.derived_space_safety_occupants ? `<tr><td class="label">الشاغلون التقديريون</td><td class="value">${isolateLatin(report.derived_space_safety_occupants)}</td><td class="label">مصدر البيانات</td><td class="value">المساحات وأنظمة السلامة</td></tr>` : ''}
+          ${report.derived_space_safety_quantities ? `<tr><td class="label">ملخص كميات السلامة</td><td class="wide" colspan="3">${isolateLatin(report.derived_space_safety_quantities)}</td></tr>` : ''}
           <tr><td class="label">${isolateLatin('متطلبات SBC')}</td><td class="wide" colspan="3">${isolateLatin(report.sbc_requirements)}</td></tr>
           <tr><td class="label">أبواب ومخارج الطوارئ</td><td class="wide" colspan="3">${isolateLatin(report.emergency_exits_doors)}</td></tr>
           <tr><td class="label">حالة اعتماد المخطط</td><td class="value">${isolateLatin(report.plan_approval_status || report.status)}</td><td class="label">ملاحظات المعالجة الفنية</td><td class="value">${isolateLatin(report.technical_inspection_notes)}</td></tr>
@@ -215,7 +221,7 @@ export function buildBuildingPlanPrintHtml(
 </html>`;
 }
 
-export async function printBuildingPlanReport(client: ClientRecord, report: BuildingPlanReport) {
+export async function printBuildingPlanReport(client: ClientRecord, report: BuildingPlanReportWithSpaceSafety) {
   const general = getBuildingPlanGeneralInfo(client);
   const company = await loadCompanyProfile();
   const html = buildBuildingPlanPrintHtml(client, report, general, company);
@@ -227,7 +233,7 @@ export async function printBuildingPlanReport(client: ClientRecord, report: Buil
   });
 }
 
-export async function exportBuildingPlanReport(client: ClientRecord, report: BuildingPlanReport) {
+export async function exportBuildingPlanReport(client: ClientRecord, report: BuildingPlanReportWithSpaceSafety) {
   const general = getBuildingPlanGeneralInfo(client);
   const company = await loadCompanyProfile();
   const html = buildBuildingPlanPrintHtml(client, report, general, company);
