@@ -948,216 +948,13 @@ export default function DesignCenterSection({
 
         {tab === 'drawings' && (
           <div className="space-y-5">
-            <section className={`${card} p-4 space-y-3`}>
-              <div>
-                <h3 className="text-sm font-bold">{ar ? 'المخططات' : 'Drawings'}</h3>
-                <p className={`mt-1 text-xs ${muted}`}>
-                  {ar
-                    ? 'ارفع إصدارًا جديدًا من PDF أو DWG أو DXF أو IFC أو RVT. لا يُعد الملف محفوظًا إلا بعد ظهوره في إدارة الإصدارات.'
-                    : 'Upload a new PDF, DWG, DXF, IFC, or RVT version. It is saved only after appearing in version management.'}
-                </p>
-              </div>
-              <div className="grid grid-cols-1 gap-3 sm:grid-cols-[12rem_1fr]">
-                <label className="text-xs font-semibold">
-                  {ar ? 'نوع الملف' : 'File type'}
-                  <select
-                    value={drawingFormat}
-                    onChange={(event) => setDrawingFormat(event.target.value as DesignDrawingFormat)}
-                    className={`mt-1 w-full rounded-lg border px-3 py-2 text-sm ${dark ? 'bg-slate-950 border-slate-700' : 'bg-white border-slate-300'}`}
-                  >
-                    <option value="pdf">PDF</option>
-                    <option value="dwg">DWG</option>
-                    <option value="dxf">DXF</option>
-                    <option value="ifc">IFC</option>
-                    <option value="rvt">RVT / Revit</option>
-                  </select>
-                </label>
-                <label className="text-xs font-semibold">
-                  {ar ? 'رفع إصدار جديد' : 'Upload new version'}
-                  <input
-                    ref={(el) => {
-                      fileInputRefs.current[drawingFormat] = el;
-                    }}
-                    type="file"
-                    className="mt-1 block w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-xs"
-                    accept={FORMAT_ACCEPT[drawingFormat]}
-                    disabled={busy === 'upload'}
-                    onChange={(event) => void uploadFormat(event.target.files, drawingFormat)}
-                  />
-                </label>
-              </div>
-            </section>
-
-            <section className={`${card} p-4 space-y-3`}>
-              <h3 className="text-sm font-bold">
-                {ar ? 'إدارة إصدارات المخططات' : 'Drawing version control'}
-              </h3>
-              {!design.sheets.length ? (
-                <p className={`text-xs ${muted}`}>
-                  {ar
-                    ? 'لا توجد مخططات محفوظة بعد. إن اخترت ملفاً وظهرت رسالة حمراء/صفراء بالأعلى فالش رفع فشل (غالباً تخزين project-files غير مفعّل) — الملف لم يُسجَّل.'
-                    : 'No drawings saved yet. If you picked a file and see a warning above, upload failed (often project-files Storage) — nothing was registered.'}
-                </p>
-              ) : (
-                <ul className="space-y-3">
-                  {design.sheets.map((sheet) => (
-                    <li
-                      key={sheet.id}
-                      className={`rounded-lg border p-3 ${dark ? 'border-slate-700' : 'border-slate-200'}`}
-                    >
-                      <div className="flex flex-wrap items-center justify-between gap-2">
-                        <div>
-                          <div className="text-sm font-semibold">{sheet.title}</div>
-                          <div className={`text-[11px] ${muted}`}>
-                            {sheet.format.toUpperCase()} · {sheet.versions.length}{' '}
-                            {ar ? 'إصدار' : 'versions'}
-                          </div>
-                        </div>
-                        <div className="flex flex-wrap gap-2">
-                          <button
-                            type="button"
-                            className="text-xs px-2 py-1 rounded border border-sky-500 text-sky-600"
-                            onClick={() => void openViewer(sheet)}
-                          >
-                            {ar ? 'عرض' : 'View'}
-                          </button>
-                          <button
-                            type="button"
-                            className="text-xs px-2 py-1 rounded border border-rose-400 text-rose-600"
-                            onClick={() => setDesign(removeDrawingSheet(design, sheet.id))}
-                          >
-                            {ar ? 'حذف' : 'Delete'}
-                          </button>
-                        </div>
-                      </div>
-                      <div className="mt-2 flex flex-wrap gap-1.5">
-                        {sheet.versions.map((v) => (
-                          <button
-                            key={v.id}
-                            type="button"
-                            onClick={() =>
-                              setDesign(setActiveDrawingVersion(design, sheet.id, v.id))
-                            }
-                            className={`text-[11px] px-2 py-1 rounded-full border ${
-                              sheet.activeVersionId === v.id
-                                ? 'border-emerald-500 bg-emerald-500/10 text-emerald-600'
-                                : dark
-                                  ? 'border-slate-600'
-                                  : 'border-slate-300'
-                            }`}
-                          >
-                            {v.label} · {v.file.fileName}
-                          </button>
-                        ))}
-                      </div>
-                    </li>
-                  ))}
-                </ul>
-              )}
-            </section>
-
-            <section className={`${card} p-4 space-y-3`}>
-              <h3 className="text-sm font-bold">
-                {ar ? 'مقارنة الإصدارات' : 'Compare versions'}
-              </h3>
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                <select
-                  className={`rounded-lg border px-3 py-2 text-sm ${dark ? 'bg-slate-950 border-slate-700' : 'bg-white border-slate-300'}`}
-                  value={design.ui?.compare_version_a || ''}
-                  onChange={(e) =>
-                    setDesign({
-                      ...design,
-                      ui: { ...design.ui, compare_version_a: e.target.value || null },
-                    })
-                  }
-                >
-                  <option value="">{ar ? 'الإصدار أ' : 'Version A'}</option>
-                  {allVersions.map((v) => (
-                    <option key={v.id} value={v.id}>
-                      {v.label}
-                    </option>
-                  ))}
-                </select>
-                <select
-                  className={`rounded-lg border px-3 py-2 text-sm ${dark ? 'bg-slate-950 border-slate-700' : 'bg-white border-slate-300'}`}
-                  value={design.ui?.compare_version_b || ''}
-                  onChange={(e) =>
-                    setDesign({
-                      ...design,
-                      ui: { ...design.ui, compare_version_b: e.target.value || null },
-                    })
-                  }
-                >
-                  <option value="">{ar ? 'الإصدار ب' : 'Version B'}</option>
-                  {allVersions.map((v) => (
-                    <option key={v.id} value={v.id}>
-                      {v.label}
-                    </option>
-                  ))}
-                </select>
-              </div>
-              {compareA && compareB ? (
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-3 text-xs">
-                  <div className={`rounded-lg p-3 ${dark ? 'bg-slate-800' : 'bg-slate-50'}`}>
-                    <div className="font-semibold">{compareA.version.label}</div>
-                    <div className={muted}>{compareA.version.file.fileName}</div>
-                    <div className={muted}>
-                      {(compareA.version.file.sizeBytes / 1024).toFixed(0)} KB ·{' '}
-                      {compareA.version.uploadedAt.slice(0, 19)}
-                    </div>
-                  </div>
-                  <div className={`rounded-lg p-3 ${dark ? 'bg-slate-800' : 'bg-slate-50'}`}>
-                    <div className="font-semibold">{compareB.version.label}</div>
-                    <div className={muted}>{compareB.version.file.fileName}</div>
-                    <div className={muted}>
-                      {(compareB.version.file.sizeBytes / 1024).toFixed(0)} KB ·{' '}
-                      {compareB.version.uploadedAt.slice(0, 19)}
-                    </div>
-                  </div>
-                </div>
-              ) : (
-                <p className={`text-xs ${muted}`}>
-                  {ar
-                    ? 'اختر إصدارين لمقارنة البيانات الوصفية المحفوظة في المشروع.'
-                    : 'Pick two versions to compare stored metadata on this project.'}
-                </p>
-              )}
-            </section>
-
-            <section className={`${card} p-4 space-y-3`}>
-              <h3 className="text-sm font-bold">
-                {ar ? 'عرض المخطط داخل المتصفح' : 'In-browser drawing viewer'}
-              </h3>
-              {viewerUrl ? (
-                viewerUrl.startsWith('data:application/pdf') ||
-                viewerUrl.includes('.pdf') ||
-                viewerUrl.startsWith('blob:') ||
-                /pdf/i.test(viewerUrl) ? (
-                  <iframe title="drawing-viewer" src={viewerUrl} className="w-full h-80 rounded-lg border" />
-                ) : (
-                  <p className={`text-xs ${muted}`}>
-                    {ar
-                      ? 'المعاينة المباشرة متاحة لملفات PDF. ملفات DWG/DXF/IFC/Revit محفوظة مع بيانات الإصدار للربط بمحرك العرض لاحقاً.'
-                      : 'Inline preview is available for PDF. CAD/BIM files are versioned for a future viewer engine.'}
-                    <a className="ms-2 text-sky-500 underline" href={viewerUrl} target="_blank" rel="noreferrer">
-                      {ar ? 'فتح الملف' : 'Open file'}
-                    </a>
-                  </p>
-                )
-              ) : (
-                <p className={`text-xs ${muted}`}>
-                  {ar ? 'اختر مخططاً واضغط «عرض».' : 'Select a sheet and click View.'}
-                </p>
-              )}
-            </section>
-
             <section className={`${card} p-4 space-y-4`}>
               <div>
-                <h3 className="text-sm font-bold">{ar ? 'مرفقات المخططات والحسابات' : 'Drawing attachments & calculations'}</h3>
+                <h3 className="text-sm font-bold">{ar ? 'مرفقات المخططات والحسابات' : 'Drawings & calculation attachments'}</h3>
                 <p className={`mt-1 text-xs ${muted}`}>
                   {ar
-                    ? 'تظل المرفقات والإصدارات محفوظة في المشروع. بيانات المخطط والتصنيف انتقلت إلى مرحلة «معلومات المخطط» المستقلة.'
-                    : 'Attachments and versions remain stored on the project. Building-plan data now lives in its separate stage.'}
+                    ? 'رفع موحّد لملفات المشروع. تُحفظ المخططات الهندسية والحسابات الهيدروليكية ضمن مرفقات المشروع، بينما تبقى بيانات المساحات والتصنيف في تبويب «بيانات المساحات والسلامة».'
+                    : 'Use one project-attachment flow for engineering drawings and hydraulic calculations. Space and classification data stays in Space & Safety.'}
                 </p>
               </div>
               <PlanAttachmentsUpload
@@ -1168,16 +965,17 @@ export default function DesignCenterSection({
                 }}
                 clientId={client.id}
               />
-              <div className="border-t pt-4 space-y-3">
-                <h4 className="text-sm font-bold">{ar ? 'مخططات السلامة' : 'Safety blueprints'}</h4>
-                <SafetyBlueprintsUpload
-                  client={client}
-                  buildingPlan={data.building_plan}
-                  value={data.safety_blueprints || EMPTY_SAFETY_BLUEPRINTS}
-                  onChange={(safety_blueprints) => onPatch({ safety_blueprints })}
-                  onPersist={onPersistBlueprints}
-                />
-              </div>
+            </section>
+
+            <section className={`${card} p-4 space-y-3`}>
+              <h4 className="text-sm font-bold">{ar ? 'مخططات السلامة' : 'Safety blueprints'}</h4>
+              <SafetyBlueprintsUpload
+                client={client}
+                buildingPlan={data.building_plan}
+                value={data.safety_blueprints || EMPTY_SAFETY_BLUEPRINTS}
+                onChange={(safety_blueprints) => onPatch({ safety_blueprints })}
+                onPersist={onPersistBlueprints}
+              />
             </section>
           </div>
         )}

@@ -6,6 +6,7 @@ import {
   createProjectArea,
   createProjectFloor,
   emptySafetyQuantities,
+  floorSafetyTotals,
   nonNegativeInteger,
   normalizeSpaceSafetyWorkingCopy,
   projectSafetyTotals,
@@ -75,6 +76,10 @@ describe('Design Center space and safety working copy', () => {
 
   it('preserves hazards, systems, quantities and panel locations through normalization/reload', () => {
     const seeded = seedSpaceSafetyFromClient(client());
+    seeded.floors[0].estimated_occupants = 120;
+    seeded.floors[0].max_travel_distance_m = 34.5;
+    seeded.floors[0].areas[0].estimated_occupants = 45;
+    seeded.floors[0].areas[0].max_travel_distance_m = 27.5;
     seeded.floors[0].areas[0].hazard_approved = 'خطورة متوسطة';
     seeded.floors[0].areas[0].suppression_approved = ['رش آلي', 'طفايات'];
     seeded.floors[0].areas[0].quantities = {
@@ -94,7 +99,13 @@ describe('Design Center space and safety working copy', () => {
 
     const normalized = normalizeSpaceSafetyWorkingCopy(seeded);
     const reloaded = mergeDesignCenterDefaults({ space_safety: normalized }).space_safety;
+    expect(reloaded?.floors[0]).toMatchObject({
+      estimated_occupants: 120,
+      max_travel_distance_m: 34.5,
+    });
     expect(reloaded?.floors[0].areas[0]).toMatchObject({
+      estimated_occupants: 45,
+      max_travel_distance_m: 27.5,
       hazard_approved: 'خطورة متوسطة',
       suppression_approved: ['رش آلي', 'طفايات'],
       quantities: {
@@ -176,6 +187,14 @@ describe('Design Center space and safety working copy', () => {
 
   it('calculates floor and project totals from areas without array-index identity', () => {
     const copy = seedSpaceSafetyFromClient(client());
+    copy.floors[0].areas[0].estimated_occupants = 80;
+    copy.floors[0].areas[0].max_travel_distance_m = 25;
+    copy.floors[0].areas[1].estimated_occupants = 20;
+    copy.floors[0].areas[1].max_travel_distance_m = 18;
+    copy.floors[1].areas[0].estimated_occupants = 70;
+    copy.floors[1].areas[0].max_travel_distance_m = 30;
+    copy.floors[1].estimated_occupants = 90;
+    copy.floors[1].max_travel_distance_m = 28;
     copy.floors[0].areas[0].quantities.sprinklers = 4;
     copy.floors[0].areas[1].quantities.sprinklers = 2;
     copy.floors[1].areas[0].quantities.sprinklers = 3;
@@ -190,6 +209,12 @@ describe('Design Center space and safety working copy', () => {
       total_area_m2: 180,
       areas_count: 2,
       sprinklers: 6,
+      estimated_occupants: 100,
+      max_travel_distance_m: 25,
+    });
+    expect(floorSafetyTotals(copy.floors[1])).toMatchObject({
+      estimated_occupants: 90,
+      max_travel_distance_m: 28,
     });
     expect(projectSafetyTotals(copy)).toMatchObject({
       total_area_m2: 300,
@@ -198,6 +223,8 @@ describe('Design Center space and safety working copy', () => {
       elevators: 3,
       public_facilities: 4,
       alarm_panel_locations: ['المدخل', 'غرفة الأمن'],
+      estimated_occupants: 190,
+      max_travel_distance_m: 28,
     });
   });
 
@@ -227,7 +254,7 @@ describe('Design Center space and safety working copy', () => {
     expect(design.space_safety?.floors).toHaveLength(2);
   });
 
-  it('keeps space safety first and drawings last without legacy upload cards', () => {
+  it('keeps space safety first and drawings last with unified attachments only', () => {
     expect(DESIGN_CENTER_TABS[0].id).toBe('space_safety');
     expect(DESIGN_CENTER_TABS.at(-1)?.id).toBe('drawings');
     const section = readFileSync(
@@ -237,7 +264,24 @@ describe('Design Center space and safety working copy', () => {
     expect(section).not.toContain("['pdf', 'رفع PDF'");
     expect(section).toContain("tab === 'space_safety'");
     expect(section).toContain("tab === 'drawings'");
-    expect(section).toContain('المعاينة المباشرة متاحة لملفات PDF');
-    expect(section).toContain('DWG/DXF/IFC/Revit');
+    expect(section).toContain('PlanAttachmentsUpload');
+    expect(section).not.toContain('إدارة إصدارات المخططات');
+    expect(section).not.toContain('مقارنة الإصدارات');
+    expect(section).not.toContain('عرض المخطط داخل المتصفح');
+    const attachments = readFileSync(
+      resolve(process.cwd(), 'components/projects/PlanAttachmentsUpload.tsx'),
+      'utf8'
+    );
+    expect(attachments).toContain('إرفاق ملف الحسابات الهيدروليكية');
+    expect(attachments).toContain("'hydraulic_calculation', 'hydraulic_calculations'");
+    const spaceSection = readFileSync(
+      resolve(process.cwd(), 'components/projects/DesignSpaceSafetySection.tsx'),
+      'utf8'
+    );
+    expect(spaceSection).toContain('عدد الشاغلين التقديري للدور');
+    expect(spaceSection).toContain('أقصى مسافة سفر للدور');
+    expect(spaceSection).toContain('عدد الشاغلين التقديري');
+    expect(spaceSection).toContain('أقصى مسافة سفر (م)');
+    expect(spaceSection).toContain('floorSafetyTotals');
   });
 });

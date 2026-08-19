@@ -10,6 +10,8 @@ import {
   createProjectArea,
   createProjectFloor,
   nonNegativeInteger,
+  optionalNonNegativeNumber,
+  floorSafetyTotals,
   projectSafetyTotals,
   safetyTotals,
   suggestAreaSafety,
@@ -48,6 +50,8 @@ function totalsRows(total: ReturnType<typeof safetyTotals>) {
   return [
     ['المساحة', `${total.total_area_m2.toLocaleString('ar-SA')} م²`],
     ['المساحات', String(total.areas_count)],
+    ['الشاغلون التقديريون', String(total.estimated_occupants)],
+    ['أقصى مسافة سفر', total.max_travel_distance_m === null ? 'غير مدخلة' : `${total.max_travel_distance_m.toLocaleString('ar-SA')} م`],
     ['المرشات', String(total.sprinklers)],
     ['كواشف الدخان', String(total.smoke_detectors)],
     ['لوحات الإنذار', String(total.fire_alarm_panels)],
@@ -139,7 +143,7 @@ export default function DesignSpaceSafetySection({ client, value, saving, onChan
 
       <div className="space-y-5">
         {value.floors.map((floor) => {
-          const floorTotals = safetyTotals(floor.areas);
+          const floorTotals = floorSafetyTotals(floor);
           return (
             <section key={floor.id} className="rounded-2xl border border-slate-200 bg-white overflow-hidden">
               <header className="flex flex-col gap-3 border-b border-slate-100 bg-slate-50 p-4 sm:flex-row sm:items-center sm:justify-between">
@@ -151,6 +155,20 @@ export default function DesignSpaceSafetySection({ client, value, saving, onChan
                     className="mt-1 w-full max-w-md rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm font-bold text-slate-900"
                   />
                   <p className="mt-1 text-[11px] text-slate-500">عدد التكرارات: {Math.max(1, floor.repeat_count || 1)}</p>
+                  <div className="mt-3 grid max-w-2xl grid-cols-1 gap-3 sm:grid-cols-2">
+                    <MetricField
+                      label="عدد الشاغلين التقديري للدور"
+                      value={floor.estimated_occupants}
+                      step="1"
+                      onChange={(value) => updateFloor(floor.id, { estimated_occupants: value })}
+                    />
+                    <MetricField
+                      label="أقصى مسافة سفر للدور (م)"
+                      value={floor.max_travel_distance_m}
+                      step="0.1"
+                      onChange={(value) => updateFloor(floor.id, { max_travel_distance_m: value })}
+                    />
+                  </div>
                 </div>
                 <button
                   type="button"
@@ -235,7 +253,7 @@ function AreaEditor({
   return (
     <article className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
       <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
-        <div className="grid min-w-0 flex-1 grid-cols-1 gap-3 sm:grid-cols-3">
+        <div className="grid min-w-0 flex-1 grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-5">
           <Field label="مسمى المساحة" value={area.label} onChange={(value) => onChange({ label: value })} />
           <Field
             label="النشاط / التصنيف"
@@ -252,6 +270,18 @@ function AreaEditor({
               const area_m2 = Math.max(0, Number(value) || 0);
               onChange({ area_m2, ...suggestAreaSafety({ ...area, area_m2 }) });
             }}
+          />
+          <MetricField
+            label="عدد الشاغلين التقديري"
+            value={area.estimated_occupants}
+            step="1"
+            onChange={(estimated_occupants) => onChange({ estimated_occupants })}
+          />
+          <MetricField
+            label="أقصى مسافة سفر (م)"
+            value={area.max_travel_distance_m}
+            step="0.1"
+            onChange={(max_travel_distance_m) => onChange({ max_travel_distance_m })}
           />
         </div>
         <button type="button" onClick={onDelete} className="rounded-lg border border-rose-200 px-2.5 py-2 text-xs font-semibold text-rose-700 hover:bg-rose-50">
@@ -363,6 +393,33 @@ function Field({ label, value, onChange }: { label: string; value: string; onCha
     <label className="block text-xs font-semibold text-slate-700">
       {label}
       <input value={value} onChange={(event) => onChange(event.target.value)} className="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2 text-sm font-normal" />
+    </label>
+  );
+}
+
+function MetricField({
+  label,
+  value,
+  step,
+  onChange,
+}: {
+  label: string;
+  value: number | null | undefined;
+  step: string;
+  onChange: (value: number | null) => void;
+}) {
+  return (
+    <label className="block text-xs font-semibold text-slate-700">
+      {label}
+      <input
+        type="number"
+        min="0"
+        step={step}
+        value={value ?? ''}
+        placeholder="غير مدخل"
+        onChange={(event) => onChange(optionalNonNegativeNumber(event.target.value))}
+        className="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2 text-sm font-normal"
+      />
     </label>
   );
 }

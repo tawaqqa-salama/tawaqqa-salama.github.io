@@ -288,6 +288,10 @@ export type DesignSpaceSafetyArea = {
   label: string;
   activity_type?: string | null;
   area_m2: number;
+  /** Engineer-entered estimated occupant count for this specific space. */
+  estimated_occupants?: number | null;
+  /** Longest measured/assumed egress travel distance for this specific space (m). */
+  max_travel_distance_m?: number | null;
   hazard_suggested: string;
   hazard_approved?: string | null;
   hazard_source?: string | null;
@@ -303,6 +307,10 @@ export type DesignSpaceSafetyFloor = {
   label: string;
   kind?: string | null;
   repeat_count: number;
+  /** Optional floor-level figure; it takes precedence over the sum of its areas in summaries. */
+  estimated_occupants?: number | null;
+  /** Optional floor-level maximum; it takes precedence over the maximum of its areas in summaries. */
+  max_travel_distance_m?: number | null;
   areas: DesignSpaceSafetyArea[];
 };
 
