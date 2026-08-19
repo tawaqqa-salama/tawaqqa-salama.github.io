@@ -268,9 +268,18 @@ export type DesignExportJob = {
  * Project-scoped engineering working copy of Sales floor/usage data.
  * It is inherited once from Basic Data and never writes back to Sales.
  */
+export type ManualExtinguisherType =
+  | 'dry_powder_abc'
+  | 'carbon_dioxide'
+  | 'foam'
+  | 'wet_chemical'
+  | 'clean_agent'
+  | 'water';
+
 export type DesignSpaceSafetyQuantities = {
   sprinklers: number;
   smoke_detectors: number;
+  heat_detectors: number;
   fire_alarm_panels: number;
   alarm_panel_locations: string[];
   signs: number;
@@ -278,6 +287,10 @@ export type DesignSpaceSafetyQuantities = {
   emergency_exits: number;
   alarm_bells: number;
   emergency_stairs: number;
+  manual_extinguishers: number;
+  manual_extinguisher_type?: ManualExtinguisherType | null;
+  manual_extinguisher_size?: string | null;
+  /** Historical fields retained for old project data; intentionally hidden from the current editor. */
   elevators: number;
   public_facilities: number;
 };
