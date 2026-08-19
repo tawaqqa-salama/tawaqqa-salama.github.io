@@ -1,472 +1,227 @@
 'use client';
 
-import { PLATFORM_NAME } from '@/lib/constants/branding';
 import { getBuildingPlanGeneralInfo, formatYesNo } from '@/lib/projects/building-plan';
+import { DEFAULT_COMPANY_PROFILE, loadCompanyProfile, type CompanyProfile } from '@/lib/company-profile';
 import type { ClientRecord } from '@/lib/types/client';
 import type { BuildingPlanGeneralInfo, BuildingPlanReport } from '@/lib/types/project-reports';
 
-function esc(v: string) {
-  return String(v ?? '')
+function esc(value: string | number | null | undefined): string {
+  return String(value ?? '')
     .replace(/&/g, '&amp;')
     .replace(/</g, '&lt;')
     .replace(/>/g, '&gt;')
     .replace(/"/g, '&quot;');
 }
 
-/** صف رسمي: بند | قيمة رقمية/نصية | نعم/لا */
-function engRow(label: string, value: string, yn = '') {
-  return `<tr>
-    <td class="lbl">${esc(label)}</td>
-    <td class="val">${esc(value || '—')}</td>
-    <td class="yn">${esc(yn || '')}</td>
-  </tr>`;
+function text(value: string | number | null | undefined): string {
+  const normalized = String(value ?? '').trim();
+  return normalized || '—';
 }
 
-function kvRow(label: string, value: string, spanRest = false) {
-  if (spanRest) {
-    return `<tr><td class="lbl">${esc(label)}</td><td class="val" colspan="2">${esc(value || '—')}</td></tr>`;
-  }
-  return `<tr><td class="lbl">${esc(label)}</td><td class="val">${esc(value || '—')}</td></tr>`;
+function cell(label: string, value: string | number | null | undefined): string {
+  return `<td class="label">${esc(label)}</td><td class="value">${esc(text(value))}</td>`;
+}
+
+function yesNoCell(label: string, value: string | null | undefined): string {
+  return `<td class="label">${esc(label)}</td><td class="yesno">${esc(formatYesNo(value))}</td>`;
+}
+
+function approvalValue(preferred: string | null | undefined, fallback: string | null | undefined): string {
+  return text(preferred || fallback || '');
+}
+
+function optionalImage(source: string | null | undefined, className: string, alt: string): string {
+  return source ? `<img class="${className}" src="${esc(source)}" alt="${esc(alt)}" />` : '';
+}
+
+function planInfoRows(report: BuildingPlanReport, general: BuildingPlanGeneralInfo): string {
+  const leftRows: Array<[string, string]> = [
+    ['تصنيف الإشغال', report.occupancy_classification || ''],
+    ['نوع البناء', report.building_type_code || ''],
+    ['مساحة الموقع العام (م²)', report.total_site_area_m2 || general.land_area],
+    ['عدد الأدوار', report.floors_description || general.floors_count],
+    ['الارتفاع (م)', report.building_height_m || ''],
+    ['عدد أدوار القبو', report.basement_floors_count || ''],
+    ['العمق تحت الأرض (م)', report.underground_depth_m || ''],
+    ['عدد المخارج', report.exits_count || ''],
+    ['عدد السلالم', report.stairs_count || ''],
+    ['عدد السلالم الكهربائية', report.escalators_count || ''],
+    ['عدد المصاعد', report.elevators_count || ''],
+  ];
+
+  const rightRows: Array<[string, string]> = [
+    ['المبنى عالي (High Rise)', formatYesNo(report.high_rise_building)],
+    ['يوجد بهو (Atrium)', formatYesNo(report.atrium_exists)],
+    ['المبنى تحت الأرض', formatYesNo(report.underground_building)],
+    ['المبنى بلا نوافذ', formatYesNo(report.windowless_building)],
+    ['يوجد تأريض كهربائي', formatYesNo(report.electrical_grounding)],
+    ['يوجد حماية من الصواعق', formatYesNo(report.lightning_protection)],
+    ['يوجد مولد احتياطي', formatYesNo(report.backup_generator)],
+    ['إضافة/استثناء متطلبات بالكود', formatYesNo(report.sbc_code_exceptions)],
+    ['يلزم فرق إطفاء وإنقاذ خاصة', formatYesNo(report.special_rescue_team_required)],
+    ['—', ''],
+    ['—', ''],
+  ];
+
+  return leftRows
+    .map((left, index) => {
+      const right = rightRows[index];
+      return `<tr>${cell(left[0], left[1])}${yesNoCell(right[0], right[1])}</tr>`;
+    })
+    .join('');
 }
 
 export function buildBuildingPlanPrintHtml(
   client: ClientRecord,
   report: BuildingPlanReport,
-  general: BuildingPlanGeneralInfo
+  general: BuildingPlanGeneralInfo,
+  company: CompanyProfile = DEFAULT_COMPANY_PROFILE
 ): string {
-  // ترتيب الصفوف مطابق لنموذج الدفاع المدني / واجهة المهندس حرفياً
-  const engineeringRows = [
-    engRow('تصنيف الإشغال', report.occupancy_classification || ''),
-    engRow('نوع البناء', report.building_type_code || ''),
-    engRow('المبنى عالي', '—', formatYesNo(report.high_rise_building)),
-    engRow('مساحة الموقع (م²)', report.total_site_area_m2 || general.land_area),
-    engRow('يوجد بهو', '—', formatYesNo(report.atrium_exists)),
-    engRow('عدد الأدوار (وصف)', report.floors_description || general.floors_count),
-    engRow('المبنى تحت الأرض', '—', formatYesNo(report.underground_building)),
-    engRow('الارتفاع (m)', report.building_height_m || ''),
-    engRow('بلا نوافذ', '—', formatYesNo(report.windowless_building)),
-    engRow('أدوار القبو', report.basement_floors_count || '0'),
-    engRow('تأريض كهربائي', '—', formatYesNo(report.electrical_grounding)),
-    engRow('عمق تحت الأرض (m)', report.underground_depth_m || '0'),
-    engRow('حماية صواعق', '—', formatYesNo(report.lightning_protection)),
-    engRow('عدد المخارج', report.exits_count || ''),
-    engRow('مولد احتياطي', '—', formatYesNo(report.backup_generator)),
-    engRow('عدد السلالم', report.stairs_count || ''),
-    engRow('استثناءات الكود', '—', formatYesNo(report.sbc_code_exceptions)),
-    engRow('سلالم كهربائية', report.escalators_count || '0'),
-    engRow('فرق إطفاء خاصة', '—', formatYesNo(report.special_rescue_team_required)),
-    engRow('عدد المصاعد', report.elevators_count || '0'),
-  ].join('');
+  const officeName = approvalValue(company.legal_name || company.name, report.office_name);
+  const commercialRegistration = approvalValue(company.commercial_register, report.commercial_registration);
+  const membership = approvalValue(company.membership_id, report.engineering_membership_no);
+  const engineer = approvalValue(report.engineer_representative || client.assigned_engineer, '');
+  const reportDate = text(report.report_date || report.certification_date);
+  const city = text(report.manual_city || general.city);
+  const district = text(report.manual_district || general.district);
+  const location = [city, district, general.street !== '—' ? general.street : ''].filter((item) => item && item !== '—').join(' — ') || '—';
+  const permitNumber = report.building_permit_number || client.license_number || '—';
+  const permitDate = report.building_permit_date || '—';
+  const officeLogo = optionalImage(company.logo_url, 'company-logo', 'شعار الشركة');
+  const officeStamp = optionalImage(company.stamp_url, 'company-stamp', 'ختم الشركة');
 
   return `<!DOCTYPE html>
 <html lang="ar" dir="rtl">
 <head>
   <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>تقرير معلومات المخطط — ${esc(general.business_name)}</title>
   <style>
-    @page {
-      size: A4 portrait;
-      margin: 5mm 8mm;
-    }
-
+    @page { size: A4 portrait; margin: 0; }
     * { box-sizing: border-box; }
-
-    html, body {
-      margin: 0;
-      padding: 0;
-      background: #fff;
-      color: #111;
-      font-family: "Tahoma","Segoe UI",Arial,sans-serif;
-      font-size: 10px;
-    }
-
-    .sheet {
-      width: 210mm;
-      min-height: 297mm;
-      max-height: 297mm;
-      margin: 0 auto;
-      padding: 5mm 8mm;
-      overflow: hidden;
-      display: flex;
-      flex-direction: column;
-      page-break-after: avoid;
-      page-break-inside: avoid;
-      break-inside: avoid;
-    }
-
-    .head {
-      text-align: center;
-      margin-bottom: 3px;
-      flex: 0 0 auto;
-    }
-
-    .head .brand {
-      font-size: 11px;
-      font-weight: 700;
-      color: #635bdb;
-      margin: 0 0 1px;
-    }
-
-    .head h1 {
-      margin: 0;
-      font-size: 12px;
-      font-weight: 800;
-      color: #111;
-      line-height: 1.3;
-    }
-
-    .head .en {
-      margin: 1px 0 0;
-      font-size: 9px;
-      color: #475569;
-    }
-
-    .status {
-      display: inline-block;
-      margin-top: 2px;
-      padding: 0 6px;
-      border: 1px solid #86efac;
-      background: #ecfdf5;
-      color: #065f46;
-      font-size: 9px;
-      font-weight: 700;
-    }
-
-    .body {
-      flex: 1 1 auto;
-      min-height: 0;
-      overflow: hidden;
-    }
-
-    table.form {
-      width: 100%;
-      border-collapse: collapse;
-      table-layout: fixed;
-      margin: 0 0 3px;
-      font-size: 9.5px;
-    }
-
-    table.form th,
-    table.form td {
-      border: 1px solid #5f7d45;
-      padding: 2px 5px;
-      vertical-align: middle;
-      line-height: 1.2;
-    }
-
-    table.form th {
-      background: #6b8f4e;
-      color: #fff;
-      font-size: 10px;
-      font-weight: 700;
-      text-align: center;
-    }
-
-    table.form .lbl {
-      width: 28%;
-      background: #d9e8c4;
-      font-weight: 700;
-      color: #1f2f14;
-      font-size: 9px;
-    }
-
-    table.form .val {
-      background: #fff;
-      font-size: 9.5px;
-      word-break: break-word;
-    }
-
-    /* جدول المواصفات: بند | قيمة | نعم/لا */
-    table.eng .lbl { width: 34%; }
-    table.eng .val { width: 46%; }
-    table.eng .yn {
-      width: 20%;
-      text-align: center;
-      font-weight: 700;
-      background: #fff;
-      font-size: 9.5px;
-    }
-
-    table.meta .lbl { width: 22%; }
-    table.meta .val { width: 28%; }
-
-    table.safety .lbl { width: 28%; }
-    table.safety .val { width: 72%; }
-    table.safety .yn {
-      width: 18%;
-      text-align: center;
-      font-weight: 700;
-    }
-
-    .cert {
-      flex: 0 0 auto;
-      margin-top: auto;
-    }
-
-    table.cert {
-      width: 100%;
-      border-collapse: collapse;
-      table-layout: fixed;
-      font-size: 9.5px;
-      margin: 0;
-    }
-
-    table.cert th,
-    table.cert td {
-      border: 1px solid #5f7d45;
-      padding: 2px 5px;
-      vertical-align: middle;
-    }
-
-    table.cert th {
-      background: #635bdb;
-      color: #fff;
-      font-size: 10px;
-      text-align: center;
-    }
-
-    table.cert .lbl {
-      width: 18%;
-      background: #d9e8c4;
-      font-weight: 700;
-      font-size: 9px;
-    }
-
-    table.cert .val { width: 32%; }
-
-    .sign-wrap {
-      display: grid;
-      grid-template-columns: 1fr 1fr 1fr;
-      border: 1px solid #5f7d45;
-      border-top: 0;
-      background: #f7faf3;
-    }
-
-    .sign-box {
-      text-align: center;
-      padding: 4px 4px 5px;
-      font-size: 9px;
-      border-left: 1px solid #5f7d45;
-      min-height: 48px;
-    }
-
-    .sign-box:last-child { border-left: 0; }
-
-    .stamp {
-      width: 46px;
-      height: 46px;
-      margin: 1px auto 2px;
-      border: 1.5px dashed #635bdb;
-      border-radius: 50%;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      color: #635bdb;
-      font-size: 8px;
-      font-weight: 700;
-      line-height: 1.15;
-      padding: 3px;
-    }
-
-    .sign-line {
-      margin-top: 18px;
-      border-top: 1px solid #64748b;
-      padding-top: 2px;
-    }
-
-    @media print {
-      @page {
-        size: A4 portrait;
-        margin: 0;
-      }
-
-      html, body {
-        width: auto;
-        height: 100vh;
-        overflow: hidden;
-        page-break-after: avoid !important;
-        page-break-inside: avoid !important;
-        break-after: avoid !important;
-        break-inside: avoid !important;
-      }
-
-      body { margin: 8mm; }
-
-      .sheet {
-        width: auto;
-        min-height: auto;
-        max-height: none;
-        margin: 0;
-        padding: 0;
-        overflow: hidden;
-        page-break-after: avoid !important;
-        page-break-inside: avoid !important;
-      }
-
-      header, footer, .no-print {
-        display: none !important;
-      }
-    }
-
+    html, body { width: 210mm; min-height: 0; margin: 0; padding: 0; background: #fff; color: #152012; font-family: Tahoma, "Segoe UI", Arial, sans-serif; font-size: 9px; }
+    .sheet { width: 210mm; height: 297mm; margin: 0; padding: 8mm 9mm 7mm; overflow: hidden; background: #fff; }
+    .doc-head { display: grid; grid-template-columns: 42mm 1fr 42mm; align-items: center; min-height: 20mm; border-bottom: 1.2px solid #5a7d47; padding-bottom: 2mm; }
+    .brand-mark { min-height: 16mm; display: flex; align-items: center; justify-content: flex-start; }
+    .company-logo { max-width: 38mm; max-height: 16mm; object-fit: contain; }
+    .company-fallback { color: #4f7e56; font-size: 11px; font-weight: 800; line-height: 1.25; }
+    .doc-title { text-align: center; }
+    .doc-title h1 { margin: 0; font-size: 14px; line-height: 1.2; color: #1e3218; }
+    .doc-title p { margin: 1px 0 0; color: #5b6d62; font-size: 8px; }
+    .doc-status { text-align: left; color: #4e6b3b; font-size: 8px; font-weight: 700; }
+    .doc-status span { display: inline-block; border: 1px solid #94b772; padding: 1mm 2mm; background: #f2f8eb; }
+    table { width: 100%; border-collapse: collapse; table-layout: fixed; }
+    th, td { border: .45px solid #557044; vertical-align: middle; line-height: 1.15; overflow-wrap: anywhere; }
+    th { padding: 1.35mm 1.7mm; color: #fff; background: #638b4e; text-align: center; font-size: 9.3px; font-weight: 800; }
+    td { padding: 1.05mm 1.5mm; }
+    .label { width: 17%; background: #e3efd5; font-weight: 700; color: #314923; font-size: 8.2px; }
+    .value { width: 33%; color: #172212; font-size: 8.4px; }
+    .yesno { width: 33%; text-align: center; color: #172212; font-size: 8.4px; }
+    .building { margin-top: 2.2mm; }
+    .building .label { width: 15%; }
+    .building .value { width: 35%; }
+    .section-title { margin: 0 0 1.1mm; padding: 1.1mm 2mm; background: #638b4e; color: #fff; font-size: 9.3px; font-weight: 800; text-align: center; border: .45px solid #557044; }
+    .plan-info .label { width: 18%; }
+    .plan-info .value, .plan-info .yesno { width: 32%; }
+    .safety { margin-top: 2.2mm; }
+    .safety td { font-size: 7.8px; padding-top: .9mm; padding-bottom: .9mm; }
+    .safety .label { width: 18%; }
+    .safety .yesno { width: 32%; }
+    .safety .wide { width: 82%; }
+    .approval { margin-top: 2.2mm; }
+    .approval .section-title { background: #635bdb; border-color: #4e47b8; }
+    .approval .label { width: 18%; }
+    .approval .value { width: 32%; }
+    .approval th, .approval td { border-color: #596d4a; }
+    .approval-grid { display: grid; grid-template-columns: 1fr 1fr 1fr; min-height: 26mm; border: .45px solid #557044; border-top: 0; background: #fbfdf8; }
+    .signature-box { padding: 2mm; text-align: center; border-inline-start: .45px solid #557044; font-size: 8px; display: flex; flex-direction: column; justify-content: space-between; }
+    .signature-box:first-child { border-inline-start: 0; }
+    .sign-line { margin-top: 7mm; border-top: .45px solid #697a61; padding-top: 1mm; }
+    .company-stamp { max-width: 18mm; max-height: 18mm; object-fit: contain; margin: 0 auto; }
+    .stamp-fallback { width: 16mm; height: 16mm; margin: 0 auto; border: 1px dashed #635bdb; border-radius: 50%; display: grid; place-items: center; color: #635bdb; font-size: 6.4px; line-height: 1.1; padding: 1.5mm; }
+    .no-print { margin: 0; text-align: center; }
+    .no-print button { padding: 7px 12px; font-size: 12px; }
     @media screen {
-      body { background: #e5e7eb; padding: 12px 0 24px; }
-      .sheet {
-        background: #fff;
-        box-shadow: 0 8px 20px rgba(0,0,0,.12);
-      }
+      body { background: #e5e7eb; padding: 10px 0 16px; }
+      .sheet { margin: 0 auto; box-shadow: 0 8px 20px rgba(0,0,0,.12); }
+    }
+    @media print {
+      html, body { width: 210mm; height: auto; min-height: 0; overflow: visible; background: #fff; }
+      body { margin: 0; padding: 0; }
+      .no-print { display: none !important; }
+      .sheet { width: 210mm; height: 297mm; min-height: 0; max-height: none; margin: 0; padding: 8mm 9mm 7mm; overflow: hidden; break-after: avoid-page; page-break-after: avoid; }
     }
   </style>
 </head>
 <body>
-  <div class="no-print" style="text-align:center;margin-bottom:8px">
-    <button onclick="window.print()" style="padding:7px 12px;font-size:12px">طباعة / حفظ PDF (A4 صفحة واحدة — نموذج الدفاع المدني)</button>
-  </div>
+  <div class="no-print"><button onclick="window.print()">طباعة / حفظ PDF</button></div>
+  <main class="sheet">
+    <header class="doc-head">
+      <div class="brand-mark">${officeLogo || `<div class="company-fallback">${esc(officeName)}</div>`}</div>
+      <div class="doc-title"><h1>تقرير معلومات المخطط</h1><p>Building Plan Information Report</p></div>
+      <div class="doc-status"><span>${esc(text(report.status))}</span></div>
+    </header>
 
-  <div class="sheet">
-    <div class="head">
-      <p class="brand">${esc(PLATFORM_NAME)}</p>
-      <h1>تقرير معلومات المخطط</h1>
-      <p class="en">Building Plan Information Report — نموذج رسمي موحد</p>
-      <span class="status">${esc(report.status || 'مسودة')}</span>
-    </div>
-
-    <div class="body">
-      <!-- 1) بيانات المنشأة -->
-      <table class="form meta">
-        <tr><th colspan="4">بيانات المنشأة</th></tr>
-        <tr>
-          <td class="lbl">اسم المنشأة / المبنى</td>
-          <td class="val">${esc(general.business_name)}</td>
-          <td class="lbl">اسم المالك</td>
-          <td class="val">${esc(general.owner_name)}</td>
-        </tr>
-        <tr>
-          <td class="lbl">نوع النشاط التجاري</td>
-          <td class="val">${esc(general.activity_type_label)}</td>
-          <td class="lbl">المدينة</td>
-          <td class="val">${esc(general.city)}</td>
-        </tr>
-        <tr>
-          <td class="lbl">الموقع (مدينة — حي)</td>
-          <td class="val">${esc(general.location_summary)}</td>
-          <td class="lbl">الحي والشارع</td>
-          <td class="val">${esc(general.district)} — ${esc(general.street)}</td>
-        </tr>
-        <tr>
-          <td class="lbl">مساحة الأرض</td>
-          <td class="val">${esc(general.land_area)}</td>
-          <td class="lbl">مساحة المبنى</td>
-          <td class="val">${esc(general.building_area)}</td>
-        </tr>
-        <tr>
-          <td class="lbl">عدد الأدوار (مسجل)</td>
-          <td class="val">${esc(general.floors_count)}</td>
-          <td class="lbl">رقم القطعة</td>
-          <td class="val">${esc(general.plot_number)}</td>
-        </tr>
-        <tr>
-          <td class="lbl">العنوان الوطني</td>
-          <td class="val">${esc(general.national_address)}</td>
-          <td class="lbl">رخصة البناء</td>
-          <td class="val">${esc(report.building_permit_number || client.license_number || '—')}</td>
-        </tr>
-        <tr>
-          <td class="lbl">تاريخ التقرير</td>
-          <td class="val">${esc(report.report_date || new Date().toISOString().slice(0, 10))}</td>
-          <td class="lbl">حالة التقرير</td>
-          <td class="val">${esc(report.status || 'مسودة')}</td>
-        </tr>
+    <section class="building">
+      <div class="section-title">بيانات المنشأة</div>
+      <table>
+        <tr>${cell('اسم المنشأة / المبنى', general.business_name)}${cell('اسم المالك', general.owner_name)}</tr>
+        <tr>${cell('نوع النشاط', general.activity_type_label)}${cell('الموقع', location)}</tr>
+        <tr>${cell('العنوان الوطني', general.national_address)}${cell('رقم القطعة', general.plot_number)}</tr>
+        <tr>${cell('رقم رخصة البناء', permitNumber)}${cell('تاريخ رخصة البناء', permitDate)}</tr>
       </table>
+    </section>
 
-      <!-- 2) المواصفات الهندسية ومتطلبات SBC — بند | قيمة | نعم/لا -->
-      <table class="form eng">
-        <tr>
-          <th>البند</th>
-          <th>القيمة</th>
-          <th>نعم / لا</th>
-        </tr>
-        ${engineeringRows}
+    <section class="plan-info">
+      <div class="section-title">معلومات المخطط</div>
+      <table>
+        ${planInfoRows(report, general)}
       </table>
-
-      <!-- 3) أنظمة السلامة -->
-      <table class="form safety">
-        <tr><th colspan="3">أنظمة السلامة والاعتماد</th></tr>
-        <tr>
-          <td class="lbl">نظام إنذار حريق</td>
-          <td class="val">—</td>
-          <td class="yn">${esc(formatYesNo(report.fire_alarm_system))}</td>
-        </tr>
-        <tr>
-          <td class="lbl">نظام رش آلي</td>
-          <td class="val">—</td>
-          <td class="yn">${esc(formatYesNo(report.sprinkler_system))}</td>
-        </tr>
-        ${kvRow('متطلبات كود البناء SBC', report.sbc_requirements || '—', true)}
-        ${kvRow('أبواب ومخارج الطوارئ', report.emergency_exits_doors || '—', true)}
-        ${kvRow('حالة اعتماد المخطط', report.plan_approval_status || '—', true)}
-        ${kvRow('ملاحظات المعاينة الفنية', report.technical_inspection_notes || '—', true)}
-      </table>
-    </div>
-
-    <!-- 4) اعتماد المكتب — قاع الصفحة -->
-    <div class="cert">
-      <table class="cert">
-        <tr><th colspan="4">اعتماد المكتب الاستشاري</th></tr>
-        <tr>
-          <td class="lbl">اسم المكتب</td>
-          <td class="val">${esc(report.office_name || PLATFORM_NAME)}</td>
-          <td class="lbl">السجل التجاري</td>
-          <td class="val">${esc(report.commercial_registration || '—')}</td>
-        </tr>
-        <tr>
-          <td class="lbl">ممثل المكتب</td>
-          <td class="val">${esc(report.engineer_representative || client.assigned_engineer || '—')}</td>
-          <td class="lbl">رقم العضوية</td>
-          <td class="val">${esc(report.engineering_membership_no || '—')}</td>
-        </tr>
-        <tr>
-          <td class="lbl">تاريخ الاعتماد</td>
-          <td class="val">${esc(report.certification_date || '—')}</td>
-          <td class="lbl">الحالة</td>
-          <td class="val">${esc(report.plan_approval_status || report.status || '—')}</td>
-        </tr>
-      </table>
-      <div class="sign-wrap">
-        <div class="sign-box">
-          <div>توقيع المهندس</div>
-          <div class="sign-line">${esc(report.engineer_representative || client.assigned_engineer || '................')}</div>
-        </div>
-        <div class="sign-box">
-          <div class="stamp">ختم<br/>المكتب</div>
-          <div>${esc(report.office_name || PLATFORM_NAME)}</div>
-        </div>
-        <div class="sign-box">
-          <div>اعتماد المكتب</div>
-          <div class="sign-line">................</div>
-        </div>
+      <div class="safety">
+        <div class="section-title">أنظمة السلامة والاعتماد</div>
+        <table>
+          <tr>${yesNoCell('نظام إنذار الحريق', report.fire_alarm_system)}${yesNoCell('نظام رش آلي', report.sprinkler_system)}</tr>
+          <tr><td class="label">متطلبات SBC</td><td class="wide" colspan="3">${esc(text(report.sbc_requirements))}</td></tr>
+          <tr><td class="label">أبواب ومخارج الطوارئ</td><td class="wide" colspan="3">${esc(text(report.emergency_exits_doors))}</td></tr>
+          <tr><td class="label">حالة اعتماد المخطط</td><td class="value">${esc(text(report.plan_approval_status || report.status))}</td><td class="label">ملاحظات المعالجة الفنية</td><td class="value">${esc(text(report.technical_inspection_notes))}</td></tr>
+        </table>
       </div>
-    </div>
-  </div>
+    </section>
+
+    <footer class="approval">
+      <div class="section-title">اعتماد المكتب الاستشاري</div>
+      <table>
+        <tr>${cell('اسم المكتب', officeName)}${cell('السجل التجاري', commercialRegistration)}</tr>
+        <tr>${cell('ممثل المكتب / المهندس', engineer)}${cell('رقم العضوية الهندسية', membership)}</tr>
+        <tr>${cell('التاريخ', reportDate)}${cell('حالة الاعتماد', report.plan_approval_status || report.status)}</tr>
+      </table>
+      <div class="approval-grid">
+        <div class="signature-box"><span>توقيع المهندس</span><span class="sign-line">${esc(engineer)}</span></div>
+        <div class="signature-box"><span>الختم</span>${officeStamp || `<span class="stamp-fallback">${esc(text(company.stamp_text || officeName))}</span>`}<span>${esc(officeName)}</span></div>
+        <div class="signature-box"><span>اعتماد المكتب</span><span class="sign-line">........................</span></div>
+      </div>
+    </footer>
+  </main>
 </body>
 </html>`;
 }
 
-export function printBuildingPlanReport(client: ClientRecord, report: BuildingPlanReport) {
+export async function printBuildingPlanReport(client: ClientRecord, report: BuildingPlanReport) {
   const general = getBuildingPlanGeneralInfo(client);
-  const html = buildBuildingPlanPrintHtml(client, report, general);
-  void import('@/lib/print/document-preview').then(({ openDocumentPreview }) => {
-    openDocumentPreview({
-      title: `تقرير معلومات المخطط — ${client.client_code}`,
-      html,
-      fileName: `building-plan-${client.client_code}`,
-    });
+  const company = await loadCompanyProfile();
+  const html = buildBuildingPlanPrintHtml(client, report, general, company);
+  const { openDocumentPreview } = await import('@/lib/print/document-preview');
+  openDocumentPreview({
+    title: `تقرير معلومات المخطط — ${client.client_code}`,
+    html,
+    fileName: `building-plan-${client.client_code}`,
   });
 }
 
-export function exportBuildingPlanReport(client: ClientRecord, report: BuildingPlanReport) {
+export async function exportBuildingPlanReport(client: ClientRecord, report: BuildingPlanReport) {
   const general = getBuildingPlanGeneralInfo(client);
-  const html = buildBuildingPlanPrintHtml(client, report, general);
-  void import('@/lib/print/document-preview').then(({ downloadHtmlDocument }) => {
-    downloadHtmlDocument(html, `building-plan-${client.client_code}`);
-  });
+  const company = await loadCompanyProfile();
+  const html = buildBuildingPlanPrintHtml(client, report, general, company);
+  const { downloadHtmlDocument } = await import('@/lib/print/document-preview');
+  downloadHtmlDocument(html, `building-plan-${client.client_code}`);
 }
