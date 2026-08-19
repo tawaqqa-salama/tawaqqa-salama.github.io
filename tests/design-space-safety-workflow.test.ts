@@ -264,7 +264,9 @@ describe('Design Center space and safety working copy', () => {
     expect(section).not.toContain("['pdf', 'رفع PDF'");
     expect(section).toContain("tab === 'space_safety'");
     expect(section).toContain("tab === 'drawings'");
-    expect(section).toContain('PlanAttachmentsUpload');
+    expect(section).not.toContain('PlanAttachmentsUpload');
+    expect(section).toContain('planAttachments={data.plan_attachments}');
+    expect(section).toContain('onPlanAttachmentsChange');
     expect(section).not.toContain('إدارة إصدارات المخططات');
     expect(section).not.toContain('مقارنة الإصدارات');
     expect(section).not.toContain('عرض المخطط داخل المتصفح');
@@ -274,6 +276,13 @@ describe('Design Center space and safety working copy', () => {
     );
     expect(attachments).toContain('إرفاق ملف الحسابات الهيدروليكية');
     expect(attachments).toContain("'hydraulic_calculation', 'hydraulic_calculations'");
+    const blueprints = readFileSync(
+      resolve(process.cwd(), 'components/projects/SafetyBlueprintsUpload.tsx'),
+      'utf8'
+    );
+    expect(blueprints).toContain("sections={['hydraulic_calculations']}");
+    expect(blueprints).not.toContain('أقصى مسافة سفر (م) — لفحص Life Safety');
+    expect(blueprints).not.toContain('عدد الشاغلين التقديري</span>');
     const spaceSection = readFileSync(
       resolve(process.cwd(), 'components/projects/DesignSpaceSafetySection.tsx'),
       'utf8'

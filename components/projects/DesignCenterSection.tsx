@@ -45,17 +45,15 @@ import { useLanguage } from '@/lib/i18n/LanguageProvider';
 import { uploadPlanAttachmentDetailed, getPlanFileUrl } from '@/lib/storage/project-files';
 import { isDemoMode } from '@/lib/supabase';
 import { humanizeFetchError } from '@/lib/api/safe-json';
-import PlanAttachmentsUpload from '@/components/projects/PlanAttachmentsUpload';
 import SafetyBlueprintsUpload from '@/components/projects/SafetyBlueprintsUpload';
 import CadZoneOverlay from '@/components/projects/CadZoneOverlay';
 import DrawingInspectionCard from '@/components/projects/DrawingInspectionCard';
 import DesignSpaceSafetySection from '@/components/projects/DesignSpaceSafetySection';
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { EMPTY_PLAN_ATTACHMENTS, EMPTY_SAFETY_BLUEPRINTS } from '@/lib/types/project-reports';
+import { EMPTY_SAFETY_BLUEPRINTS } from '@/lib/types/project-reports';
 import { seedSpaceSafetyFromClient } from '@/lib/projects/design-center/space-safety';
 import type { ClientRecord } from '@/lib/types/client';
 import type {
-  PlanAttachmentsState,
   ProjectEngineeringData,
   SafetyBlueprintsState,
 } from '@/lib/types/project-reports';
@@ -947,37 +945,21 @@ export default function DesignCenterSection({
         )}
 
         {tab === 'drawings' && (
-          <div className="space-y-5">
-            <section className={`${card} p-4 space-y-4`}>
-              <div>
-                <h3 className="text-sm font-bold">{ar ? 'مرفقات المخططات والحسابات' : 'Drawings & calculation attachments'}</h3>
-                <p className={`mt-1 text-xs ${muted}`}>
-                  {ar
-                    ? 'رفع موحّد لملفات المشروع. تُحفظ المخططات الهندسية والحسابات الهيدروليكية ضمن مرفقات المشروع، بينما تبقى بيانات المساحات والتصنيف في تبويب «بيانات المساحات والسلامة».'
-                    : 'Use one project-attachment flow for engineering drawings and hydraulic calculations. Space and classification data stays in Space & Safety.'}
-                </p>
-              </div>
-              <PlanAttachmentsUpload
-                value={data.plan_attachments || EMPTY_PLAN_ATTACHMENTS}
-                onChange={(plan_attachments: PlanAttachmentsState) => {
-                  onPatch({ plan_attachments });
-                  void onPersistDesignCenter(design, { plan_attachments });
-                }}
-                clientId={client.id}
-              />
-            </section>
-
-            <section className={`${card} p-4 space-y-3`}>
-              <h4 className="text-sm font-bold">{ar ? 'مخططات السلامة' : 'Safety blueprints'}</h4>
-              <SafetyBlueprintsUpload
-                client={client}
-                buildingPlan={data.building_plan}
-                value={data.safety_blueprints || EMPTY_SAFETY_BLUEPRINTS}
-                onChange={(safety_blueprints) => onPatch({ safety_blueprints })}
-                onPersist={onPersistBlueprints}
-              />
-            </section>
-          </div>
+          <section className={`${card} p-4 space-y-3`}>
+            <h3 className="text-sm font-bold">{ar ? 'مخططات السلامة' : 'Safety blueprints'}</h3>
+            <SafetyBlueprintsUpload
+              client={client}
+              buildingPlan={data.building_plan}
+              value={data.safety_blueprints || EMPTY_SAFETY_BLUEPRINTS}
+              onChange={(safety_blueprints) => onPatch({ safety_blueprints })}
+              onPersist={onPersistBlueprints}
+              planAttachments={data.plan_attachments}
+              onPlanAttachmentsChange={(plan_attachments) => {
+                onPatch({ plan_attachments });
+                return onPersistDesignCenter(design, { plan_attachments });
+              }}
+            />
+          </section>
         )}
 
         {tab === 'ai_center' && (

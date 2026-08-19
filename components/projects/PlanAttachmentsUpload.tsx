@@ -5,13 +5,22 @@ import { uploadPlanAttachmentDetailed } from '@/lib/storage/project-files';
 import { isDemoMode } from '@/lib/supabase';
 import type { PlanAttachmentFile, PlanAttachmentsState } from '@/lib/types/project-reports';
 
+type AttachmentSection = keyof PlanAttachmentsState;
+
 type Props = {
   value: PlanAttachmentsState;
   onChange: (next: PlanAttachmentsState) => void;
   clientId?: string | null;
+  /** Restrict the visible inputs when this uploader is embedded in a focused engineering section. */
+  sections?: AttachmentSection[];
 };
 
-export default function PlanAttachmentsUpload({ value, onChange, clientId }: Props) {
+export default function PlanAttachmentsUpload({
+  value,
+  onChange,
+  clientId,
+  sections = ['engineering_drawings', 'hydraulic_calculations'],
+}: Props) {
   const [uploading, setUploading] = useState(false);
   const [hint, setHint] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -85,37 +94,41 @@ export default function PlanAttachmentsUpload({ value, onChange, clientId }: Pro
         <div className="text-xs text-gray-500">جاري الرفع والحفظ...</div>
       ) : null}
 
-      <div className="rounded-xl border p-4 space-y-2">
-        <h4 className="text-sm font-bold text-gray-900">إرفاق المخططات الهندسية (DWG / PDF)</h4>
-        <input
-          type="file"
-          accept=".dwg,.dxf,.pdf,.png,.jpg,.jpeg"
-          multiple
-          disabled={uploading}
-          onChange={(e) => void addFiles(e.target.files, 'engineering_drawing', 'engineering_drawings')}
-          className="w-full text-sm"
-        />
-        <FileList files={value.engineering_drawings || []} onRemove={(id) => remove('engineering_drawings', id)} />
-      </div>
+      {sections.includes('engineering_drawings') ? (
+        <div className="rounded-xl border p-4 space-y-2">
+          <h4 className="text-sm font-bold text-gray-900">إرفاق المخططات الهندسية (DWG / PDF)</h4>
+          <input
+            type="file"
+            accept=".dwg,.dxf,.pdf,.png,.jpg,.jpeg"
+            multiple
+            disabled={uploading}
+            onChange={(e) => void addFiles(e.target.files, 'engineering_drawing', 'engineering_drawings')}
+            className="w-full text-sm"
+          />
+          <FileList files={value.engineering_drawings || []} onRemove={(id) => remove('engineering_drawings', id)} />
+        </div>
+      ) : null}
 
-      <div className="rounded-xl border p-4 space-y-2">
-        <h4 className="text-sm font-bold text-gray-900">إرفاق ملف الحسابات الهيدروليكية (PDF / CALC)</h4>
-        <input
-          type="file"
-          accept=".pdf,.calc,.xlsx,.xls,.csv"
-          multiple
-          disabled={uploading}
-          aria-label="إرفاق ملف الحسابات الهيدروليكية"
-          onChange={(e) =>
-            void addFiles(e.target.files, 'hydraulic_calculation', 'hydraulic_calculations')
-          }
-          className="w-full text-sm"
-        />
-        <FileList
-          files={value.hydraulic_calculations || []}
-          onRemove={(id) => remove('hydraulic_calculations', id)}
-        />
-      </div>
+      {sections.includes('hydraulic_calculations') ? (
+        <div className="rounded-xl border p-4 space-y-2">
+          <h4 className="text-sm font-bold text-gray-900">إرفاق ملف الحسابات الهيدروليكية (PDF / CALC)</h4>
+          <input
+            type="file"
+            accept=".pdf,.calc,.xlsx,.xls,.csv"
+            multiple
+            disabled={uploading}
+            aria-label="إرفاق ملف الحسابات الهيدروليكية"
+            onChange={(e) =>
+              void addFiles(e.target.files, 'hydraulic_calculation', 'hydraulic_calculations')
+            }
+            className="w-full text-sm"
+          />
+          <FileList
+            files={value.hydraulic_calculations || []}
+            onRemove={(id) => remove('hydraulic_calculations', id)}
+          />
+        </div>
+      ) : null}
     </div>
   );
 }

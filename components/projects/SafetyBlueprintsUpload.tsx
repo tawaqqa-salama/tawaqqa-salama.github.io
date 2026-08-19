@@ -7,6 +7,7 @@ import {
 } from '@/lib/compliance/file-parser';
 import { KIND_LABELS, runBlueprintAiAudit } from '@/lib/compliance/blueprint-audit';
 import AiAuditReportModal from '@/components/projects/AiAuditReportModal';
+import PlanAttachmentsUpload from '@/components/projects/PlanAttachmentsUpload';
 import type { ClientRecord } from '@/lib/types/client';
 import type {
   BlueprintAiAuditResult,
@@ -14,8 +15,9 @@ import type {
   SafetyBlueprintFile,
   SafetyBlueprintKind,
   SafetyBlueprintsState,
+  PlanAttachmentsState,
 } from '@/lib/types/project-reports';
-import { EMPTY_SAFETY_BLUEPRINTS } from '@/lib/types/project-reports';
+import { EMPTY_PLAN_ATTACHMENTS, EMPTY_SAFETY_BLUEPRINTS } from '@/lib/types/project-reports';
 
 const SLOTS: Array<{
   kind: SafetyBlueprintKind;
@@ -55,6 +57,8 @@ type SafetyBlueprintsUploadProps = {
   value: SafetyBlueprintsState;
   onChange: (next: SafetyBlueprintsState) => void;
   onPersist?: (next: SafetyBlueprintsState) => void | Promise<void>;
+  planAttachments?: PlanAttachmentsState | null;
+  onPlanAttachmentsChange?: (next: PlanAttachmentsState) => void | Promise<void>;
 };
 
 function statusBadge(file: SafetyBlueprintFile | null) {
@@ -125,12 +129,12 @@ export default function SafetyBlueprintsUpload({
   value,
   onChange,
   onPersist,
+  planAttachments,
+  onPlanAttachmentsChange,
 }: SafetyBlueprintsUploadProps) {
   const [error, setError] = useState<string | null>(null);
   const [reportOpen, setReportOpen] = useState(false);
   const [reportResult, setReportResult] = useState<BlueprintAiAuditResult | null>(null);
-  const [travelDistance, setTravelDistance] = useState('');
-  const [occupants, setOccupants] = useState('');
 
   const state = value || EMPTY_SAFETY_BLUEPRINTS;
 
@@ -147,8 +151,8 @@ export default function SafetyBlueprintsUpload({
       textSample,
       client,
       buildingPlan,
-      occupants: occupants ? Number(occupants) : null,
-      travelDistanceM: travelDistance ? Number(travelDistance) : null,
+      occupants: null,
+      travelDistanceM: null,
     };
 
     let result: BlueprintAiAuditResult;
@@ -222,30 +226,14 @@ export default function SafetyBlueprintsUpload({
         ارفع المخطط المعماري ومخططات السلامة المعتمدة. عند اكتمال الرفع يُشغَّل فحص تلقائي وفق SBC وNFPA.
       </div>
 
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-        <label className="text-sm">
-          <span className="text-xs font-semibold text-gray-600 mb-1 block">
-            أقصى مسافة سفر (م) — لفحص Life Safety
-          </span>
-          <input
-            value={travelDistance}
-            onChange={(e) => setTravelDistance(e.target.value)}
-            className="w-full border rounded-xl px-3 py-2 text-sm"
-            dir="ltr"
-            placeholder="مثال: 45"
-          />
-        </label>
-        <label className="text-sm">
-          <span className="text-xs font-semibold text-gray-600 mb-1 block">عدد الشاغلين التقديري</span>
-          <input
-            value={occupants}
-            onChange={(e) => setOccupants(e.target.value)}
-            className="w-full border rounded-xl px-3 py-2 text-sm"
-            dir="ltr"
-            placeholder="اختياري"
-          />
-        </label>
-      </div>
+      {onPlanAttachmentsChange ? (
+        <PlanAttachmentsUpload
+          value={planAttachments || EMPTY_PLAN_ATTACHMENTS}
+          onChange={onPlanAttachmentsChange}
+          clientId={client.id}
+          sections={['hydraulic_calculations']}
+        />
+      ) : null}
 
       {error && (
         <div className="rounded-xl border border-rose-100 bg-rose-50 px-3 py-2 text-sm text-rose-700">
