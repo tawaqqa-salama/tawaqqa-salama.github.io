@@ -130,7 +130,7 @@ export function buildBuildingPlanPrintHtml(
     .brand { width: 54mm; height: 18mm; display: flex; align-items: center; justify-content: flex-start; }
     .company-logo { max-width: 48mm; max-height: 17mm; object-fit: contain; }
     .company-wordmark { color: #267154; font-size: 11px; font-weight: 800; line-height: 1.25; }
-    .ornament { position: absolute; left: 0; right: 0; bottom: 1.8mm; height: 4mm; border-bottom: .65px solid #408469; background: repeating-linear-gradient(90deg, #1d4d50 0 5mm, transparent 5mm 6.2mm, #397b68 6.2mm 11.2mm, transparent 11.2mm 12.4mm); background-size: 84mm 4mm; background-repeat: no-repeat; }
+    .ornament { position: absolute; left: 0; right: 0; bottom: 1.8mm; height: 4mm; border-bottom: .65px solid #408469; }
     .project-info { margin-top: 1.2mm; }
     .project-main td { height: 12mm; background: #91d34d; text-align: center; font-size: 8.8px; font-weight: 700; }
     .project-main span { display: block; margin-top: 1mm; font-size: 9.4px; }
