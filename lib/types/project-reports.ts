@@ -437,6 +437,25 @@ export interface TechnicalReportRecommendation {
 }
 
 /** التقرير الفني لأنظمة السلامة والوقاية من الحريق */
+/**
+ * Manual decision saved by the Technical Report data bridge.
+ * The bridge itself remains computed on read; only explicit engineer decisions persist.
+ */
+export type TechnicalReportSourceOverrideValue = string | number | boolean | null;
+
+export interface TechnicalReportSourceOverride {
+  value: TechnicalReportSourceOverrideValue;
+  note?: string;
+  approved_by?: string;
+  approved_at?: string;
+}
+
+/**
+ * Additive compatibility state for Phase 1. Keys identify bridged fields such as
+ * `project.building_area_m2` or `spaces.<space-id>.estimated_occupants`.
+ */
+export type TechnicalReportSourceOverrides = Record<string, TechnicalReportSourceOverride>;
+
 export interface TechnicalReport extends ReportMeta {
   report_date?: string;
   outgoing_number?: string;
@@ -473,6 +492,11 @@ export interface TechnicalReport extends ReportMeta {
   general_recommendations: TechnicalReportRecommendation[];
   safety_engineer_name?: string;
   executive_director_name?: string;
+  /**
+   * Explicit engineer overrides only. Source data stays live and is recomputed by
+   * `buildTechnicalReportSourceData` so upstream values do not become stale copies.
+   */
+  source_overrides?: TechnicalReportSourceOverrides;
 }
 
 /** نوع ملف مخطط السلامة / المعماري */
