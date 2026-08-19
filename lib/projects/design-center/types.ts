@@ -295,6 +295,27 @@ export type DesignSpaceSafetyQuantities = {
   public_facilities: number;
 };
 
+export type DesignSpaceSafetyAutoField =
+  | 'sprinklers'
+  | 'smoke_detectors'
+  | 'heat_detectors'
+  | 'fire_alarm_panels'
+  | 'signs'
+  | 'emergency_lights'
+  | 'emergency_exits'
+  | 'alarm_bells'
+  | 'emergency_stairs'
+  | 'manual_extinguishers'
+  | 'manual_extinguisher_type'
+  | 'manual_extinguisher_size';
+
+export type DesignSpaceSafetySuggestionOverrides = {
+  /** True after an engineer explicitly edits the auto-calculated occupant count. */
+  estimated_occupants?: boolean;
+  /** Auto-quantity fields explicitly edited by the engineer. */
+  quantity_fields?: DesignSpaceSafetyAutoField[];
+};
+
 export type DesignSpaceSafetyArea = {
   id: string;
   source_usage_id?: string | null;
@@ -312,6 +333,8 @@ export type DesignSpaceSafetyArea = {
   suppression_approved?: string[] | null;
   suppression_source?: string | null;
   quantities: DesignSpaceSafetyQuantities;
+  /** Preserves engineer-approved values when activity or area recomputes preliminary suggestions. */
+  suggestion_overrides?: DesignSpaceSafetySuggestionOverrides | null;
 };
 
 export type DesignSpaceSafetyFloor = {

@@ -13,8 +13,9 @@ import {
   optionalNonNegativeNumber,
   floorSafetyTotals,
   projectSafetyTotals,
+  recomputeAreaSafetySuggestions,
   safetyTotals,
-  suggestAreaSafety,
+  markAreaSuggestionOverrides,
 } from '@/lib/projects/design-center/space-safety';
 import {
   HAZARD_CLASSIFICATION_OPTIONS,
@@ -111,7 +112,25 @@ export default function DesignSpaceSafetySection({ client, value, saving, onChan
     const floor = value.floors.find((entry) => entry.id === floorId);
     const area = floor?.areas.find((entry) => entry.id === areaId);
     if (!area) return;
-    updateArea(floorId, areaId, { quantities: { ...area.quantities, ...patch } });
+    updateArea(floorId, areaId, {
+      quantities: { ...area.quantities, ...patch },
+      suggestion_overrides: markAreaSuggestionOverrides(area, {
+        quantity_fields: Object.keys(patch) as Array<
+          | 'sprinklers'
+          | 'smoke_detectors'
+          | 'heat_detectors'
+          | 'fire_alarm_panels'
+          | 'signs'
+          | 'emergency_lights'
+          | 'emergency_exits'
+          | 'alarm_bells'
+          | 'emergency_stairs'
+          | 'manual_extinguishers'
+          | 'manual_extinguisher_type'
+          | 'manual_extinguisher_size'
+        >,
+      }),
+    });
   };
 
   const updateFloor = (floorId: string, patch: Partial<DesignSpaceSafetyFloor>) => {
@@ -256,6 +275,8 @@ function AreaEditor({
 }) {
   const activeSystems = area.suppression_approved ?? area.suppression_suggested;
   const panelLocations = area.quantities.alarm_panel_locations;
+  const manualQuantityFields = new Set(area.suggestion_overrides?.quantity_fields || []);
+  const hasManualSuggestions = Boolean(area.suggestion_overrides?.estimated_occupants || manualQuantityFields.size);
 
   const setSystems = (system: string, checked: boolean) => {
     const current = activeSystems || [];
@@ -278,7 +299,8 @@ function AreaEditor({
             value={area.activity_type || ''}
             onChange={(value) => {
               const activity_type = value || null;
-              onChange({ activity_type, ...suggestAreaSafety({ ...area, activity_type }) });
+              const nextArea = { ...area, activity_type };
+              onChange({ activity_type, ...recomputeAreaSafetySuggestions(nextArea) });
             }}
           />
           <NumberField
@@ -286,14 +308,20 @@ function AreaEditor({
             value={area.area_m2}
             onChange={(value) => {
               const area_m2 = Math.max(0, Number(value) || 0);
-              onChange({ area_m2, ...suggestAreaSafety({ ...area, area_m2 }) });
+              const nextArea = { ...area, area_m2 };
+              onChange({ area_m2, ...recomputeAreaSafetySuggestions(nextArea) });
             }}
           />
           <MetricField
-            label="عدد الشاغلين التقديري (تلقائي وقابل للتعديل)"
+            label={`عدد الشاغلين التقديري (${area.suggestion_overrides?.estimated_occupants ? 'معتمد يدويًا' : 'مقترح تلقائيًا'} وقابل للتعديل)`}
             value={area.estimated_occupants}
             step="1"
-            onChange={(estimated_occupants) => onChange({ estimated_occupants })}
+            onChange={(estimated_occupants) =>
+              onChange({
+                estimated_occupants,
+                suggestion_overrides: markAreaSuggestionOverrides(area, { estimated_occupants: true }),
+              })
+            }
           />
           <MetricField
             label="أقصى مسافة سفر (م)"
@@ -348,11 +376,25 @@ function AreaEditor({
       <section className="mt-4">
         <h4 className="text-xs font-bold text-slate-800">كميات أنظمة السلامة للمساحة</h4>
         <p className="mt-1 text-[11px] text-slate-500">{SPACE_SAFETY_AUTOFILL_NOTE}</p>
+        {hasManualSuggestions ? (
+          <button
+            type="button"
+            onClick={() =>
+              onChange({
+                ...recomputeAreaSafetySuggestions({ ...area, suggestion_overrides: null }),
+                suggestion_overrides: null,
+              })
+            }
+            className="mt-2 rounded-lg border border-sky-200 bg-sky-50 px-2.5 py-1.5 text-[11px] font-semibold text-sky-800 hover:bg-sky-100"
+          >
+            استعادة الاقتراحات التلقائية لهذه المساحة
+          </button>
+        ) : null}
         <div className="mt-2 grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-4">
           {QUANTITY_FIELDS.map(({ key, label }) => (
             <NumberField
               key={key}
-              label={label}
+              label={`${label} (${manualQuantityFields.has(key) ? 'معتمد يدويًا' : 'مقترح تلقائيًا'})`}
               value={area.quantities[key]}
               onChange={(value) => onQuantities({ [key]: nonNegativeInteger(value) })}
             />

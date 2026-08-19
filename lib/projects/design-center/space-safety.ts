@@ -8,14 +8,47 @@ import {
 import type { ClientRecord, FloorUsage } from '@/lib/types/client';
 import type {
   DesignSpaceSafetyArea,
+  DesignSpaceSafetyAutoField,
   DesignSpaceSafetyFloor,
   DesignSpaceSafetyQuantities,
+  DesignSpaceSafetySuggestionOverrides,
   DesignSpaceSafetyWorkingCopy,
 } from '@/lib/projects/design-center/types';
+
+const AUTO_SUGGESTED_QUANTITY_FIELDS: DesignSpaceSafetyAutoField[] = [
+  'sprinklers',
+  'smoke_detectors',
+  'heat_detectors',
+  'fire_alarm_panels',
+  'signs',
+  'emergency_lights',
+  'emergency_exits',
+  'alarm_bells',
+  'emergency_stairs',
+  'manual_extinguishers',
+  'manual_extinguisher_type',
+  'manual_extinguisher_size',
+];
 
 function id(prefix: string): string {
   if (typeof crypto !== 'undefined' && 'randomUUID' in crypto) return `${prefix}-${crypto.randomUUID()}`;
   return `${prefix}-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+}
+
+function normalizeSuggestionOverrides(
+  raw?: DesignSpaceSafetySuggestionOverrides | null
+): DesignSpaceSafetySuggestionOverrides | null {
+  if (!raw) return null;
+  const quantityFields = Array.isArray(raw.quantity_fields)
+    ? raw.quantity_fields.filter((field): field is DesignSpaceSafetyAutoField =>
+        AUTO_SUGGESTED_QUANTITY_FIELDS.includes(field as DesignSpaceSafetyAutoField)
+      )
+    : [];
+  if (!raw.estimated_occupants && !quantityFields.length) return null;
+  return {
+    estimated_occupants: raw.estimated_occupants === true || undefined,
+    quantity_fields: quantityFields.length ? [...new Set(quantityFields)] : undefined,
+  };
 }
 
 export function emptySafetyQuantities(): DesignSpaceSafetyQuantities {
@@ -104,6 +137,7 @@ function suggestedArea(
     suppression_approved: null,
     suppression_source: 'قواعد استخدام المنطقة الحالية — اقتراح قابل للمراجعة',
     quantities: { ...emptySafetyQuantities(), ...suggestion },
+    suggestion_overrides: null,
   };
 }
 
@@ -134,6 +168,45 @@ export function suggestAreaSafety(
   };
 }
 
+export function recomputeAreaSafetySuggestions(
+  area: DesignSpaceSafetyArea
+): Pick<
+  DesignSpaceSafetyArea,
+  | 'hazard_suggested'
+  | 'hazard_source'
+  | 'suppression_suggested'
+  | 'suppression_source'
+  | 'estimated_occupants'
+  | 'quantities'
+  | 'suggestion_overrides'
+> {
+  const suggested = suggestAreaSafety(area);
+  const overrides = normalizeSuggestionOverrides(area.suggestion_overrides);
+  const quantities: DesignSpaceSafetyQuantities = { ...suggested.quantities };
+
+  for (const field of overrides?.quantity_fields || []) {
+    (quantities as Record<string, unknown>)[field] = (area.quantities as Record<string, unknown>)[field];
+  }
+
+  return {
+    ...suggested,
+    estimated_occupants: overrides?.estimated_occupants ? area.estimated_occupants : suggested.estimated_occupants,
+    quantities,
+    suggestion_overrides: overrides,
+  };
+}
+
+export function markAreaSuggestionOverrides(
+  area: DesignSpaceSafetyArea,
+  fields: { estimated_occupants?: boolean; quantity_fields?: DesignSpaceSafetyAutoField[] }
+): DesignSpaceSafetySuggestionOverrides | null {
+  const current = normalizeSuggestionOverrides(area.suggestion_overrides);
+  return normalizeSuggestionOverrides({
+    estimated_occupants: fields.estimated_occupants || current?.estimated_occupants,
+    quantity_fields: [...(current?.quantity_fields || []), ...(fields.quantity_fields || [])],
+  });
+}
+
 function normalizeArea(raw: Partial<DesignSpaceSafetyArea>, fallback?: DesignSpaceSafetyArea): DesignSpaceSafetyArea {
   return {
     id: String(raw.id || fallback?.id || id('area')),
@@ -154,6 +227,7 @@ function normalizeArea(raw: Partial<DesignSpaceSafetyArea>, fallback?: DesignSpa
       : fallback?.suppression_approved ?? null,
     suppression_source: raw.suppression_source ?? fallback?.suppression_source ?? null,
     quantities: normalizeQuantities(raw.quantities ?? fallback?.quantities),
+    suggestion_overrides: normalizeSuggestionOverrides(raw.suggestion_overrides ?? fallback?.suggestion_overrides),
   };
 }
 
@@ -220,6 +294,7 @@ export function createProjectArea(): DesignSpaceSafetyArea {
     suppression_approved: null,
     suppression_source: null,
     quantities: emptySafetyQuantities(),
+    suggestion_overrides: null,
   };
 }
 

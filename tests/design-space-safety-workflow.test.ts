@@ -10,11 +10,13 @@ import {
   nonNegativeInteger,
   normalizeSpaceSafetyWorkingCopy,
   projectSafetyTotals,
+  recomputeAreaSafetySuggestions,
   safetyTotals,
   seedSpaceSafetyFromClient,
   suggestAreaSafety,
 } from '@/lib/projects/design-center/space-safety';
 import { DESIGN_CENTER_TABS } from '@/lib/projects/design-center/types';
+import type { DesignSpaceSafetyArea } from '@/lib/projects/design-center/types';
 import {
   HAZARD_CLASSIFICATION_OPTIONS,
   suggestSpaceSafetyInputs,
@@ -199,6 +201,34 @@ describe('Design Center space and safety working copy', () => {
     expect(factory.heat_detectors).toBeGreaterThan(0);
   });
 
+  it('recomputes untouched suggestions while preserving engineer-approved occupants and quantities', () => {
+    const copy = seedSpaceSafetyFromClient(client());
+    const area = copy.floors[0].areas[0];
+    const manualArea: DesignSpaceSafetyArea = {
+      ...area,
+      activity_type: 'factory',
+      area_m2: 360,
+      estimated_occupants: 77,
+      hazard_approved: 'ordinary_hazard_group_2',
+      quantities: { ...area.quantities, sprinklers: 99, smoke_detectors: 21 },
+      suggestion_overrides: {
+        estimated_occupants: true,
+        quantity_fields: ['sprinklers', 'smoke_detectors'],
+      },
+    };
+
+    const protectedNext = { ...manualArea, ...recomputeAreaSafetySuggestions(manualArea) };
+    expect(protectedNext.estimated_occupants).toBe(77);
+    expect(protectedNext.quantities.sprinklers).toBe(99);
+    expect(protectedNext.quantities.smoke_detectors).toBe(21);
+    expect(protectedNext.quantities.heat_detectors).toBeGreaterThan(0);
+    expect(protectedNext.hazard_approved).toBe('ordinary_hazard_group_2');
+
+    const untouchedNext = recomputeAreaSafetySuggestions({ ...area, activity_type: 'factory', area_m2: 360 });
+    expect(untouchedNext.estimated_occupants).not.toBe(area.estimated_occupants);
+    expect(untouchedNext.quantities.sprinklers).not.toBe(area.quantities.sprinklers);
+  });
+
   it('exposes seven hazard selections and updates advisory suggestions without replacing engineer approval', () => {
     expect(HAZARD_CLASSIFICATION_OPTIONS).toHaveLength(7);
     expect(HAZARD_CLASSIFICATION_OPTIONS.map((option) => option.id)).toEqual([
@@ -343,12 +373,15 @@ describe('Design Center space and safety working copy', () => {
     );
     expect(spaceSection).toContain('عدد الشاغلين التقديري للدور (تلقائي وقابل للتعديل)');
     expect(spaceSection).toContain('أقصى مسافة سفر للدور');
-    expect(spaceSection).toContain('عدد الشاغلين التقديري (تلقائي وقابل للتعديل)');
+    expect(spaceSection).toContain('عدد الشاغلين التقديري (${area.suggestion_overrides?.estimated_occupants');
     expect(spaceSection).toContain('أقصى مسافة سفر (م)');
     expect(spaceSection).toContain('عدد كواشف الحرارة');
     expect(spaceSection).toContain('عدد الطفايات اليدوية');
     expect(spaceSection).toContain('نوع طفاية الحريق اليدوية (اختياري)');
     expect(spaceSection).toContain('حجم / سعة الطفاية اليدوية (اختياري)');
+    expect(spaceSection).toContain('مقترح تلقائيًا');
+    expect(spaceSection).toContain('معتمد يدويًا');
+    expect(spaceSection).toContain('استعادة الاقتراحات التلقائية لهذه المساحة');
     expect(spaceSection).not.toContain("label: 'عدد المصاعد'");
     expect(spaceSection).not.toContain("label: 'عدد المرافق العامة'");
     expect(spaceSection).toContain('floorSafetyTotals');
