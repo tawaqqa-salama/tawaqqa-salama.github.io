@@ -207,8 +207,16 @@ export function markAreaSuggestionOverrides(
   });
 }
 
+function hasLegacyZeroSuggestions(area: DesignSpaceSafetyArea): boolean {
+  if (area.area_m2 <= 0 || area.suggestion_overrides) return false;
+  const quantitiesAreZero = AUTO_SUGGESTED_QUANTITY_FIELDS.every(
+    (field) => Number((area.quantities as Record<string, unknown>)[field]) === 0 || (area.quantities as Record<string, unknown>)[field] === null
+  );
+  return (area.estimated_occupants === null || area.estimated_occupants === 0) && quantitiesAreZero;
+}
+
 function normalizeArea(raw: Partial<DesignSpaceSafetyArea>, fallback?: DesignSpaceSafetyArea): DesignSpaceSafetyArea {
-  return {
+  const area: DesignSpaceSafetyArea = {
     id: String(raw.id || fallback?.id || id('area')),
     source_usage_id: raw.source_usage_id ?? fallback?.source_usage_id ?? null,
     label: String(raw.label || fallback?.label || 'مساحة غير مسماة'),
@@ -229,6 +237,9 @@ function normalizeArea(raw: Partial<DesignSpaceSafetyArea>, fallback?: DesignSpa
     quantities: normalizeQuantities(raw.quantities ?? fallback?.quantities),
     suggestion_overrides: normalizeSuggestionOverrides(raw.suggestion_overrides ?? fallback?.suggestion_overrides),
   };
+
+  // Only migrate clearly unconfigured legacy zeros. Any user edit from the new UI sets an override and is never replaced.
+  return hasLegacyZeroSuggestions(area) ? { ...area, ...recomputeAreaSafetySuggestions(area) } : area;
 }
 
 export function normalizeSpaceSafetyWorkingCopy(

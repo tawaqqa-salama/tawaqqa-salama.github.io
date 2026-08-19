@@ -189,6 +189,56 @@ describe('Design Center space and safety working copy', () => {
     expect(sales.floor_levels).toHaveLength(2);
   });
 
+  it('backfills clearly unconfigured legacy zero suggestions without replacing manual zero approvals', () => {
+    const legacyZero = normalizeSpaceSafetyWorkingCopy({
+      source: 'project_engineering',
+      floors: [
+        {
+          id: 'legacy-floor',
+          label: 'أرضي',
+          repeat_count: 1,
+          areas: [
+            {
+              id: 'legacy-area',
+              label: 'ورشة',
+              activity_type: 'مصنع',
+              area_m2: 200,
+              estimated_occupants: 0,
+              hazard_suggested: 'light_hazard',
+              suppression_suggested: [],
+              quantities: emptySafetyQuantities(),
+            },
+          ],
+        },
+      ],
+    });
+    const suggested = legacyZero!.floors[0].areas[0];
+    expect(suggested.estimated_occupants).toBeGreaterThan(0);
+    expect(suggested.quantities.sprinklers).toBeGreaterThan(0);
+    expect(suggested.quantities.smoke_detectors).toBeGreaterThan(0);
+    expect(suggested.quantities.heat_detectors).toBeGreaterThan(0);
+    expect(suggested.quantities.fire_alarm_panels).toBe(1);
+
+    const protectedZero = normalizeSpaceSafetyWorkingCopy({
+      ...legacyZero!,
+      floors: [
+        {
+          ...legacyZero!.floors[0],
+          areas: [
+            {
+              ...suggested,
+              estimated_occupants: 0,
+              quantities: { ...suggested.quantities, sprinklers: 0 },
+              suggestion_overrides: { estimated_occupants: true, quantity_fields: ['sprinklers'] },
+            },
+          ],
+        },
+      ],
+    });
+    expect(protectedZero!.floors[0].areas[0].estimated_occupants).toBe(0);
+    expect(protectedZero!.floors[0].areas[0].quantities.sprinklers).toBe(0);
+  });
+
   it('suggests editable occupants and safety quantities from activity and area', () => {
     const retail = suggestSpaceSafetyInputs({ activity_type: 'retail', area_m2: 120 });
     expect(retail.estimated_occupants).toBe(22);
@@ -199,6 +249,13 @@ describe('Design Center space and safety working copy', () => {
 
     const factory = suggestSpaceSafetyInputs({ activity_type: 'factory', area_m2: 120 });
     expect(factory.heat_detectors).toBeGreaterThan(0);
+
+    const arabicFactory = suggestSpaceSafetyInputs({ activity_type: 'مصنع', area_m2: 120 });
+    expect(arabicFactory.estimated_occupants).toBeGreaterThan(0);
+    expect(arabicFactory.sprinklers).toBeGreaterThan(0);
+    expect(arabicFactory.smoke_detectors).toBeGreaterThan(0);
+    expect(arabicFactory.heat_detectors).toBeGreaterThan(0);
+    expect(arabicFactory.fire_alarm_panels).toBe(1);
   });
 
   it('recomputes untouched suggestions while preserving engineer-approved occupants and quantities', () => {
@@ -275,7 +332,7 @@ describe('Design Center space and safety working copy', () => {
       total_area_m2: 180,
       areas_count: 2,
       sprinklers: 6,
-      heat_detectors: 2,
+      heat_detectors: 3,
       estimated_occupants: 100,
       max_travel_distance_m: 25,
     });
@@ -287,7 +344,7 @@ describe('Design Center space and safety working copy', () => {
       total_area_m2: 300,
       areas_count: 3,
       sprinklers: 9,
-      heat_detectors: 2,
+      heat_detectors: 5,
       manual_extinguishers: 5,
       elevators: 3,
       public_facilities: 4,

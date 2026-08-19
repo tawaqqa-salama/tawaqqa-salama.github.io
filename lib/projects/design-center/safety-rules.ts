@@ -46,7 +46,8 @@ const HAZARD_FACTORS: Record<HazardClassificationId, { sprinkler_m2: number; det
   extra_hazard_group_1: { sprinkler_m2: 7, detector_m2: 50 },
   extra_hazard_group_2: { sprinkler_m2: 6, detector_m2: 45 },
   high_piled_storage: { sprinkler_m2: 6, detector_m2: 50 },
-  special_hazard: { sprinkler_m2: 0, detector_m2: 0 },
+  // Keeps a preliminary estimate visible; the label still requires engineer review before adoption.
+  special_hazard: { sprinkler_m2: 6, detector_m2: 45 },
 };
 
 function ceilBy(areaM2: number, coverageM2: number): number {
@@ -54,10 +55,16 @@ function ceilBy(areaM2: number, coverageM2: number): number {
   return Math.ceil(areaM2 / coverageM2);
 }
 
+function normalizedActivity(activityType?: string | null): string {
+  return String(activityType || '').trim().toLowerCase();
+}
+
 function zoneUseForActivity(activityType?: string | null): string {
-  const activity = String(activityType || '');
+  const activity = normalizedActivity(activityType);
   const direct: Record<string, string> = {
     retail: 'retail',
+    commercial: 'retail',
+    commercial_complex: 'retail',
     showroom: 'showroom',
     storage: 'storage',
     warehouse: 'storage',
@@ -66,12 +73,28 @@ function zoneUseForActivity(activityType?: string | null): string {
     educational: 'educational',
     school: 'educational',
     residential: 'residential',
+    residential_building: 'residential',
     hotel: 'residential',
     parking: 'parking',
     restaurant: 'restaurant',
     seating: 'seating',
     office: 'offices',
     offices: 'offices',
+    administrative: 'offices',
+    'مصنع': 'factory',
+    'صناعي': 'factory',
+    'مستودع': 'storage',
+    'مخزن': 'storage',
+    'تجاري': 'retail',
+    'محل': 'retail',
+    'مطعم': 'restaurant',
+    'مقهى': 'restaurant',
+    'مكاتب': 'offices',
+    'إداري': 'offices',
+    'مدرسة': 'educational',
+    'سكني': 'residential',
+    'فندق': 'residential',
+    'مواقف': 'parking',
   };
   return direct[activity] || defaultZoneUseForActivity(activityType);
 }
@@ -87,9 +110,10 @@ function hazardForActivity(activityType?: string | null): HazardClassificationId
 }
 
 function defaultExtinguisherType(activityType?: string | null): ManualExtinguisherType {
-  if (activityType === 'restaurant') return 'wet_chemical';
-  if (activityType === 'gas_station') return 'foam';
-  if (activityType === 'office' || activityType === 'school' || activityType === 'hotel') return 'carbon_dioxide';
+  const activity = normalizedActivity(activityType);
+  if (activity === 'restaurant' || activity === 'مطعم' || activity === 'مقهى') return 'wet_chemical';
+  if (activity === 'gas_station' || activity === 'محطة وقود') return 'foam';
+  if (['office', 'school', 'hotel', 'administrative', 'مكاتب', 'إداري', 'مدرسة', 'فندق'].includes(activity)) return 'carbon_dioxide';
   return 'dry_powder_abc';
 }
 
@@ -141,8 +165,8 @@ export function suggestSpaceSafetyInputs(input: {
   const estimatedOccupants = occupantFactor > 0 && areaM2 > 0 ? Math.ceil(areaM2 / occupantFactor) : null;
   const hazard = hazardForActivity(input.activity_type);
   const factors = HAZARD_FACTORS[hazard];
-  const needsHeatDetection = ['factory', 'warehouse', 'restaurant', 'parking', 'gas_station'].includes(
-    String(input.activity_type || '')
+  const heatProneActivity = ['factory', 'warehouse', 'restaurant', 'parking', 'gas_station', 'مصنع', 'صناعي', 'مستودع', 'مخزن', 'مطعم', 'مقهى', 'مواقف', 'محطة وقود'].includes(
+    normalizedActivity(input.activity_type)
   );
   const extinguisherType = defaultExtinguisherType(input.activity_type);
 
@@ -151,8 +175,9 @@ export function suggestSpaceSafetyInputs(input: {
     estimated_occupants: estimatedOccupants,
     sprinklers: ceilBy(areaM2, factors.sprinkler_m2),
     smoke_detectors: ceilBy(areaM2, factors.detector_m2),
-    heat_detectors: needsHeatDetection ? ceilBy(areaM2, 50) : 0,
-    fire_alarm_panels: areaM2 >= 1000 || (estimatedOccupants || 0) >= 300 ? 1 : 0,
+    // Preliminary detector and panel counts remain visible for any positive area; the engineer confirms applicability.
+    heat_detectors: ceilBy(areaM2, heatProneActivity ? 50 : 100),
+    fire_alarm_panels: areaM2 > 0 ? 1 : 0,
     signs: estimatedOccupants ? Math.max(1, Math.ceil(estimatedOccupants / 50)) : 0,
     emergency_lights: ceilBy(areaM2, 40),
     emergency_exits: areaM2 > 0 ? ((estimatedOccupants || 0) >= 50 ? 2 : 1) : 0,
