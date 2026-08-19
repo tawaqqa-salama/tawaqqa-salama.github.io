@@ -84,7 +84,7 @@ function officeRows(client: ClientRecord, report: BuildingPlanReport, company: C
   const date = report.certification_date || report.report_date || '—';
   const stamp = company.stamp_url
     ? `<img class="office-stamp" src="${esc(company.stamp_url)}" alt="ختم المكتب" />`
-    : `<div class="stamp-fallback">${isolateLatin(company.stamp_text || 'الختم')}</div>`;
+    : '<div class="stamp-fallback">—</div>';
 
   return `
     <table class="office-table">
@@ -122,47 +122,47 @@ export function buildBuildingPlanPrintHtml(
     @page { size: A4 portrait; margin: 0; }
     * { box-sizing: border-box; }
     html, body { width: 210mm; min-height: 0; margin: 0; padding: 0; background: #fff; color: #101010; font-family: Tahoma, Arial, sans-serif; font-size: 8.4px; }
-    .sheet { width: 210mm; height: 297mm; margin: 0; padding: 7mm 10mm 7mm; overflow: hidden; background: #fff; }
+    .sheet { width: 210mm; height: 297mm; margin: 0; padding: 7mm 7.7mm 7mm 10.7mm; overflow: hidden; background: #fff; }
     table { width: 100%; border-collapse: collapse; table-layout: fixed; }
-    td, th { border: .65px solid #0e0e0e; vertical-align: middle; overflow-wrap: anywhere; }
+    td, th { border: .5px solid #0e0e0e; vertical-align: middle; overflow-wrap: anywhere; }
     .latin-term { direction: ltr; unicode-bidi: isolate; display: inline-block; text-align: left; }
-    .reference-header { height: 29mm; position: relative; direction: ltr; display: flex; align-items: flex-start; }
-    .brand { width: 54mm; height: 18mm; display: flex; align-items: center; justify-content: flex-start; }
+    .reference-header { height: 28.58mm; position: relative; direction: ltr; display: flex; align-items: flex-start; }
+    .brand { width: 54mm; height: 18mm; display: flex; align-items: flex-start; justify-content: flex-start; padding-top: 1.5mm; }
     .company-logo { max-width: 48mm; max-height: 17mm; object-fit: contain; }
     .company-wordmark { color: #267154; font-size: 11px; font-weight: 800; line-height: 1.25; }
-    .ornament { position: absolute; left: 0; right: 0; bottom: 1.8mm; height: 4mm; border-bottom: .65px solid #408469; }
+    .ornament { position: absolute; left: 0; right: 0; bottom: 9.1mm; height: 4mm; border-bottom: .5px solid #408469; }
     .project-info { margin-top: 1.2mm; }
-    .project-main td { height: 12mm; background: #91d34d; text-align: center; font-size: 8.8px; font-weight: 700; }
+    .project-main td { height: 14.3mm; background: #92d050; text-align: center; font-size: 10px; font-weight: 700; }
     .project-main span { display: block; margin-top: 1mm; font-size: 9.4px; }
-    .project-name { width: 34%; text-align: right !important; padding: 1.6mm 2mm; }
-    .project-activity { width: 16%; }
-    .project-permit { width: 20%; }
-    .project-date { width: 30%; }
-    .project-detail td { height: 19mm; background: #fff; padding: 1.5mm 2.2mm; font-size: 8.7px; font-weight: 700; line-height: 1.8; vertical-align: top; }
-    .project-location { width: 34%; }
-    .project-city { width: 26%; text-align: center; }
-    .project-address { width: 40%; }
-    .plan-table { margin-top: 7.2mm; }
-    .plan-table td { height: 9mm; padding: .7mm 1.7mm; font-size: 8.15px; font-weight: 700; }
-    .plan-table tr:nth-child(odd) td { background: #91d34d; }
-    .plan-label { width: 31%; text-align: right; }
-    .plan-value { width: 23%; text-align: center; font-size: 8.8px !important; }
-    .plan-bool-label { width: 27%; text-align: right; }
-    .choice { width: 9.5%; text-align: center; }
-    .office-section { margin-top: 9mm; }
-    .office-table th, .office-table td { padding: .4mm 1.7mm; font-size: 8.4px; height: 3.1mm; }
-    .office-table .office-head th, .office-table .office-head td { background: #91d34d; font-size: 8.8px; font-weight: 800; }
+    .project-name { width: 33.2%; text-align: right !important; padding: 1.6mm 2mm; }
+    .project-activity { width: 27.45%; }
+    .project-permit { width: 14.65%; }
+    .project-date { width: 24.7%; }
+    .project-detail td { height: 18.35mm; background: #fff; padding: 1.5mm 2.2mm; font-size: 9.6px; font-weight: 700; line-height: 1.65; vertical-align: top; }
+    .project-location { width: 33.2%; }
+    .project-city { width: 27.4%; text-align: center; }
+    .project-address { width: 39.4%; }
+    .plan-table { margin-top: 6.75mm; }
+    .plan-table td { height: 8.12mm; padding: .35mm 1.2mm; font-size: 10.2px; font-weight: 700; white-space: nowrap; }
+    .plan-table tr:nth-child(odd) td { background: #92d050; }
+    .plan-label { width: 26.2%; text-align: right; }
+    .plan-value { width: 26.47%; text-align: center; font-size: 11px !important; }
+    .plan-bool-label { width: 28.13%; text-align: right; }
+    .choice { width: 9.6%; text-align: center; }
+    .office-section { margin-top: 12.1mm; }
+    .office-table th, .office-table td { padding: .25mm 1.2mm; font-size: 9.6px; height: 3.1mm; }
+    .office-table .office-head th, .office-table .office-head td { background: #92d050; font-size: 10px; font-weight: 800; }
     .office-table th:nth-child(1), .office-table td:nth-child(1) { width: 33.333%; }
     .office-table th:nth-child(2), .office-table td:nth-child(2) { width: 33.333%; text-align: center; }
     .office-table th:nth-child(3), .office-table td:nth-child(3) { width: 33.334%; text-align: center; }
-    .stamp-cell { height: 9.3mm; padding: .5mm !important; }
-    .office-stamp { display: block; max-width: 22mm; max-height: 17mm; margin: 0 auto; object-fit: contain; }
-    .stamp-fallback { width: 20mm; height: 15mm; margin: 0 auto; border: .85px dashed #367b67; color: #367b67; font-size: 7px; display: grid; place-items: center; text-align: center; padding: 1mm; }
-    .report-footer { margin-top: 53.5mm; border-top: 1px solid #3c846c; padding-top: 1.8mm; color: #3a6d5c; direction: rtl; font-size: 7.9px; font-weight: 700; line-height: 1.45; text-align: right; }
+    .stamp-cell { height: 9.3mm; padding: .5mm !important; position: relative; overflow: visible; }
+    .office-stamp { display: block; max-width: 30mm; max-height: 22mm; margin: 0 auto; object-fit: contain; }
+    .stamp-fallback { width: 100%; height: 13.3mm; margin: 0; border: 0; color: #111; font-size: 10px; display: grid; place-items: center; text-align: center; padding: 0; }
+    .report-footer { margin-top: 53.75mm; border-top: 1px solid #3c846c; padding-top: 1.8mm; color: #3a6d5c; direction: rtl; font-size: 9.2px; font-weight: 700; line-height: 1.45; text-align: right; }
     .no-print { margin: 0; text-align: center; }
     .no-print button { padding: 7px 12px; font-size: 12px; }
     @media screen { body { background: #e5e7eb; padding: 10px 0 16px; } .sheet { margin: 0 auto; box-shadow: 0 8px 20px rgba(0,0,0,.12); } }
-    @media print { html, body { width: 210mm; height: auto; min-height: 0; overflow: visible; background: #fff; } body { margin: 0; padding: 0; } .no-print { display: none !important; } .sheet { width: 210mm; height: 297mm; min-height: 0; max-height: none; margin: 0; padding: 7mm 10mm 7mm; overflow: hidden; break-after: avoid-page; page-break-after: avoid; } }
+    @media print { html, body { width: 210mm; height: auto; min-height: 0; overflow: visible; background: #fff; } body { margin: 0; padding: 0; } .no-print { display: none !important; } .sheet { width: 210mm; height: 297mm; min-height: 0; max-height: none; margin: 0; padding: 7mm 7.7mm 7mm 10.7mm; overflow: hidden; break-after: avoid-page; page-break-after: avoid; } }
   </style>
 </head>
 <body>
