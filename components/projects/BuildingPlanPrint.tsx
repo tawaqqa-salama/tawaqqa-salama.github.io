@@ -100,45 +100,48 @@ export function buildBuildingPlanPrintHtml(
     @page { size: A4 portrait; margin: 0; }
     * { box-sizing: border-box; }
     html, body { width: 210mm; min-height: 0; margin: 0; padding: 0; background: #fff; color: #152012; font-family: Tahoma, "Segoe UI", Arial, sans-serif; font-size: 9px; }
-    .sheet { width: 210mm; height: 297mm; margin: 0; padding: 8mm 9mm 7mm; overflow: hidden; background: #fff; }
-    .doc-head { display: grid; grid-template-columns: 42mm 1fr 42mm; align-items: center; min-height: 20mm; border-bottom: 1.2px solid #5a7d47; padding-bottom: 2mm; }
-    .brand-mark { min-height: 16mm; display: flex; align-items: center; justify-content: flex-start; }
-    .company-logo { max-width: 38mm; max-height: 16mm; object-fit: contain; }
-    .company-fallback { color: #4f7e56; font-size: 11px; font-weight: 800; line-height: 1.25; }
+    .sheet { width: 210mm; height: 297mm; margin: 0; padding: 7.5mm 9mm 7mm; overflow: hidden; background: #fff; display: flex; flex-direction: column; }
+    .doc-head { display: grid; grid-template-columns: 44mm 1fr 44mm; align-items: center; min-height: 22mm; border-top: .8px solid #5a7d47; border-bottom: 1.2px solid #5a7d47; padding: 1.5mm 0 2mm; flex: 0 0 auto; }
+    .brand-mark { min-height: 17mm; display: flex; align-items: center; justify-content: flex-start; }
+    .company-logo { max-width: 40mm; max-height: 17mm; object-fit: contain; }
+    .company-fallback { color: #4f7e56; font-size: 10.5px; font-weight: 800; line-height: 1.35; }
     .doc-title { text-align: center; }
-    .doc-title h1 { margin: 0; font-size: 14px; line-height: 1.2; color: #1e3218; }
-    .doc-title p { margin: 1px 0 0; color: #5b6d62; font-size: 8px; }
+    .doc-title h1 { margin: 0; font-size: 14.5px; line-height: 1.22; color: #1e3218; }
+    .doc-title p { margin: 1px 0 0; color: #5b6d62; font-size: 8.4px; letter-spacing: .05px; }
     .doc-status { text-align: left; color: #4e6b3b; font-size: 8px; font-weight: 700; }
-    .doc-status span { display: inline-block; border: 1px solid #94b772; padding: 1mm 2mm; background: #f2f8eb; }
+    .doc-status span { display: inline-block; border: 1px solid #94b772; padding: 1.15mm 2.3mm; background: #f2f8eb; }
     table { width: 100%; border-collapse: collapse; table-layout: fixed; }
-    th, td { border: .45px solid #557044; vertical-align: middle; line-height: 1.15; overflow-wrap: anywhere; }
-    th { padding: 1.35mm 1.7mm; color: #fff; background: #638b4e; text-align: center; font-size: 9.3px; font-weight: 800; }
-    td { padding: 1.05mm 1.5mm; }
-    .label { width: 17%; background: #e3efd5; font-weight: 700; color: #314923; font-size: 8.2px; }
-    .value { width: 33%; color: #172212; font-size: 8.4px; }
-    .yesno { width: 33%; text-align: center; color: #172212; font-size: 8.4px; }
-    .building { margin-top: 2.2mm; }
+    th, td { border: .55px solid #557044; vertical-align: middle; line-height: 1.2; overflow-wrap: anywhere; }
+    th { padding: 1.45mm 1.8mm; color: #fff; background: #638b4e; text-align: center; font-size: 9.4px; font-weight: 800; }
+    td { padding: 1.22mm 1.65mm; }
+    .label { width: 17%; background: #e3efd5; font-weight: 700; color: #314923; font-size: 8.3px; }
+    .value { width: 33%; color: #172212; font-size: 8.55px; }
+    .yesno { width: 33%; text-align: center; color: #172212; font-size: 8.7px; font-weight: 700; }
+    .building { margin-top: 3.2mm; }
     .building .label { width: 15%; }
     .building .value { width: 35%; }
-    .section-title { margin: 0 0 1.1mm; padding: 1.1mm 2mm; background: #638b4e; color: #fff; font-size: 9.3px; font-weight: 800; text-align: center; border: .45px solid #557044; }
+    .section-title { margin: 0 0 1.35mm; padding: 1.35mm 2.2mm; background: #638b4e; color: #fff; font-size: 9.5px; font-weight: 800; text-align: center; border: .55px solid #557044; }
+    .plan-info { margin-top: 3.2mm; }
+    .plan-info tr { height: 6.1mm; }
     .plan-info .label { width: 18%; }
     .plan-info .value, .plan-info .yesno { width: 32%; }
-    .safety { margin-top: 2.2mm; }
-    .safety td { font-size: 7.8px; padding-top: .9mm; padding-bottom: .9mm; }
+    .safety { margin-top: 3.2mm; }
+    .safety td { font-size: 8px; padding-top: 1.35mm; padding-bottom: 1.35mm; }
     .safety .label { width: 18%; }
     .safety .yesno { width: 32%; }
     .safety .wide { width: 82%; }
-    .approval { margin-top: 2.2mm; }
+    .approval { margin-top: auto; padding-top: 4.5mm; }
     .approval .section-title { background: #635bdb; border-color: #4e47b8; }
     .approval .label { width: 18%; }
     .approval .value { width: 32%; }
+    .approval tr { height: 5.7mm; }
     .approval th, .approval td { border-color: #596d4a; }
-    .approval-grid { display: grid; grid-template-columns: 1fr 1fr 1fr; min-height: 26mm; border: .45px solid #557044; border-top: 0; background: #fbfdf8; }
-    .signature-box { padding: 2mm; text-align: center; border-inline-start: .45px solid #557044; font-size: 8px; display: flex; flex-direction: column; justify-content: space-between; }
+    .approval-grid { display: grid; grid-template-columns: 1fr 1fr 1fr; min-height: 75mm; border: .55px solid #557044; border-top: 0; background: #fbfdf8; }
+    .signature-box { padding: 3mm 2.5mm; text-align: center; border-inline-start: .55px solid #557044; font-size: 8.4px; display: flex; flex-direction: column; justify-content: space-between; }
     .signature-box:first-child { border-inline-start: 0; }
-    .sign-line { margin-top: 7mm; border-top: .45px solid #697a61; padding-top: 1mm; }
-    .company-stamp { max-width: 18mm; max-height: 18mm; object-fit: contain; margin: 0 auto; }
-    .stamp-fallback { width: 16mm; height: 16mm; margin: 0 auto; border: 1px dashed #635bdb; border-radius: 50%; display: grid; place-items: center; color: #635bdb; font-size: 6.4px; line-height: 1.1; padding: 1.5mm; }
+    .sign-line { margin-top: 38mm; border-top: .55px solid #697a61; padding-top: 1.25mm; }
+    .company-stamp { max-width: 31mm; max-height: 31mm; object-fit: contain; margin: 0 auto; }
+    .stamp-fallback { width: 29mm; height: 29mm; margin: 0 auto; border: 1.2px dashed #635bdb; border-radius: 50%; display: grid; place-items: center; color: #635bdb; font-size: 7px; line-height: 1.1; padding: 1.8mm; }
     .no-print { margin: 0; text-align: center; }
     .no-print button { padding: 7px 12px; font-size: 12px; }
     @media screen {
@@ -149,7 +152,7 @@ export function buildBuildingPlanPrintHtml(
       html, body { width: 210mm; height: auto; min-height: 0; overflow: visible; background: #fff; }
       body { margin: 0; padding: 0; }
       .no-print { display: none !important; }
-      .sheet { width: 210mm; height: 297mm; min-height: 0; max-height: none; margin: 0; padding: 8mm 9mm 7mm; overflow: hidden; break-after: avoid-page; page-break-after: avoid; }
+      .sheet { width: 210mm; height: 297mm; min-height: 0; max-height: none; margin: 0; padding: 7.5mm 9mm 7mm; overflow: hidden; break-after: avoid-page; page-break-after: avoid; }
     }
   </style>
 </head>
