@@ -1,23 +1,61 @@
 import { ensureFloorLevels } from '@/lib/business/floors';
 import { defaultZoneUseForActivity } from '@/lib/constants/zone-uses';
 import { createZone } from '@/lib/projects/sbc-classification';
+import {
+  isManualExtinguisherType,
+  suggestSpaceSafetyInputs,
+} from '@/lib/projects/design-center/safety-rules';
 import type { ClientRecord, FloorUsage } from '@/lib/types/client';
 import type {
   DesignSpaceSafetyArea,
+  DesignSpaceSafetyAutoField,
   DesignSpaceSafetyFloor,
   DesignSpaceSafetyQuantities,
+  DesignSpaceSafetySuggestionOverrides,
   DesignSpaceSafetyWorkingCopy,
 } from '@/lib/projects/design-center/types';
+
+const AUTO_SUGGESTED_QUANTITY_FIELDS: DesignSpaceSafetyAutoField[] = [
+  'sprinklers',
+  'smoke_detectors',
+  'heat_detectors',
+  'fire_alarm_panels',
+  'signs',
+  'emergency_lights',
+  'emergency_exits',
+  'alarm_bells',
+  'emergency_stairs',
+  'manual_extinguishers',
+  'manual_extinguisher_type',
+  'manual_extinguisher_size',
+];
 
 function id(prefix: string): string {
   if (typeof crypto !== 'undefined' && 'randomUUID' in crypto) return `${prefix}-${crypto.randomUUID()}`;
   return `${prefix}-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
 }
 
+function normalizeSuggestionOverrides(
+  raw?: DesignSpaceSafetySuggestionOverrides | null
+): DesignSpaceSafetySuggestionOverrides | null {
+  if (!raw) return null;
+  const quantityFields = Array.isArray(raw.quantity_fields)
+    ? raw.quantity_fields.filter((field): field is DesignSpaceSafetyAutoField =>
+        AUTO_SUGGESTED_QUANTITY_FIELDS.includes(field as DesignSpaceSafetyAutoField)
+      )
+    : [];
+  if (!raw.estimated_occupants && !quantityFields.length) return null;
+  return {
+    estimated_occupants: raw.estimated_occupants === true || undefined,
+    quantity_fields: quantityFields.length ? [...new Set(quantityFields)] : undefined,
+  };
+}
+
 export function emptySafetyQuantities(): DesignSpaceSafetyQuantities {
   return {
     sprinklers: 0,
     smoke_detectors: 0,
+    heat_detectors: 0,
     fire_alarm_panels: 0,
     alarm_panel_locations: [],
     signs: 0,
@@ -25,6 +63,9 @@ export function emptySafetyQuantities(): DesignSpaceSafetyQuantities {
     emergency_exits: 0,
     alarm_bells: 0,
     emergency_stairs: 0,
+    manual_extinguishers: 0,
+    manual_extinguisher_type: null,
+    manual_extinguisher_size: null,
     elevators: 0,
     public_facilities: 0,
   };
@@ -45,6 +86,7 @@ function normalizeQuantities(raw?: Partial<DesignSpaceSafetyQuantities> | null):
   return {
     sprinklers: nonNegativeInteger(raw?.sprinklers),
     smoke_detectors: nonNegativeInteger(raw?.smoke_detectors),
+    heat_detectors: nonNegativeInteger(raw?.heat_detectors),
     fire_alarm_panels: nonNegativeInteger(raw?.fire_alarm_panels),
     alarm_panel_locations: Array.isArray(raw?.alarm_panel_locations)
       ? raw!.alarm_panel_locations.map((item) => String(item || '').trim()).filter(Boolean)
@@ -54,6 +96,14 @@ function normalizeQuantities(raw?: Partial<DesignSpaceSafetyQuantities> | null):
     emergency_exits: nonNegativeInteger(raw?.emergency_exits),
     alarm_bells: nonNegativeInteger(raw?.alarm_bells),
     emergency_stairs: nonNegativeInteger(raw?.emergency_stairs),
+    manual_extinguishers: nonNegativeInteger(raw?.manual_extinguishers),
+    manual_extinguisher_type: isManualExtinguisherType(raw?.manual_extinguisher_type)
+      ? raw!.manual_extinguisher_type
+      : null,
+    manual_extinguisher_size:
+      typeof raw?.manual_extinguisher_size === 'string' && raw.manual_extinguisher_size.trim()
+        ? raw.manual_extinguisher_size.trim()
+        : null,
     elevators: nonNegativeInteger(raw?.elevators),
     public_facilities: nonNegativeInteger(raw?.public_facilities),
   };
@@ -63,28 +113,31 @@ function suggestedArea(
   usage: Pick<FloorUsage, 'id' | 'label' | 'activity_type' | 'area_m2'>
 ): DesignSpaceSafetyArea {
   const activity = usage.activity_type || null;
+  const areaM2 = Math.max(0, Number(usage.area_m2) || 0);
   const zone = createZone({
     id: usage.id || id('area'),
     label: usage.label || 'مساحة غير مسماة',
-    area_m2: String(Math.max(0, Number(usage.area_m2) || 0)),
+    area_m2: String(areaM2),
     use_code: defaultZoneUseForActivity(activity),
   });
+  const suggestion = suggestSpaceSafetyInputs({ activity_type: activity, area_m2: areaM2 });
   const suppression = zone.suppression_label ? [zone.suppression_label] : [];
   return {
     id: usage.id || id('area'),
     source_usage_id: usage.id || null,
     label: usage.label || 'مساحة غير مسماة',
     activity_type: activity,
-    area_m2: Math.max(0, Number(usage.area_m2) || 0),
-    estimated_occupants: null,
+    area_m2: areaM2,
+    estimated_occupants: suggestion.estimated_occupants,
     max_travel_distance_m: null,
-    hazard_suggested: zone.risk_label || 'تتطلب مراجعة مهندس',
+    hazard_suggested: suggestion.hazard,
     hazard_approved: null,
-    hazard_source: 'قواعد تصنيف الإشغال SBC/NFPA الحالية — اقتراح قابل للمراجعة',
+    hazard_source: 'مرجع تصنيفي SBC 801 / NFPA 13 — يتطلب اعتماد المهندس لكل مساحة.',
     suppression_suggested: suppression,
     suppression_approved: null,
     suppression_source: 'قواعد استخدام المنطقة الحالية — اقتراح قابل للمراجعة',
-    quantities: emptySafetyQuantities(),
+    quantities: { ...emptySafetyQuantities(), ...suggestion },
+    suggestion_overrides: null,
   };
 }
 
@@ -92,7 +145,12 @@ export function suggestAreaSafety(
   area: Pick<DesignSpaceSafetyArea, 'id' | 'label' | 'activity_type' | 'area_m2'>
 ): Pick<
   DesignSpaceSafetyArea,
-  'hazard_suggested' | 'hazard_source' | 'suppression_suggested' | 'suppression_source'
+  | 'hazard_suggested'
+  | 'hazard_source'
+  | 'suppression_suggested'
+  | 'suppression_source'
+  | 'estimated_occupants'
+  | 'quantities'
 > {
   const suggested = suggestedArea({
     id: area.id,
@@ -105,7 +163,48 @@ export function suggestAreaSafety(
     hazard_source: suggested.hazard_source,
     suppression_suggested: suggested.suppression_suggested,
     suppression_source: suggested.suppression_source,
+    estimated_occupants: suggested.estimated_occupants,
+    quantities: suggested.quantities,
   };
+}
+
+export function recomputeAreaSafetySuggestions(
+  area: DesignSpaceSafetyArea
+): Pick<
+  DesignSpaceSafetyArea,
+  | 'hazard_suggested'
+  | 'hazard_source'
+  | 'suppression_suggested'
+  | 'suppression_source'
+  | 'estimated_occupants'
+  | 'quantities'
+  | 'suggestion_overrides'
+> {
+  const suggested = suggestAreaSafety(area);
+  const overrides = normalizeSuggestionOverrides(area.suggestion_overrides);
+  const quantities: DesignSpaceSafetyQuantities = { ...suggested.quantities };
+
+  for (const field of overrides?.quantity_fields || []) {
+    (quantities as Record<string, unknown>)[field] = (area.quantities as Record<string, unknown>)[field];
+  }
+
+  return {
+    ...suggested,
+    estimated_occupants: overrides?.estimated_occupants ? area.estimated_occupants : suggested.estimated_occupants,
+    quantities,
+    suggestion_overrides: overrides,
+  };
+}
+
+export function markAreaSuggestionOverrides(
+  area: DesignSpaceSafetyArea,
+  fields: { estimated_occupants?: boolean; quantity_fields?: DesignSpaceSafetyAutoField[] }
+): DesignSpaceSafetySuggestionOverrides | null {
+  const current = normalizeSuggestionOverrides(area.suggestion_overrides);
+  return normalizeSuggestionOverrides({
+    estimated_occupants: fields.estimated_occupants || current?.estimated_occupants,
+    quantity_fields: [...(current?.quantity_fields || []), ...(fields.quantity_fields || [])],
+  });
 }
 
 function normalizeArea(raw: Partial<DesignSpaceSafetyArea>, fallback?: DesignSpaceSafetyArea): DesignSpaceSafetyArea {
@@ -128,6 +227,7 @@ function normalizeArea(raw: Partial<DesignSpaceSafetyArea>, fallback?: DesignSpa
       : fallback?.suppression_approved ?? null,
     suppression_source: raw.suppression_source ?? fallback?.suppression_source ?? null,
     quantities: normalizeQuantities(raw.quantities ?? fallback?.quantities),
+    suggestion_overrides: normalizeSuggestionOverrides(raw.suggestion_overrides ?? fallback?.suggestion_overrides),
   };
 }
 
@@ -194,6 +294,7 @@ export function createProjectArea(): DesignSpaceSafetyArea {
     suppression_approved: null,
     suppression_source: null,
     quantities: emptySafetyQuantities(),
+    suggestion_overrides: null,
   };
 }
 
@@ -210,7 +311,10 @@ export function createProjectFloor(): DesignSpaceSafetyFloor {
   };
 }
 
-export type SafetyQuantityTotals = Omit<DesignSpaceSafetyQuantities, 'alarm_panel_locations'> & {
+export type SafetyQuantityTotals = Omit<
+  DesignSpaceSafetyQuantities,
+  'alarm_panel_locations' | 'manual_extinguisher_type' | 'manual_extinguisher_size'
+> & {
   alarm_panel_locations: string[];
   total_area_m2: number;
   areas_count: number;
@@ -223,6 +327,7 @@ export function safetyTotals(areas: DesignSpaceSafetyArea[]): SafetyQuantityTota
     (total, area) => ({
       sprinklers: total.sprinklers + nonNegativeInteger(area.quantities.sprinklers),
       smoke_detectors: total.smoke_detectors + nonNegativeInteger(area.quantities.smoke_detectors),
+      heat_detectors: total.heat_detectors + nonNegativeInteger(area.quantities.heat_detectors),
       fire_alarm_panels: total.fire_alarm_panels + nonNegativeInteger(area.quantities.fire_alarm_panels),
       alarm_panel_locations: [...total.alarm_panel_locations, ...area.quantities.alarm_panel_locations],
       signs: total.signs + nonNegativeInteger(area.quantities.signs),
@@ -230,6 +335,7 @@ export function safetyTotals(areas: DesignSpaceSafetyArea[]): SafetyQuantityTota
       emergency_exits: total.emergency_exits + nonNegativeInteger(area.quantities.emergency_exits),
       alarm_bells: total.alarm_bells + nonNegativeInteger(area.quantities.alarm_bells),
       emergency_stairs: total.emergency_stairs + nonNegativeInteger(area.quantities.emergency_stairs),
+      manual_extinguishers: total.manual_extinguishers + nonNegativeInteger(area.quantities.manual_extinguishers),
       elevators: total.elevators + nonNegativeInteger(area.quantities.elevators),
       public_facilities: total.public_facilities + nonNegativeInteger(area.quantities.public_facilities),
       total_area_m2: total.total_area_m2 + Math.max(0, Number(area.area_m2) || 0),

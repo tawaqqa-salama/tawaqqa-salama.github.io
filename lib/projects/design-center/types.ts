@@ -268,9 +268,18 @@ export type DesignExportJob = {
  * Project-scoped engineering working copy of Sales floor/usage data.
  * It is inherited once from Basic Data and never writes back to Sales.
  */
+export type ManualExtinguisherType =
+  | 'dry_powder_abc'
+  | 'carbon_dioxide'
+  | 'foam'
+  | 'wet_chemical'
+  | 'clean_agent'
+  | 'water';
+
 export type DesignSpaceSafetyQuantities = {
   sprinklers: number;
   smoke_detectors: number;
+  heat_detectors: number;
   fire_alarm_panels: number;
   alarm_panel_locations: string[];
   signs: number;
@@ -278,8 +287,33 @@ export type DesignSpaceSafetyQuantities = {
   emergency_exits: number;
   alarm_bells: number;
   emergency_stairs: number;
+  manual_extinguishers: number;
+  manual_extinguisher_type?: ManualExtinguisherType | null;
+  manual_extinguisher_size?: string | null;
+  /** Historical fields retained for old project data; intentionally hidden from the current editor. */
   elevators: number;
   public_facilities: number;
+};
+
+export type DesignSpaceSafetyAutoField =
+  | 'sprinklers'
+  | 'smoke_detectors'
+  | 'heat_detectors'
+  | 'fire_alarm_panels'
+  | 'signs'
+  | 'emergency_lights'
+  | 'emergency_exits'
+  | 'alarm_bells'
+  | 'emergency_stairs'
+  | 'manual_extinguishers'
+  | 'manual_extinguisher_type'
+  | 'manual_extinguisher_size';
+
+export type DesignSpaceSafetySuggestionOverrides = {
+  /** True after an engineer explicitly edits the auto-calculated occupant count. */
+  estimated_occupants?: boolean;
+  /** Auto-quantity fields explicitly edited by the engineer. */
+  quantity_fields?: DesignSpaceSafetyAutoField[];
 };
 
 export type DesignSpaceSafetyArea = {
@@ -299,6 +333,8 @@ export type DesignSpaceSafetyArea = {
   suppression_approved?: string[] | null;
   suppression_source?: string | null;
   quantities: DesignSpaceSafetyQuantities;
+  /** Preserves engineer-approved values when activity or area recomputes preliminary suggestions. */
+  suggestion_overrides?: DesignSpaceSafetySuggestionOverrides | null;
 };
 
 export type DesignSpaceSafetyFloor = {

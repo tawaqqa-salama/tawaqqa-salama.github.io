@@ -13,26 +13,45 @@ import {
   optionalNonNegativeNumber,
   floorSafetyTotals,
   projectSafetyTotals,
+  recomputeAreaSafetySuggestions,
   safetyTotals,
-  suggestAreaSafety,
+  markAreaSuggestionOverrides,
 } from '@/lib/projects/design-center/space-safety';
+import {
+  HAZARD_CLASSIFICATION_OPTIONS,
+  hazardClassificationLabel,
+  isManualExtinguisherType,
+  MANUAL_EXTINGUISHER_SIZE_OPTIONS,
+  MANUAL_EXTINGUISHER_TYPES,
+  SPACE_SAFETY_AUTOFILL_NOTE,
+} from '@/lib/projects/design-center/safety-rules';
 
 const SUPPRESSION_OPTIONS = ['رش آلي', 'طفايات', 'خراطيم Hose Reel', 'Standpipe', 'أنظمة إطفاء خاصة'];
 
 const QUANTITY_FIELDS: Array<{
-  key: Exclude<keyof DesignSpaceSafetyQuantities, 'alarm_panel_locations'>;
+  key:
+    | 'sprinklers'
+    | 'smoke_detectors'
+    | 'heat_detectors'
+    | 'fire_alarm_panels'
+    | 'signs'
+    | 'emergency_lights'
+    | 'emergency_exits'
+    | 'alarm_bells'
+    | 'emergency_stairs'
+    | 'manual_extinguishers';
   label: string;
 }> = [
   { key: 'sprinklers', label: 'عدد المرشات' },
   { key: 'smoke_detectors', label: 'عدد كواشف الدخان' },
+  { key: 'heat_detectors', label: 'عدد كواشف الحرارة' },
   { key: 'fire_alarm_panels', label: 'عدد لوحات الإنذار' },
   { key: 'signs', label: 'عدد اللوحات الإرشادية' },
   { key: 'emergency_lights', label: 'عدد كشافات الطوارئ' },
   { key: 'emergency_exits', label: 'عدد مخارج الطوارئ' },
   { key: 'alarm_bells', label: 'عدد الأجراس / أجهزة التنبيه' },
   { key: 'emergency_stairs', label: 'عدد سلالم الطوارئ' },
-  { key: 'elevators', label: 'عدد المصاعد' },
-  { key: 'public_facilities', label: 'عدد المرافق العامة' },
+  { key: 'manual_extinguishers', label: 'عدد الطفايات اليدوية' },
 ];
 
 type Props = {
@@ -54,14 +73,14 @@ function totalsRows(total: ReturnType<typeof safetyTotals>) {
     ['أقصى مسافة سفر', total.max_travel_distance_m === null ? 'غير مدخلة' : `${total.max_travel_distance_m.toLocaleString('ar-SA')} م`],
     ['المرشات', String(total.sprinklers)],
     ['كواشف الدخان', String(total.smoke_detectors)],
+    ['كواشف الحرارة', String(total.heat_detectors)],
     ['لوحات الإنذار', String(total.fire_alarm_panels)],
     ['اللوحات الإرشادية', String(total.signs)],
     ['الأجراس', String(total.alarm_bells)],
     ['كشافات الطوارئ', String(total.emergency_lights)],
     ['المخارج', String(total.emergency_exits)],
     ['سلالم الطوارئ', String(total.emergency_stairs)],
-    ['المصاعد', String(total.elevators)],
-    ['المرافق العامة', String(total.public_facilities)],
+    ['الطفايات اليدوية', String(total.manual_extinguishers)],
   ];
 }
 
@@ -93,7 +112,25 @@ export default function DesignSpaceSafetySection({ client, value, saving, onChan
     const floor = value.floors.find((entry) => entry.id === floorId);
     const area = floor?.areas.find((entry) => entry.id === areaId);
     if (!area) return;
-    updateArea(floorId, areaId, { quantities: { ...area.quantities, ...patch } });
+    updateArea(floorId, areaId, {
+      quantities: { ...area.quantities, ...patch },
+      suggestion_overrides: markAreaSuggestionOverrides(area, {
+        quantity_fields: Object.keys(patch) as Array<
+          | 'sprinklers'
+          | 'smoke_detectors'
+          | 'heat_detectors'
+          | 'fire_alarm_panels'
+          | 'signs'
+          | 'emergency_lights'
+          | 'emergency_exits'
+          | 'alarm_bells'
+          | 'emergency_stairs'
+          | 'manual_extinguishers'
+          | 'manual_extinguisher_type'
+          | 'manual_extinguisher_size'
+        >,
+      }),
+    });
   };
 
   const updateFloor = (floorId: string, patch: Partial<DesignSpaceSafetyFloor>) => {
@@ -157,8 +194,8 @@ export default function DesignSpaceSafetySection({ client, value, saving, onChan
                   <p className="mt-1 text-[11px] text-slate-500">عدد التكرارات: {Math.max(1, floor.repeat_count || 1)}</p>
                   <div className="mt-3 grid max-w-2xl grid-cols-1 gap-3 sm:grid-cols-2">
                     <MetricField
-                      label="عدد الشاغلين التقديري للدور"
-                      value={floor.estimated_occupants}
+                      label="عدد الشاغلين التقديري للدور (تلقائي وقابل للتعديل)"
+                      value={floor.estimated_occupants ?? floorTotals.estimated_occupants}
                       step="1"
                       onChange={(value) => updateFloor(floor.id, { estimated_occupants: value })}
                     />
@@ -238,6 +275,8 @@ function AreaEditor({
 }) {
   const activeSystems = area.suppression_approved ?? area.suppression_suggested;
   const panelLocations = area.quantities.alarm_panel_locations;
+  const manualQuantityFields = new Set(area.suggestion_overrides?.quantity_fields || []);
+  const hasManualSuggestions = Boolean(area.suggestion_overrides?.estimated_occupants || manualQuantityFields.size);
 
   const setSystems = (system: string, checked: boolean) => {
     const current = activeSystems || [];
@@ -260,7 +299,8 @@ function AreaEditor({
             value={area.activity_type || ''}
             onChange={(value) => {
               const activity_type = value || null;
-              onChange({ activity_type, ...suggestAreaSafety({ ...area, activity_type }) });
+              const nextArea = { ...area, activity_type };
+              onChange({ activity_type, ...recomputeAreaSafetySuggestions(nextArea) });
             }}
           />
           <NumberField
@@ -268,14 +308,20 @@ function AreaEditor({
             value={area.area_m2}
             onChange={(value) => {
               const area_m2 = Math.max(0, Number(value) || 0);
-              onChange({ area_m2, ...suggestAreaSafety({ ...area, area_m2 }) });
+              const nextArea = { ...area, area_m2 };
+              onChange({ area_m2, ...recomputeAreaSafetySuggestions(nextArea) });
             }}
           />
           <MetricField
-            label="عدد الشاغلين التقديري"
+            label={`عدد الشاغلين التقديري (${area.suggestion_overrides?.estimated_occupants ? 'معتمد يدويًا' : 'مقترح تلقائيًا'} وقابل للتعديل)`}
             value={area.estimated_occupants}
             step="1"
-            onChange={(estimated_occupants) => onChange({ estimated_occupants })}
+            onChange={(estimated_occupants) =>
+              onChange({
+                estimated_occupants,
+                suggestion_overrides: markAreaSuggestionOverrides(area, { estimated_occupants: true }),
+              })
+            }
           />
           <MetricField
             label="أقصى مسافة سفر (م)"
@@ -292,15 +338,24 @@ function AreaEditor({
       <div className="mt-4 grid grid-cols-1 gap-3 lg:grid-cols-2">
         <section className="rounded-xl border border-amber-200 bg-amber-50 p-3">
           <p className="text-xs font-bold text-amber-950">درجة الخطورة</p>
-          <p className="mt-1 text-sm text-amber-900">المقترحة: {area.hazard_suggested || 'تتطلب مراجعة مهندس'}</p>
-          <p className="mt-1 text-[11px] text-amber-800">{area.hazard_source || 'لا توجد قاعدة اقتراح مرتبطة بعد'}</p>
-          <label className="mt-2 block text-[11px] font-semibold text-amber-900">القيمة المعتمدة من المهندس</label>
-          <input
+          <p className="mt-1 text-sm text-amber-900">المقترحة: {hazardClassificationLabel(area.hazard_suggested)}</p>
+          <p className="mt-1 text-[11px] text-amber-800">{area.hazard_source || 'مرجع تصنيفي يتطلب مراجعة المهندس.'}</p>
+          <label className="mt-2 block text-[11px] font-semibold text-amber-900">الدرجة المعتمدة من المهندس</label>
+          <select
             value={area.hazard_approved || ''}
-            placeholder="اتركها فارغة لاعتماد المقترح بعد المراجعة"
             onChange={(event) => onChange({ hazard_approved: event.target.value || null })}
             className="mt-1 w-full rounded-lg border border-amber-300 bg-white px-3 py-2 text-sm"
-          />
+          >
+            <option value="">اعتماد الاقتراح بعد المراجعة</option>
+            {area.hazard_approved && !HAZARD_CLASSIFICATION_OPTIONS.some((option) => option.id === area.hazard_approved) ? (
+              <option value={area.hazard_approved}>قيمة قديمة: {area.hazard_approved}</option>
+            ) : null}
+            {HAZARD_CLASSIFICATION_OPTIONS.map((option) => (
+              <option key={option.id} value={option.id}>
+                {option.label}
+              </option>
+            ))}
+          </select>
         </section>
 
         <section className="rounded-xl border border-rose-200 bg-rose-50 p-3">
@@ -320,15 +375,49 @@ function AreaEditor({
 
       <section className="mt-4">
         <h4 className="text-xs font-bold text-slate-800">كميات أنظمة السلامة للمساحة</h4>
+        <p className="mt-1 text-[11px] text-slate-500">{SPACE_SAFETY_AUTOFILL_NOTE}</p>
+        {hasManualSuggestions ? (
+          <button
+            type="button"
+            onClick={() =>
+              onChange({
+                ...recomputeAreaSafetySuggestions({ ...area, suggestion_overrides: null }),
+                suggestion_overrides: null,
+              })
+            }
+            className="mt-2 rounded-lg border border-sky-200 bg-sky-50 px-2.5 py-1.5 text-[11px] font-semibold text-sky-800 hover:bg-sky-100"
+          >
+            استعادة الاقتراحات التلقائية لهذه المساحة
+          </button>
+        ) : null}
         <div className="mt-2 grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-4">
           {QUANTITY_FIELDS.map(({ key, label }) => (
             <NumberField
               key={key}
-              label={label}
+              label={`${label} (${manualQuantityFields.has(key) ? 'معتمد يدويًا' : 'مقترح تلقائيًا'})`}
               value={area.quantities[key]}
               onChange={(value) => onQuantities({ [key]: nonNegativeInteger(value) })}
             />
           ))}
+        </div>
+
+        <div className="mt-3 grid grid-cols-1 gap-3 rounded-xl border border-slate-200 bg-slate-50 p-3 sm:grid-cols-2">
+          <SelectField
+            label="نوع طفاية الحريق اليدوية (اختياري)"
+            value={area.quantities.manual_extinguisher_type || ''}
+            placeholder="— اختر النوع —"
+            options={MANUAL_EXTINGUISHER_TYPES}
+            onChange={(value) =>
+              onQuantities({ manual_extinguisher_type: isManualExtinguisherType(value) ? value : null })
+            }
+          />
+          <SelectField
+            label="حجم / سعة الطفاية اليدوية (اختياري)"
+            value={area.quantities.manual_extinguisher_size || ''}
+            placeholder="— اختر الحجم —"
+            options={MANUAL_EXTINGUISHER_SIZE_OPTIONS.map((value) => ({ id: value, label: value }))}
+            onChange={(value) => onQuantities({ manual_extinguisher_size: value || null })}
+          />
         </div>
       </section>
 
@@ -429,6 +518,38 @@ function NumberField({ label, value, onChange }: { label: string; value: number;
     <label className="block text-xs font-semibold text-slate-700">
       {label}
       <input type="number" min="0" step="1" value={Math.max(0, Number(value) || 0)} onChange={(event) => onChange(nonNegativeInteger(event.target.value))} className="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2 text-sm font-normal" />
+    </label>
+  );
+}
+
+function SelectField({
+  label,
+  value,
+  placeholder,
+  options,
+  onChange,
+}: {
+  label: string;
+  value: string;
+  placeholder: string;
+  options: Array<{ id: string; label: string }>;
+  onChange: (value: string) => void;
+}) {
+  return (
+    <label className="block text-xs font-semibold text-slate-700">
+      {label}
+      <select
+        value={value}
+        onChange={(event) => onChange(event.target.value)}
+        className="mt-1 w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm font-normal"
+      >
+        <option value="">{placeholder}</option>
+        {options.map((option) => (
+          <option key={option.id} value={option.id}>
+            {option.label}
+          </option>
+        ))}
+      </select>
     </label>
   );
 }

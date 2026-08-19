@@ -10,11 +10,17 @@ import {
   nonNegativeInteger,
   normalizeSpaceSafetyWorkingCopy,
   projectSafetyTotals,
+  recomputeAreaSafetySuggestions,
   safetyTotals,
   seedSpaceSafetyFromClient,
   suggestAreaSafety,
 } from '@/lib/projects/design-center/space-safety';
 import { DESIGN_CENTER_TABS } from '@/lib/projects/design-center/types';
+import type { DesignSpaceSafetyArea } from '@/lib/projects/design-center/types';
+import {
+  HAZARD_CLASSIFICATION_OPTIONS,
+  suggestSpaceSafetyInputs,
+} from '@/lib/projects/design-center/safety-rules';
 import type { ClientRecord } from '@/lib/types/client';
 
 function client(): ClientRecord {
@@ -86,6 +92,10 @@ describe('Design Center space and safety working copy', () => {
       ...emptySafetyQuantities(),
       sprinklers: 4,
       smoke_detectors: 3,
+      heat_detectors: 2,
+      manual_extinguishers: 2,
+      manual_extinguisher_type: 'dry_powder_abc',
+      manual_extinguisher_size: '6 كجم',
       fire_alarm_panels: 2,
       alarm_panel_locations: ['المدخل الرئيسي', 'غرفة الأمن'],
       signs: 5,
@@ -111,6 +121,10 @@ describe('Design Center space and safety working copy', () => {
       quantities: {
         sprinklers: 4,
         smoke_detectors: 3,
+        heat_detectors: 2,
+        manual_extinguishers: 2,
+        manual_extinguisher_type: 'dry_powder_abc',
+        manual_extinguisher_size: '6 كجم',
         fire_alarm_panels: 2,
         alarm_panel_locations: ['المدخل الرئيسي', 'غرفة الأمن'],
         elevators: 3,
@@ -175,7 +189,57 @@ describe('Design Center space and safety working copy', () => {
     expect(sales.floor_levels).toHaveLength(2);
   });
 
-  it('updates advisory risk and suppression suggestions from activity without replacing engineer approval', () => {
+  it('suggests editable occupants and safety quantities from activity and area', () => {
+    const retail = suggestSpaceSafetyInputs({ activity_type: 'retail', area_m2: 120 });
+    expect(retail.estimated_occupants).toBe(22);
+    expect(retail.sprinklers).toBeGreaterThan(0);
+    expect(retail.smoke_detectors).toBeGreaterThan(0);
+    expect(retail.manual_extinguishers).toBeGreaterThan(0);
+    expect(retail.manual_extinguisher_type).toBe('dry_powder_abc');
+
+    const factory = suggestSpaceSafetyInputs({ activity_type: 'factory', area_m2: 120 });
+    expect(factory.heat_detectors).toBeGreaterThan(0);
+  });
+
+  it('recomputes untouched suggestions while preserving engineer-approved occupants and quantities', () => {
+    const copy = seedSpaceSafetyFromClient(client());
+    const area = copy.floors[0].areas[0];
+    const manualArea: DesignSpaceSafetyArea = {
+      ...area,
+      activity_type: 'factory',
+      area_m2: 360,
+      estimated_occupants: 77,
+      hazard_approved: 'ordinary_hazard_group_2',
+      quantities: { ...area.quantities, sprinklers: 99, smoke_detectors: 21 },
+      suggestion_overrides: {
+        estimated_occupants: true,
+        quantity_fields: ['sprinklers', 'smoke_detectors'],
+      },
+    };
+
+    const protectedNext = { ...manualArea, ...recomputeAreaSafetySuggestions(manualArea) };
+    expect(protectedNext.estimated_occupants).toBe(77);
+    expect(protectedNext.quantities.sprinklers).toBe(99);
+    expect(protectedNext.quantities.smoke_detectors).toBe(21);
+    expect(protectedNext.quantities.heat_detectors).toBeGreaterThan(0);
+    expect(protectedNext.hazard_approved).toBe('ordinary_hazard_group_2');
+
+    const untouchedNext = recomputeAreaSafetySuggestions({ ...area, activity_type: 'factory', area_m2: 360 });
+    expect(untouchedNext.estimated_occupants).not.toBe(area.estimated_occupants);
+    expect(untouchedNext.quantities.sprinklers).not.toBe(area.quantities.sprinklers);
+  });
+
+  it('exposes seven hazard selections and updates advisory suggestions without replacing engineer approval', () => {
+    expect(HAZARD_CLASSIFICATION_OPTIONS).toHaveLength(7);
+    expect(HAZARD_CLASSIFICATION_OPTIONS.map((option) => option.id)).toEqual([
+      'light_hazard',
+      'ordinary_hazard_group_1',
+      'ordinary_hazard_group_2',
+      'extra_hazard_group_1',
+      'extra_hazard_group_2',
+      'high_piled_storage',
+      'special_hazard',
+    ]);
     const copy = seedSpaceSafetyFromClient(client());
     const area = copy.floors[0].areas[0];
     const suggestion = suggestAreaSafety({ ...area, activity_type: 'office' });
@@ -197,6 +261,8 @@ describe('Design Center space and safety working copy', () => {
     copy.floors[1].max_travel_distance_m = 28;
     copy.floors[0].areas[0].quantities.sprinklers = 4;
     copy.floors[0].areas[1].quantities.sprinklers = 2;
+    copy.floors[0].areas[0].quantities.heat_detectors = 2;
+    copy.floors[1].areas[0].quantities.manual_extinguishers = 3;
     copy.floors[1].areas[0].quantities.sprinklers = 3;
     copy.floors[0].areas[0].quantities.elevators = 1;
     copy.floors[1].areas[0].quantities.elevators = 2;
@@ -209,6 +275,7 @@ describe('Design Center space and safety working copy', () => {
       total_area_m2: 180,
       areas_count: 2,
       sprinklers: 6,
+      heat_detectors: 2,
       estimated_occupants: 100,
       max_travel_distance_m: 25,
     });
@@ -220,6 +287,8 @@ describe('Design Center space and safety working copy', () => {
       total_area_m2: 300,
       areas_count: 3,
       sprinklers: 9,
+      heat_detectors: 2,
+      manual_extinguishers: 5,
       elevators: 3,
       public_facilities: 4,
       alarm_panel_locations: ['المدخل', 'غرفة الأمن'],
@@ -302,10 +371,19 @@ describe('Design Center space and safety working copy', () => {
       resolve(process.cwd(), 'components/projects/DesignSpaceSafetySection.tsx'),
       'utf8'
     );
-    expect(spaceSection).toContain('عدد الشاغلين التقديري للدور');
+    expect(spaceSection).toContain('عدد الشاغلين التقديري للدور (تلقائي وقابل للتعديل)');
     expect(spaceSection).toContain('أقصى مسافة سفر للدور');
-    expect(spaceSection).toContain('عدد الشاغلين التقديري');
+    expect(spaceSection).toContain('عدد الشاغلين التقديري (${area.suggestion_overrides?.estimated_occupants');
     expect(spaceSection).toContain('أقصى مسافة سفر (م)');
+    expect(spaceSection).toContain('عدد كواشف الحرارة');
+    expect(spaceSection).toContain('عدد الطفايات اليدوية');
+    expect(spaceSection).toContain('نوع طفاية الحريق اليدوية (اختياري)');
+    expect(spaceSection).toContain('حجم / سعة الطفاية اليدوية (اختياري)');
+    expect(spaceSection).toContain('مقترح تلقائيًا');
+    expect(spaceSection).toContain('معتمد يدويًا');
+    expect(spaceSection).toContain('استعادة الاقتراحات التلقائية لهذه المساحة');
+    expect(spaceSection).not.toContain("label: 'عدد المصاعد'");
+    expect(spaceSection).not.toContain("label: 'عدد المرافق العامة'");
     expect(spaceSection).toContain('floorSafetyTotals');
   });
 });
