@@ -221,11 +221,11 @@ function flowCss(doc: EngineeringStudyDocument, company: CompanyProfile): string
       page-break-after: always;
       break-after: page;
     }
-    .cover { display: flex; }
+    .cover { display: flex; min-height: 0; height: 273mm; padding: 10mm 12mm 12mm; }
     .cover-box {
-      flex: 1; border: 1.5px solid #1f4d3a; padding: 12mm 10mm;
+      flex: 1; border: 1.5px solid #1f4d3a; padding: 10mm 10mm;
       display: flex; flex-direction: column; justify-content: space-between; align-items: center;
-      text-align: center; min-height: 265mm; box-sizing: border-box;
+      text-align: center; min-height: 228mm; box-sizing: border-box;
     }
     .cover-brand { display: flex; flex-direction: column; align-items: center; gap: 6px; }
     .logo { width: 72px; height: 72px; object-fit: contain; }
