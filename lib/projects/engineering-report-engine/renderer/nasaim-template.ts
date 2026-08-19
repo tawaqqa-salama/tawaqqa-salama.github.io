@@ -222,7 +222,8 @@ function flowCss(doc: EngineeringStudyDocument, company: CompanyProfile): string
     .page {
       box-sizing: border-box;
       width: 210mm;
-      min-height: 297mm;
+      min-height: 0;
+      height: 260mm;
       padding: 14mm 14mm 16mm;
       margin: 0 auto 8px;
       background: #fff;
