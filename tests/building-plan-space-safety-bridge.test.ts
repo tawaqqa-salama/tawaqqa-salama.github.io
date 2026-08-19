@@ -29,16 +29,12 @@ function workingCopy(): DesignSpaceSafetyWorkingCopy {
         id: 'floor-1',
         label: 'الدور الأرضي',
         repeat_count: 1,
-        // The engineer's floor-level decision is authoritative over the sum of areas.
-        estimated_occupants: 55,
         areas: [
           {
             id: 'area-1',
             label: 'صالة',
             activity_type: 'restaurant',
             area_m2: 200,
-            estimated_occupants: 30,
-            max_travel_distance_m: 20,
             hazard_suggested: 'ordinary_hazard_group_1',
             suppression_suggested: ['رش آلي'],
             quantities: {
@@ -60,21 +56,16 @@ function workingCopy(): DesignSpaceSafetyWorkingCopy {
 }
 
 describe('Building plan space-safety bridge', () => {
-  it('derives plan-info candidates from the project engineering copy only', () => {
+  it('derives only report fields that exist in the approved reference structure', () => {
     const derived = derivePlanInfoFromSpaceSafety(workingCopy());
 
-    expect(derived).toMatchObject({
+    expect(derived).toEqual({
       hasSource: true,
-      estimatedOccupants: 55,
       exitsCount: 2,
       stairsCount: 1,
       fireAlarmSystem: 'نعم',
       sprinklerSystem: 'نعم',
     });
-    expect(derived.hazardSummary).toContain('خطر عادي — المجموعة 1');
-    expect(derived.quantitiesSummary).toContain('المرشات: 4');
-    expect(derived.quantitiesSummary).toContain('كواشف الدخان: 3');
-    expect(derived.quantitiesSummary).toContain('الطفايات اليدوية: 3');
   });
 
   it('does not activate from the Sales-seeded copy before an engineer saves project-scoped data', () => {
@@ -113,7 +104,8 @@ describe('Building plan space-safety bridge', () => {
     expect(resolved.fire_alarm_system).toBe('لا');
     expect(resolved.sprinkler_system).toBe('لا');
     expect(resolved.sbc_requirements).toBe('متطلبات SBC المعتمدة يدويًا');
-    expect(resolved.derived_space_safety_occupants).toBe('55');
+    expect(resolved).not.toHaveProperty('derived_space_safety_occupants');
+    expect(resolved).not.toHaveProperty('derived_space_safety_quantities');
   });
 
   it('leaves report fields unchanged when no engineering spaces have been recorded', () => {
@@ -124,7 +116,7 @@ describe('Building plan space-safety bridge', () => {
     expect(resolved.exits_count).toBe('4');
   });
 
-  it('includes resolved values and a labeled quantity summary in print output without persisting them', () => {
+  it('prints the reference fields without extra safety rows or sections', () => {
     const resolved = resolveBuildingPlanWithSpaceSafety(
       mergeBuildingPlanDefaults({ status: 'مسودة' }),
       derivePlanInfoFromSpaceSafety(workingCopy())
@@ -140,10 +132,14 @@ describe('Building plan space-safety bridge', () => {
     expect(html).toContain('>2<');
     expect(html).toContain('عدد السلالم');
     expect(html).toContain('>1<');
-    expect(html).toContain('الشاغلون التقديريون');
-    expect(html).toContain('ملخص كميات السلامة');
-    expect(html).toContain('تصنيفات الخطورة المسجلة للمساحات');
-    expect(html).toContain('المساحات وأنظمة السلامة');
-    expect(html).toContain('المرشات: 4');
+    expect(html).toContain('تصنيف الإشغال');
+    expect(html).toContain('اسم المكتب');
+    expect(html).toContain('الختم');
+    expect(html).not.toContain('الشاغلون التقديريون');
+    expect(html).not.toContain('مصدر البيانات');
+    expect(html).not.toContain('ملخص كميات السلامة');
+    expect(html).not.toContain('المرشات');
+    expect(html).not.toContain('تصنيف الخطورة');
+    expect(html).not.toContain('متطلبات SBC');
   });
 });
