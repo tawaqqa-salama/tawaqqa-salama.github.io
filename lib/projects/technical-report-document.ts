@@ -42,12 +42,14 @@ export function generateTechnicalReportDocument(params: { client: ClientRecord; 
   const alarmRows = floors.flatMap((floor) => floor.spaces.map((space) => [value(floor.name), value(space.name), n(space.quantities.fire_alarm_panels), n(space.quantities.smoke_detectors), n(space.quantities.heat_detectors), n(space.quantities.alarm_bells)]));
   const emergencyRows = floors.flatMap((floor) => floor.spaces.map((space) => [value(floor.name), value(space.name), n(space.quantities.emergency_lights), n(space.quantities.signs)]));
   const electricalRows: Row[] = [['التأريض', value(plan.electrical_grounding, 'غير مدخل')], ['الحماية من الصواعق', value(plan.lightning_protection, 'غير مدخل')], ['المولد الاحتياطي', value(plan.backup_generator, 'غير مدخل')], ['ملاحظات المهندس', report.overview_text || '—']];
-  const systemsRows = [
-    ['الرش الآلي', n(aggregates.total_sprinklers), notes(report.firefighting_items).join(' — ') || '—'],
-    ['الطفايات اليدوية', n(aggregates.total_extinguishers), 'حسب بيانات المساحات وأنظمة السلامة'],
-    ['نظام الإنذار المبكر', n(aggregates.total_alarm_devices), notes(report.alarm_items).join(' — ') || '—'],
-    ['إنارة الطوارئ', n(aggregates.total_emergency_lights), 'حسب بيانات المساحات وأنظمة السلامة'],
-    ['اللوحات الإرشادية', n(aggregates.total_signs), 'حسب بيانات المساحات وأنظمة السلامة'],
+  const firefightingNotes = notes(report.firefighting_items).join(' — ');
+  const alarmNotes = notes(report.alarm_items).join(' — ');
+  const systemsRows: Row[] = [
+    ['الرش الآلي', n(aggregates.total_sprinklers), firefightingNotes || '—'],
+    ['الطفايات اليدوية', n(aggregates.total_extinguishers), firefightingNotes || '—'],
+    ['نظام الإنذار المبكر', n(aggregates.total_alarm_devices), alarmNotes || '—'],
+    ['إنارة الطوارئ', n(aggregates.total_emergency_lights), alarmNotes || '—'],
+    ['اللوحات الإرشادية', n(aggregates.total_signs), alarmNotes || '—'],
   ].filter((row) => row[1] !== '—' || row[2] !== '—');
   const images = [report.facade_photo, report.earth_photo, report.site_photo].filter((image): image is NonNullable<typeof image> => Boolean(image?.dataUrl)).map((image, index) => ({ src: image.dataUrl || '', caption_ar: image.caption || 'صورة مرتبطة بالتقرير', caption_en: image.caption || 'Report image', image_id: image.id || `report-image-${index + 1}`, image_type: 'site' as const, layout_type: 'single' as const }));
   const observations = [
@@ -74,7 +76,7 @@ export function generateTechnicalReportDocument(params: { client: ClientRecord; 
     section('means_of_egress', 9, 'دراسة الطاقة الاستيعابية', [`إجمالي عدد الشاغلين المسجل: ${n(aggregates.total_occupants)}. لا تُحوّل القيم غير المدخلة إلى صفر.`, ...conditionalTable('حصر الشاغلين', ['الدور', 'المساحة / الاستخدام', 'المساحة', 'عدد الشاغلين'], occupantRows, 3).paragraphs], conditionalTable('حصر الشاغلين', ['الدور', 'المساحة / الاستخدام', 'المساحة', 'عدد الشاغلين'], occupantRows, 3).tables),
     section('fire_truck_access', 10, 'مخارج ومسارات الهروب', conditionalTable('المخارج ومسارات الهروب', ['الدور', 'الشاغلون', 'المخارج', 'السلالم', 'أقصى مسافة سفر'], egressRows, 1).paragraphs, conditionalTable('المخارج ومسارات الهروب', ['الدور', 'الشاغلون', 'المخارج', 'السلالم', 'أقصى مسافة سفر'], egressRows, 1).tables),
     section('civil_defense_requirements', 11, 'متطلبات وصول فرق وآليات الدفاع المدني', [`قسم الدفاع المدني المختص: ${value(plan.civil_defense_branch)}. فريق إنقاذ خاص: ${value(plan.special_rescue_team_required)}. ${report.civil_defense_branch ? `ملاحظة المهندس: ${report.civil_defense_branch}.` : ''}`]),
-    section('sprinkler_system', 12, 'أنظمة مكافحة الحريق', [], [table('ملخص أنظمة مكافحة الحريق', ['النظام', 'الكمية', 'الملاحظات'], systemsRows)]),
+    section('sprinkler_system', 12, 'أنظمة مكافحة الحريق', conditionalTable('ملخص أنظمة مكافحة الحريق', ['النظام', 'الكمية', 'الملاحظات'], systemsRows, 1, 'لم تُسجل بيانات تفصيلية لأنظمة مكافحة الحريق.').paragraphs, conditionalTable('ملخص أنظمة مكافحة الحريق', ['النظام', 'الكمية', 'الملاحظات'], systemsRows, 1, 'لم تُسجل بيانات تفصيلية لأنظمة مكافحة الحريق.').tables),
     ...(hasSprinklers ? [section('fire_water_supply', 12.1, 'نظام الرش الآلي', [`عدد المرشات المسجل: ${n(aggregates.total_sprinklers)}. يعرض هذا القسم بيانات الحماية المسجلة ولا يتضمن أي حسابات هيدروليكية.`], [table('توزيع المرشات', ['الدور', 'المساحة', 'عدد المرشات'], floors.flatMap((floor) => floor.spaces.map((space) => [value(floor.name), value(space.name), n(space.quantities.sprinklers)])))] )] : []),
     section('portable_extinguishers', 12.2, 'الطفايات اليدوية', conditionalTable('حصر الطفايات اليدوية', ['الدور', 'المساحة', 'العدد', 'النوع', 'السعة'], extinguisherRows, 2).paragraphs, conditionalTable('حصر الطفايات اليدوية', ['الدور', 'المساحة', 'العدد', 'النوع', 'السعة'], extinguisherRows, 2).tables),
     section('fire_alarm_study', 13, 'نظام الإنذار المبكر من الحريق', conditionalTable('ملخص الإنذار والكواشف', ['الدور', 'المساحة', 'لوحات الإنذار', 'كواشف الدخان', 'كواشف الحرارة', 'أجهزة التنبيه'], alarmRows, 2).paragraphs, conditionalTable('ملخص الإنذار والكواشف', ['الدور', 'المساحة', 'لوحات الإنذار', 'كواشف الدخان', 'كواشف الحرارة', 'أجهزة التنبيه'], alarmRows, 2).tables),

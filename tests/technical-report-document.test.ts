@@ -53,6 +53,18 @@ describe('dedicated technical report PDF document', () => {
     expect(empty.sections.some((s) => s.title_ar === 'التوصيات')).toBe(false);
   });
 
+  it('hides empty fire fighting summary but preserves a real zero or engineer note', () => {
+    const missing = { ...EMPTY_TECHNICAL_REPORT, floor_uses: [floor('m', 'الأرضي', 'مكاتب', 'B', '100')] };
+    const missingSection = generateTechnicalReportDocument({ client, report: missing, engineeringData: data(missing) }).sections.find((section) => section.title_ar === 'أنظمة مكافحة الحريق')!;
+    expect(missingSection.tables || []).toHaveLength(0);
+    expect(missingSection.paragraphs.map((paragraph) => paragraph.text).join(' ')).toContain('لم تُسجل بيانات تفصيلية لأنظمة مكافحة الحريق');
+
+    const withNote = { ...missing, firefighting_items: [{ id: 'note', enabled: true, notes: 'تمت مراجعة النظام يدويًا', selectedOptions: [], photos: [] }] };
+    const notedSection = generateTechnicalReportDocument({ client, report: withNote, engineeringData: data(withNote) }).sections.find((section) => section.title_ar === 'أنظمة مكافحة الحريق')!;
+    expect(notedSection.tables || []).toHaveLength(1);
+    expect(text({ ...generateTechnicalReportDocument({ client, report: withNote, engineeringData: data(withNote) }), sections: [notedSection] } as ReturnType<typeof generateTechnicalReportDocument>)).toContain('تمت مراجعة النظام يدويًا');
+  });
+
   it('creates a long document fixture with unique ordered sections and no hydraulic section', () => {
     const report = { ...EMPTY_TECHNICAL_REPORT, floor_uses: Array.from({ length: 18 }, (_, index) => floor(`f${index}`, `الدور ${index + 1}`, index % 2 ? 'مكاتب' : 'تخزين', index % 2 ? 'B' : 'S', '100', 8)), ventilation_items: [{ id: 'vent_main', enabled: true, notes: 'تهوية ميكانيكية مطلوبة', selectedOptions: [], photos: [] }] };
     const doc = generateTechnicalReportDocument({ client, report, engineeringData: data(report) });
