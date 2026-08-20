@@ -436,6 +436,102 @@ export interface TechnicalReportRecommendation {
   checked: boolean;
 }
 
+/** Phase 4A: source-agnostic technical evidence kinds. */
+export type TechnicalEvidenceKind =
+  | 'site_general'
+  | 'satellite_image'
+  | 'civil_defense_map'
+  | 'civil_defense_route'
+  | 'existing_condition'
+  | 'safety_system'
+  | 'code_excerpt';
+
+/** Optional scope association; evidence never writes to the linked source stage. */
+export interface EvidenceAssociation {
+  floor_id?: string | null;
+  space_id?: string | null;
+  system_key?: string | null;
+  report_section_id?: string | null;
+}
+
+/** Storage-backed evidence file; dataUrl is transient preview state only. */
+export interface TechnicalEvidenceFile {
+  id: string;
+  fileName?: string | null;
+  mimeType?: string | null;
+  sizeBytes?: number | null;
+  storagePath?: string | null;
+  storageBucket?: string | null;
+  dataUrl?: string | null;
+}
+
+/** Manual code-reference metadata; Phase 4A never generates citations or excerpts. */
+export interface CodeEvidenceReference {
+  source_standard?: string | null;
+  edition?: string | null;
+  chapter?: string | null;
+  clause?: string | null;
+  table_or_figure?: string | null;
+  page_number?: number | null;
+  related_report_section?: string | null;
+  related_recommendation_ids?: string[];
+}
+
+/** Engineer-managed evidence metadata. Inclusion in PDF remains off by default. */
+export interface TechnicalEvidenceItem {
+  id: string;
+  kind: TechnicalEvidenceKind;
+  category: string;
+  other_category_label?: string | null;
+  title: string;
+  caption?: string | null;
+  engineering_observation?: string | null;
+  taken_at?: string | null;
+  display_order: number;
+  include_in_report: boolean;
+  association?: EvidenceAssociation | null;
+  file: TechnicalEvidenceFile;
+  code_reference?: CodeEvidenceReference | null;
+  created_at: string;
+  updated_at?: string | null;
+}
+
+/** Manual-only civil-defense metadata. No map, routing, or distance calculation in Phase 4A. */
+export interface CivilDefenseLocationEvidence {
+  center_name?: string | null;
+  project_lat?: string | null;
+  project_lng?: string | null;
+  center_lat?: string | null;
+  center_lng?: string | null;
+  distance_value?: number | null;
+  distance_unit?: 'km' | 'm' | null;
+  travel_time_minutes?: number | null;
+  source_label?: string | null;
+  map_evidence_id?: string | null;
+  route_evidence_id?: string | null;
+  engineer_confirmed_at?: string | null;
+}
+
+/** Retry token created only after metadata removal has succeeded but Storage cleanup fails. */
+export interface TechnicalEvidenceCleanup {
+  id: string;
+  evidence_id: string;
+  kind: TechnicalEvidenceKind;
+  storage_bucket: string;
+  storage_path: string;
+  attempts: number;
+  last_error?: string | null;
+  created_at: string;
+}
+
+/** Additive Phase 4A evidence state. */
+export interface TechnicalEvidenceState {
+  version: 1;
+  civil_defense: CivilDefenseLocationEvidence | null;
+  items: TechnicalEvidenceItem[];
+  cleanup_pending?: TechnicalEvidenceCleanup[];
+}
+
 /** التقرير الفني لأنظمة السلامة والوقاية من الحريق */
 /**
  * Manual decision saved by the Technical Report data bridge.
@@ -478,6 +574,11 @@ export interface TechnicalReport extends ReportMeta {
   earth_photo?: TechnicalReportPhoto | null;
   facade_photo?: TechnicalReportPhoto | null;
   site_photo?: TechnicalReportPhoto | null;
+  /**
+   * Phase 4A additive evidence state. Legacy photo fields remain canonical for
+   * their existing UI/PDF flow until a later explicit integration phase.
+   */
+  evidence?: TechnicalEvidenceState;
   /** صور مقاطع من الكود مربوطة بمفتاح الإثبات (occ-class, risk-class, spr-…, zone:id) */
   code_proofs_by_key: Record<string, TechnicalReportPhoto[]>;
   /** صور مقاطع من الكود (قائمة عامة احتياطية) */

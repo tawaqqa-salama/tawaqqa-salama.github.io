@@ -20,6 +20,7 @@ import {
 } from '@/lib/projects/gated-pipeline';
 import { mergeBuildingPlanDefaults } from '@/lib/projects/building-plan';
 import { seedTechnicalReportFromClient } from '@/lib/projects/technical-report';
+import { normalizeTechnicalEvidenceState } from '@/lib/projects/technical-report-evidence';
 import { mergeSafetyScope, seedEngineeringDelivery } from '@/lib/projects/safety-delivery-letter';
 import { seedCdCoverLetter } from '@/lib/projects/cd-cover-letter';
 import { seedFinalInspectionReport } from '@/lib/projects/final-safety-report';
@@ -59,6 +60,9 @@ export function parseProjectEngineeringData(raw: ClientRecord['project_engineeri
       alarm_items: data.technical_report?.alarm_items || [],
       exits_items: data.technical_report?.exits_items || [],
       general_recommendations: data.technical_report?.general_recommendations || [],
+      ...(data.technical_report?.evidence !== undefined
+        ? { evidence: normalizeTechnicalEvidenceState(data.technical_report.evidence) }
+        : {}),
     },
     building_plan: mergeBuildingPlanDefaults({ ...EMPTY_BUILDING_PLAN, ...data.building_plan }),
     safety_blueprints: {

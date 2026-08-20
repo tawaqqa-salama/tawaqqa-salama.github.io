@@ -8,6 +8,7 @@ import type {
   ProjectEngineeringData,
   SafetyBlueprintFile,
 } from '@/lib/types/project-reports';
+import { sanitizeTechnicalEvidenceStateForPersist } from '@/lib/projects/technical-report-evidence';
 
 /** Inline data URLs larger than this bloat JSONB and break multi-device sync */
 export const MAX_PERSISTED_DATA_URL_CHARS = 180_000;
@@ -111,37 +112,43 @@ export function sanitizeEngineeringDataForPersist(
     }
     return p;
   };
-  const technical_report: ProjectEngineeringData['technical_report'] = aggressive
-    ? {
-        ...tech,
-        earth_photo: tech.earth_photo ? stripTechPhoto(tech.earth_photo) : tech.earth_photo,
-        facade_photo: tech.facade_photo ? stripTechPhoto(tech.facade_photo) : tech.facade_photo,
-        site_photo: tech.site_photo ? stripTechPhoto(tech.site_photo) : tech.site_photo,
-        code_proof_photos: (tech.code_proof_photos || []).map(stripTechPhoto),
-        code_proofs_by_key: Object.fromEntries(
-          Object.entries(tech.code_proofs_by_key || {}).map(([k, list]) => [
-            k,
-            (list || []).map(stripTechPhoto),
-          ])
-        ),
-        firefighting_items: (tech.firefighting_items || []).map((item) => ({
-          ...item,
-          photos: (item.photos || []).map(stripTechPhoto),
-        })),
-        ventilation_items: (tech.ventilation_items || []).map((item) => ({
-          ...item,
-          photos: (item.photos || []).map(stripTechPhoto),
-        })),
-        alarm_items: (tech.alarm_items || []).map((item) => ({
-          ...item,
-          photos: (item.photos || []).map(stripTechPhoto),
-        })),
-        exits_items: (tech.exits_items || []).map((item) => ({
-          ...item,
-          photos: (item.photos || []).map(stripTechPhoto),
-        })),
-      }
-    : tech;
+  const technical_report: ProjectEngineeringData['technical_report'] = {
+    ...(aggressive
+      ? {
+          ...tech,
+          earth_photo: tech.earth_photo ? stripTechPhoto(tech.earth_photo) : tech.earth_photo,
+          facade_photo: tech.facade_photo ? stripTechPhoto(tech.facade_photo) : tech.facade_photo,
+          site_photo: tech.site_photo ? stripTechPhoto(tech.site_photo) : tech.site_photo,
+          code_proof_photos: (tech.code_proof_photos || []).map(stripTechPhoto),
+          code_proofs_by_key: Object.fromEntries(
+            Object.entries(tech.code_proofs_by_key || {}).map(([k, list]) => [
+              k,
+              (list || []).map(stripTechPhoto),
+            ])
+          ),
+          firefighting_items: (tech.firefighting_items || []).map((item) => ({
+            ...item,
+            photos: (item.photos || []).map(stripTechPhoto),
+          })),
+          ventilation_items: (tech.ventilation_items || []).map((item) => ({
+            ...item,
+            photos: (item.photos || []).map(stripTechPhoto),
+          })),
+          alarm_items: (tech.alarm_items || []).map((item) => ({
+            ...item,
+            photos: (item.photos || []).map(stripTechPhoto),
+          })),
+          exits_items: (tech.exits_items || []).map((item) => ({
+            ...item,
+            photos: (item.photos || []).map(stripTechPhoto),
+          })),
+        }
+      : tech),
+    // Evidence URLs are transient presentation state. Do not backfill absent legacy state.
+    ...(tech.evidence !== undefined
+      ? { evidence: sanitizeTechnicalEvidenceStateForPersist(tech.evidence) }
+      : {}),
+  };
 
   const supervision_report = data.supervision_report
     ? {
