@@ -60,6 +60,51 @@ describe('engineering live store (all stages)', () => {
     expect(fromMock).not.toHaveBeenCalled();
   });
 
+  it('persists evidence metadata and strips transient display URLs from the live payload', async () => {
+    const result = await saveEngineeringLive({
+      clientId: 'client-01',
+      data: {
+        ...EMPTY_PROJECT_ENGINEERING_DATA,
+        technical_report: {
+          ...EMPTY_PROJECT_ENGINEERING_DATA.technical_report,
+          evidence: {
+            version: 1,
+            civil_defense: null,
+            items: [
+              {
+                id: 'evidence-001',
+                kind: 'safety_system',
+                category: 'sprinkler',
+                title: 'رشاشات',
+                display_order: 1,
+                include_in_report: false,
+                association: null,
+                file: {
+                  id: 'evidence-001',
+                  fileName: 'sprinkler.jpg',
+                  mimeType: 'image/jpeg',
+                  sizeBytes: 12_000,
+                  storageBucket: 'project-files',
+                  storagePath: 'client-01/technical-evidence/safety_system/evidence-001-sprinkler.jpg',
+                  dataUrl: 'https://example.com/transient-signed-url',
+                },
+                code_reference: null,
+                created_at: '2026-08-20T00:00:00.000Z',
+              },
+            ],
+          },
+        },
+      },
+    });
+    expect(result.error).toBeNull();
+    const payload = rpcMock.mock.calls[0][1].p_payload;
+    const evidence = payload.technical_report.evidence;
+    expect(evidence.items[0].file.storagePath).toContain('technical-evidence');
+    expect(evidence.items[0].file.storageBucket).toBe('project-files');
+    expect(evidence.items[0].file.fileName).toBe('sprinkler.jpg');
+    expect(evidence.items[0].file.dataUrl).toBeNull();
+  });
+
   it('hydrateEngineeringWithLive prefers live technical report and visits', () => {
     const base = {
       ...EMPTY_PROJECT_ENGINEERING_DATA,

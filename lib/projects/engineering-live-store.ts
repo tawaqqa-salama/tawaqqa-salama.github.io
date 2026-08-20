@@ -16,6 +16,10 @@ import {
   hydrateTechnicalReportPhotosForDisplay,
   persistTechnicalReportPhotosToStorage,
 } from '@/lib/projects/technical-report-photos';
+import {
+  hydrateTechnicalEvidenceForDisplay,
+  persistTechnicalEvidenceToStorage,
+} from '@/lib/projects/technical-report-evidence';
 import { resolveCanonicalEngineeringDataset } from '@/lib/projects/canonical-engineering';
 
 function isMissing(message: string): boolean {
@@ -33,13 +37,20 @@ export async function saveEngineeringLive(params: {
   data: ProjectEngineeringData;
   pipelineStage?: string | null;
 }): Promise<{ error: string | null; usedRpc: boolean }> {
-  // Move inline tech-report photos to Storage first so sanitize can drop dataUrls safely
+  // Move inline report media to Storage first so sanitization can drop bytes safely.
+  const storedReportPhotos = await persistTechnicalReportPhotosToStorage(
+    params.clientId,
+    params.data.technical_report
+  );
+  const storedEvidence = storedReportPhotos.evidence !== undefined
+    ? await persistTechnicalEvidenceToStorage(params.clientId, storedReportPhotos.evidence)
+    : undefined;
   const withStoredPhotos: ProjectEngineeringData = {
     ...params.data,
-    technical_report: await persistTechnicalReportPhotosToStorage(
-      params.clientId,
-      params.data.technical_report
-    ),
+    technical_report: {
+      ...storedReportPhotos,
+      ...(storedEvidence !== undefined ? { evidence: storedEvidence } : {}),
+    },
     engineering_meta: {
       ...(params.data.engineering_meta || {
         canonical_source: 'project_engineering_live',
@@ -100,10 +111,17 @@ export async function loadEngineeringLive(
   if (error) return null;
   if (!data?.payload || typeof data.payload !== 'object') return null;
   const parsed = parseProjectEngineeringData(data.payload);
-  // Restore displayable image srcs from Storage paths
+  // Restore displayable image srcs from Storage paths without persisting signed URLs.
+  const hydratedPhotos = await hydrateTechnicalReportPhotosForDisplay(parsed.technical_report);
+  const hydratedEvidence = hydratedPhotos.evidence !== undefined
+    ? await hydrateTechnicalEvidenceForDisplay(clientId, hydratedPhotos.evidence)
+    : undefined;
   return {
     ...parsed,
-    technical_report: await hydrateTechnicalReportPhotosForDisplay(parsed.technical_report),
+    technical_report: {
+      ...hydratedPhotos,
+      ...(hydratedEvidence !== undefined ? { evidence: hydratedEvidence } : {}),
+    },
     engineering_meta: {
       ...(parsed.engineering_meta || { canonical_source: 'project_engineering_live' }),
       canonical_source: 'project_engineering_live',
