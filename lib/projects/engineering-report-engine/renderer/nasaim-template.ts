@@ -108,6 +108,14 @@ function renderCover(doc: EngineeringStudyDocument, company: CompanyProfile): st
   </section>`;
 }
 
+function renderDocumentControl(doc: EngineeringStudyDocument, company: CompanyProfile): string {
+  const brand = company.legal_name || company.name || '—';
+  const rows = [
+    ['رقم التقرير', doc.report_number || '—'], ['رقم المشروع', doc.client_code || '—'], ['الإصدار', '—'], ['تاريخ الإصدار', doc.report_date || '—'], ['حالة التقرير', doc.rules_gate_ok ? 'قيد المراجعة' : '—'], ['إعداد', brand], ['مراجعة', '—'], ['اعتماد', brand],
+  ];
+  return `<section class="page control-page"><div class="ph">${esc(brand)}</div><h1 class="toc-h">ضبط الوثيقة</h1><table class="control-table"><tbody>${rows.map(([k,v])=>`<tr><th>${tx(k)}</th><td>${tx(v)}</td></tr>`).join('')}</tbody></table></section>`;
+}
+
 function renderToc(
   doc: EngineeringStudyDocument,
   company: CompanyProfile,
@@ -155,7 +163,7 @@ function renderApprovals(doc: EngineeringStudyDocument, company: CompanyProfile)
         <div class="ln">${lang === 'ar' ? 'التوقيع: ............................' : 'Signature: ............................'}</div>
         <div class="ln">${lang === 'ar' ? 'التاريخ: ............................' : 'Date: ............................'}</div>
       </div>
-      <div class="stamp">${esc(company.stamp_text || company.name)}</div>
+      <div class="stamp">${company.stamp_url ? `<img src="${esc(company.stamp_url)}" alt="" />` : `<span>${esc(company.stamp_text || '—')}</span>`}</div>
       <div class="sign-box">
         <div class="sl">${lang === 'ar' ? 'اعتماد المكتب' : 'Office approval'}</div>
         <div class="ln">${lang === 'ar' ? 'الاسم / الجهة: ............................' : 'Name / office: ............................'}</div>
@@ -214,18 +222,19 @@ function flowCss(doc: EngineeringStudyDocument, company: CompanyProfile): string
     .page {
       box-sizing: border-box;
       width: 210mm;
-      min-height: 297mm;
+      min-height: 0;
+      height: 260mm;
       padding: 14mm 14mm 16mm;
       margin: 0 auto 8px;
       background: #fff;
       page-break-after: always;
       break-after: page;
     }
-    .cover { display: flex; }
+    .cover { display: flex; min-height: 0; height: 273mm; padding: 10mm 12mm 12mm; }
     .cover-box {
-      flex: 1; border: 1.5px solid #1f4d3a; padding: 12mm 10mm;
+      flex: 1; border: 1.5px solid #1f4d3a; padding: 10mm 10mm;
       display: flex; flex-direction: column; justify-content: space-between; align-items: center;
-      text-align: center; min-height: 265mm; box-sizing: border-box;
+      text-align: center; min-height: 228mm; box-sizing: border-box;
     }
     .cover-brand { display: flex; flex-direction: column; align-items: center; gap: 6px; }
     .logo { width: 72px; height: 72px; object-fit: contain; }
@@ -245,7 +254,10 @@ function flowCss(doc: EngineeringStudyDocument, company: CompanyProfile): string
     .cover-meta td { border-bottom: 1px solid #e2e8f0; padding: 6px 4px; text-align: start; }
     .cover-meta td:last-child { font-weight: 800; text-align: end; }
 
-    .toc-page .ph { font-size: 11px; font-weight: 800; color: #1f4d3a; border-bottom: 2px solid #1f4d3a; padding-bottom: 6px; margin-bottom: 14px; }
+    .control-page .ph, .toc-page .ph { font-size: 11px; font-weight: 800; color: #1f4d3a; border-bottom: 2px solid #1f4d3a; padding-bottom: 6px; margin-bottom: 14px; }
+    .control-table { width:100%; border-collapse:collapse; margin-top:18mm; font-size:12px; }
+    .control-table th, .control-table td { border:1px solid #64748b; padding:7px 9px; text-align:start; }
+    .control-table th { width:35%; background:#e8f2ec; color:#1f4d3a; }
     .toc-h { text-align: center; color: #9f1239; font-size: 20px; margin: 0 0 16px; }
     .toc-row { display: flex; align-items: baseline; gap: 8px; margin: 7px 0; font-size: 12px; }
     .toc-lab { font-weight: 650; max-width: 78%; }
@@ -354,11 +366,8 @@ function flowCss(doc: EngineeringStudyDocument, company: CompanyProfile): string
     }
     .sl { font-weight: 800; margin-bottom: 10px; color: #1f4d3a; }
     .ln { margin-top: 14px; }
-    .stamp {
-      border: 1px dashed #1f4d3a; border-radius: 50%; width: 86px; height: 86px;
-      display:flex; align-items:center; justify-content:center; text-align:center;
-      margin: 12px auto 0; color:#1f4d3a; font-weight:800; font-size:10px; padding:6px;
-    }
+    .stamp { border:1px dashed #1f4d3a; width:86px; height:86px; display:flex; align-items:center; justify-content:center; text-align:center; margin:12px auto 0; color:#1f4d3a; font-weight:800; font-size:10px; padding:6px; box-sizing:border-box; overflow:hidden; }
+    .stamp img { display:block; max-width:100%; max-height:100%; width:auto; height:auto; object-fit:contain; }
 
     @media screen {
       .doc, .page { box-shadow: 0 0 0 1px #e2e8f0; }
@@ -392,6 +401,7 @@ export function buildNasaimReportHtml(params: {
 </head>
 <body>
   ${renderCover(doc, company)}
+  ${renderDocumentControl(doc, company)}
   ${renderToc(doc, company, chapters, pageMap)}
   <article class="doc" id="study-body">
     ${bodyHtml}

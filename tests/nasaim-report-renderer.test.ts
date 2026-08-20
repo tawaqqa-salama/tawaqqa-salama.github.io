@@ -230,6 +230,6 @@ describe('Nasaim report pipeline rebuild', () => {
     expect(html).toMatch(/يتم توزيع كواشف (الدخان والحرارة|الحريق)/);
     expect(html).toContain('شكل (');
     expect(html).toContain('الاعتماد والتوقيعات');
-    expect((html.match(/class="page /g) || []).length).toBe(2);
+    expect((html.match(/class="page /g) || []).length).toBe(3);
   });
 });

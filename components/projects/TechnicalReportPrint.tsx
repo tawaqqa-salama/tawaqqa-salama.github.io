@@ -1,10 +1,8 @@
 import type { CompanyProfile } from '@/lib/company-profile';
 import type { ClientRecord } from '@/lib/types/client';
 import type { ProjectEngineeringData, TechnicalReport } from '@/lib/types/project-reports';
-import {
-  generateEngineeringStudy,
-  type ReportLocale,
-} from '@/lib/projects/engineering-report-engine';
+import { type ReportLocale } from '@/lib/projects/engineering-report-engine';
+import { generateTechnicalReportDocument } from '@/lib/projects/technical-report-document';
 import {
   printAdminUcTechnicalReport,
   shouldUseAdminUcReport,
@@ -51,7 +49,7 @@ export async function printTechnicalReport(params: {
     return;
   }
 
-  const document = generateEngineeringStudy({
+  const document = generateTechnicalReportDocument({
     client: params.client,
     report,
     engineeringData,
