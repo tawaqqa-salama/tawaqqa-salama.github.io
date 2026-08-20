@@ -31,6 +31,10 @@ export type EngineeringStudySectionId =
   | 'emergency_power'
   | 'civil_defense_requirements'
   | 'engineering_compliance_review'
+  | 'site_access_evidence'
+  | 'existing_condition_evidence'
+  | 'safety_system_evidence'
+  | 'code_evidence_references'
   | 'summary'
   | 'engineering_recommendations'
   | 'conclusion';
@@ -69,6 +73,11 @@ export type EngineeringStudyImage = {
   subsection_order?: number;
   image_type?: ImageType;
   layout_type?: ImageLayoutType;
+  /** Print-only intrinsic media metadata; never persisted to project evidence. */
+  intrinsic_width?: number | null;
+  intrinsic_height?: number | null;
+  aspect_ratio?: number | null;
+  presentation_state?: 'ready' | 'tiny' | 'unavailable' | 'unmeasured';
   /** Sub-topic under the section (e.g. لوحة التحكم) — for in-flow placement */
   subsection_ar?: string;
   subsection_en?: string;

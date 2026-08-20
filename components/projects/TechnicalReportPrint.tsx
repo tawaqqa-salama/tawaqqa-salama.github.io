@@ -8,6 +8,8 @@ import {
   shouldUseAdminUcReport,
 } from '@/lib/projects/admin-uc-report';
 import { hydrateTechnicalReportPhotosForDisplay } from '@/lib/projects/technical-report-photos';
+import { hydrateTechnicalEvidenceForDisplay } from '@/lib/projects/technical-report-evidence';
+import { probeEvidenceMediaPresentation } from '@/lib/projects/technical-report-media-presentation';
 import { appendComplianceMatrixToReportHtml } from '@/lib/projects/compliance';
 import { buildEngineeringStudyHtml } from '@/lib/projects/engineering-report-engine/print-html';
 import { openDocumentPreview } from '@/lib/print/document-preview';
@@ -25,7 +27,18 @@ export async function printTechnicalReport(params: {
   engineeringData?: ProjectEngineeringData | null;
   locale?: ReportLocale;
 }) {
-  const report = await hydrateTechnicalReportPhotosForDisplay(params.report);
+  const photosHydrated = await hydrateTechnicalReportPhotosForDisplay(params.report);
+  const evidence = await hydrateTechnicalEvidenceForDisplay(params.client.id, photosHydrated.evidence);
+  const evidenceMediaPresentation = Object.fromEntries(
+    await Promise.all(
+      evidence.items.map(async (item) => [
+        item.id,
+        await probeEvidenceMediaPresentation(item.file.dataUrl, item.file.mimeType),
+      ] as const)
+    )
+  );
+  // Presentation-only hydration and media measurements remain in memory for this print call.
+  const report = { ...photosHydrated, evidence };
   const engineeringData = params.engineeringData
     ? {
         ...params.engineeringData,
@@ -54,6 +67,7 @@ export async function printTechnicalReport(params: {
     report,
     engineeringData,
     locale: params.locale || 'ar',
+    evidenceMediaPresentation,
   });
 
   const baseHtml = buildEngineeringStudyHtml({
