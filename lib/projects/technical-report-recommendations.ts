@@ -211,10 +211,20 @@ export function normalizeTechnicalRecommendationState(raw: unknown): TechnicalRe
         manual_override: Boolean(item.manual_override),
         sort_order: Number.isFinite(item.sort_order) ? Number(item.sort_order) : 0,
         fingerprint: String(item.fingerprint || item.library_item_id || ''),
+        domain: typeof item.domain === 'string' && item.domain.trim() ? item.domain : null,
         affected_scopes: uniqueScopes(Array.isArray(item.affected_scopes) ? item.affected_scopes : []),
         evidence_ids: Array.isArray(item.evidence_ids) ? item.evidence_ids.map(String).filter(Boolean) : [],
         code_evidence_ids: Array.isArray(item.code_evidence_ids) ? item.code_evidence_ids.map(String).filter(Boolean) : [],
         source: normalizeSource(item.source),
+        source_snapshot: item.source_snapshot && typeof item.source_snapshot === 'object'
+          ? {
+              source_type: normalizeSource(item.source_snapshot.source_type),
+              source_document_key: typeof item.source_snapshot.source_document_key === 'string' ? item.source_snapshot.source_document_key : null,
+              source_section: typeof item.source_snapshot.source_section === 'string' ? item.source_snapshot.source_section : null,
+              source_page: Number.isFinite(item.source_snapshot.source_page) ? Number(item.source_snapshot.source_page) : null,
+              source_text_marker: typeof item.source_snapshot.source_text_marker === 'string' ? item.source_snapshot.source_text_marker : null,
+            }
+          : null,
         approved_at: item.approved_at || null,
         rejection_reason: item.rejection_reason || null,
       }))
@@ -249,6 +259,13 @@ function toCandidate(params: {
     evidence_ids: prior?.evidence_ids || [],
     code_evidence_ids: prior?.code_evidence_ids || [],
     source: prior?.source || item.source.source_type,
+    source_snapshot: prior?.source_snapshot || {
+      source_type: item.source.source_type,
+      source_document_key: item.source.source_document_key,
+      source_section: item.source.source_section,
+      source_page: item.source.source_page ?? null,
+      source_text_marker: item.source.source_text_marker,
+    },
     approved_at: prior?.approved_at || null,
     rejection_reason: prior?.rejection_reason || null,
     domain: item.domain,

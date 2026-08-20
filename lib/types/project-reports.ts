@@ -460,6 +460,14 @@ export interface TechnicalRecommendationAffectedScope {
 }
 
 /** Persisted engineer decision/snapshot for a recommendation-library candidate. */
+export interface TechnicalRecommendationSourceSnapshot {
+  source_type: TechnicalRecommendationSourceType;
+  source_document_key?: string | null;
+  source_section?: string | null;
+  source_page?: number | null;
+  source_text_marker?: string | null;
+}
+
 export interface TechnicalProjectRecommendation {
   id: string;
   library_item_id: string;
@@ -469,10 +477,14 @@ export interface TechnicalProjectRecommendation {
   manual_override: boolean;
   sort_order: number;
   fingerprint: string;
+  /** Domain is persisted as project-state context; it never changes the shared library. */
+  domain?: string | null;
   affected_scopes: TechnicalRecommendationAffectedScope[];
   evidence_ids: string[];
   code_evidence_ids: string[];
   source: TechnicalRecommendationSourceType;
+  /** Snapshot retained for approved/edited decisions so a future library version cannot rewrite provenance. */
+  source_snapshot?: TechnicalRecommendationSourceSnapshot | null;
   approved_at?: string | null;
   rejection_reason?: string | null;
 }

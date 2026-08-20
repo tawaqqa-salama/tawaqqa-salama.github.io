@@ -14,9 +14,9 @@ const client: ClientRecord = { id: 'c-1', client_code: 'C-1', name: 'مشروع'
 const data = { ...EMPTY_PROJECT_ENGINEERING_DATA, technical_report: { ...EMPTY_TECHNICAL_REPORT }, design_center: { ...EMPTY_PROJECT_ENGINEERING_DATA.design_center, space_safety: null } };
 
 describe('technical report UI reorganization', () => {
-  it('defines the 12 required accordion sections in the prescribed order', () => {
+  it('defines the 13 required accordion sections with recommendation review after observations', () => {
     expect(TECHNICAL_REPORT_UI_SECTIONS.map((section) => section.id)).toEqual([
-      'project_summary', 'occupancy_spaces', 'structural', 'egress', 'civil_defense', 'fire_fighting', 'alarm_evacuation', 'electrical', 'mechanical', 'evidence', 'observations', 'approval',
+      'project_summary', 'occupancy_spaces', 'structural', 'egress', 'civil_defense', 'fire_fighting', 'alarm_evacuation', 'electrical', 'mechanical', 'evidence', 'observations', 'recommendation_review', 'approval',
     ]);
   });
 
