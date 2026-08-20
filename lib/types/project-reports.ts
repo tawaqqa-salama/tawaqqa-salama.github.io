@@ -436,6 +436,53 @@ export interface TechnicalReportRecommendation {
   checked: boolean;
 }
 
+/** Phase 4C: source taxonomy for reviewable, static recommendation-library entries. */
+export type TechnicalRecommendationSourceType =
+  | 'office_template'
+  | 'approved_reference_report'
+  | 'engineer_manual'
+  | 'code_backed'
+  | 'system_suggestion';
+
+export type TechnicalRecommendationPriority = 'low' | 'medium' | 'high';
+export type TechnicalRecommendationTrigger = 'data_based' | 'observation_based' | 'manual_review';
+export type TechnicalRecommendationStatus = 'suggested' | 'approved' | 'edited' | 'rejected';
+
+/** A reference only; the engine never dereferences files or writes upstream data. */
+export interface TechnicalRecommendationAffectedScope {
+  scope_type: 'project' | 'floor' | 'space';
+  floor_id?: string | null;
+  space_id?: string | null;
+  activity_id?: string | null;
+  occupancy_code?: string | null;
+  system_key?: string | null;
+  condition_key?: string | null;
+}
+
+/** Persisted engineer decision/snapshot for a recommendation-library candidate. */
+export interface TechnicalProjectRecommendation {
+  id: string;
+  library_item_id: string;
+  library_version: string;
+  status: TechnicalRecommendationStatus;
+  effective_text_ar: string;
+  manual_override: boolean;
+  sort_order: number;
+  fingerprint: string;
+  affected_scopes: TechnicalRecommendationAffectedScope[];
+  evidence_ids: string[];
+  code_evidence_ids: string[];
+  source: TechnicalRecommendationSourceType;
+  approved_at?: string | null;
+  rejection_reason?: string | null;
+}
+
+/** Additive Phase 4C project state. Its absence preserves all legacy projects unchanged. */
+export interface TechnicalRecommendationState {
+  version: 1;
+  items: TechnicalProjectRecommendation[];
+}
+
 /** Phase 4A: source-agnostic technical evidence kinds. */
 export type TechnicalEvidenceKind =
   | 'site_general'
@@ -591,6 +638,8 @@ export interface TechnicalReport extends ReportMeta {
   alarm_items: TechnicalReportSectionItem[];
   exits_items: TechnicalReportSectionItem[];
   general_recommendations: TechnicalReportRecommendation[];
+  /** Phase 4C optional decision state; legacy general_recommendations remains canonical for current PDF output. */
+  recommendations_v2?: TechnicalRecommendationState;
   safety_engineer_name?: string;
   executive_director_name?: string;
   /**
