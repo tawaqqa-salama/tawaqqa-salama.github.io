@@ -124,6 +124,90 @@ describe('Nasaim report pipeline rebuild', () => {
     expect(bridge).toMatch(/لا تكفي|لا يتم افتراض/);
   });
 
+  it('flows normal evidence photos in compact pairs and keeps code evidence wide', () => {
+    const doc = {
+      locale: 'ar' as const,
+      title_ar: 'تقرير اختبار التخطيط',
+      title_en: 'Layout test report',
+      generated_at: '2026-08-20T00:00:00.000Z',
+      report_number: 'LAYOUT-01',
+      report_date: '2026-08-20',
+      project_name: 'مشروع اختبار',
+      client_code: 'LAYOUT',
+      rules_gate_ok: true,
+      rules_summary_ar: '',
+      rules_summary_en: '',
+      missing_inputs: [],
+      sections: [
+        {
+          id: 'existing_condition_evidence' as const,
+          number: 1,
+          title_ar: 'توثيق الوضع القائم',
+          title_en: 'Existing conditions',
+          paragraphs: [],
+          images: [
+            {
+              src: pixel(21), caption_ar: 'الصورة الأولى', caption_en: 'First photo', image_id: 'photo-1',
+              item_id: 'photo-1', subsection_ar: 'الحالة الأولى', subsection_order: 1,
+              image_type: 'system' as const, layout_type: 'double' as const,
+            },
+            {
+              src: pixel(22), caption_ar: 'الصورة الثانية', caption_en: 'Second photo', image_id: 'photo-2',
+              item_id: 'photo-2', subsection_ar: 'الحالة الثانية', subsection_order: 2,
+              image_type: 'system' as const, layout_type: 'double' as const,
+            },
+          ],
+        },
+        {
+          id: 'code_evidence_references' as const,
+          number: 2,
+          title_ar: 'المراجع والمقتطفات الفنية',
+          title_en: 'Code evidence',
+          paragraphs: [],
+          images: [
+            {
+              src: pixel(23), caption_ar: 'مقتطف كودي أول', caption_en: 'First code excerpt', image_id: 'code-1',
+              item_id: 'code-1', subsection_ar: 'SBC 801', subsection_order: 1,
+              image_type: 'code_proof' as const, layout_type: 'full_width' as const,
+            },
+            {
+              src: pixel(24), caption_ar: 'مقتطف كودي ثانٍ', caption_en: 'Second code excerpt', image_id: 'code-2',
+              item_id: 'code-2', subsection_ar: 'SBC 801', subsection_order: 2,
+              image_type: 'code_proof' as const, layout_type: 'full_width' as const,
+            },
+            {
+              src: pixel(25), caption_ar: 'مقتطف كودي ثالث', caption_en: 'Third code excerpt', image_id: 'code-3',
+              item_id: 'code-3', subsection_ar: 'SBC 801', subsection_order: 3,
+              image_type: 'code_proof' as const, layout_type: 'full_width' as const,
+            },
+          ],
+        },
+      ],
+    };
+
+    const { blocks } = documentToFlowBlocks(doc);
+    const row = blocks.find((block) => block.kind === 'figure_row');
+    expect(row).toBeDefined();
+    expect(row && row.kind === 'figure_row' && row.figures).toHaveLength(2);
+    expect(row && row.kind === 'figure_row' && row.figures.every((figure) => figure.layout === 'double' && figure.variant === 'photo')).toBe(true);
+    expect(row && row.kind === 'figure_row' && row.figures.map((figure) => figure.figureNo)).toEqual([1, 2]);
+    const codeSequence = blocks.find((block) => block.kind === 'code_sequence');
+    expect(codeSequence && codeSequence.kind === 'code_sequence' && codeSequence.figures).toHaveLength(3);
+    expect(codeSequence && codeSequence.kind === 'code_sequence' && codeSequence.figures.map((figure) => figure.figureNo)).toEqual([3, 4, 5]);
+
+    const html = buildNasaimReportHtml({ document: doc, company });
+    expect(html).toContain('class="fig-row"');
+    expect(html).toContain('fig-double img { max-height: 72mm; }');
+    expect(html).toContain('fig-code img { max-height: 130mm; }');
+    expect(html).toContain('class="code-sequence"');
+    expect(html).toContain('.code-sequence { margin: 0; }');
+    expect(html).not.toContain('code-sequence { page-break-inside: avoid');
+    expect(html).not.toContain('.fig-code { page-break-after: always');
+    expect(html).not.toContain('.code-sequence { page-break-after: always');
+    expect(html).not.toContain('min-height: 200mm');
+    expect(html).not.toContain('height: 220mm');
+  });
+
   it('builds real subsection engineering prose bound to item photos (no generic bridge)', () => {
     const report = {
       ...EMPTY_TECHNICAL_REPORT,

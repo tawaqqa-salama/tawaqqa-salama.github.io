@@ -12,26 +12,38 @@ import type {
 import { placeSectionImages, sanitizeCaption } from '@/lib/projects/engineering-report-engine/renderer/image-placement';
 import { getItemProse } from '@/lib/projects/engineering-report-engine/renderer/subsection-prose';
 
+export type FlowFigure = {
+  kind: 'figure';
+  src: string;
+  caption: string;
+  figureNo: number;
+  layout: 'single' | 'double' | 'full_width';
+  variant: 'photo' | 'map' | 'code';
+  intrinsicWidth?: number | null;
+  intrinsicHeight?: number | null;
+  aspectRatio?: number | null;
+  note?: string;
+  imageId?: string;
+};
+
 export type FlowBlock =
   | { kind: 'chapter'; id: string; number: number; title: string }
   | { kind: 'subsection'; title: string }
   | { kind: 'paragraph'; text: string; incomplete?: boolean }
   | { kind: 'bullet_list'; items: string[] }
-  | { kind: 'reference_note'; refs: string[] }
+  | { kind: 'reference_note'; refs: string[]; referenceNo: number }
   | {
       kind: 'table';
+      tableNo: number;
       caption: string;
       headers: string[];
       rows: string[][];
     }
-  | {
-      kind: 'figure';
-      src: string;
-      caption: string;
-      figureNo: number;
-      layout: 'single' | 'double' | 'full_width';
-      imageId?: string;
-    }
+  | FlowFigure
+  /** A small print-safe row only; individual figures remain the atomic keep-together units. */
+  | { kind: 'figure_row'; figures: FlowFigure[] }
+  /** Breakable sequence: each code figure remains cohesive but the full series never locks a page. */
+  | { kind: 'code_sequence'; figures: FlowFigure[] }
   /** Atomic keep-together group (subsection + first para, or image+caption) */
   | { kind: 'unit'; blocks: FlowBlock[] };
 
@@ -196,7 +208,7 @@ function figureCaption(
     base = subsection || (locale === 'ar' ? 'توثيق الحالة القائمة' : 'As-built documentation');
   }
   if (locale === 'ar') {
-    if (!/الحالة الحالية|منظومة|غرفة|لوحة|كاشف|كاسر|جرس|موقع|مخطط|واجهة/i.test(base)) {
+    if (!/الحالة الحالية|منظومة|غرفة|لوحة|كاشف|كاسر|جرس|موقع|مخطط|واجهة|مقتطف|مرجع|دليل/i.test(base)) {
       base = subsection ? `الحالة الحالية لـ${subsection}` : `الحالة الحالية — ${base}`;
     }
     return `شكل (${figNo}): ${base}.`.replace(/\.\.$/, '.');
@@ -270,29 +282,36 @@ function figureLayout(img: EngineeringStudyImage): 'single' | 'double' | 'full_w
   return 'single';
 }
 
+function figureVariant(img: EngineeringStudyImage): FlowFigure['variant'] {
+  if (img.image_type === 'code_proof') return 'code';
+  if (img.image_type === 'site_map' || img.image_type === 'drawing') return 'map';
+  return 'photo';
+}
+
 function buildFigureBlock(
   locale: 'ar' | 'en',
   img: EngineeringStudyImage,
   figureNo: number,
-  subsectionTitle: string
-): FlowBlock {
+  subsectionTitle: string,
+  note?: string
+): FlowFigure {
   return {
-    kind: 'unit',
-    blocks: [
-      {
-        kind: 'figure',
-        src: img.src,
-        caption: figureCaption(
-          locale,
-          figureNo,
-          locale === 'ar' ? img.caption_ar : img.caption_en,
-          subsectionTitle
-        ),
-        figureNo,
-        layout: figureLayout(img),
-        imageId: img.image_id,
-      },
-    ],
+    kind: 'figure',
+    src: img.src,
+    caption: figureCaption(
+      locale,
+      figureNo,
+      locale === 'ar' ? img.caption_ar : img.caption_en,
+      subsectionTitle
+    ),
+    figureNo,
+    layout: figureLayout(img),
+    variant: figureVariant(img),
+    intrinsicWidth: img.intrinsic_width,
+    intrinsicHeight: img.intrinsic_height,
+    aspectRatio: img.aspect_ratio,
+    note: note || undefined,
+    imageId: img.image_id,
   };
 }
 
@@ -399,7 +418,7 @@ export function sectionToFlowBlocks(
   doc: EngineeringStudyDocument,
   section: EngineeringStudySection,
   displayNo: number,
-  figureCounter: { n: number }
+  counters: { figures: number; tables: number; references: number }
 ): FlowBlock[] {
   const locale = doc.locale;
   const blocks: FlowBlock[] = [];
@@ -437,7 +456,74 @@ export function sectionToFlowBlocks(
         incomplete: true,
       });
     }
-    if (refs.length) blocks.push({ kind: 'reference_note', refs });
+    if (refs.length) {
+      counters.references += 1;
+      blocks.push({ kind: 'reference_note', refs, referenceNo: counters.references });
+    }
+    return blocks;
+  }
+
+  if (
+    section.id === 'site_access_evidence' ||
+    section.id === 'existing_condition_evidence' ||
+    section.id === 'safety_system_evidence' ||
+    section.id === 'code_evidence_references'
+  ) {
+    for (const p of paras) {
+      const text = sanitizeClientFacingText(p.text, locale);
+      if (text) blocks.push({ kind: 'paragraph', text, incomplete: p.incomplete });
+    }
+    const groups = groupImagesBySubsection(images, locale);
+    const pendingPhotoFigures: FlowFigure[] = [];
+    const pendingCodeFigures: FlowFigure[] = [];
+    const flushPhotoRows = () => {
+      while (pendingPhotoFigures.length) {
+        blocks.push({ kind: 'figure_row', figures: pendingPhotoFigures.splice(0, 2) });
+      }
+    };
+    const flushCodeSequence = () => {
+      if (pendingCodeFigures.length) {
+        blocks.push({ kind: 'code_sequence', figures: pendingCodeFigures.splice(0) });
+      }
+    };
+
+    for (const group of groups) {
+      const description = sanitizeClientFacingText(
+        group.images
+          .map((img) => (locale === 'ar' ? img.description_ar : img.description_en) || '')
+          .find((value) => value.trim()) || '',
+        locale
+      );
+
+      group.images.forEach((img, imageIndex) => {
+        counters.figures += 1;
+        const figure = buildFigureBlock(
+          locale,
+          img,
+          counters.figures,
+          group.title,
+          imageIndex === 0 ? description : undefined
+        );
+        if (figure.layout === 'double') {
+          flushCodeSequence();
+          pendingPhotoFigures.push(figure);
+          return;
+        }
+        flushPhotoRows();
+        if (figure.variant === 'code') {
+          pendingCodeFigures.push(figure);
+          return;
+        }
+        flushCodeSequence();
+        blocks.push({ kind: 'unit', blocks: [figure] });
+      });
+    }
+    flushPhotoRows();
+    flushCodeSequence();
+    if (refs.length) {
+      counters.references += 1;
+      blocks.push({ kind: 'reference_note', refs, referenceNo: counters.references });
+    }
     return blocks;
   }
 
@@ -455,6 +541,7 @@ export function sectionToFlowBlocks(
       if (facts.rows.length) {
         blocks.push({
           kind: 'table',
+          tableNo: ++counters.tables,
           caption: locale === 'ar' ? 'ملخص بيانات المشروع المعتمدة' : 'Approved project data summary',
           headers: locale === 'ar' ? ['البند', 'القيمة'] : ['Item', 'Value'],
           rows: facts.rows,
@@ -464,7 +551,10 @@ export function sectionToFlowBlocks(
         blocks.push({ kind: 'paragraph', text: raw });
       }
     }
-    if (refs.length) blocks.push({ kind: 'reference_note', refs });
+    if (refs.length) {
+      counters.references += 1;
+      blocks.push({ kind: 'reference_note', refs, referenceNo: counters.references });
+    }
     return blocks;
   }
 
@@ -476,7 +566,10 @@ export function sectionToFlowBlocks(
         incomplete: p.incomplete,
       });
     }
-    if (refs.length) blocks.push({ kind: 'reference_note', refs });
+    if (refs.length) {
+      counters.references += 1;
+      blocks.push({ kind: 'reference_note', refs, referenceNo: counters.references });
+    }
     return blocks;
   }
 
@@ -492,6 +585,7 @@ export function sectionToFlowBlocks(
   for (const t of tables) {
     blocks.push({
       kind: 'table',
+      tableNo: ++counters.tables,
       caption: locale === 'ar' ? t.caption_ar : t.caption_en,
       headers: locale === 'ar' ? t.headers_ar : t.headers_en,
       rows: t.rows,
@@ -504,8 +598,11 @@ export function sectionToFlowBlocks(
     for (const group of groups) {
       blocks.push(...subsectionContentBlocks(group, locale));
       for (const img of group.images) {
-        figureCounter.n += 1;
-        blocks.push(buildFigureBlock(locale, img, figureCounter.n, group.title));
+        counters.figures += 1;
+        blocks.push({
+          kind: 'unit',
+          blocks: [buildFigureBlock(locale, img, counters.figures, group.title)],
+        });
       }
     }
     // Remaining section paragraphs after intro (rare) — append once, no duplication of facts
@@ -531,7 +628,8 @@ export function sectionToFlowBlocks(
   }
 
   if (refs.length) {
-    blocks.push({ kind: 'reference_note', refs });
+    counters.references += 1;
+    blocks.push({ kind: 'reference_note', refs, referenceNo: counters.references });
   }
 
   return blocks;
@@ -556,13 +654,13 @@ export function documentToFlowBlocks(doc: EngineeringStudyDocument): {
     return hasReal || (always && paras.length > 0);
   });
 
-  const figureCounter = { n: 0 };
+  const counters = { figures: 0, tables: 0, references: 0 };
   const blocks: FlowBlock[] = [];
   const chapters: { id: string; title: string; displayNo: number }[] = [];
 
   visible.forEach((section, i) => {
     const displayNo = i + 1;
-    const sectionBlocks = sectionToFlowBlocks(doc, section, displayNo, figureCounter);
+    const sectionBlocks = sectionToFlowBlocks(doc, section, displayNo, counters);
     const chapter = sectionBlocks.find((b) => b.kind === 'chapter');
     if (chapter && chapter.kind === 'chapter') {
       chapters.push({ id: chapter.id, title: chapter.title, displayNo });
@@ -590,7 +688,9 @@ export function estimateBlockHeightMm(block: FlowBlock): number {
     case 'table':
       return 9 + (block.rows?.length || 0) * 5;
     case 'figure':
-      return block.layout === 'full_width' ? 80 : 58;
+      return block.layout === 'full_width' ? 80 : block.layout === 'double' ? 44 : 58;
+    case 'figure_row':
+      return Math.max(...block.figures.map((figure) => estimateBlockHeightMm(figure)), 0) + 4;
     case 'unit':
       return (block.blocks || []).reduce((n, b) => n + estimateBlockHeightMm(b), 1);
     default:

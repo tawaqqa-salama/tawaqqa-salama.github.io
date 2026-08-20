@@ -30,13 +30,16 @@ function renderBlock(block: FlowBlock, locale: 'ar' | 'en'): string {
     case 'bullet_list':
       return `<ol class="recs">${block.items.map((i) => `<li>${tx(i)}</li>`).join('')}</ol>`;
     case 'reference_note': {
-      const label = locale === 'ar' ? 'المراجع الكودية:' : 'Code references:';
+      const label = locale === 'ar'
+        ? `المراجع الكودية (${block.referenceNo}):`
+        : `Code references (${block.referenceNo}):`;
       const lines = block.refs.map((r) => tx(r)).join('<br/>');
       return `<div class="refs keep"><div class="refs-lab">${label}</div><div class="refs-body">${lines}</div></div>`;
     }
     case 'table':
       return `<div class="tbl keep">
-        <div class="tbl-cap">${tx(block.caption)}</div>
+                  <div class="tbl-cap">${tx(locale === 'ar' ? `جدول (${block.tableNo}): ${block.caption}` : `Table (${block.tableNo}): ${block.caption}`)}</div>
+
         <table>
           <thead><tr>${block.headers.map((h) => `<th>${tx(h)}</th>`).join('')}</tr></thead>
           <tbody>
@@ -47,10 +50,15 @@ function renderBlock(block: FlowBlock, locale: 'ar' | 'en'): string {
         </table>
       </div>`;
     case 'figure':
-      return `<figure class="fig fig-${esc(block.layout)} keep" data-fig="${block.figureNo}">
+      return `<figure class="fig fig-${esc(block.layout)} fig-${esc(block.variant)} keep" data-fig="${block.figureNo}" data-intrinsic-width="${block.intrinsicWidth || ''}" data-intrinsic-height="${block.intrinsicHeight || ''}" data-aspect-ratio="${block.aspectRatio || ''}">
         <div class="fig-box"><img src="${esc(block.src)}" alt="" /></div>
         <figcaption class="fig-cap">${tx(block.caption)}</figcaption>
+        ${block.note ? `<div class="fig-note">${tx(block.note)}</div>` : ''}
       </figure>`;
+    case 'figure_row':
+      return `<div class="fig-row">${block.figures.map((figure) => renderBlock(figure, locale)).join('')}</div>`;
+    case 'code_sequence':
+      return `<div class="code-sequence">${block.figures.map((figure) => renderBlock(figure, locale)).join('')}</div>`;
     case 'unit':
       return `<div class="unit keep">${block.blocks.map((b) => renderBlock(b, locale)).join('\n')}</div>`;
     default:
@@ -331,21 +339,37 @@ function flowCss(doc: EngineeringStudyDocument, company: CompanyProfile): string
     th { background: #e8f2ec; color: #1f4d3a; font-weight: 800; }
 
     .fig { margin: 6px 0 10px; page-break-inside: avoid; break-inside: avoid; }
+    .fig-row {
+      display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 6mm;
+      margin: 6px 0 10px; align-items: start;
+      page-break-inside: avoid; break-inside: avoid;
+    }
+    .fig-row .fig { margin: 0; min-width: 0; }
+    /* Sequence remains breakable; cohesion belongs to every individual code figure. */
+    .code-sequence { margin: 0; }
+    .code-sequence .fig { margin-top: 6px; }
     .fig-box {
+      width: fit-content; max-width: 100%; margin-inline: auto;
       border: 1px solid #94a3b8; background: #f8fafc;
       display: flex; align-items: center; justify-content: center;
     }
     .fig img {
-      display: block; width: 100%; height: auto;
-      max-height: 175mm; object-fit: contain; object-position: center;
+      display: block; width: auto; height: auto; max-width: 100%;
+      object-fit: contain; object-position: center;
     }
-    .fig-full_width img { max-height: 200mm; }
+    /* No page-sized wrapper or minimum height: media stays within its intrinsic ratio. */
+    .fig-double img { max-height: 72mm; }
+    .fig-single img { max-height: 104mm; }
+    .fig-full_width img { max-height: 118mm; }
+    .fig-code img { max-height: 130mm; }
+    .fig-map .fig-box, .fig-code .fig-box { width: 100%; }
     .fig-cap {
       text-align: center; font-size: 11px; font-weight: 700; color: #1f4d3a;
       margin-top: 4px;
       page-break-before: avoid;
       break-before: avoid-page;
     }
+    .fig-note { margin-top: 2px; text-align: center; font-size: 10px; color: #475569; }
     .keep { page-break-inside: avoid; break-inside: avoid; }
 
     .approvals-page {
@@ -375,7 +399,7 @@ function flowCss(doc: EngineeringStudyDocument, company: CompanyProfile): string
     @media print {
       .page, .doc { margin: 0; box-shadow: none; }
       .doc { padding-top: 0; }
-      .fig, .tbl, .unit.keep, .sign-box { page-break-inside: avoid; break-inside: avoid; }
+      .fig, .fig-row, .tbl, .unit.keep, .sign-box { page-break-inside: avoid; break-inside: avoid; }
     }
   `;
 }
