@@ -31,6 +31,7 @@ import type {
   TechnicalReportSectionItem,
 } from '@/lib/types/project-reports';
 import TechnicalEvidenceManager from '@/components/projects/TechnicalEvidenceManager';
+import TechnicalRecommendationReview from '@/components/projects/TechnicalRecommendationReview';
 
 const REPORT_STATUSES = ['مسودة', 'قيد الإعداد', 'مكتمل', 'معتمد'] as const;
 
@@ -146,6 +147,7 @@ export default function TechnicalReportSection({
                     clearOverride={clearOverride}
                     patch={patch}
                     updateItems={updateItems}
+                    client={client}
                     clientId={client.id}
                     data={data}
                     saving={saving}
@@ -225,6 +227,7 @@ function SectionBody({
   clearOverride,
   patch,
   updateItems,
+  client,
   clientId,
   data,
   saving,
@@ -237,6 +240,7 @@ function SectionBody({
   clearOverride: (key: string) => void;
   patch: (partial: Partial<TechnicalReport>) => void;
   updateItems: (key: 'firefighting_items' | 'ventilation_items' | 'alarm_items' | 'exits_items', itemId: string, updater: (item: TechnicalReportSectionItem) => TechnicalReportSectionItem) => void;
+  client: ClientRecord;
   clientId: string;
   data: ProjectEngineeringData;
   saving: boolean;
@@ -253,6 +257,7 @@ function SectionBody({
   if (id === 'mechanical') return <Mechanical report={report} updateItems={updateItems} />;
   if (id === 'evidence') return <Evidence clientId={clientId} data={data} report={report} saving={saving} patch={patch} onPersistEvidenceMetadata={onPersistEvidenceMetadata} />;
   if (id === 'observations') return <Observations report={report} patch={patch} updateItems={updateItems} />;
+  if (id === 'recommendation_review') return <TechnicalRecommendationReview client={client} report={report} source={source} saving={saving} onChange={(next) => patch(next)} />;
   return <Approval report={report} patch={patch} />;
 }
 
@@ -326,5 +331,9 @@ function sectionSummary(id: TechnicalReportUiSectionId, source: ReturnType<typeo
   if (id === 'egress') return `مخارج: ${source.aggregates.total_exits.value ?? '—'} · مسافة السفر: ${source.aggregates.maximum_travel_distance_m.value ?? '—'} م`;
   if (id === 'evidence') return `${report.evidence?.items.length || 0} أدلة جديدة · ${[report.facade_photo, report.earth_photo, report.site_photo].filter(Boolean).length + (report.code_proof_photos || []).length} مرفقات سابقة`;
   if (id === 'observations') return `${report.general_recommendations.filter((item) => item.checked).length} توصيات معتمدة`;
+  if (id === 'recommendation_review') {
+    const items = report.recommendations_v2?.items || [];
+    return `مقترحة: ${items.filter((item) => item.status === 'suggested').length} · بانتظار قرار المهندس`;
+  }
   return `${missing} حقول ناقصة`;
 }

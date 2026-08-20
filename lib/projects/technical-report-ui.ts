@@ -19,6 +19,7 @@ export type TechnicalReportUiSectionId =
   | 'mechanical'
   | 'evidence'
   | 'observations'
+  | 'recommendation_review'
   | 'approval';
 
 export type TechnicalReportUiSection = {
@@ -49,6 +50,7 @@ export const TECHNICAL_REPORT_UI_SECTIONS: readonly TechnicalReportUiSection[] =
   { id: 'mechanical', title: 'السلامة الميكانيكية', description: 'التهوية والتحكم بالدخان عند توفر متطلبات أو ملاحظات.' },
   { id: 'evidence', title: 'التوثيق والمراجع الفنية', description: 'إدارة أدلة الموقع والحالة القائمة وأنظمة السلامة ومقتطفات الكود؛ لا تدخل PDF في هذه المرحلة.' },
   { id: 'observations', title: 'الملاحظات والتوصيات', description: 'سجل منظم للبنود الفنية والتوصيات العامة.' },
+  { id: 'recommendation_review', title: 'التوصيات الهندسية', description: 'مراجعة مقترحات المكتبة واعتماد أو تعديل أو رفض قرار المهندس.' },
   { id: 'approval', title: 'الاعتماد والمعاينة', description: 'حالة التقرير وبيانات المهندس والإصدار والمعاينة.' },
 ] as const;
 
@@ -175,6 +177,10 @@ export function buildTechnicalReportUiModel(params: {
         manualField(report.firefighting_items?.map((item) => item.notes).filter(Boolean).join('\n')),
         manualField(report.alarm_items?.map((item) => item.notes).filter(Boolean).join('\n')),
         manualField(report.general_recommendations?.some((item) => item.checked) ? 'selected' : null),
+      ]),
+      recommendation_review: counters([
+        manualField(report.recommendations_v2?.items?.some((item) => item.status === 'approved' || item.status === 'edited') ? 'engineer_decision' : null),
+        manualField(report.recommendations_v2?.items?.some((item) => item.status === 'suggested') ? 'pending_review' : null),
       ]),
       approval: counters([
         manualField(report.safety_engineer_name),
