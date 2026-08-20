@@ -19,6 +19,8 @@ import type {
 export const TECHNICAL_EVIDENCE_BUCKET = PROJECT_FILES_BUCKET;
 export const TECHNICAL_EVIDENCE_FOLDER = 'technical-evidence';
 export const TECHNICAL_EVIDENCE_VERSION = 1 as const;
+/** Largest fallback preview that may safely persist only when Storage is unavailable. */
+export const MAX_DURABLE_INLINE_EVIDENCE_CHARS = 180_000;
 
 export const ALLOWED_TECHNICAL_EVIDENCE_MIME_TYPES = [
   'image/jpeg',
@@ -225,6 +227,36 @@ export function validateTechnicalEvidenceUpload(
   return { ok: true, mimeType: inferred };
 }
 
+function hasExpectedFileSignature(mimeType: string, bytes: Uint8Array): boolean {
+  if (mimeType === 'image/jpeg') {
+    return bytes.length >= 3 && bytes[0] === 0xff && bytes[1] === 0xd8 && bytes[2] === 0xff;
+  }
+  if (mimeType === 'image/png') {
+    return bytes.length >= 8 &&
+      bytes[0] === 0x89 && bytes[1] === 0x50 && bytes[2] === 0x4e && bytes[3] === 0x47 &&
+      bytes[4] === 0x0d && bytes[5] === 0x0a && bytes[6] === 0x1a && bytes[7] === 0x0a;
+  }
+  return bytes.length >= 5 &&
+    bytes[0] === 0x25 && bytes[1] === 0x50 && bytes[2] === 0x44 && bytes[3] === 0x46 && bytes[4] === 0x2d;
+}
+
+/** Validates extension, browser MIME, and the first bytes before a Storage upload. */
+export async function validateTechnicalEvidenceFile(
+  file: File
+): Promise<{ ok: true; mimeType: (typeof ALLOWED_TECHNICAL_EVIDENCE_MIME_TYPES)[number] } | { ok: false; error: string }> {
+  const metadata = validateTechnicalEvidenceUpload(file);
+  if (!metadata.ok) return metadata;
+  try {
+    const header = new Uint8Array(await file.slice(0, 16).arrayBuffer());
+    if (!hasExpectedFileSignature(metadata.mimeType, header)) {
+      return { ok: false, error: 'محتوى ملف الدليل لا يطابق نوعه المسموح.' };
+    }
+  } catch {
+    return { ok: false, error: 'تعذر التحقق من محتوى ملف الدليل.' };
+  }
+  return metadata;
+}
+
 /** A path is usable only for its owning client and the Phase 4A evidence namespace. */
 export function isTechnicalEvidenceStoragePath(params: {
   clientId: string;
@@ -238,7 +270,7 @@ export function isTechnicalEvidenceStoragePath(params: {
   const path = String(params.storagePath || '').replace(/^\/+/, '').trim();
   if (!validId(clientId) || !validId(evidenceIdValue)) return false;
   if (params.storageBucket !== TECHNICAL_EVIDENCE_BUCKET) return false;
-  if (!path || path.includes('..') || path.includes('\\')) return false;
+  if (!path || String(params.storagePath || '').startsWith('/') || path.includes('..') || path.includes('\\') || /%(2e|2f|5c)/i.test(path)) return false;
   const segments = path.split('/');
   if (segments.length !== 4) return false;
   if (segments[0] !== clientId || segments[1] !== TECHNICAL_EVIDENCE_FOLDER) return false;
@@ -293,7 +325,10 @@ export async function uploadTechnicalEvidenceFile(params: {
   kind: TechnicalEvidenceKind;
   file: File;
 }): Promise<TechnicalEvidenceUploadOutcome> {
-  const validation = validateTechnicalEvidenceUpload(params.file);
+  if (!isTechnicalEvidenceKind(params.kind)) {
+    throw new Error('نوع الدليل غير صالح لمسار التخزين.');
+  }
+  const validation = await validateTechnicalEvidenceFile(params.file);
   if (!validation.ok) throw new Error(validation.error);
   const id = params.evidenceId || evidenceId();
   if (!validId(params.clientId) || !validId(id)) {
@@ -321,13 +356,13 @@ export async function uploadTechnicalEvidenceFile(params: {
 
   if (error) {
     const preview = await fileToDataUrl(params.file);
-    if (!preview && params.file.size >= FORCE_STORAGE_MIN_BYTES) {
+    if (!preview) {
       throw new Error(formatProjectFilesStorageError(params.file.name, error.message));
     }
     return {
       file: { ...base, dataUrl: preview },
       cloudPersisted: false,
-      warning: `تعذر رفع الدليل إلى التخزين. احتُفظت المعاينة المحلية إن كانت متاحة: ${error.message}`,
+      warning: `تعذر رفع الدليل إلى التخزين. احتُفظت المعاينة المحلية مؤقتًا: ${error.message}`,
     };
   }
 
@@ -428,9 +463,13 @@ async function ensureStoredEvidenceItem(
       kind: item.kind,
       file: fallbackFile,
     });
+    if (!outcome.cloudPersisted && (outcome.file.dataUrl?.length || 0) > MAX_DURABLE_INLINE_EVIDENCE_CHARS) {
+      throw new Error('تعذر حفظ الدليل محليًا بأمان بعد فشل التخزين؛ أعد المحاولة بعد معالجة خطأ التخزين.');
+    }
     return { ...item, file: outcome.file };
-  } catch {
-    // Keep the local preview on failed conversion/upload; sanitization decides its size.
+  } catch (error) {
+    // Never let the save path silently strip a large local fallback after a failed upload.
+    if ((item.file.dataUrl?.length || 0) > MAX_DURABLE_INLINE_EVIDENCE_CHARS) throw error;
     return item;
   }
 }
@@ -458,9 +497,9 @@ export function sanitizeTechnicalEvidenceStateForPersist(
       const file = { ...item.file };
       if (file.storagePath) {
         file.dataUrl = null;
-      } else if (file.dataUrl && file.dataUrl.length > 180_000) {
+      } else if (file.dataUrl && file.dataUrl.length > MAX_DURABLE_INLINE_EVIDENCE_CHARS) {
         file.dataUrl = null;
-      } else if (file.dataUrl?.startsWith('http')) {
+      } else if (file.dataUrl?.startsWith('http') || file.dataUrl?.startsWith('blob:')) {
         file.dataUrl = null;
       }
       return { ...item, file };
