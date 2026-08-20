@@ -21,6 +21,7 @@ import {
 import { mergeBuildingPlanDefaults } from '@/lib/projects/building-plan';
 import { seedTechnicalReportFromClient } from '@/lib/projects/technical-report';
 import { normalizeTechnicalEvidenceState } from '@/lib/projects/technical-report-evidence';
+import { normalizeTechnicalRecommendationState } from '@/lib/projects/technical-report-recommendations';
 import { mergeSafetyScope, seedEngineeringDelivery } from '@/lib/projects/safety-delivery-letter';
 import { seedCdCoverLetter } from '@/lib/projects/cd-cover-letter';
 import { seedFinalInspectionReport } from '@/lib/projects/final-safety-report';
@@ -62,6 +63,9 @@ export function parseProjectEngineeringData(raw: ClientRecord['project_engineeri
       general_recommendations: data.technical_report?.general_recommendations || [],
       ...(data.technical_report?.evidence !== undefined
         ? { evidence: normalizeTechnicalEvidenceState(data.technical_report.evidence) }
+        : {}),
+      ...(data.technical_report?.recommendations_v2 !== undefined
+        ? { recommendations_v2: normalizeTechnicalRecommendationState(data.technical_report.recommendations_v2) }
         : {}),
     },
     building_plan: mergeBuildingPlanDefaults({ ...EMPTY_BUILDING_PLAN, ...data.building_plan }),
