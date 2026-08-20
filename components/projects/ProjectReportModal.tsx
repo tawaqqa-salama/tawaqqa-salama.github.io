@@ -707,6 +707,20 @@ export default function ProjectReportModal({
                         stayOpen: true,
                       })
                     }
+                    onPersistEvidenceMetadata={async (evidence) => {
+                      const ok = await save(
+                        {
+                          ...data,
+                          technical_report: {
+                            ...data.technical_report,
+                            evidence,
+                          },
+                        },
+                        'تم حفظ بيانات المرفق قبل تنفيذ الحذف الآمن.',
+                        { stayOpen: true, techReportFocus: true }
+                      );
+                      if (!ok) throw new Error('تعذر حفظ بيانات المرفق على السيرفر؛ لم يبدأ حذف الملف.');
+                    }}
                     onPrint={() => void handlePrintTechnical()}
                   />
                 </div>

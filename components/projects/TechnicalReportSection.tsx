@@ -25,12 +25,12 @@ import {
 import type { ClientRecord } from '@/lib/types/client';
 import type {
   ProjectEngineeringData,
+  TechnicalEvidenceState,
   TechnicalReport,
-  TechnicalReportPhoto,
   TechnicalReportRecommendation,
   TechnicalReportSectionItem,
 } from '@/lib/types/project-reports';
-import { uploadTechnicalReportPhoto } from '@/lib/projects/technical-report-photos';
+import TechnicalEvidenceManager from '@/components/projects/TechnicalEvidenceManager';
 
 const REPORT_STATUSES = ['مسودة', 'قيد الإعداد', 'مكتمل', 'معتمد'] as const;
 
@@ -51,6 +51,7 @@ type Props = {
   onSave: () => void;
   onPrint: () => void;
   saving: boolean;
+  onPersistEvidenceMetadata: (next: TechnicalEvidenceState) => Promise<void>;
   /** Preserved workflow marker; it does not control accordion visibility. */
   chapter?: TechReportChapterId;
   onChapterChange?: (chapter: TechReportChapterId) => void;
@@ -64,6 +65,7 @@ export default function TechnicalReportSection({
   onSave,
   onPrint,
   saving,
+  onPersistEvidenceMetadata,
   chapter,
   onChapterChange,
 }: Props) {
@@ -83,19 +85,6 @@ export default function TechnicalReportSection({
     setOpenSections((current) => (current.includes(id) ? current.filter((value) => value !== id) : [...current, id]));
     const nextChapter = SECTION_CHAPTER[id];
     if (nextChapter && onChapterChange) onChapterChange(nextChapter);
-  };
-
-  const uploadPhoto = async (file: File | null, apply: (photo: TechnicalReportPhoto) => void) => {
-    if (!file) return;
-    if (file.size > 2.5 * 1024 * 1024) {
-      alert('حجم الصورة كبير. اختر صورة أصغر من 2.5MB');
-      return;
-    }
-    try {
-      apply(await uploadTechnicalReportPhoto({ clientId: client.id, file, caption: file.name }));
-    } catch (error) {
-      alert(error instanceof Error ? error.message : 'تعذر رفع الصورة');
-    }
   };
 
   const updateItems = (
@@ -157,7 +146,10 @@ export default function TechnicalReportSection({
                     clearOverride={clearOverride}
                     patch={patch}
                     updateItems={updateItems}
-                    onUpload={(file, apply) => void uploadPhoto(file, apply)}
+                    clientId={client.id}
+                    data={data}
+                    saving={saving}
+                    onPersistEvidenceMetadata={onPersistEvidenceMetadata}
                   />
                 </div>
               ) : null}
@@ -233,7 +225,10 @@ function SectionBody({
   clearOverride,
   patch,
   updateItems,
-  onUpload,
+  clientId,
+  data,
+  saving,
+  onPersistEvidenceMetadata,
 }: {
   id: TechnicalReportUiSectionId;
   source: ReturnType<typeof buildTechnicalReportSourceData>;
@@ -242,7 +237,10 @@ function SectionBody({
   clearOverride: (key: string) => void;
   patch: (partial: Partial<TechnicalReport>) => void;
   updateItems: (key: 'firefighting_items' | 'ventilation_items' | 'alarm_items' | 'exits_items', itemId: string, updater: (item: TechnicalReportSectionItem) => TechnicalReportSectionItem) => void;
-  onUpload: (file: File | null, apply: (photo: TechnicalReportPhoto) => void) => void;
+  clientId: string;
+  data: ProjectEngineeringData;
+  saving: boolean;
+  onPersistEvidenceMetadata: (next: TechnicalEvidenceState) => Promise<void>;
 }) {
   if (id === 'project_summary') return <ProjectSummary source={source} setOverride={setOverride} clearOverride={clearOverride} />;
   if (id === 'occupancy_spaces') return <OccupancySpaces source={source} setOverride={setOverride} clearOverride={clearOverride} />;
@@ -253,7 +251,7 @@ function SectionBody({
   if (id === 'alarm_evacuation') return <SafetySystems source={source} report={report} setOverride={setOverride} clearOverride={clearOverride} updateItems={updateItems} kind="alarm" />;
   if (id === 'electrical') return <Electrical source={source} report={report} patch={patch} />;
   if (id === 'mechanical') return <Mechanical report={report} updateItems={updateItems} />;
-  if (id === 'evidence') return <Evidence report={report} patch={patch} onUpload={onUpload} />;
+  if (id === 'evidence') return <Evidence clientId={clientId} data={data} report={report} saving={saving} patch={patch} onPersistEvidenceMetadata={onPersistEvidenceMetadata} />;
   if (id === 'observations') return <Observations report={report} patch={patch} updateItems={updateItems} />;
   return <Approval report={report} patch={patch} />;
 }
@@ -305,7 +303,7 @@ function Electrical({ source, report, patch }: Pick<Parameters<typeof SectionBod
 
 function Mechanical({ report, updateItems }: Pick<Parameters<typeof SectionBody>[0], 'report' | 'updateItems'>) { return <ItemNotes title="التهوية وHVAC والتحكم بالدخان" items={report.ventilation_items} keyName="ventilation_items" updateItems={updateItems} empty="لا توجد متطلبات ميكانيكية مسجلة بعد. أضف ملاحظة هندسية عند الحاجة فقط." />; }
 
-function Evidence({ report, patch, onUpload }: Pick<Parameters<typeof SectionBody>[0], 'report' | 'patch' | 'onUpload'>) { const boxes: Array<[string, keyof Pick<TechnicalReport, 'facade_photo' | 'earth_photo' | 'site_photo'>]> = [['واجهة المشروع', 'facade_photo'], ['صورة الموقع / الخريطة', 'earth_photo'], ['صورة عامة من الموقع', 'site_photo']]; return <div className="space-y-4"><div className="grid grid-cols-1 gap-3 md:grid-cols-3">{boxes.map(([label, key]) => <PhotoBox key={key} label={label} photo={report[key]} onUpload={(file) => onUpload(file, (photo) => patch({ [key]: photo }))} onClear={() => patch({ [key]: null })} />)}</div><div className="rounded-xl border border-slate-200 p-3"><p className="mb-2 text-sm font-bold">إثباتات الكود</p><p className="text-xs text-slate-500">تبقى صور الإثبات المحفوظة متاحة. إدارة وإضافة إثباتات الكود التفصيلية ستنتقل في المرحلة التالية دون تغيير PDF في هذه المرحلة.</p><div className="mt-2 text-xs text-slate-600">عدد المفاتيح المرتبطة: {Object.keys(report.code_proofs_by_key || {}).length} · صور احتياطية: {(report.code_proof_photos || []).length}</div></div></div>; }
+function Evidence({ clientId, data, report, saving, patch, onPersistEvidenceMetadata }: Pick<Parameters<typeof SectionBody>[0], 'clientId' | 'data' | 'report' | 'saving' | 'patch' | 'onPersistEvidenceMetadata'>) { return <TechnicalEvidenceManager clientId={clientId} data={data} report={report} saving={saving} onChange={(next) => patch(next)} onPersistEvidenceMetadata={onPersistEvidenceMetadata} />; }
 
 function Observations({ report, patch, updateItems }: Pick<Parameters<typeof SectionBody>[0], 'report' | 'patch' | 'updateItems'>) { const entries = [ ...report.firefighting_items.map((item) => ({ section: 'مكافحة الحريق', item })), ...report.alarm_items.map((item) => ({ section: 'الإنذار والإخلاء', item })), ...report.exits_items.map((item) => ({ section: 'الإخلاء والمخارج', item })), ...report.ventilation_items.map((item) => ({ section: 'السلامة الميكانيكية', item })) ].filter(({ item }) => item.notes || item.selectedOptions.length); const recommendations = report.general_recommendations || []; return <div className="space-y-4"><div className="grid grid-cols-1 gap-3 md:grid-cols-2">{entries.length ? entries.map(({ section, item }) => <article key={`${section}-${item.id}`} className="rounded-xl border border-slate-200 bg-slate-50/60 p-3 text-sm"><div className="flex flex-wrap items-center justify-between gap-2"><strong>{section}</strong><span className="rounded-full bg-amber-50 px-2 py-0.5 text-[10px] font-semibold text-amber-800">{item.enabled ? 'قيد المراجعة' : 'غير منطبق'}</span></div><p className="mt-2 whitespace-pre-wrap text-slate-700">{item.notes || item.selectedOptions.join('، ')}</p><p className="mt-2 text-[10px] text-slate-500">المصدر: إدخال مهندس</p></article>) : <EmptyState text="لا توجد ملاحظات مسجلة بعد." />}</div><div className="space-y-2"><p className="font-bold text-slate-800">التوصيات العامة</p>{TECH_REPORT_GENERAL_RECOMMENDATIONS.map((recommendation) => { const current = recommendations.find((value) => value.id === recommendation.id); const checked = Boolean(current?.checked); return <label key={recommendation.id} className="flex gap-2 rounded-xl border border-slate-200 p-3 text-sm"><input type="checkbox" checked={checked} onChange={() => patch({ general_recommendations: toggleRecommendation(recommendations, recommendation.id, checked) })} /><span>{recommendation.label}</span></label>; })}</div></div>; }
 
@@ -315,7 +313,6 @@ function ReadOnlyBridge({ label, field }: { label: string; field: TechnicalRepor
 
 function ItemNotes({ title, items, keyName, updateItems, empty }: { title: string; items: TechnicalReportSectionItem[]; keyName: 'firefighting_items' | 'ventilation_items' | 'alarm_items' | 'exits_items'; updateItems: Pick<Parameters<typeof SectionBody>[0], 'updateItems'>['updateItems']; empty?: string }) { if (!items.length) return <EmptyState text={empty || 'لا توجد بنود فنية مسجلة بعد.'} />; return <div className="space-y-3"><p className="font-bold text-slate-800">{title}</p>{items.map((item) => { const catalog = TECH_REPORT_ITEMS.find((value) => value.id === item.id); return <article key={item.id} className="rounded-xl border border-slate-200 p-3"><div className="flex flex-wrap items-center justify-between gap-2"><label className="flex items-center gap-2 text-sm font-bold"><input type="checkbox" checked={item.enabled} onChange={(event) => updateItems(keyName, item.id, (value) => ({ ...value, enabled: event.target.checked }))} />{catalog?.title || item.id}</label><span className="text-[10px] text-slate-500">إدخال مهندس</span></div>{item.enabled ? <textarea value={item.notes} onChange={(event) => updateItems(keyName, item.id, (value) => ({ ...value, notes: event.target.value }))} placeholder="ملاحظة المهندس / التوصية" className="mt-3 min-h-20 w-full rounded-lg border border-slate-300 px-2.5 py-2 text-sm" /> : null}</article>; })}</div>; }
 
-function PhotoBox({ label, photo, onUpload, onClear }: { label: string; photo?: TechnicalReportPhoto | null; onUpload: (file: File | null) => void; onClear: () => void }) { const src = photo?.dataUrl; return <div className="rounded-xl border border-slate-200 bg-slate-50 p-3"><p className="mb-2 text-sm font-bold text-slate-700">{label}</p>{src ? <div className="relative"><img src={src} alt={label} className="h-36 w-full rounded-lg object-cover" /><button type="button" onClick={onClear} className="absolute left-2 top-2 rounded bg-white px-2 py-1 text-xs font-semibold text-rose-600">حذف</button></div> : <label className="flex h-36 cursor-pointer items-center justify-center rounded-lg border border-dashed border-slate-300 bg-white text-xs text-slate-500">اسحب أو اختر صورة<input type="file" accept="image/*" className="hidden" onChange={(event) => onUpload(event.target.files?.[0] || null)} /></label>}</div>; }
 
 function EmptyState({ text }: { text: string }) { return <div className="rounded-xl border border-dashed border-slate-300 bg-slate-50 p-4 text-sm leading-6 text-slate-500">{text}</div>; }
 
@@ -327,7 +324,7 @@ function sectionSummary(id: TechnicalReportUiSectionId, source: ReturnType<typeo
   if (id === 'fire_fighting') return `مرشات: ${source.aggregates.total_sprinklers.value ?? '—'} · طفايات: ${source.aggregates.total_extinguishers.value ?? '—'} · ${missing} حقول ناقصة`;
   if (id === 'alarm_evacuation') return `دخان: ${source.aggregates.total_smoke_detectors.value ?? '—'} · حرارة: ${source.aggregates.total_heat_detectors.value ?? '—'} · تنبيه: ${source.aggregates.total_alarm_devices.value ?? '—'}`;
   if (id === 'egress') return `مخارج: ${source.aggregates.total_exits.value ?? '—'} · مسافة السفر: ${source.aggregates.maximum_travel_distance_m.value ?? '—'} م`;
-  if (id === 'evidence') return `${[report.facade_photo, report.earth_photo, report.site_photo].filter(Boolean).length} صور موقع · ${Object.keys(report.code_proofs_by_key || {}).length} إثباتات كود`;
+  if (id === 'evidence') return `${report.evidence?.items.length || 0} أدلة جديدة · ${[report.facade_photo, report.earth_photo, report.site_photo].filter(Boolean).length + (report.code_proof_photos || []).length} مرفقات سابقة`;
   if (id === 'observations') return `${report.general_recommendations.filter((item) => item.checked).length} توصيات معتمدة`;
   return `${missing} حقول ناقصة`;
 }

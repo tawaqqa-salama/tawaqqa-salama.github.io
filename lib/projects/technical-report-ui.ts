@@ -47,7 +47,7 @@ export const TECHNICAL_REPORT_UI_SECTIONS: readonly TechnicalReportUiSection[] =
   { id: 'alarm_evacuation', title: 'الإنذار والإخلاء', description: 'لوحات الإنذار والكواشف والتنبيه والإنارة واللوحات الإرشادية.' },
   { id: 'electrical', title: 'السلامة الكهربائية', description: 'التأريض ومانع الصواعق والمولد الاحتياطي وملاحظات المهندس.' },
   { id: 'mechanical', title: 'السلامة الميكانيكية', description: 'التهوية والتحكم بالدخان عند توفر متطلبات أو ملاحظات.' },
-  { id: 'evidence', title: 'الصور والأدلة', description: 'صور الموقع وإثباتات الكود المرتبطة بمعلومات التقرير.' },
+  { id: 'evidence', title: 'التوثيق والمراجع الفنية', description: 'إدارة أدلة الموقع والحالة القائمة وأنظمة السلامة ومقتطفات الكود؛ لا تدخل PDF في هذه المرحلة.' },
   { id: 'observations', title: 'الملاحظات والتوصيات', description: 'سجل منظم للبنود الفنية والتوصيات العامة.' },
   { id: 'approval', title: 'الاعتماد والمعاينة', description: 'حالة التقرير وبيانات المهندس والإصدار والمعاينة.' },
 ] as const;
