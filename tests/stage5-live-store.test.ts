@@ -90,6 +90,34 @@ describe('stage5 live store', () => {
     expect(fromMock).not.toHaveBeenCalled();
   });
 
+  it('sanitizes visit evidence metadata before the Stage 5 RPC payload is written', async () => {
+    const result = await saveStage5LiveBundle({
+      clientId: 'client-01',
+      fieldVisits: [{
+        visit_number: 1,
+        status: 'مسودة',
+        observations: [{
+          id: 'obs-01', category: 'fire_alarm', location: 'مدخل', description: 'وصف', severity: 'high', required_action: 'معالجة', responsible_party: 'المقاول', status: 'open',
+        }],
+        evidence: [{
+          id: 'evidence-01', kind: 'photo', title: 'صورة', description: '', engineer_note: '', observation_id: 'obs-01', timing: 'before', category: 'fire_alarm', display_order: 1, include_in_visit_pdf: true, captured_at: null, created_at: '2026-08-21T00:00:00.000Z',
+          file: {
+            fileName: 'photo.jpg', mimeType: 'image/jpeg', sizeBytes: 100, storageBucket: 'project-files',
+            storagePath: 'client-01/field-visits/visit-1/evidence/evidence-01-photo.jpg',
+            signedUrl: 'https://transient.example/x', dataUrl: 'data:image/png;base64,forbidden',
+          },
+        } as never],
+      }],
+      supervision: { ...EMPTY_SUPERVISION_REPORT, tasks: [] },
+      pdfArchive: [],
+    });
+    expect(result.error).toBeNull();
+    const payload = rpcMock.mock.calls[0][1].p_field_visits[0];
+    expect(payload.evidence[0].file.storagePath).toContain('/field-visits/visit-1/evidence/');
+    expect(JSON.stringify(payload.evidence)).not.toContain('signedUrl');
+    expect(JSON.stringify(payload.evidence)).not.toContain('dataUrl');
+  });
+
   it('hydrateEngineeringWithStage5 overlays visits and archive', () => {
     const base = {
       ...EMPTY_PROJECT_ENGINEERING_DATA,

@@ -16,6 +16,8 @@ import {
 type FieldVisitObservationsSectionProps = {
   observations: FieldVisitObservation[];
   disabled?: boolean;
+  linkedEvidenceCounts?: Record<string, number>;
+  onAddEvidenceToObservation?: (observationId: string) => void;
   onChange: (observations: FieldVisitObservation[]) => void;
 };
 
@@ -28,6 +30,8 @@ function newObservationId() {
 export default function FieldVisitObservationsSection({
   observations,
   disabled = false,
+  linkedEvidenceCounts = {},
+  onAddEvidenceToObservation,
   onChange,
 }: FieldVisitObservationsSectionProps) {
   const update = (id: string, partial: Partial<FieldVisitObservation>) => {
@@ -62,7 +66,15 @@ export default function FieldVisitObservationsSection({
           {observations.map((observation, index) => (
             <article key={observation.id} className="rounded-lg border border-amber-200 bg-white p-3">
               <div className="mb-3 flex items-center justify-between gap-3">
-                <p className="text-xs font-bold text-gray-800">ملاحظة #{index + 1}</p>
+                <div className="min-w-0"><p className="text-xs font-bold text-gray-800">ملاحظة #{index + 1}</p><p className="mt-1 text-[11px] text-gray-500">الأدلة المرتبطة: {linkedEvidenceCounts[observation.id] || 0}</p></div>
+                <div className="flex flex-wrap items-center justify-end gap-2"><button
+                  type="button"
+                  disabled={disabled}
+                  onClick={() => onAddEvidenceToObservation?.(observation.id)}
+                  className="rounded-lg border border-indigo-200 bg-indigo-50 px-2.5 py-1.5 text-xs font-semibold text-indigo-800 disabled:cursor-not-allowed disabled:opacity-60"
+                >
+                  إضافة صورة / مرفق
+                </button>
                 <button
                   type="button"
                   disabled={disabled}
@@ -70,7 +82,7 @@ export default function FieldVisitObservationsSection({
                   className="text-xs font-semibold text-red-700 hover:underline disabled:cursor-not-allowed disabled:opacity-60"
                 >
                   حذف الملاحظة
-                </button>
+                </button></div>
               </div>
 
               <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">

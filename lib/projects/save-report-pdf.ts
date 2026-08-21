@@ -20,7 +20,10 @@ import {
   formatProjectFilesStorageError,
 } from '@/lib/storage/project-files';
 import { htmlDocumentToPdfFile } from '@/lib/print/html-to-pdf';
-import { buildFieldVisitReportHtml } from '@/components/projects/FieldVisitReportPrint';
+import {
+  buildFieldVisitReportHtml,
+  resolveVisitEvidenceSources,
+} from '@/components/projects/FieldVisitReportPrint';
 import { buildSupervisionReportHtml } from '@/components/projects/SupervisionReportPrint';
 import { trimSupervisionTextFields } from '@/lib/projects/supervision-report';
 import { sanitizeEngineeringDataForPersist } from '@/lib/projects/sanitize-engineering-files';
@@ -188,11 +191,13 @@ export async function saveFieldVisitAsPdfAttachment(params: {
   let snapshot: ReportPdfSnapshot | null = null;
   let warning: string | null = null;
   try {
+    const evidenceSources = await resolveVisitEvidenceSources(client.id, visit);
     const html = buildFieldVisitReportHtml({
       client,
       visit,
       company,
       totalVisits: data.field_visits.length,
+      evidenceSources,
     });
     const fileName = `visit-${visit.visit_number}-${client.client_code || client.id}-${Date.now()}.pdf`;
     const file = await htmlDocumentToPdfFile(html, fileName);

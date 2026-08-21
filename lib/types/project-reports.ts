@@ -170,6 +170,65 @@ export interface FieldVisitObservation {
   status: FieldVisitObservationStatus;
 }
 
+export type FieldVisitEvidenceKind = 'photo' | 'document';
+
+export type FieldVisitEvidenceTiming = 'general' | 'before' | 'after';
+
+export type FieldVisitEvidenceCategory =
+  | 'general_site'
+  | 'fire_fighting'
+  | 'fire_alarm'
+  | 'emergency_lighting'
+  | 'exit_signage'
+  | 'means_of_egress'
+  | 'electrical_safety'
+  | 'mechanical_safety'
+  | 'architectural'
+  | 'civil_defense_requirement'
+  | 'installation_quality'
+  | 'testing_commissioning'
+  | 'deficiency'
+  | 'corrective_action'
+  | 'other';
+
+/** Metadata only. Signed URLs, object URLs, data URLs, and raw File objects are never persisted. */
+export interface FieldVisitEvidenceFile {
+  fileName: string;
+  mimeType: 'image/jpeg' | 'image/png' | 'application/pdf';
+  sizeBytes: number;
+  storageBucket: string;
+  storagePath: string | null;
+}
+
+/** Optional field-visit evidence; it never mutates the linked observation or any workflow state. */
+export interface FieldVisitEvidence {
+  id: string;
+  kind: FieldVisitEvidenceKind;
+  title: string;
+  description: string;
+  engineer_note: string;
+  observation_id?: string | null;
+  timing: FieldVisitEvidenceTiming;
+  category: FieldVisitEvidenceCategory;
+  file: FieldVisitEvidenceFile;
+  display_order: number;
+  include_in_visit_pdf: boolean;
+  captured_at?: string | null;
+  created_at: string;
+  updated_at?: string;
+}
+
+/** Retry metadata for storage cleanup after an already-persisted evidence removal. */
+export interface FieldVisitEvidenceCleanup {
+  id: string;
+  evidence_id: string;
+  storage_bucket: string;
+  storage_path: string;
+  attempts: number;
+  created_at: string;
+  last_error?: string;
+}
+
 export interface FieldVisitReport extends ReportMeta {
   visit_number: number;
   visit_date?: string;
@@ -181,6 +240,10 @@ export interface FieldVisitReport extends ReportMeta {
   checklist?: { id: string; label: string; checked: boolean }[];
   /** Additive Phase 5B notes. Older visits without this key remain valid. */
   observations?: FieldVisitObservation[];
+  /** Additive Phase 5C evidence. Legacy visits without it normalize to an empty array. */
+  evidence?: FieldVisitEvidence[];
+  /** Cleanup work recorded only after metadata-first removal succeeds but Storage cleanup fails. */
+  evidence_cleanup_pending?: FieldVisitEvidenceCleanup[];
   /** Historical fixed PDF snapshots for this visit (newest last) */
   pdf_snapshots?: ReportPdfSnapshot[];
   /** Latest PDF for quick access */
