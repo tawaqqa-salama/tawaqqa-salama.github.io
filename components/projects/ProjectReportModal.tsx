@@ -24,6 +24,7 @@ import CdCoverLetterSection from '@/components/projects/CdCoverLetterSection';
 import FinalInspectionSection from '@/components/projects/FinalInspectionSection';
 import CompletionCertificateSection from '@/components/projects/CompletionCertificateSection';
 import FieldVisitObservationsSection from '@/components/projects/FieldVisitObservationsSection';
+import FieldVisitEvidenceSection from '@/components/projects/FieldVisitEvidenceSection';
 import SupervisionReportSection from '@/components/projects/SupervisionReportSection';
 import DesignCenterSection from '@/components/projects/DesignCenterSection';
 import BuildingPlanReportSection from '@/components/projects/BuildingPlanReportSection';
@@ -64,6 +65,8 @@ import {
   hydrateEngineeringWithStage5,
   loadStage5LiveBundle,
 } from '@/lib/projects/stage5-live-store';
+import { normalizeFieldVisitEvidenceForVisit } from '@/lib/projects/field-visit-evidence';
+import { persistFieldVisitEvidenceMetadata } from '@/lib/projects/field-visit-evidence-persistence';
 import {
   hydrateEngineeringWithLive,
   loadEngineeringLive,
@@ -116,6 +119,7 @@ export default function ProjectReportModal({
     'engineering_delivery' | 'final_inspection' | 'completion' | 'manual' | null
   >(null);
   const [boqItem, setBoqItem] = useState('');
+  const [evidenceTargetObservationId, setEvidenceTargetObservationId] = useState<string | null>(null);
   const {
     open: stagesOpen,
     register: registerStagesDrawer,
@@ -852,12 +856,44 @@ export default function ProjectReportModal({
                         <FieldVisitObservationsSection
                           observations={visit.observations || []}
                           disabled={saving}
+                          linkedEvidenceCounts={(normalizeFieldVisitEvidenceForVisit(visit).evidence || []).reduce<Record<string, number>>((counts, item) => {
+                            if (item.observation_id) counts[item.observation_id] = (counts[item.observation_id] || 0) + 1;
+                            return counts;
+                          }, {})}
+                          onAddEvidenceToObservation={(observationId) => setEvidenceTargetObservationId(observationId)}
                           onChange={(observations) => {
                             patch({
+                              field_visits: data.field_visits.map((x) => {
+                                if (x.visit_number !== visit.visit_number) return x;
+                                return normalizeFieldVisitEvidenceForVisit({ ...x, observations });
+                              }),
+                            });
+                          }}
+                        />
+                        <FieldVisitEvidenceSection
+                          clientId={client.id}
+                          visit={visit}
+                          disabled={saving}
+                          requestedObservationId={visit.observations?.some((observation) => observation.id === evidenceTargetObservationId) ? evidenceTargetObservationId : null}
+                          onRequestedObservationHandled={() => setEvidenceTargetObservationId(null)}
+                          onChange={(nextVisit) => {
+                            patch({
                               field_visits: data.field_visits.map((x) =>
-                                x.visit_number === visit.visit_number ? { ...x, observations } : x
+                                x.visit_number === visit.visit_number ? nextVisit : x
                               ),
                             });
+                          }}
+                          onPersistMetadata={async (nextVisit) => {
+                            const pipelineStage = client.pipeline_stage === 'completed' ? 'completed' : 'projects';
+                            const result = await persistFieldVisitEvidenceMetadata({
+                              clientId: client.id,
+                              data,
+                              visitNumber: visit.visit_number,
+                              nextVisit,
+                              pipelineStage,
+                            });
+                            if (result.error) throw new Error(humanizeFetchError(result.error));
+                            setData(result.data);
                           }}
                         />
                         <div className="mt-3 flex flex-wrap gap-2">

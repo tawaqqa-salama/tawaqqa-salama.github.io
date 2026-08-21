@@ -9,6 +9,10 @@ import type {
   SafetyBlueprintFile,
 } from '@/lib/types/project-reports';
 import { sanitizeTechnicalEvidenceStateForPersist } from '@/lib/projects/technical-report-evidence';
+import {
+  normalizeFieldVisitEvidenceForVisit,
+  sanitizeFieldVisitEvidenceForPersist,
+} from '@/lib/projects/field-visit-evidence';
 
 /** Inline data URLs larger than this bloat JSONB and break multi-device sync */
 export const MAX_PERSISTED_DATA_URL_CHARS = 180_000;
@@ -41,7 +45,7 @@ function dropDataUrl<T extends { dataUrl?: string | null }>(file: T): T {
  */
 export function sanitizeEngineeringDataForPersist(
   data: ProjectEngineeringData,
-  opts?: { aggressive?: boolean }
+  opts?: { aggressive?: boolean; clientId?: string }
 ): ProjectEngineeringData {
   const aggressive = Boolean(opts?.aggressive);
   const slimPlan = aggressive
@@ -94,11 +98,16 @@ export function sanitizeEngineeringDataForPersist(
   };
 
   const report_pdf_archive = (data.report_pdf_archive || []).map(slimSnap);
-  const field_visits = (data.field_visits || []).map((v) => ({
-    ...v,
-    pdf_snapshots: (v.pdf_snapshots || []).map(slimSnap),
-    latest_pdf: v.latest_pdf ? slimSnap(v.latest_pdf) : v.latest_pdf,
-  }));
+  const field_visits = (data.field_visits || []).map((v) => {
+    const safeVisit = opts?.clientId
+      ? sanitizeFieldVisitEvidenceForPersist({ clientId: opts.clientId, visit: v })
+      : normalizeFieldVisitEvidenceForVisit(v);
+    return {
+      ...safeVisit,
+      pdf_snapshots: (safeVisit.pdf_snapshots || []).map(slimSnap),
+      latest_pdf: safeVisit.latest_pdf ? slimSnap(safeVisit.latest_pdf) : safeVisit.latest_pdf,
+    };
+  });
   const tech = data.technical_report;
   /** TechnicalReportPhoto.dataUrl is `string | undefined` (not null). */
   const stripTechPhoto = <T extends { dataUrl?: string; storagePath?: string | null }>(

@@ -14,6 +14,10 @@ import { EMPTY_SUPERVISION_REPORT } from '@/lib/types/project-reports';
 import { trimSupervisionTextFields } from '@/lib/projects/supervision-report';
 import { backupEngineeringDataLocally } from '@/lib/supabase/safe-client-write';
 import { normalizeFieldVisitObservations } from '@/lib/projects/field-visit-observations';
+import {
+  normalizeFieldVisitEvidenceForVisit,
+  sanitizeFieldVisitEvidenceForPersist,
+} from '@/lib/projects/field-visit-evidence';
 
 export type Stage5Bundle = {
   field_visits: FieldVisitReport[];
@@ -33,12 +37,13 @@ function slimSnapshot(snap: ReportPdfSnapshot): ReportPdfSnapshot {
   return snap;
 }
 
-function slimVisit(visit: FieldVisitReport): FieldVisitReport {
-  const snaps = (visit.pdf_snapshots || []).map(slimSnapshot);
+function slimVisit(clientId: string, visit: FieldVisitReport): FieldVisitReport {
+  const safeVisit = sanitizeFieldVisitEvidenceForPersist({ clientId, visit });
+  const snaps = (safeVisit.pdf_snapshots || []).map(slimSnapshot);
   return {
-    ...visit,
+    ...safeVisit,
     pdf_snapshots: snaps,
-    latest_pdf: visit.latest_pdf ? slimSnapshot(visit.latest_pdf) : visit.latest_pdf,
+    latest_pdf: safeVisit.latest_pdf ? slimSnapshot(safeVisit.latest_pdf) : safeVisit.latest_pdf,
   };
 }
 
@@ -60,7 +65,7 @@ export async function saveStage5LiveBundle(params: {
   pipelineStage?: string | null;
 }): Promise<{ error: string | null; usedRpc: boolean }> {
   const supervision = slimSupervision(params.supervision);
-  const visits = (params.fieldVisits || []).map(slimVisit);
+  const visits = (params.fieldVisits || []).map((visit) => slimVisit(params.clientId, visit));
   const archive = (params.pdfArchive || []).map(slimSnapshot);
 
   const { error: rpcError } = await supabase.rpc('save_stage5_live_bundle', {
@@ -250,7 +255,10 @@ export async function loadStage5LiveBundle(clientId: string): Promise<Stage5Bund
     .map((r) => {
       if (!r.payload || typeof r.payload !== 'object') return null;
       const visit = r.payload as FieldVisitReport;
-      return { ...visit, observations: normalizeFieldVisitObservations(visit.observations) };
+      return normalizeFieldVisitEvidenceForVisit({
+        ...visit,
+        observations: normalizeFieldVisitObservations(visit.observations),
+      });
     })
     .filter(Boolean) as FieldVisitReport[];
 

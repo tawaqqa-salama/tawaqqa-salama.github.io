@@ -60,7 +60,10 @@ export async function saveEngineeringLive(params: {
       updated_at: new Date().toISOString(),
     },
   };
-  const payload = sanitizeEngineeringDataForPersist(withStoredPhotos, { aggressive: true });
+  const payload = sanitizeEngineeringDataForPersist(withStoredPhotos, {
+    aggressive: true,
+    clientId: params.clientId,
+  });
 
   const { error: rpcError } = await supabase.rpc('save_project_engineering_live', {
     p_client_id: params.clientId,
