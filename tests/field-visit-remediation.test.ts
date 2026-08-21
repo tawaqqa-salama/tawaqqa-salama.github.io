@@ -205,8 +205,10 @@ describe('Phase 5D remediation lifecycle and explicit links', () => {
     expect(persisted.technical_notes.deficiencies[1]).not.toHaveProperty('source_visit_ref');
   });
 
-  it('keeps the Stage 5 blocker contract unchanged: structured high/critical observations are not direct blockers in Path A', () => {
+  it('adds the B1 Stage 5 blocker for an unverified structured critical observation', () => {
     const data = project([visit(1, [baseObservation('critical', { severity: 'critical', status: 'open' })])]);
-    expect(getStage5ApprovalBlockers(data)).toEqual([]);
+    expect(getStage5ApprovalBlockers(data).map((item) => item.code)).toContain(
+      'OPEN_CRITICAL_FIELD_OBSERVATION'
+    );
   });
 });

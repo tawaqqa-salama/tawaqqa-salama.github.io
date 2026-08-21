@@ -40,6 +40,7 @@ import {
   attachFrozenComplianceSnapshot,
   freezeComplianceSnapshot,
 } from '@/lib/projects/compliance/snapshot';
+import { getBlockingStructuredObservationCases } from '@/lib/projects/field-visit-remediation';
 import { AUTHORITATIVE_COMPLIANCE_MODULE } from '@/lib/projects/canonical-engineering';
 
 export const WORKFLOW_STAGE_IDS = [
@@ -178,7 +179,9 @@ export type Stage5ApprovalBlockerCode =
   | 'SUPERVISION_NOT_APPROVED'
   | 'TECHNICAL_NOTES_NOT_APPROVED'
   | 'OPEN_CRITICAL_DEFICIENCY'
-  | 'OPEN_HIGH_DEFICIENCY';
+  | 'OPEN_HIGH_DEFICIENCY'
+  | 'OPEN_CRITICAL_FIELD_OBSERVATION'
+  | 'OPEN_HIGH_FIELD_OBSERVATION';
 
 export type Stage5ApprovalBlocker = {
   code: Stage5ApprovalBlockerCode;
@@ -210,6 +213,24 @@ export function getStage5ApprovalBlockers(data: ProjectEngineeringData): Stage5A
   }
   if (deficiencies.some((item) => /high|عالي/i.test(item.severity || '') && !item.resolved)) {
     blockers.push({ code: 'OPEN_HIGH_DEFICIENCY', message: 'توجد ملاحظة عالية غير محلولة.' });
+  }
+
+  const observationBlockers = getBlockingStructuredObservationCases({
+    visits,
+    supervision: data.supervision_report,
+    technicalNotes: data.technical_notes,
+  });
+  if (observationBlockers.some((item) => item.severity === 'critical')) {
+    blockers.push({
+      code: 'OPEN_CRITICAL_FIELD_OBSERVATION',
+      message: 'توجد ملاحظة ميدانية حرجة لم يتم التحقق من معالجتها.',
+    });
+  }
+  if (observationBlockers.some((item) => item.severity === 'high')) {
+    blockers.push({
+      code: 'OPEN_HIGH_FIELD_OBSERVATION',
+      message: 'توجد ملاحظة ميدانية عالية الخطورة لم يتم التحقق من معالجتها.',
+    });
   }
   return blockers;
 }

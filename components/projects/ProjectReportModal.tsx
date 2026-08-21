@@ -61,7 +61,10 @@ import {
   saveFieldVisitAsPdfAttachment,
   saveSupervisionAsPdfAttachment,
 } from '@/lib/projects/save-report-pdf';
-import { transitionProjectEngineeringStage } from '@/lib/projects/engineering-workflow-transition';
+import {
+  transitionProjectEngineeringStage,
+  workflowBlockerMessage,
+} from '@/lib/projects/engineering-workflow-transition';
 import {
   hydrateEngineeringWithStage5,
   loadStage5LiveBundle,
@@ -394,7 +397,10 @@ export default function ProjectReportModal({
       try {
         const transition = await transitionProjectEngineeringStage(client.id, 'transmittals');
         if (!transition.ok) {
-          setMessage('تعذر اعتماد المرحلة: ' + (transition.blockers.join(' — ') || transition.message));
+          setMessage(
+            'تعذر اعتماد المرحلة: ' +
+              (transition.blockers.map(workflowBlockerMessage).join(' — ') || transition.message)
+          );
           return;
         }
       } catch (error) {

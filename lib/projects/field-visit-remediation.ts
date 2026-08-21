@@ -25,6 +25,20 @@ export type RemediationCase = {
   linkedDeficiencies: TechnicalDeficiency[];
 };
 
+export type StructuredObservationBlockerSeverity = 'high' | 'critical';
+
+/**
+ * A B1 blocker is derived from an explicit remediation case, not from an
+ * individual photo, supervision link, technical-deficiency link, or a raw UI
+ * selection. A high/critical condition remains blocking until the latest valid
+ * observation in the chain has an engineer-verified lifecycle state and a
+ * recorded remediation timestamp.
+ */
+export type StructuredObservationBlockerCase = {
+  case: RemediationCase;
+  severity: StructuredObservationBlockerSeverity;
+};
+
 export function observationRefKey(ref: FieldVisitObservationRef): string {
   return `${ref.visit_number}:${ref.observation_id}`;
 }
@@ -67,6 +81,11 @@ export function isValidFollowUpReference(
 
 export function observationCanBeVerified(observation: FieldVisitObservation): boolean {
   return observation.status === 'resolved' && Boolean(observation.resolved_at);
+}
+
+/** Matches the Phase 5D-1 lifecycle contract without inventing new metadata requirements. */
+export function hasEngineerVerifiedRemediation(observation: FieldVisitObservation): boolean {
+  return observation.status === 'verified' && Boolean(observation.resolved_at);
 }
 
 export function addObservationRefToTask(
@@ -147,4 +166,33 @@ export function buildRemediationCases(params: {
       };
     })
     .sort((a, b) => a.root.ref.visit_number - b.root.ref.visit_number || a.root.observation.id.localeCompare(b.root.observation.id));
+}
+
+/**
+ * B1 gate predicate. Severity is assessed across the root and every valid
+ * explicit follow-up, while verification is assessed only from the latest
+ * valid follow-up shown by the remediation case. Critical takes precedence
+ * when a chain contains both blocking severities.
+ */
+export function getBlockingStructuredObservationCases(params: {
+  visits: FieldVisitReport[];
+  supervision: SupervisionReport;
+  technicalNotes: TechnicalNotesReport;
+}): StructuredObservationBlockerCase[] {
+  return buildRemediationCases(params).flatMap((remediationCase) => {
+    const chain = [remediationCase.root, ...remediationCase.followUps];
+    const severity: StructuredObservationBlockerSeverity | null = chain.some(
+      (item) => item.observation.severity === 'critical'
+    )
+      ? 'critical'
+      : chain.some((item) => item.observation.severity === 'high')
+        ? 'high'
+        : null;
+
+    if (!severity || hasEngineerVerifiedRemediation(remediationCase.current.observation)) {
+      return [];
+    }
+
+    return [{ case: remediationCase, severity }];
+  });
 }
