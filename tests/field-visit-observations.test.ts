@@ -127,6 +127,42 @@ describe('Phase 5B field visit structured observations', () => {
     ]);
   });
 
+  it('preserves zero, one, and multiple text-only observations through JSON save and reload', () => {
+    const observations = [
+      { ...createFieldVisitObservation('low-open'), severity: 'low' as const, status: 'open' as const },
+      { ...createFieldVisitObservation('medium-progress'), severity: 'medium' as const, status: 'in_progress' as const },
+      { ...createFieldVisitObservation('high-resolved'), severity: 'high' as const, status: 'resolved' as const },
+      { ...createFieldVisitObservation('critical-open'), severity: 'critical' as const, status: 'open' as const },
+    ];
+    const serialized = JSON.parse(
+      JSON.stringify({
+        ...EMPTY_PROJECT_ENGINEERING_DATA,
+        field_visits: [
+          { visit_number: 1, status: 'مسودة', observations: [] },
+          { visit_number: 2, status: 'مسودة', observations: observations.slice(0, 1) },
+          { visit_number: 3, status: 'مسودة', observations },
+        ],
+      })
+    );
+    const reloaded = parseProjectEngineeringData(serialized);
+
+    expect(reloaded.field_visits.map((visit) => visit.observations?.length)).toEqual([0, 1, 4]);
+    expect(reloaded.field_visits[2].observations?.map((item) => item.severity)).toEqual([
+      'low',
+      'medium',
+      'high',
+      'critical',
+    ]);
+    expect(reloaded.field_visits[2].observations?.map((item) => item.status)).toEqual([
+      'open',
+      'in_progress',
+      'resolved',
+      'open',
+    ]);
+    expect(reloaded.field_visits[0].observations).toEqual([]);
+    expect(reloaded.field_visits[1].observations?.[0]).not.toHaveProperty('due_date');
+  });
+
   it('renders structured notes in the existing visit PDF with escaped text and omits the section when empty', () => {
     const withObservation = buildFieldVisitReportHtml({
       client,
