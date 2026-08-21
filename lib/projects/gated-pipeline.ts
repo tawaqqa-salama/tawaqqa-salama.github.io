@@ -172,6 +172,48 @@ export function isApprovedStatus(status?: string | null): boolean {
   return APPROVED.includes((status || '') as ReportMeta['status']);
 }
 
+export type Stage5ApprovalBlockerCode =
+  | 'NO_FIELD_VISITS'
+  | 'FIELD_VISIT_NOT_APPROVED'
+  | 'SUPERVISION_NOT_APPROVED'
+  | 'TECHNICAL_NOTES_NOT_APPROVED'
+  | 'OPEN_CRITICAL_DEFICIENCY'
+  | 'OPEN_HIGH_DEFICIENCY';
+
+export type Stage5ApprovalBlocker = {
+  code: Stage5ApprovalBlockerCode;
+  message: string;
+};
+
+/**
+ * Canonical client-side Stage 5 approval predicate. The dedicated server RPC
+ * mirrors these persisted-state rules; callers must not create a second list.
+ */
+export function getStage5ApprovalBlockers(data: ProjectEngineeringData): Stage5ApprovalBlocker[] {
+  const blockers: Stage5ApprovalBlocker[] = [];
+  const visits = data.field_visits || [];
+  if (!visits.length) {
+    blockers.push({ code: 'NO_FIELD_VISITS', message: 'يجب إضافة زيارة ميدانية واحدة على الأقل.' });
+  } else if (visits.some((visit) => !isApprovedStatus(visit.status))) {
+    blockers.push({ code: 'FIELD_VISIT_NOT_APPROVED', message: 'توجد زيارة غير مكتملة أو غير معتمدة.' });
+  }
+  if (!isApprovedStatus(data.supervision_report?.status)) {
+    blockers.push({ code: 'SUPERVISION_NOT_APPROVED', message: 'يجب اعتماد تقرير الإشراف.' });
+  }
+  if (!isApprovedStatus(data.technical_notes?.status)) {
+    blockers.push({ code: 'TECHNICAL_NOTES_NOT_APPROVED', message: 'يجب اعتماد الملاحظات الفنية.' });
+  }
+
+  const deficiencies = data.technical_notes?.deficiencies || [];
+  if (deficiencies.some((item) => /critical|حرج/i.test(item.severity || '') && !item.resolved)) {
+    blockers.push({ code: 'OPEN_CRITICAL_DEFICIENCY', message: 'توجد ملاحظة حرجة غير محلولة.' });
+  }
+  if (deficiencies.some((item) => /high|عالي/i.test(item.severity || '') && !item.resolved)) {
+    blockers.push({ code: 'OPEN_HIGH_DEFICIENCY', message: 'توجد ملاحظة عالية غير محلولة.' });
+  }
+  return blockers;
+}
+
 /**
  * Contract readiness remains governed by Sales/Finance, but is intentionally not
  * rendered as a project workflow stage.
@@ -232,17 +274,8 @@ export function isStageApproved(
       return isApprovedStatus(data.boq.status) && isApprovedStatus(data.timeline.status);
     case 'technical_report':
       return isApprovedStatus(data.technical_report.status);
-    case 'visits_supervision': {
-      const visitsOk =
-        data.field_visits.length > 0 &&
-        data.field_visits.every((v) => isApprovedStatus(v.status));
-      if (!visitsOk || !isApprovedStatus(data.supervision_report?.status)) return false;
-      if (!isApprovedStatus(data.technical_notes.status)) return false;
-      const critical = (data.technical_notes.deficiencies || []).filter(
-        (d) => /critical|حرج|عالي|high/i.test(d.severity || '')
-      );
-      return critical.every((d) => d.resolved);
-    }
+    case 'visits_supervision':
+      return getStage5ApprovalBlockers(data).length === 0;
     case 'transmittals':
       return (
         isApprovedStatus(data.engineering_delivery.status) &&
@@ -344,15 +377,9 @@ export function stageApprovalBlockers(
         blockers.push('حدد بداية ونهاية الجدول الزمني');
       }
       break;
-    case 'visits_supervision': {
-      const openCritical = (data.technical_notes.deficiencies || []).filter(
-        (d) => /critical|حرج|عالي|high/i.test(d.severity || '') && !d.resolved
-      );
-      if (openCritical.length) {
-        blockers.push(`يوجد ${openCritical.length} ملاحظة حرجة غير محلولة`);
-      }
+    case 'visits_supervision':
+      blockers.push(...getStage5ApprovalBlockers(data).map((item) => item.message));
       break;
-    }
     case 'completion': {
       const cert = data.completion_certificate;
       const attachmentError = validateCompletionAttachmentsForIssue(cert?.attachments, {

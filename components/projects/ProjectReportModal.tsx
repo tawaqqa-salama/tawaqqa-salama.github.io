@@ -58,6 +58,7 @@ import {
   saveFieldVisitAsPdfAttachment,
   saveSupervisionAsPdfAttachment,
 } from '@/lib/projects/save-report-pdf';
+import { transitionProjectEngineeringStage } from '@/lib/projects/engineering-workflow-transition';
 import {
   hydrateEngineeringWithStage5,
   loadStage5LiveBundle,
@@ -372,6 +373,28 @@ export default function ProjectReportModal({
           });
         });
         return;
+      }
+    }
+
+    const clientBlockers = stageApprovalBlockers(activeStage, client, data);
+    if (clientBlockers.length) {
+      setMessage(clientBlockers.join(' — '));
+      return;
+    }
+
+    if (activeStage === 'visits_supervision') {
+      setSaving(true);
+      try {
+        const transition = await transitionProjectEngineeringStage(client.id, 'transmittals');
+        if (!transition.ok) {
+          setMessage('تعذر اعتماد المرحلة: ' + (transition.blockers.join(' — ') || transition.message));
+          return;
+        }
+      } catch (error) {
+        setMessage(error instanceof Error ? error.message : 'تعذر اعتماد مرحلة المشروع على الخادم');
+        return;
+      } finally {
+        setSaving(false);
       }
     }
 
