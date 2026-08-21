@@ -24,7 +24,10 @@ import {
   buildFieldVisitReportHtml,
   resolveVisitEvidenceSources,
 } from '@/components/projects/FieldVisitReportPrint';
-import { buildSupervisionReportHtml } from '@/components/projects/SupervisionReportPrint';
+import {
+  buildSupervisionReportHtml,
+  resolveSupervisionEvidenceSources,
+} from '@/components/projects/SupervisionReportPrint';
 import { trimSupervisionTextFields } from '@/lib/projects/supervision-report';
 import { sanitizeEngineeringDataForPersist } from '@/lib/projects/sanitize-engineering-files';
 import { persistFieldVisitEvidenceMetadata } from '@/lib/projects/field-visit-evidence-persistence';
@@ -282,10 +285,14 @@ export async function saveSupervisionAsPdfAttachment(params: {
   let snapshot: ReportPdfSnapshot | null = null;
   let warning: string | null = null;
   try {
+    const evidenceSources = await resolveSupervisionEvidenceSources(client.id, data.field_visits || []);
     const html = buildSupervisionReportHtml({
       client,
       report: supervision,
       company: company || DEFAULT_COMPANY_PROFILE,
+      fieldVisits: data.field_visits || [],
+      technicalNotes: data.technical_notes,
+      evidenceSources,
     });
     const stamp = supervision.report_date || new Date().toISOString().slice(0, 10);
     const fileName = `supervision-${client.client_code || client.id}-${stamp}-${Date.now()}.pdf`;

@@ -153,7 +153,10 @@ export default function SupervisionReportSection({
   };
 
   const handlePrint = () => {
-    printSupervisionReport(client, report, companySnapshot);
+    printSupervisionReport(client, report, companySnapshot, {
+      fieldVisits: data.field_visits || [],
+      technicalNotes: data.technical_notes,
+    });
   };
 
   const overall = resolveOverallProgress(report);
