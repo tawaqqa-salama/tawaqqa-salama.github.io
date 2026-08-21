@@ -151,7 +151,13 @@ export type FieldVisitObservationCategory =
 
 export type FieldVisitObservationSeverity = 'low' | 'medium' | 'high' | 'critical';
 
-export type FieldVisitObservationStatus = 'open' | 'in_progress' | 'resolved';
+export type FieldVisitObservationStatus = 'open' | 'in_progress' | 'resolved' | 'verified';
+
+/** Explicit manual reference to an observation in a particular visit. */
+export interface FieldVisitObservationRef {
+  visit_number: number;
+  observation_id: string;
+}
 
 /**
  * Structured note recorded during one field visit. It is text metadata only:
@@ -168,6 +174,15 @@ export interface FieldVisitObservation {
   responsible_party: string;
   due_date?: string;
   status: FieldVisitObservationStatus;
+  /** Explicit engineer-selected origin in a previous visit; never inferred. */
+  follow_up_of?: FieldVisitObservationRef | null;
+  /** Resolution is recorded separately from final engineer verification. */
+  resolved_at?: string | null;
+  resolved_by?: string | null;
+  resolution_note?: string | null;
+  verified_at?: string | null;
+  verified_by?: string | null;
+  verification_note?: string | null;
 }
 
 export type FieldVisitEvidenceKind = 'photo' | 'document';
@@ -250,8 +265,17 @@ export interface FieldVisitReport extends ReportMeta {
   latest_pdf?: ReportPdfSnapshot | null;
 }
 
+export interface TechnicalDeficiency {
+  id: string;
+  description: string;
+  severity: string;
+  resolved: boolean;
+  /** Manual source link only; it never converts or removes the source observation. */
+  source_visit_ref?: FieldVisitObservationRef | null;
+}
+
 export interface TechnicalNotesReport extends ReportMeta {
-  deficiencies: { id: string; description: string; severity: string; resolved: boolean }[];
+  deficiencies: TechnicalDeficiency[];
   recommendations?: string;
   compliance_status?: string;
 }
@@ -431,6 +455,8 @@ export type SupervisionTaskRow = {
   month_progress: Record<string, SupervisionProgressCell>;
   /** نسبة الإنجاز الكلية للبند — محسوبة أو يدوية */
   total_percent: number | null;
+  /** Explicit manual links to field observations; no upstream data is copied. */
+  related_observation_refs?: FieldVisitObservationRef[];
 };
 
 /** تقرير الإشراف الدوري ومتابعة الإنجاز (TEEM) */

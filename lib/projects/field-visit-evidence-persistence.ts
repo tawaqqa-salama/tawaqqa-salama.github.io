@@ -1,6 +1,5 @@
-import { saveEngineeringLive } from '@/lib/projects/engineering-live-store';
-import { saveStage5LiveBundle } from '@/lib/projects/stage5-live-store';
 import { normalizeFieldVisitEvidenceForVisit } from '@/lib/projects/field-visit-evidence';
+import { persistStage5Metadata } from '@/lib/projects/stage5-persistence';
 import type { FieldVisitReport, ProjectEngineeringData } from '@/lib/types/project-reports';
 
 export type FieldVisitEvidencePersistenceResult = {
@@ -46,40 +45,9 @@ export async function persistFieldVisitEvidenceMetadata(params: {
     field_visits: nextVisits,
   };
 
-  const canonical = await saveEngineeringLive({
+  return persistStage5Metadata({
     clientId: params.clientId,
     data: nextData,
     pipelineStage: params.pipelineStage,
   });
-  if (canonical.error) {
-    return {
-      data: nextData,
-      error: canonical.error,
-      canonicalPersisted: false,
-      stage5MirrorSynced: false,
-    };
-  }
-
-  const mirror = await saveStage5LiveBundle({
-    clientId: params.clientId,
-    fieldVisits: nextVisits,
-    supervision: nextData.supervision_report,
-    pdfArchive: nextData.report_pdf_archive || [],
-    pipelineStage: params.pipelineStage,
-  });
-  if (mirror.error) {
-    return {
-      data: nextData,
-      error: mirror.error,
-      canonicalPersisted: true,
-      stage5MirrorSynced: false,
-    };
-  }
-
-  return {
-    data: nextData,
-    error: null,
-    canonicalPersisted: true,
-    stage5MirrorSynced: true,
-  };
 }

@@ -23,6 +23,11 @@ import {
 } from '@/lib/projects/supervision-report';
 import { printSupervisionReport } from '@/components/projects/SupervisionReportPrint';
 import { ReadOnlyField } from '@/components/projects/ReadOnlyField';
+import {
+  addObservationRefToTask,
+  removeObservationRefFromTask,
+  sameObservationRef,
+} from '@/lib/projects/field-visit-remediation';
 
 const REPORT_STATUSES = ['مسودة', 'قيد الإعداد', 'مكتمل', 'معتمد'] as const;
 const WORK_TYPES: SupervisionWorkType[] = ['توريد', 'تركيب', 'توريد وتركيب', ''];
@@ -40,6 +45,8 @@ type SupervisionReportSectionProps = {
   saving: boolean;
   onChange: (report: SupervisionReport) => void;
   onSave: () => void;
+  pendingObservationRef?: { visitNumber: number; observationId: string } | null;
+  onPendingObservationHandled?: () => void;
 };
 
 export default function SupervisionReportSection({
@@ -49,6 +56,8 @@ export default function SupervisionReportSection({
   saving,
   onChange,
   onSave,
+  pendingObservationRef = null,
+  onPendingObservationHandled,
 }: SupervisionReportSectionProps) {
   const companySnapshot = useMemo(
     () => company || loadLocalCompanyProfile(),
@@ -150,6 +159,9 @@ export default function SupervisionReportSection({
   const overall = resolveOverallProgress(report);
   const months = report.months || [];
   const tasks = report.tasks || [];
+  const selectedObservation = pendingObservationRef
+    ? { visit_number: pendingObservationRef.visitNumber, observation_id: pendingObservationRef.observationId }
+    : null;
 
   return (
     <div className="space-y-4">
@@ -384,13 +396,15 @@ export default function SupervisionReportSection({
                 </th>
               ))}
               <th className="p-2 border border-emerald-800">نسبة الإنجاز %</th>
+              <th className="p-2 border border-emerald-800">ملاحظات الموقع</th>
               <th className="p-2 border border-emerald-800">حذف</th>
             </tr>
           </thead>
           <tbody>
             {tasks.length === 0 ? (
               <tr>
-                <td colSpan={5 + months.length} className="p-8 text-center text-gray-400">
+                                  <td colSpan={6 + months.length} className="p-8 text-center text-gray-400">
+
                   جاري بناء هيكل التقرير…
                 </td>
               </tr>
@@ -496,6 +510,29 @@ export default function SupervisionReportSection({
                       className="w-14 border rounded px-1 py-1 text-center"
                       title="اتركه فارغاً ليُحسب من الأشهر، أو أدخل قيمة يدوية"
                     />
+                  </td>
+                  <td className="p-1.5 border align-top text-center">
+                    <div className="flex flex-col items-center gap-1">
+                      <span className="text-[11px] text-slate-600">{(task.related_observation_refs || []).length} مرتبطة</span>
+                      {selectedObservation ? (() => {
+                        const linked = (task.related_observation_refs || []).some((ref) => sameObservationRef(ref, selectedObservation));
+                        return <button
+                          type="button"
+                          onClick={() => {
+                            updateTask(task.id, (current) => ({
+                              ...current,
+                              related_observation_refs: linked
+                                ? removeObservationRefFromTask(current.related_observation_refs, selectedObservation)
+                                : addObservationRefToTask(current.related_observation_refs, selectedObservation),
+                            }));
+                            onPendingObservationHandled?.();
+                          }}
+                          className="rounded border border-indigo-200 bg-white px-2 py-1 text-[10px] font-semibold text-indigo-800"
+                        >
+                          {linked ? 'فك ربط المحددة' : `ربط زيارة #${selectedObservation.visit_number}`}
+                        </button>;
+                      })() : <span className="text-[10px] text-slate-400">اختر ملاحظة من سجل الزيارات</span>}
+                    </div>
                   </td>
                   <td className="p-1.5 border align-top text-center">
                     <button

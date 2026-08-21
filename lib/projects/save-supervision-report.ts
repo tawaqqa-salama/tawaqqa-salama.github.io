@@ -8,7 +8,7 @@ import type { ProjectEngineeringData, SupervisionReport } from '@/lib/types/proj
 import { trimSupervisionTextFields } from '@/lib/projects/supervision-report';
 import { sanitizeEngineeringDataForPersist } from '@/lib/projects/sanitize-engineering-files';
 import { backupEngineeringDataLocally } from '@/lib/supabase/safe-client-write';
-import { saveStage5LiveBundle } from '@/lib/projects/stage5-live-store';
+import { persistStage5Metadata } from '@/lib/projects/stage5-persistence';
 import { saveEngineeringLive } from '@/lib/projects/engineering-live-store';
 
 export type UpsertProjectReportResult = {
@@ -243,7 +243,23 @@ export async function saveReportData(
   // Optimistic local persistence BEFORE network — UI retry keeps user input
   backupEngineeringDataLocally(clientId, stamped);
 
-  // Universal path: all stages → live table (never project_engineering_data)
+  if (options?.supervisionFocus && stamped.supervision_report) {
+    const persisted = await persistStage5Metadata({
+      clientId,
+      data: stamped,
+      pipelineStage: options?.pipelineStage ?? null,
+    });
+    if (persisted.error) {
+      return {
+        error: persisted.error,
+        usedRelationalTables: true,
+        localOnly: !persisted.canonicalPersisted,
+      };
+    }
+    return { error: null, usedRelationalTables: true };
+  }
+
+  // Universal path for stages outside Stage 5 → canonical live table only.
   const live = await saveEngineeringLive({
     clientId,
     data: stamped,
@@ -251,17 +267,6 @@ export async function saveReportData(
   });
   if (live.error) {
     return { error: live.error, usedRelationalTables: true, localOnly: true };
-  }
-
-  // Best-effort stage-5 relational mirror for PDF index / report_items
-  if (options?.supervisionFocus && stamped.supervision_report) {
-    await saveStage5LiveBundle({
-      clientId,
-      fieldVisits: stamped.field_visits || [],
-      supervision: stamped.supervision_report,
-      pdfArchive: stamped.report_pdf_archive || [],
-      pipelineStage: options?.pipelineStage ?? null,
-    });
   }
 
   return { error: null, usedRelationalTables: true };

@@ -13,6 +13,7 @@ import {
   normalizeFieldVisitEvidenceForVisit,
   sanitizeFieldVisitEvidenceForPersist,
 } from '@/lib/projects/field-visit-evidence';
+import { normalizeFieldVisitObservationRef } from '@/lib/projects/field-visit-observations';
 
 /** Inline data URLs larger than this bloat JSONB and break multi-device sync */
 export const MAX_PERSISTED_DATA_URL_CHARS = 180_000;
@@ -37,6 +38,23 @@ function slimSafetyFile(file: SafetyBlueprintFile | null): SafetyBlueprintFile |
 
 function dropDataUrl<T extends { dataUrl?: string | null }>(file: T): T {
   return { ...file, dataUrl: null };
+}
+
+function observationRefKey(visitNumber: number, observationId: string) {
+  return `${visitNumber}:${observationId}`;
+}
+
+function normalizeObservationRefs(value: unknown, allowed: Set<string>) {
+  if (!Array.isArray(value)) return [];
+  const seen = new Set<string>();
+  return value.flatMap((candidate) => {
+    const ref = normalizeFieldVisitObservationRef(candidate);
+    if (!ref) return [];
+    const key = observationRefKey(ref.visit_number, ref.observation_id);
+    if (!allowed.has(key) || seen.has(key)) return [];
+    seen.add(key);
+    return [ref];
+  });
 }
 
 /**
@@ -98,7 +116,7 @@ export function sanitizeEngineeringDataForPersist(
   };
 
   const report_pdf_archive = (data.report_pdf_archive || []).map(slimSnap);
-  const field_visits = (data.field_visits || []).map((v) => {
+  const normalizedVisits = (data.field_visits || []).map((v) => {
     const safeVisit = opts?.clientId
       ? sanitizeFieldVisitEvidenceForPersist({ clientId: opts.clientId, visit: v })
       : normalizeFieldVisitEvidenceForVisit(v);
@@ -108,6 +126,29 @@ export function sanitizeEngineeringDataForPersist(
       latest_pdf: safeVisit.latest_pdf ? slimSnap(safeVisit.latest_pdf) : safeVisit.latest_pdf,
     };
   });
+  const knownObservationRefs = new Set(
+    normalizedVisits.flatMap((visit) =>
+      (visit.observations || []).map((observation) =>
+        observationRefKey(visit.visit_number, observation.id)
+      )
+    )
+  );
+  const field_visits = normalizedVisits.map((visit) => ({
+    ...visit,
+    observations: (visit.observations || []).map((observation) => {
+      const followUp = normalizeFieldVisitObservationRef(observation.follow_up_of);
+      const followUpValid = Boolean(
+        followUp &&
+          followUp.visit_number < visit.visit_number &&
+          knownObservationRefs.has(observationRefKey(followUp.visit_number, followUp.observation_id))
+      );
+      if (!followUpValid) {
+        const { follow_up_of: _ignored, ...withoutFollowUp } = observation;
+        return withoutFollowUp;
+      }
+      return { ...observation, follow_up_of: followUp };
+    }),
+  }));
   const tech = data.technical_report;
   /** TechnicalReportPhoto.dataUrl is `string | undefined` (not null). */
   const stripTechPhoto = <T extends { dataUrl?: string; storagePath?: string | null }>(
@@ -162,12 +203,31 @@ export function sanitizeEngineeringDataForPersist(
   const supervision_report = data.supervision_report
     ? {
         ...data.supervision_report,
+        tasks: (data.supervision_report.tasks || []).map((task) => {
+          if (!Array.isArray(task.related_observation_refs)) return task;
+          return {
+            ...task,
+            related_observation_refs: normalizeObservationRefs(task.related_observation_refs, knownObservationRefs),
+          };
+        }),
         pdf_snapshots: (data.supervision_report.pdf_snapshots || []).map(slimSnap),
         latest_pdf: data.supervision_report.latest_pdf
           ? slimSnap(data.supervision_report.latest_pdf)
           : data.supervision_report.latest_pdf,
       }
     : data.supervision_report;
+  const technical_notes = {
+    ...data.technical_notes,
+    deficiencies: (data.technical_notes.deficiencies || []).map((deficiency) => {
+      if (!('source_visit_ref' in deficiency)) return deficiency;
+      const source = normalizeFieldVisitObservationRef(deficiency.source_visit_ref);
+      if (source && knownObservationRefs.has(observationRefKey(source.visit_number, source.observation_id))) {
+        return { ...deficiency, source_visit_ref: source };
+      }
+      const { source_visit_ref: _ignored, ...withoutSource } = deficiency;
+      return withoutSource;
+    }),
+  };
 
   return {
     ...data,
@@ -182,6 +242,7 @@ export function sanitizeEngineeringDataForPersist(
     report_pdf_archive,
     field_visits,
     supervision_report,
+    technical_notes,
   };
 }
 

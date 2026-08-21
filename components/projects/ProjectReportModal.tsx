@@ -25,6 +25,7 @@ import FinalInspectionSection from '@/components/projects/FinalInspectionSection
 import CompletionCertificateSection from '@/components/projects/CompletionCertificateSection';
 import FieldVisitObservationsSection from '@/components/projects/FieldVisitObservationsSection';
 import FieldVisitEvidenceSection from '@/components/projects/FieldVisitEvidenceSection';
+import RemediationFollowUpPanel from '@/components/projects/RemediationFollowUpPanel';
 import SupervisionReportSection from '@/components/projects/SupervisionReportSection';
 import DesignCenterSection from '@/components/projects/DesignCenterSection';
 import BuildingPlanReportSection from '@/components/projects/BuildingPlanReportSection';
@@ -120,6 +121,7 @@ export default function ProjectReportModal({
   >(null);
   const [boqItem, setBoqItem] = useState('');
   const [evidenceTargetObservationId, setEvidenceTargetObservationId] = useState<string | null>(null);
+  const [supervisionLinkTarget, setSupervisionLinkTarget] = useState<{ visitNumber: number; observationId: string } | null>(null);
   const {
     open: stagesOpen,
     register: registerStagesDrawer,
@@ -761,6 +763,11 @@ export default function ProjectReportModal({
                     الزيارات = عدد تقارير الزيارة. تقرير الإشراف يُصدَّر أيضاً كـ PDF عند الحفظ
                     دون استبدال تقارير الزيارات السابقة.
                   </div>
+                  <RemediationFollowUpPanel
+                    visits={data.field_visits}
+                    supervision={data.supervision_report}
+                    technicalNotes={data.technical_notes}
+                  />
                   <div className="space-y-4">
                     <div className="flex flex-wrap items-center justify-between gap-2">
                       <h3 className="text-sm font-bold">سجل الزيارات</h3>
@@ -854,13 +861,55 @@ export default function ProjectReportModal({
                           className="w-full p-2.5 border rounded-xl text-sm mt-3"
                         />
                         <FieldVisitObservationsSection
+                          visitNumber={visit.visit_number}
+                          allVisits={data.field_visits}
                           observations={visit.observations || []}
                           disabled={saving}
                           linkedEvidenceCounts={(normalizeFieldVisitEvidenceForVisit(visit).evidence || []).reduce<Record<string, number>>((counts, item) => {
                             if (item.observation_id) counts[item.observation_id] = (counts[item.observation_id] || 0) + 1;
                             return counts;
                           }, {})}
+                          linkedSupervisionCounts={(data.supervision_report.tasks || []).reduce<Record<string, number>>((counts, task) => {
+                            for (const ref of task.related_observation_refs || []) {
+                              if (ref.visit_number === visit.visit_number) counts[ref.observation_id] = (counts[ref.observation_id] || 0) + 1;
+                            }
+                            return counts;
+                          }, {})}
+                          linkedTechnicalDeficiencyCounts={(data.technical_notes.deficiencies || []).reduce<Record<string, number>>((counts, deficiency) => {
+                            const ref = deficiency.source_visit_ref;
+                            if (ref?.visit_number === visit.visit_number) counts[ref.observation_id] = (counts[ref.observation_id] || 0) + 1;
+                            return counts;
+                          }, {})}
                           onAddEvidenceToObservation={(observationId) => setEvidenceTargetObservationId(observationId)}
+                          onLinkSupervisionToObservation={(observationId) => setSupervisionLinkTarget({ visitNumber: visit.visit_number, observationId })}
+                          onCreateTechnicalDeficiency={(observationId) => {
+                            const source = (visit.observations || []).find((observation) => observation.id === observationId);
+                            if (!source) return;
+                            const exists = (data.technical_notes.deficiencies || []).some((deficiency) =>
+                              deficiency.source_visit_ref?.visit_number === visit.visit_number &&
+                              deficiency.source_visit_ref?.observation_id === observationId
+                            );
+                            if (exists) {
+                              setMessage('توجد ملاحظة فنية مرتبطة بهذه الملاحظة الميدانية بالفعل.');
+                              return;
+                            }
+                            patch({
+                              technical_notes: {
+                                ...data.technical_notes,
+                                deficiencies: [
+                                  ...(data.technical_notes.deficiencies || []),
+                                  {
+                                    id: `def-${Date.now()}`,
+                                    description: source.description || source.required_action || 'ملاحظة زيارة مرتبطة',
+                                    severity: source.severity,
+                                    resolved: false,
+                                    source_visit_ref: { visit_number: visit.visit_number, observation_id: observationId },
+                                  },
+                                ],
+                              },
+                            });
+                            setMessage('أُنشئت ملاحظة فنية مرتبطة يدويًا بالملاحظة الميدانية؛ احفظ المرحلة عندما تكون جاهزًا.');
+                          }}
                           onChange={(observations) => {
                             patch({
                               field_visits: data.field_visits.map((x) => {
@@ -992,6 +1041,8 @@ export default function ProjectReportModal({
                     data={data}
                     company={company}
                     saving={saving}
+                    pendingObservationRef={supervisionLinkTarget}
+                    onPendingObservationHandled={() => setSupervisionLinkTarget(null)}
                     onChange={(supervision_report) => patch({ supervision_report })}
                     onSave={() => {
                       void (async () => {
@@ -1140,6 +1191,41 @@ export default function ProjectReportModal({
                             <option value="high">عالي</option>
                             <option value="critical">حرج / Critical</option>
                           </select>
+                          <label className="text-xs">
+                            <span className="mb-1 block text-gray-600">مصدر ملاحظة الزيارة</span>
+                            <select
+                              className="border rounded-lg px-2 py-1 text-xs"
+                              value={d.source_visit_ref ? `${d.source_visit_ref.visit_number}:${d.source_visit_ref.observation_id}` : ''}
+                              onChange={(e) => {
+                                const [visitNumber, ...observationIdParts] = e.target.value.split(':');
+                                const observationId = observationIdParts.join(':');
+                                patch({
+                                  technical_notes: {
+                                    ...data.technical_notes,
+                                    deficiencies: (data.technical_notes.deficiencies || []).map((x) =>
+                                      x.id === d.id
+                                        ? {
+                                            ...x,
+                                            source_visit_ref: e.target.value
+                                              ? { visit_number: Number(visitNumber), observation_id: observationId }
+                                              : null,
+                                          }
+                                        : x
+                                    ),
+                                  },
+                                });
+                              }}
+                            >
+                              <option value="">غير مرتبطة بزيارة</option>
+                              {data.field_visits.flatMap((visit) =>
+                                (visit.observations || []).map((observation, index) => (
+                                  <option key={`${visit.visit_number}:${observation.id}`} value={`${visit.visit_number}:${observation.id}`}>
+                                    زيارة #{visit.visit_number} · ملاحظة #{index + 1} — {observation.location || observation.description || 'بدون وصف'}
+                                  </option>
+                                ))
+                              )}
+                            </select>
+                          </label>
                           <label className="inline-flex items-center gap-1 text-xs">
                             <input
                               type="checkbox"
@@ -1271,7 +1357,7 @@ export default function ProjectReportModal({
                         void save(
                           data,
                           'تم حفظ الزيارات والإشراف وملاحظات الموقع. استخدم «حفظ الزيارة كـ PDF» لكل زيارة لإصدار مرفقها.',
-                          { stayOpen: true }
+                          { stayOpen: true, supervisionFocus: true }
                         );
                         return;
                       }

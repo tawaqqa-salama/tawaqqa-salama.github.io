@@ -28,8 +28,7 @@ import { buildSupervisionReportHtml } from '@/components/projects/SupervisionRep
 import { trimSupervisionTextFields } from '@/lib/projects/supervision-report';
 import { sanitizeEngineeringDataForPersist } from '@/lib/projects/sanitize-engineering-files';
 import { persistFieldVisitEvidenceMetadata } from '@/lib/projects/field-visit-evidence-persistence';
-import { saveStage5LiveBundle } from '@/lib/projects/stage5-live-store';
-import { saveEngineeringLive } from '@/lib/projects/engineering-live-store';
+import { persistStage5Metadata } from '@/lib/projects/stage5-persistence';
 
 function isMissingRelation(message: string): boolean {
   return /relation|does not exist|Could not find the table|schema cache|function|Could not find/i.test(
@@ -324,28 +323,21 @@ export async function saveSupervisionAsPdfAttachment(params: {
     warning = `بيانات الإشراف ستُحفظ لكن تعذر إنشاء PDF: ${msg}`;
   }
 
-  const live = await saveEngineeringLive({
+  const persisted = await persistStage5Metadata({
     clientId: client.id,
     data,
     pipelineStage,
   });
-  if (live.error) {
+  data = persisted.data;
+  if (persisted.error) {
     return {
-      error: live.error,
+      error: persisted.error,
       data,
       snapshot,
-      warning: warning || 'تم حفظ نسخة محلية — تعذر مزامنة تقرير الإشراف',
+      warning: warning || 'تم حفظ نسخة محلية — تعذر اكتمال المزامنة الكانونية والمرآة للإشراف',
       usedRelationalTables: true,
     };
   }
-  await saveStage5LiveBundle({
-    clientId: client.id,
-    fieldVisits: data.field_visits || [],
-    supervision: data.supervision_report,
-    pdfArchive: data.report_pdf_archive || [],
-    pipelineStage,
-  });
-
   backupEngineeringDataLocally(client.id, data);
   return {
     error: null,
