@@ -10,6 +10,15 @@ export type EngineeringWorkflowTransitionResult =
   | { ok: true; targetStage: EngineeringTransitionTarget }
   | { ok: false; code: 'WORKFLOW_STAGE_BLOCKED'; blockers: string[]; message: string };
 
+const WORKFLOW_BLOCKER_MESSAGES: Record<string, string> = {
+  OPEN_CRITICAL_FIELD_OBSERVATION: 'توجد ملاحظة ميدانية حرجة لم يتم التحقق من معالجتها.',
+  OPEN_HIGH_FIELD_OBSERVATION: 'توجد ملاحظة ميدانية عالية الخطورة لم يتم التحقق من معالجتها.',
+};
+
+export function workflowBlockerMessage(blocker: string): string {
+  return WORKFLOW_BLOCKER_MESSAGES[blocker] || blocker;
+}
+
 function parseBlockers(details: string | null | undefined): string[] {
   if (!details) return [];
   try {
