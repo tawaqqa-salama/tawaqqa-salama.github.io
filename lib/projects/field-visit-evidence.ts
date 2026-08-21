@@ -5,6 +5,7 @@ import {
   formatProjectFilesStorageError,
 } from '@/lib/storage/project-files';
 import { validateTechnicalEvidenceFile } from '@/lib/projects/technical-report-evidence';
+import { normalizeFieldVisitObservations } from '@/lib/projects/field-visit-observations';
 import type {
   FieldVisitEvidence,
   FieldVisitEvidenceCategory,
@@ -186,12 +187,14 @@ export function normalizeFieldVisitEvidenceCleanup(value: unknown): FieldVisitEv
 }
 
 export function normalizeFieldVisitEvidenceForVisit(visit: FieldVisitReport): FieldVisitReport {
+  const observations = normalizeFieldVisitObservations(visit.observations);
   const evidence = normalizeFieldVisitEvidenceLinks(
     normalizeFieldVisitEvidence(visit.evidence),
-    (visit.observations || []).map((observation) => observation.id)
+    observations.map((observation) => observation.id)
   );
   return {
     ...visit,
+    observations,
     evidence,
     evidence_cleanup_pending: normalizeFieldVisitEvidenceCleanup(visit.evidence_cleanup_pending),
   };

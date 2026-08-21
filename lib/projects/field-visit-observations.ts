@@ -35,6 +35,7 @@ export const FIELD_VISIT_OBSERVATION_STATUSES: Array<{
   { value: 'open', label: 'مفتوحة' },
   { value: 'in_progress', label: 'قيد المعالجة' },
   { value: 'resolved', label: 'تمت المعالجة' },
+  { value: 'verified', label: 'تم التحقق هندسيًا' },
 ];
 
 const categoryValues = new Set(FIELD_VISIT_OBSERVATION_CATEGORIES.map((item) => item.value));
@@ -43,6 +44,20 @@ const statusValues = new Set(FIELD_VISIT_OBSERVATION_STATUSES.map((item) => item
 
 function cleanText(value: unknown): string {
   return typeof value === 'string' ? value.trim() : '';
+}
+
+export function normalizeFieldVisitObservationRef(value: unknown) {
+  if (!value || typeof value !== 'object') return null;
+  const raw = value as Record<string, unknown>;
+  const visitNumber = Number(raw.visit_number);
+  const observationId = cleanText(raw.observation_id);
+  if (!Number.isInteger(visitNumber) || visitNumber < 1 || !observationId) return null;
+  return { visit_number: visitNumber, observation_id: observationId };
+}
+
+/** A final engineer verification is allowed only after remediation is recorded. */
+export function canVerifyFieldVisitObservation(observation: Pick<FieldVisitObservation, 'status' | 'resolved_at'>): boolean {
+  return observation.status === 'resolved' || (observation.status === 'verified' && Boolean(observation.resolved_at));
 }
 
 export function createFieldVisitObservation(id: string): FieldVisitObservation {
@@ -80,6 +95,16 @@ export function normalizeFieldVisitObservations(value: unknown): FieldVisitObser
       ? (raw.status as FieldVisitObservationStatus)
       : 'open';
     const dueDate = cleanText(raw.due_date);
+    const followUpOf = normalizeFieldVisitObservationRef(raw.follow_up_of);
+    const resolvedAt = cleanText(raw.resolved_at);
+    const resolvedBy = cleanText(raw.resolved_by);
+    const resolutionNote = cleanText(raw.resolution_note);
+    const verifiedAt = cleanText(raw.verified_at);
+    const verifiedBy = cleanText(raw.verified_by);
+    const verificationNote = cleanText(raw.verification_note);
+    // `verified` is a new state. Without recorded remediation, fail closed to
+    // an open observation rather than fabricating a verified lifecycle.
+    const lifecycleStatus = status === 'verified' && !resolvedAt ? 'open' : status;
 
     return [
       {
@@ -91,7 +116,14 @@ export function normalizeFieldVisitObservations(value: unknown): FieldVisitObser
         required_action: cleanText(raw.required_action),
         responsible_party: cleanText(raw.responsible_party),
         ...(dueDate ? { due_date: dueDate } : {}),
-        status,
+        ...(followUpOf ? { follow_up_of: followUpOf } : {}),
+        ...(resolvedAt ? { resolved_at: resolvedAt } : {}),
+        ...(resolvedBy ? { resolved_by: resolvedBy } : {}),
+        ...(resolutionNote ? { resolution_note: resolutionNote } : {}),
+        ...(verifiedAt ? { verified_at: verifiedAt } : {}),
+        ...(verifiedBy ? { verified_by: verifiedBy } : {}),
+        ...(verificationNote ? { verification_note: verificationNote } : {}),
+        status: lifecycleStatus,
       },
     ];
   });
