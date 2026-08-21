@@ -5,7 +5,10 @@ import {
   WORKFLOW_STAGE_IDS,
   approveWorkflowStage,
   canUnlockStage,
+  getStage5ApprovalBlockers,
+  isStageApproved,
   normalizeWorkflowState,
+  stageApprovalBlockers,
   workflowProgressPercent,
 } from '@/lib/projects/gated-pipeline';
 import { buildFieldVisits, parseProjectEngineeringData } from '@/lib/business/project-reports';
@@ -131,6 +134,59 @@ describe('project visits and supervision unified workflow', () => {
     expect(approved.data.field_visits[0].status).toBe('معتمد');
     expect(approved.data.supervision_report.status).toBe('معتمد');
     expect(approved.data.technical_notes.status).toBe('معتمد');
+  });
+
+  it('keeps Stage 5 blockers and approval semantics aligned for every required condition', () => {
+    const c = client();
+    const cases: Array<{ name: string; mutate: (data: ProjectEngineeringData) => ProjectEngineeringData; code: string }> = [
+      {
+        name: 'no visits',
+        mutate: (data) => ({ ...data, field_visits: [] }),
+        code: 'NO_FIELD_VISITS',
+      },
+      {
+        name: 'draft visit',
+        mutate: (data) => ({ ...data, field_visits: [{ ...data.field_visits[0], status: 'مسودة' }] }),
+        code: 'FIELD_VISIT_NOT_APPROVED',
+      },
+      {
+        name: 'draft supervision',
+        mutate: (data) => ({ ...data, supervision_report: { ...data.supervision_report, status: 'مسودة' } }),
+        code: 'SUPERVISION_NOT_APPROVED',
+      },
+      {
+        name: 'draft technical notes',
+        mutate: (data) => ({ ...data, technical_notes: { ...data.technical_notes, status: 'مسودة' } }),
+        code: 'TECHNICAL_NOTES_NOT_APPROVED',
+      },
+      {
+        name: 'open critical deficiency',
+        mutate: (data) => ({ ...data, technical_notes: { ...data.technical_notes, deficiencies: [{ id: 'critical', description: 'حرج', severity: 'critical', resolved: false }] } }),
+        code: 'OPEN_CRITICAL_DEFICIENCY',
+      },
+      {
+        name: 'open high deficiency',
+        mutate: (data) => ({ ...data, technical_notes: { ...data.technical_notes, deficiencies: [{ id: 'high', description: 'عالي', severity: 'high', resolved: false }] } }),
+        code: 'OPEN_HIGH_DEFICIENCY',
+      },
+    ];
+
+    for (const scenario of cases) {
+      const data = scenario.mutate(approvedVisitData());
+      const codes = getStage5ApprovalBlockers(data).map((item) => item.code);
+      expect(codes, scenario.name).toContain(scenario.code);
+      expect(isStageApproved('visits_supervision', c, data), scenario.name).toBe(false);
+      expect(stageApprovalBlockers('visits_supervision', c, data)).not.toHaveLength(0);
+      expect(approveWorkflowStage({ stageId: 'visits_supervision', client: c, data }).ok).toBe(false);
+    }
+  });
+
+  it('returns no Stage 5 blocker only when the canonical approval predicate is true', () => {
+    const c = client();
+    const data = approvedVisitData();
+    expect(getStage5ApprovalBlockers(data)).toEqual([]);
+    expect(stageApprovalBlockers('visits_supervision', c, data)).toEqual([]);
+    expect(isStageApproved('visits_supervision', c, data)).toBe(true);
   });
 
   it('derives workflow progress from the current stage collection, not a hardcoded count', () => {
