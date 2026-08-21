@@ -64,9 +64,9 @@ import { transitionProjectEngineeringStage } from '@/lib/projects/engineering-wo
 import {
   hydrateEngineeringWithStage5,
   loadStage5LiveBundle,
-  saveStage5LiveBundle,
 } from '@/lib/projects/stage5-live-store';
 import { normalizeFieldVisitEvidenceForVisit } from '@/lib/projects/field-visit-evidence';
+import { persistFieldVisitEvidenceMetadata } from '@/lib/projects/field-visit-evidence-persistence';
 import {
   hydrateEngineeringWithLive,
   loadEngineeringLive,
@@ -884,19 +884,16 @@ export default function ProjectReportModal({
                             });
                           }}
                           onPersistMetadata={async (nextVisit) => {
-                            const nextVisits = data.field_visits.map((x) =>
-                              x.visit_number === visit.visit_number ? nextVisit : x
-                            );
                             const pipelineStage = client.pipeline_stage === 'completed' ? 'completed' : 'projects';
-                            const result = await saveStage5LiveBundle({
+                            const result = await persistFieldVisitEvidenceMetadata({
                               clientId: client.id,
-                              fieldVisits: nextVisits,
-                              supervision: data.supervision_report,
-                              pdfArchive: data.report_pdf_archive,
+                              data,
+                              visitNumber: visit.visit_number,
+                              nextVisit,
                               pipelineStage,
                             });
                             if (result.error) throw new Error(humanizeFetchError(result.error));
-                            setData((previous) => previous ? { ...previous, field_visits: nextVisits } : previous);
+                            setData(result.data);
                           }}
                         />
                         <div className="mt-3 flex flex-wrap gap-2">
