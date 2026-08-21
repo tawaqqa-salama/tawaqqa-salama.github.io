@@ -26,6 +26,7 @@ import CompletionCertificateSection from '@/components/projects/CompletionCertif
 import FieldVisitObservationsSection from '@/components/projects/FieldVisitObservationsSection';
 import FieldVisitEvidenceSection from '@/components/projects/FieldVisitEvidenceSection';
 import RemediationFollowUpPanel from '@/components/projects/RemediationFollowUpPanel';
+import Stage5TraceabilityPanel from '@/components/projects/Stage5TraceabilityPanel';
 import SupervisionReportSection from '@/components/projects/SupervisionReportSection';
 import DesignCenterSection from '@/components/projects/DesignCenterSection';
 import BuildingPlanReportSection from '@/components/projects/BuildingPlanReportSection';
@@ -773,6 +774,14 @@ export default function ProjectReportModal({
                     visits={data.field_visits}
                     supervision={data.supervision_report}
                     technicalNotes={data.technical_notes}
+                  />
+                  <Stage5TraceabilityPanel
+                    data={data}
+                    onOpenSnapshot={(snapshot) => {
+                      void openReportPdfSnapshot(snapshot).catch((err) =>
+                        setMessage(err instanceof Error ? err.message : 'تعذر فتح المرفق')
+                      );
+                    }}
                   />
                   <div className="space-y-4">
                     <div className="flex flex-wrap items-center justify-between gap-2">
