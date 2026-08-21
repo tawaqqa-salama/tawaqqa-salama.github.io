@@ -13,6 +13,7 @@ import type { ReportPdfSnapshot } from '@/lib/types/report-pdf-snapshot';
 import { EMPTY_SUPERVISION_REPORT } from '@/lib/types/project-reports';
 import { trimSupervisionTextFields } from '@/lib/projects/supervision-report';
 import { backupEngineeringDataLocally } from '@/lib/supabase/safe-client-write';
+import { normalizeFieldVisitObservations } from '@/lib/projects/field-visit-observations';
 
 export type Stage5Bundle = {
   field_visits: FieldVisitReport[];
@@ -246,7 +247,11 @@ export async function loadStage5LiveBundle(clientId: string): Promise<Stage5Bund
     .order('created_at', { ascending: true });
 
   const field_visits = (visitRows || [])
-    .map((r) => (r.payload && typeof r.payload === 'object' ? (r.payload as FieldVisitReport) : null))
+    .map((r) => {
+      if (!r.payload || typeof r.payload !== 'object') return null;
+      const visit = r.payload as FieldVisitReport;
+      return { ...visit, observations: normalizeFieldVisitObservations(visit.observations) };
+    })
     .filter(Boolean) as FieldVisitReport[];
 
   let supervision_report: SupervisionReport = { ...EMPTY_SUPERVISION_REPORT, months: [], tasks: [] };

@@ -28,6 +28,7 @@ import { seedFinalInspectionReport } from '@/lib/projects/final-safety-report';
 import { ensureTaskMonths } from '@/lib/projects/supervision-report';
 import { mergeFireProtectionDesign } from '@/lib/projects/admin-uc-report/design';
 import { EMPTY_FIRE_PROTECTION_DESIGN } from '@/lib/types/fire-protection-design';
+import { normalizeFieldVisitObservations } from '@/lib/projects/field-visit-observations';
 
 export function parseProjectEngineeringData(raw: ClientRecord['project_engineering_data']): ProjectEngineeringData {
   if (!raw || typeof raw !== 'object') {
@@ -88,6 +89,7 @@ export function parseProjectEngineeringData(raw: ClientRecord['project_engineeri
     field_visits: Array.isArray(data.field_visits)
       ? data.field_visits.map((v) => ({
           ...v,
+          observations: normalizeFieldVisitObservations(v.observations),
           pdf_snapshots: Array.isArray(v.pdf_snapshots) ? v.pdf_snapshots : [],
           latest_pdf: v.latest_pdf || null,
         }))
