@@ -23,6 +23,7 @@ AS $$
 DECLARE
   v_payload jsonb;
   v_target text := lower(trim(COALESCE(p_target_stage, '')));
+  v_company_id uuid;
   v_technical_status text;
   v_supervision_status text;
   v_notes_status text;
@@ -35,9 +36,20 @@ DECLARE
   v_approved_visits jsonb;
   v_workflow jsonb;
 BEGIN
-  -- Reuse the hardened platform convention: active authenticated actor,
-  -- super-admin exception, and client/company tenant isolation.
-  PERFORM public.assert_client_tenant_access(p_client_id);
+  -- Fail closed to the authenticated actor's active company. The client id is
+  -- never sufficient on its own, so a cross-tenant or unauthenticated request
+  -- is indistinguishable from a missing project.
+  v_company_id := public.current_app_company_id();
+  IF v_company_id IS NULL OR NOT EXISTS (
+    SELECT 1
+    FROM public.clients AS c
+    WHERE c.id = p_client_id
+      AND c.company_id = v_company_id
+  ) THEN
+    RAISE EXCEPTION USING
+      ERRCODE = '42501',
+      MESSAGE = 'PROJECT_NOT_FOUND_OR_FORBIDDEN';
+  END IF;
 
   IF v_target NOT IN ('supervision_visits', 'transmittals') THEN
     RAISE EXCEPTION USING

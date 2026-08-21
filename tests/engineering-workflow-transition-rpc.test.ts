@@ -20,7 +20,14 @@ describe('Phase 5A dedicated engineering workflow transition RPC', () => {
 
   it('uses a dedicated least-permissive RPC and trusted persisted engineering state', () => {
     expect(migration).toContain('CREATE OR REPLACE FUNCTION public.transition_project_engineering_stage');
-    expect(migration).toContain('PERFORM public.assert_client_tenant_access(p_client_id);');
+    expect(migration).toContain('v_company_id := public.current_app_company_id();');
+    expect(migration).toContain('FROM public.clients AS c');
+    expect(migration).toContain('c.id = p_client_id');
+    expect(migration).toContain('c.company_id = v_company_id');
+    expect(migration).toContain("MESSAGE = 'PROJECT_NOT_FOUND_OR_FORBIDDEN'");
+    expect(migration.indexOf('v_company_id := public.current_app_company_id();')).toBeLessThan(
+      migration.indexOf('FROM public.project_engineering_live')
+    );
     expect(migration).toContain('FROM public.project_engineering_live');
     expect(migration).toContain("v_payload->'field_visits'");
     expect(migration).toContain("'{supervision_report,status}'");
