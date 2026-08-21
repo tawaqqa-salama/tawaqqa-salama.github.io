@@ -23,6 +23,7 @@ import EngineeringDeliverySection from '@/components/projects/EngineeringDeliver
 import CdCoverLetterSection from '@/components/projects/CdCoverLetterSection';
 import FinalInspectionSection from '@/components/projects/FinalInspectionSection';
 import CompletionCertificateSection from '@/components/projects/CompletionCertificateSection';
+import FieldVisitObservationsSection from '@/components/projects/FieldVisitObservationsSection';
 import SupervisionReportSection from '@/components/projects/SupervisionReportSection';
 import DesignCenterSection from '@/components/projects/DesignCenterSection';
 import BuildingPlanReportSection from '@/components/projects/BuildingPlanReportSection';
@@ -847,6 +848,17 @@ export default function ProjectReportModal({
                             });
                           }}
                           className="w-full p-2.5 border rounded-xl text-sm mt-3"
+                        />
+                        <FieldVisitObservationsSection
+                          observations={visit.observations || []}
+                          disabled={saving}
+                          onChange={(observations) => {
+                            patch({
+                              field_visits: data.field_visits.map((x) =>
+                                x.visit_number === visit.visit_number ? { ...x, observations } : x
+                              ),
+                            });
+                          }}
                         />
                         <div className="mt-3 flex flex-wrap gap-2">
                           <button

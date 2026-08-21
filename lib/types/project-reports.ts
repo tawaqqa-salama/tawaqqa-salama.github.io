@@ -140,6 +140,36 @@ export interface TimelineReport extends ReportMeta {
   notes?: string;
 }
 
+export type FieldVisitObservationCategory =
+  | 'firefighting'
+  | 'fire_alarm'
+  | 'egress'
+  | 'passive_fire_protection'
+  | 'electrical_safety'
+  | 'housekeeping'
+  | 'other';
+
+export type FieldVisitObservationSeverity = 'low' | 'medium' | 'high' | 'critical';
+
+export type FieldVisitObservationStatus = 'open' | 'in_progress' | 'resolved';
+
+/**
+ * Structured note recorded during one field visit. It is text metadata only:
+ * attachments, photos, evidence Storage, and report inclusion controls are
+ * deliberately handled in later phases.
+ */
+export interface FieldVisitObservation {
+  id: string;
+  category: FieldVisitObservationCategory;
+  location: string;
+  description: string;
+  severity: FieldVisitObservationSeverity;
+  required_action: string;
+  responsible_party: string;
+  due_date?: string;
+  status: FieldVisitObservationStatus;
+}
+
 export interface FieldVisitReport extends ReportMeta {
   visit_number: number;
   visit_date?: string;
@@ -149,6 +179,8 @@ export interface FieldVisitReport extends ReportMeta {
   recommendations?: string;
   photos_note?: string;
   checklist?: { id: string; label: string; checked: boolean }[];
+  /** Additive Phase 5B notes. Older visits without this key remain valid. */
+  observations?: FieldVisitObservation[];
   /** Historical fixed PDF snapshots for this visit (newest last) */
   pdf_snapshots?: ReportPdfSnapshot[];
   /** Latest PDF for quick access */

@@ -1,6 +1,12 @@
 import type { CompanyProfile } from '@/lib/company-profile';
 import type { ClientRecord } from '@/lib/types/client';
 import type { FieldVisitReport } from '@/lib/types/project-reports';
+import {
+  FIELD_VISIT_OBSERVATION_CATEGORIES,
+  FIELD_VISIT_OBSERVATION_SEVERITIES,
+  FIELD_VISIT_OBSERVATION_STATUSES,
+  observationLabel,
+} from '@/lib/projects/field-visit-observations';
 
 function esc(v: string | null | undefined) {
   return String(v || '')
@@ -23,6 +29,26 @@ export function buildFieldVisitReportHtml(params: {
     .map(
       (c) =>
         `<tr><td>${esc(c.label)}</td><td>${c.checked ? '✓' : '—'}</td></tr>`
+    )
+    .join('');
+  const observations = (visit.observations || [])
+    .map(
+      (observation, index) => `
+        <article class="observation">
+          <div class="observation-title">ملاحظة ميدانية منظمة #${index + 1}</div>
+          <div class="observation-meta">
+            <div><strong>التصنيف:</strong> ${esc(observationLabel(FIELD_VISIT_OBSERVATION_CATEGORIES, observation.category))}</div>
+            <div><strong>الموقع:</strong> ${esc(observation.location || '—')}</div>
+            <div><strong>الخطورة:</strong> ${esc(observationLabel(FIELD_VISIT_OBSERVATION_SEVERITIES, observation.severity))}</div>
+            <div><strong>الحالة:</strong> ${esc(observationLabel(FIELD_VISIT_OBSERVATION_STATUSES, observation.status))}</div>
+          </div>
+          <div class="observation-text"><strong>وصف الملاحظة:</strong><br />${esc(observation.description || '—')}</div>
+          <div class="observation-text"><strong>الإجراء المطلوب:</strong><br />${esc(observation.required_action || '—')}</div>
+          <div class="observation-meta observation-followup">
+            <div><strong>الجهة المسؤولة:</strong> ${esc(observation.responsible_party || '—')}</div>
+            <div><strong>تاريخ المعالجة المستهدف:</strong> ${esc(observation.due_date || '—')}</div>
+          </div>
+        </article>`
     )
     .join('');
 
@@ -49,6 +75,12 @@ export function buildFieldVisitReportHtml(params: {
       background: #f7faf8; white-space: pre-wrap;
     }
     .lab { font-weight: 700; color: #635bdb; margin-bottom: 4px; font-size: 10.5pt; }
+    .observations { margin-top: 12px; }
+    .observation { border: 1px solid #e2d6b8; border-radius: 8px; padding: 9px 10px; margin-top: 8px; background: #fffdf7; break-inside: avoid; page-break-inside: avoid; }
+    .observation-title { color: #6e4f08; font-weight: 700; margin-bottom: 7px; }
+    .observation-meta { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 5px 12px; font-size: 10pt; }
+    .observation-followup { margin-top: 7px; }
+    .observation-text { margin-top: 7px; padding-top: 7px; border-top: 1px solid #eee4c8; white-space: pre-wrap; }
     .foot { margin-top: 18px; font-size: 9.5pt; color: #5a6f64; }
   </style>
 </head>
@@ -75,6 +107,11 @@ export function buildFieldVisitReportHtml(params: {
     ${
       visit.recommendations?.trim()
         ? `<div class="box"><div class="lab">التوصيات</div>${esc(visit.recommendations)}</div>`
+        : ''
+    }
+    ${
+      observations
+        ? `<section class="observations"><div class="lab">الملاحظات الميدانية المنظمة</div>${observations}</section>`
         : ''
     }
     ${
