@@ -226,20 +226,20 @@ export function buildSupervisionReportHtml(params: {
     .join('');
   const selectedEvidenceEntries = selectedEvidence(orderedVisits);
   let figureNumber = 0;
-  const evidenceCards = selectedEvidenceEntries
-    .map(({ visit, item }) => {
-      const source = params.evidenceSources?.[`${visit.visit_number}:${item.id}`] || null;
-      const isImage = item.kind === 'photo' && /^image\/(jpeg|png)$/i.test(item.file.mimeType);
-      if (isImage && source) {
-        figureNumber += 1;
-        return `<figure class="supervision-evidence-card"><div class="supervision-evidence-media"><img src="${esc(source)}" alt="${esc(item.title || item.file.fileName)}" /></div>${evidenceCaption(visit, item)}<div class="figure-number">شكل (${figureNumber})</div></figure>`;
-      }
-      if (isImage) {
-        return `<article class="supervision-attachment-ref"><strong>${esc(item.title || item.file.fileName)}</strong><span>صورة محددة تعذر تحميل معاينتها في وقت إنشاء التقرير؛ لم تُدرج كصورة مرقمة.</span>${evidenceCaption(visit, item)}</article>`;
-      }
-      return `<article class="supervision-attachment-ref"><strong>مرفق PDF: ${esc(item.title || item.file.fileName)}</strong><span>${esc(item.file.fileName)} · ${esc(observationReference(visit, item.observation_id))}</span>${item.engineer_note ? `<span><strong>ملاحظة المهندس:</strong> ${esc(item.engineer_note)}</span>` : ''}</article>`;
-    })
-    .join('');
+  const evidenceCards = selectedEvidenceEntries.map(({ visit, item }) => {
+    const source = params.evidenceSources?.[`${visit.visit_number}:${item.id}`] || null;
+    const isImage = item.kind === 'photo' && /^image\/(jpeg|png)$/i.test(item.file.mimeType);
+    if (isImage && source) {
+      figureNumber += 1;
+      return `<figure class="supervision-evidence-card"><div class="supervision-evidence-media"><img src="${esc(source)}" alt="${esc(item.title || item.file.fileName)}" /></div>${evidenceCaption(visit, item)}<div class="figure-number">شكل (${figureNumber})</div></figure>`;
+    }
+    if (isImage) {
+      return `<article class="supervision-attachment-ref"><strong>${esc(item.title || item.file.fileName)}</strong><span>صورة محددة تعذر تحميل معاينتها في وقت إنشاء التقرير؛ لم تُدرج كصورة مرقمة.</span>${evidenceCaption(visit, item)}</article>`;
+    }
+    return `<article class="supervision-attachment-ref"><strong>مرفق PDF: ${esc(item.title || item.file.fileName)}</strong><span>${esc(item.file.fileName)} · ${esc(observationReference(visit, item.observation_id))}</span>${item.engineer_note ? `<span><strong>ملاحظة المهندس:</strong> ${esc(item.engineer_note)}</span>` : ''}</article>`;
+  });
+  const [firstEvidenceCard, secondEvidenceCard, thirdEvidenceCard, ...remainingEvidenceCards] = evidenceCards;
+  const firstEvidenceRow = [firstEvidenceCard, secondEvidenceCard, thirdEvidenceCard].filter(Boolean).join('');
   const hasStage5Content = Boolean(orderedVisits.length || remediationCases.length || selectedEvidenceEntries.length);
 
   return `<!DOCTYPE html>
@@ -449,7 +449,12 @@ export function buildSupervisionReportHtml(params: {
       padding: 8px;
       font-size: 9px;
     }
-    .stage5-evidence-section {
+    .stage5-evidence-section,
+    .supervision-evidence-grid {
+      break-inside: auto;
+      page-break-inside: auto;
+    }
+    .supervision-evidence-lead {
       break-inside: avoid;
       page-break-inside: avoid;
     }
@@ -458,12 +463,13 @@ export function buildSupervisionReportHtml(params: {
       grid-template-columns: repeat(3, minmax(0, 1fr));
       gap: 8px;
       margin-top: 8px;
-      break-inside: avoid;
-      page-break-inside: avoid;
     }
     .supervision-evidence-grid > :only-child { grid-column: 1 / -1; }
     .supervision-evidence-grid > :only-child .supervision-evidence-media { height: 220px; }
     .supervision-evidence-grid > :only-child .supervision-evidence-media img { max-height: 218px; }
+    .supervision-evidence-grid-first.has-following-evidence > :only-child { grid-column: auto; }
+    .supervision-evidence-grid-first.has-following-evidence > :only-child .supervision-evidence-media { height: 138px; }
+    .supervision-evidence-grid-first.has-following-evidence > :only-child .supervision-evidence-media img { max-height: 136px; }
     .supervision-evidence-card, .supervision-attachment-ref {
       min-width: 0;
       margin: 0;
@@ -593,9 +599,12 @@ export function buildSupervisionReportHtml(params: {
     </section>` : ''}
 
     ${selectedEvidenceEntries.length ? `<section class="stage5-section stage5-evidence-section">
-      <h2>التوثيق المصور والمرفقات المختارة</h2>
-      <p class="section-note">${esc(SUPERVISION_EVIDENCE_SELECTION_NOTE)}</p>
-      <div class="supervision-evidence-grid">${evidenceCards}</div>
+      <div class="supervision-evidence-lead">
+        <h2>التوثيق المصور والمرفقات المختارة</h2>
+        <p class="section-note">${esc(SUPERVISION_EVIDENCE_SELECTION_NOTE)}</p>
+        <div class="supervision-evidence-grid supervision-evidence-grid-first${remainingEvidenceCards.length ? ' has-following-evidence' : ''}">${firstEvidenceRow}</div>
+      </div>
+      ${remainingEvidenceCards.length ? `<div class="supervision-evidence-grid">${remainingEvidenceCards.join('')}</div>` : ''}
     </section>` : ''}
 
     <div class="sign">

@@ -210,6 +210,45 @@ describe('Phase 5E supervision PDF Stage 5 integration', () => {
     expect(html).not.toContain('دليل مستبعد');
   });
 
+  it('keeps the evidence heading with its first card while allowing the remaining evidence grid to paginate', () => {
+    const html = buildSupervisionReportHtml({
+      client,
+      report: report(),
+      company,
+      fieldVisits: [
+        visit({
+          evidence: [
+            evidence('first', 1),
+            evidence('second', 2),
+            evidence('third', 3),
+            evidence('fourth', 4),
+          ],
+        }),
+      ],
+      evidenceSources: {
+        '1:first': 'data:image/png;base64,first',
+        '1:second': 'data:image/png;base64,second',
+        '1:third': 'data:image/png;base64,third',
+        '1:fourth': 'data:image/png;base64,fourth',
+      },
+    });
+
+    const leadStart = html.indexOf('<div class="supervision-evidence-lead">');
+    const trailingGridStart = html.indexOf('<div class="supervision-evidence-grid">', leadStart);
+    const leadMarkup = html.slice(leadStart, trailingGridStart);
+
+    expect(leadStart).toBeGreaterThan(-1);
+    expect(trailingGridStart).toBeGreaterThan(leadStart);
+    expect(leadMarkup).toContain('دليل first');
+    expect(leadMarkup).toContain('دليل second');
+    expect(leadMarkup).toContain('دليل third');
+    expect(leadMarkup).not.toContain('دليل fourth');
+    expect(html).toContain('supervision-evidence-grid-first has-following-evidence');
+    expect(html).toContain('.stage5-evidence-section,\n    .supervision-evidence-grid {\n      break-inside: auto;');
+    expect(html).toContain('.supervision-evidence-lead {\n      break-inside: avoid;');
+    expect(html).not.toContain('.stage5-evidence-section {\n      break-inside: avoid;');
+  });
+
   it('escapes all Stage 5 text before inserting it into the print HTML', () => {
     const html = buildSupervisionReportHtml({
       client,
