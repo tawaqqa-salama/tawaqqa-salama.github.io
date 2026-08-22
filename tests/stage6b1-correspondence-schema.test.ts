@@ -55,17 +55,23 @@ describe('Stage 6B-1 correspondence schema contract', () => {
     expect(migration).not.toContain('CREATE INDEX idx_project_correspondences_body');
   });
 
-  it('enables tenant RLS through client ownership for SELECT, INSERT, UPDATE, and DELETE', () => {
+  it('allows authenticated tenant-scoped SELECT only and defers every direct mutation to Stage 6B-2 RPCs', () => {
     expect(migration).toContain('ALTER TABLE public.project_correspondences ENABLE ROW LEVEL SECURITY');
     expect(migration).toContain('REVOKE ALL ON public.project_correspondences FROM anon');
-    expect(migration).toContain('GRANT SELECT, INSERT, UPDATE, DELETE ON public.project_correspondences TO authenticated');
-    expect(migration).toContain('CREATE POLICY project_correspondences_tenant_via_client');
-    expect(migration).toContain('FOR ALL');
+    expect(migration).toContain('REVOKE ALL ON public.project_correspondences FROM authenticated');
+    expect(migration).toContain('GRANT SELECT ON public.project_correspondences TO authenticated');
+    expect(migration).toContain('REVOKE INSERT, UPDATE, DELETE ON public.project_correspondences FROM authenticated');
+    expect(migration).toContain('GRANT ALL ON public.project_correspondences TO service_role');
+    expect(migration).toContain('CREATE POLICY project_correspondences_tenant_select');
+    expect(migration).toContain('FOR SELECT');
     expect(migration).toContain('USING (');
-    expect(migration).toContain('WITH CHECK (');
     expect(migration).toContain('c.id = project_correspondences.client_id');
     expect(migration).toContain('c.company_id = public.current_app_company_id()');
     expect(migration).toContain('public.is_platform_admin()');
+    expect(migration).not.toContain('GRANT SELECT, INSERT, UPDATE, DELETE ON public.project_correspondences TO authenticated');
+    expect(migration).not.toContain('FOR ALL');
+    expect(migration).not.toContain('WITH CHECK (');
+    expect(migration).not.toContain('CREATE POLICY project_correspondences_tenant_via_client');
     expect(migration).not.toContain('company_id uuid');
   });
 

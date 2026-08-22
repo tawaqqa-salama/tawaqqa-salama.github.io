@@ -4,7 +4,7 @@
 -- Scope deliberately limited to the relational foundation only:
 --   * public.project_correspondences
 --   * project/client integrity
---   * tenant RLS via client_id -> clients.company_id
+--   * read-safe tenant RLS via client_id -> clients.company_id
 --
 -- Explicitly excluded:
 --   * Stage 6A / Migration 055 changes
@@ -115,23 +115,21 @@ CREATE INDEX idx_project_correspondences_client_reference
 ALTER TABLE public.project_correspondences ENABLE ROW LEVEL SECURITY;
 
 REVOKE ALL ON public.project_correspondences FROM anon;
-GRANT SELECT, INSERT, UPDATE, DELETE ON public.project_correspondences TO authenticated;
+
+-- Stage 6B-1 is intentionally read-only for normal application users.
+-- Stage 6B-2 will introduce server-controlled write RPCs with semantic
+-- validation, optimistic locking, approval controls, and tenant checks.
+REVOKE ALL ON public.project_correspondences FROM authenticated;
+GRANT SELECT ON public.project_correspondences TO authenticated;
+REVOKE INSERT, UPDATE, DELETE ON public.project_correspondences FROM authenticated;
+
 GRANT ALL ON public.project_correspondences TO service_role;
 
-CREATE POLICY project_correspondences_tenant_via_client
+CREATE POLICY project_correspondences_tenant_select
   ON public.project_correspondences
-  FOR ALL
+  FOR SELECT
   TO authenticated
   USING (
-    public.is_platform_admin()
-    OR EXISTS (
-      SELECT 1
-      FROM public.clients c
-      WHERE c.id = project_correspondences.client_id
-        AND c.company_id = public.current_app_company_id()
-    )
-  )
-  WITH CHECK (
     public.is_platform_admin()
     OR EXISTS (
       SELECT 1
@@ -153,6 +151,11 @@ COMMENT ON COLUMN public.project_correspondences.document_status IS
 COMMIT;
 
 -- Read-only verification aid for the migration reviewer:
+-- SELECT grantee, privilege_type
+-- FROM information_schema.role_table_grants
+-- WHERE table_schema = 'public' AND table_name = 'project_correspondences'
+-- ORDER BY grantee, privilege_type;
+--
 -- SELECT policyname, cmd, roles, qual, with_check
 -- FROM pg_policies
 -- WHERE schemaname = 'public' AND tablename = 'project_correspondences';
