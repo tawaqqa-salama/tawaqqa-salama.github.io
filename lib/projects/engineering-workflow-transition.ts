@@ -3,7 +3,7 @@ import type { WorkflowStageId } from '@/lib/projects/gated-pipeline';
 
 export type EngineeringTransitionTarget = Extract<
   WorkflowStageId,
-  'supervision_visits' | 'transmittals'
+  'supervision_visits' | 'transmittals' | 'final_report'
 >;
 
 export type EngineeringWorkflowTransitionResult =
@@ -13,6 +13,9 @@ export type EngineeringWorkflowTransitionResult =
 const WORKFLOW_BLOCKER_MESSAGES: Record<string, string> = {
   OPEN_CRITICAL_FIELD_OBSERVATION: 'توجد ملاحظة ميدانية حرجة لم يتم التحقق من معالجتها.',
   OPEN_HIGH_FIELD_OBSERVATION: 'توجد ملاحظة ميدانية عالية الخطورة لم يتم التحقق من معالجتها.',
+  STAGE6_ENGINEERING_DELIVERY_INCOMPLETE: 'بيانات خطاب تسليم الدراسة غير مكتملة.',
+  STAGE6_CD_COVER_LETTER_INCOMPLETE: 'بيانات خطاب الدفاع المدني غير مكتملة.',
+  STAGE6_NOT_ACTIVE: 'لا يمكن الانتقال قبل فتح مرحلة الخطابات من المسار الهندسي الصحيح.',
 };
 
 export function workflowBlockerMessage(blocker: string): string {

@@ -42,6 +42,7 @@ import {
 } from '@/lib/projects/compliance/snapshot';
 import { getBlockingStructuredObservationCases } from '@/lib/projects/field-visit-remediation';
 import { AUTHORITATIVE_COMPLIANCE_MODULE } from '@/lib/projects/canonical-engineering';
+import { getStage6ApprovalBlockers } from '@/lib/projects/stage6-contract';
 
 export const WORKFLOW_STAGE_IDS = [
   'designs',
@@ -298,9 +299,15 @@ export function isStageApproved(
     case 'visits_supervision':
       return getStage5ApprovalBlockers(data).length === 0;
     case 'transmittals':
+      // Stage 6A is approved only by the server transition after validating the
+      // canonical locked payload. A locally selected «مكتمل» status must never
+      // unlock Stage 7 before that atomic transition has succeeded.
       return (
-        isApprovedStatus(data.engineering_delivery.status) &&
-        isApprovedStatus(data.cd_cover_letter?.status)
+        getStage6ApprovalBlockers(data).length === 0 &&
+        data.engineering_delivery.status === 'معتمد' &&
+        data.cd_cover_letter?.status === 'معتمد' &&
+        data.workflow?.last_approved_stage === 'transmittals' &&
+        Boolean(data.workflow?.approved_at?.transmittals)
       );
     case 'final_report':
       return isApprovedStatus(data.final_inspection.status);
@@ -401,6 +408,9 @@ export function stageApprovalBlockers(
     case 'visits_supervision':
       blockers.push(...getStage5ApprovalBlockers(data).map((item) => item.message));
       break;
+    case 'transmittals':
+      blockers.push(...getStage6ApprovalBlockers(data).map((item) => item.message));
+      break;
     case 'completion': {
       const cert = data.completion_certificate;
       const attachmentError = validateCompletionAttachmentsForIssue(cert?.attachments, {
@@ -459,6 +469,18 @@ export function approveWorkflowStage(params: {
     return { ok: false, data, blockers, nextStage: stageId };
   }
 
+  // Stage 6A must pass the canonical server-side transition before any status
+  // mutation. ProjectReportModal invokes that RPC and reloads the resulting
+  // canonical payload rather than calling this local approval path.
+  if (stageId === 'transmittals') {
+    return {
+      ok: false,
+      data,
+      blockers: ['يلزم اعتماد مرحلة الخطابات عبر الحاجز الخادمي.'],
+      nextStage: stageId,
+    };
+  }
+
   switch (stageId) {
     case 'designs':
       data.design_center = markApproved({
@@ -480,10 +502,6 @@ export function approveWorkflowStage(params: {
       data.field_visits = data.field_visits.map((v) => markApproved(v));
       data.supervision_report = markApproved(data.supervision_report);
       data.technical_notes = markApproved(data.technical_notes);
-      break;
-    case 'transmittals':
-      data.engineering_delivery = markApproved(data.engineering_delivery);
-      data.cd_cover_letter = markApproved(data.cd_cover_letter);
       break;
     case 'final_report':
       data.final_inspection = markApproved(data.final_inspection);

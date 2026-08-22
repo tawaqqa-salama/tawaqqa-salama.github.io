@@ -412,6 +412,37 @@ export default function ProjectReportModal({
       }
     }
 
+    // Stage 6A: the server validates only the canonical locked payload, marks
+    // the two singleton documents approved, and advances the engineering stage
+    // atomically. Never save browser-held data after this RPC succeeds.
+    if (activeStage === 'transmittals') {
+      setSaving(true);
+      try {
+        const transition = await transitionProjectEngineeringStage(client.id, 'final_report');
+        if (!transition.ok) {
+          setMessage(
+            'تعذر اعتماد المرحلة: ' +
+              (transition.blockers.map(workflowBlockerMessage).join(' — ') || transition.message)
+          );
+          return;
+        }
+        const canonical = await loadEngineeringLive(client.id);
+        if (!canonical) {
+          throw new Error('اكتمل انتقال المرحلة على الخادم لكن تعذر إعادة تحميل الحالة الكانونية.');
+        }
+        setData(canonical);
+        setActiveStage('final_report');
+        setMessage('تم اعتماد المرحلة والانتقال إلى: التقرير النهائي');
+        requestAnimationFrame(() => onUpdated());
+        return;
+      } catch (error) {
+        setMessage(error instanceof Error ? error.message : 'تعذر اعتماد مرحلة المشروع على الخادم');
+        return;
+      } finally {
+        setSaving(false);
+      }
+    }
+
     const result = approveWorkflowStage({
       stageId: activeStage,
       client,
