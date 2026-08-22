@@ -8,7 +8,7 @@ import type { AppRole, AppUser } from '@/lib/auth/types';
 import { formatCurrency, formatDate } from '@/lib/format/currency';
 import { supabase } from '@/lib/supabase';
 import { shouldShowInProjects } from '@/lib/business/pipeline';
-import { ENGINEERS } from '@/lib/constants/clients';
+import { buildEngineerAssignmentPatch, getAssignableEngineers } from '@/lib/hr/engineer-assignments';
 import ClientDetailModal from '@/components/clients/ClientDetailModal';
 import ModuleSubNavSlot from '@/components/layout/ModuleSubNavSlot';
 import ModuleTabBar from '@/components/layout/ModuleTabBar';
@@ -91,6 +91,8 @@ export default function HRPage() {
     setRoles(await listRoles());
     setLoading(false);
   };
+
+  const engineers = useMemo(() => getAssignableEngineers(users), [users]);
 
   const loadAssignments = async () => {
     setClientsLoading(true);
@@ -236,13 +238,16 @@ export default function HRPage() {
     await loadEmployees();
   };
 
-  const quickAssign = async (clientId: string, engineer: string) => {
+  const quickAssign = async (clientId: string, engineerId: string) => {
+    const engineer = engineers.find((candidate) => candidate.id === engineerId);
+    if (!engineer) return;
+
     const { error: assignError } = await supabase
       .from('clients')
-      .update({ assigned_engineer: engineer })
+      .update(buildEngineerAssignmentPatch(engineer))
       .eq('id', clientId);
     if (assignError) alert(assignError.message);
-    else loadAssignments();
+    else await loadAssignments();
   };
 
   return (
@@ -481,17 +486,21 @@ export default function HRPage() {
                   <tr key={client.id} className="border-b hover:bg-gray-50">
                     <td className="p-4 font-semibold">{client.business_name || client.name}</td>
                     <td className="p-4">{client.city || '—'}</td>
-                    <td className="p-4">{client.assigned_engineer || '— غير معيّن —'}</td>
+                    <td className="p-4">
+                      {client.assigned_engineer
+                        ? `${client.assigned_engineer}${client.assigned_engineer_id ? ' · مستخدم فعلي' : ''}`
+                        : '— غير معيّن —'}
+                    </td>
                     <td className="p-4">
                       <select
                         className="border rounded-lg text-xs p-2 bg-white"
-                        value=""
+                        value={client.assigned_engineer_id || ''}
                         onChange={(e) => e.target.value && quickAssign(client.id, e.target.value)}
                       >
                         <option value="">اختر مهندس...</option>
-                        {ENGINEERS.map((eng) => (
-                          <option key={eng} value={eng}>
-                            {eng}
+                        {engineers.map((engineer) => (
+                          <option key={engineer.id} value={engineer.id}>
+                            {engineer.full_name || engineer.email}
                           </option>
                         ))}
                       </select>
