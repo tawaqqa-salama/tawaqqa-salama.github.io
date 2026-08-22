@@ -91,6 +91,9 @@ describe('Stage 6B-2 server-controlled correspondence RPC contract', () => {
     const updateFunction = migration.slice(updateStart, approveStart);
 
     expect(updateFunction).toContain('p_expected_lock_version integer');
+    expect(migration).toContain('REVOKE ALL ON FUNCTION public.update_project_correspondence_draft(uuid, integer, text, text, text, date, text) FROM PUBLIC;');
+    expect(migration).toContain('REVOKE ALL ON FUNCTION public.update_project_correspondence_draft(uuid, integer, text, text, text, date, text) FROM anon;');
+    expect(migration).toContain('GRANT EXECUTE ON FUNCTION public.update_project_correspondence_draft(uuid, integer, text, text, text, date, text) TO authenticated;');
     expect(updateFunction).toContain('FOR UPDATE OF pc;');
     expect(updateFunction).toContain("v_current.document_status = 'approved'");
     expect(updateFunction).toContain("p_expected_lock_version <> v_current.lock_version");

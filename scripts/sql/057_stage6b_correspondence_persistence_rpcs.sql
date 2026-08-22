@@ -311,15 +311,15 @@ END;
 $$;
 
 REVOKE ALL ON FUNCTION public.create_project_correspondence_draft(uuid, uuid, text, text, text, text, date, text, text, text, text) FROM PUBLIC;
-REVOKE ALL ON FUNCTION public.update_project_correspondence_draft(uuid, integer, text, text, date, text, text) FROM PUBLIC;
+REVOKE ALL ON FUNCTION public.update_project_correspondence_draft(uuid, integer, text, text, text, date, text) FROM PUBLIC;
 REVOKE ALL ON FUNCTION public.approve_project_correspondence(uuid, integer) FROM PUBLIC;
 
 REVOKE ALL ON FUNCTION public.create_project_correspondence_draft(uuid, uuid, text, text, text, text, date, text, text, text, text) FROM anon;
-REVOKE ALL ON FUNCTION public.update_project_correspondence_draft(uuid, integer, text, text, date, text, text) FROM anon;
+REVOKE ALL ON FUNCTION public.update_project_correspondence_draft(uuid, integer, text, text, text, date, text) FROM anon;
 REVOKE ALL ON FUNCTION public.approve_project_correspondence(uuid, integer) FROM anon;
 
 GRANT EXECUTE ON FUNCTION public.create_project_correspondence_draft(uuid, uuid, text, text, text, text, date, text, text, text, text) TO authenticated;
-GRANT EXECUTE ON FUNCTION public.update_project_correspondence_draft(uuid, integer, text, text, date, text, text) TO authenticated;
+GRANT EXECUTE ON FUNCTION public.update_project_correspondence_draft(uuid, integer, text, text, text, date, text) TO authenticated;
 GRANT EXECUTE ON FUNCTION public.approve_project_correspondence(uuid, integer) TO authenticated;
 
 COMMENT ON COLUMN public.project_correspondences.lock_version IS
@@ -331,7 +331,7 @@ COMMENT ON COLUMN public.project_correspondences.approved_at IS
 COMMENT ON FUNCTION public.create_project_correspondence_draft(uuid, uuid, text, text, text, text, date, text, text, text, text) IS
   'Stage 6B-2: creates an outgoing correspondence draft through server-side auth, tenant, project/client, taxonomy, and subject validation.';
 
-COMMENT ON FUNCTION public.update_project_correspondence_draft(uuid, integer, text, text, date, text, text) IS
+COMMENT ON FUNCTION public.update_project_correspondence_draft(uuid, integer, text, text, text, date, text) IS
   'Stage 6B-2: updates only editable draft content through row locking and optimistic concurrency; identity and approval fields are immutable.';
 
 COMMENT ON FUNCTION public.approve_project_correspondence(uuid, integer) IS
