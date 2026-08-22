@@ -121,7 +121,10 @@ export interface ClientRecord {
   paid_amount?: number | null;
   sales_payment_type?: SalesPaymentType | null;
   credit_balance?: number | null;
+  /** اسم عرض متوافق مع التقارير القديمة */
   assigned_engineer?: string | null;
+  /** معرف المستخدم الحقيقي من جدول users في Supabase */
+  assigned_engineer_id?: string | null;
   engineering_status?: string | null;
   engineering_notes?: string | null;
   visit_date?: string | null;
