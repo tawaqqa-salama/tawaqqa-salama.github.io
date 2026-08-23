@@ -29,8 +29,9 @@ describe('Stage 6B-3D2 approval UI orchestration', () => {
     expect(modal).toContain('approveStage6DocumentsAndTransition({');
     expect(modal).toContain('stage6ApprovalInFlightRef.current');
     expect(workspace).not.toContain('approveStage6DocumentsAndTransition');
-    expect(workspace).not.toContain('<button');
-    expect(workspace).not.toMatch(/\.rpc\s*\(/);
+    expect(workspace).toContain('مرفقات سجل المراسلات الجديد');
+    expect(workspace).not.toContain('finalize_project_correspondence_attachment');
+    expect(workspace).not.toContain('request_delete_project_correspondence_attachment');
     expect(modal).toContain('disabled={saving || blockers.length > 0}');
     expect(modal).toContain("{saving ? 'جاري الحفظ...' : approveButtonLabel}");
     expect(modal).toContain('className="flex flex-wrap gap-2"');
