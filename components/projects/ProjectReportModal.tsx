@@ -78,6 +78,11 @@ import {
   loadEngineeringLive,
 } from '@/lib/projects/engineering-live-store';
 import {
+  saveStage6SingletonDocument,
+  stage6BridgeErrorMessage,
+  type Stage6SingletonDocumentType,
+} from '@/lib/projects/stage6-singleton-document-bridge';
+import {
   hydrateEngineeringWithStage4,
   loadStage4LiveBundle,
 } from '@/lib/projects/stage4-live-store';
@@ -116,6 +121,7 @@ export default function ProjectReportModal({
   const [techReportChapter, setTechReportChapter] = useState<TechReportChapterId>('facility');
   const [data, setData] = useState<ProjectEngineeringData | null>(null);
   const [saving, setSaving] = useState(false);
+  const [stage6WorkspaceRevision, setStage6WorkspaceRevision] = useState(0);
   const [message, setMessage] = useState<string | null>(null);
   const [company, setCompany] = useState<CompanyProfile | null>(null);
   const [invoicePromptOpen, setInvoicePromptOpen] = useState(false);
@@ -334,6 +340,58 @@ export default function ProjectReportModal({
     );
     requestAnimationFrame(() => onUpdated());
     return true;
+  };
+
+  /**
+   * The two approved Stage 6 forms save only through Migration 060. Deliberately
+   * do not call save(), saveReportData(), or saveEngineeringLive() here: that
+   * would create a browser-side dual write beside the atomic server bridge.
+   */
+  const saveStage6Document = async (
+    type: Stage6SingletonDocumentType,
+    document: ProjectEngineeringData['engineering_delivery'] | ProjectEngineeringData['cd_cover_letter'],
+    successText: string
+  ): Promise<boolean> => {
+    setSaving(true);
+    setMessage(null);
+    try {
+      const result =
+        type === 'engineering_delivery'
+          ? await saveStage6SingletonDocument({
+              clientId: client.id,
+              identity: client.primary_engineering_project_identity,
+              type,
+              document: document as ProjectEngineeringData['engineering_delivery'],
+            })
+          : await saveStage6SingletonDocument({
+              clientId: client.id,
+              identity: client.primary_engineering_project_identity,
+              type,
+              document: document as ProjectEngineeringData['cd_cover_letter'],
+            });
+
+      if (!result.ok) {
+        setMessage(stage6BridgeErrorMessage(result.code));
+        return false;
+      }
+
+      const canonical = await loadEngineeringLive(client.id);
+      if (!canonical) {
+        setMessage('تم الحفظ على الخادم، لكن تعذر تحديث البيانات المعروضة. أعد تحميل ملف المشروع قبل متابعة العمل.');
+        return false;
+      }
+
+      setData(canonical);
+      setStage6WorkspaceRevision((revision) => revision + 1);
+      setMessage(successText);
+      requestAnimationFrame(() => onUpdated());
+      return true;
+    } catch {
+      setMessage('تعذر تحديث حالة النموذج بعد الحفظ. بقيت بيانات النموذج في الشاشة؛ أعد تحميل ملف المشروع قبل متابعة العمل.');
+      return false;
+    } finally {
+      setSaving(false);
+    }
   };
 
   const patch = (partial: Partial<ProjectEngineeringData>) => setData({ ...data, ...partial });
@@ -1318,7 +1376,7 @@ export default function ProjectReportModal({
                     يرث رقم الدراسة، المالك، المساحة، تصنيف الإشغال، ومرفقات المخططات/الحسابات من المراحل 1 و2 و4.
                   </div>
                   <ReadOnlyCorrespondenceWorkspace
-                    key={`${client.id}-${client.primary_engineering_project_identity?.projectId || 'identity-unavailable'}`}
+                    key={`${client.id}-${client.primary_engineering_project_identity?.projectId || 'identity-unavailable'}-${stage6WorkspaceRevision}`}
                     client={client}
                     data={data}
                   />
@@ -1328,7 +1386,13 @@ export default function ProjectReportModal({
                     company={company}
                     saving={saving}
                     onChange={(engineering_delivery) => patch({ engineering_delivery })}
-                    onSave={() => save(data, 'تم حفظ خطاب تسليم الدراسة.', { stayOpen: true })}
+                    onSave={() =>
+                      void saveStage6Document(
+                        'engineering_delivery',
+                        data.engineering_delivery,
+                        'تم حفظ خطاب تسليم الدراسة.'
+                      )
+                    }
                   />
                   <CdCoverLetterSection
                     client={client}
@@ -1336,18 +1400,13 @@ export default function ProjectReportModal({
                     company={company}
                     saving={saving}
                     onChange={(cd_cover_letter) => patch({ cd_cover_letter })}
-                    onSave={async (letter) => {
-                      const next = letter ? { ...data, cd_cover_letter: letter } : data;
-                      if (letter?.outgoing_number && !next.technical_report.outgoing_number) {
-                        next.technical_report = {
-                          ...next.technical_report,
-                          outgoing_number: letter.outgoing_number,
-                        };
-                      }
-                      await save(next, 'تم حفظ / إصدار خطاب تسليم الدفاع المدني.', {
-                        stayOpen: true,
-                      });
-                    }}
+                    onSave={async (letter) =>
+                      saveStage6Document(
+                        'cd_cover_letter',
+                        letter || data.cd_cover_letter,
+                        'تم حفظ / إصدار خطاب تسليم الدفاع المدني.'
+                      )
+                    }
                   />
                 </div>
               )}
@@ -1405,6 +1464,10 @@ export default function ProjectReportModal({
                     type="button"
                     disabled={saving}
                     onClick={() => {
+                      if (activeStage === 'transmittals') {
+                        setMessage('استخدم زر «حفظ بيانات الخطاب» داخل كل نموذج؛ الحفظ في هذه المرحلة يمر عبر العقد الخادمي المخصص فقط.');
+                        return;
+                      }
                       if (activeStage === 'visits_supervision') {
                         void save(
                           data,

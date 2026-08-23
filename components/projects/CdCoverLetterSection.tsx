@@ -22,7 +22,7 @@ type Props = {
   company: CompanyProfile | null;
   saving: boolean;
   onChange: (letter: CdCoverLetterReport) => void;
-  onSave: (letter?: CdCoverLetterReport) => void | Promise<void>;
+  onSave: (letter?: CdCoverLetterReport) => boolean | Promise<boolean>;
 };
 
 export default function CdCoverLetterSection({
@@ -56,7 +56,8 @@ export default function CdCoverLetterSection({
       letter_date: letter.letter_date || new Date().toISOString().slice(0, 10),
     });
     onChange(ready);
-    await onSave(ready);
+    const saved = await onSave(ready);
+    if (!saved) return;
     printCdCoverLetter({
       client,
       data: { ...data, cd_cover_letter: ready },
