@@ -21,6 +21,7 @@ import {
 import { EMPTY_FIRE_PROTECTION_DESIGN } from '@/lib/types/fire-protection-design';
 import EngineeringDeliverySection from '@/components/projects/EngineeringDeliverySection';
 import CdCoverLetterSection from '@/components/projects/CdCoverLetterSection';
+import ReadOnlyCorrespondenceWorkspace from '@/components/projects/ReadOnlyCorrespondenceWorkspace';
 import FinalInspectionSection from '@/components/projects/FinalInspectionSection';
 import CompletionCertificateSection from '@/components/projects/CompletionCertificateSection';
 import FieldVisitObservationsSection from '@/components/projects/FieldVisitObservationsSection';
@@ -1316,6 +1317,11 @@ export default function ProjectReportModal({
                   <div className="rounded-xl border border-emerald-100 bg-emerald-50 px-3 py-2 text-xs text-emerald-950">
                     يرث رقم الدراسة، المالك، المساحة، تصنيف الإشغال، ومرفقات المخططات/الحسابات من المراحل 1 و2 و4.
                   </div>
+                  <ReadOnlyCorrespondenceWorkspace
+                    key={`${client.id}-${client.primary_engineering_project_identity?.projectId || 'identity-unavailable'}`}
+                    client={client}
+                    data={data}
+                  />
                   <EngineeringDeliverySection
                     client={client}
                     data={data}
