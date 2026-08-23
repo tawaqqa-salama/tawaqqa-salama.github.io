@@ -65,7 +65,7 @@ describe('Stage 6B-3A read-only correspondence workspace', () => {
 
     expect(fromMock).toHaveBeenCalledWith('project_correspondences');
     expect(query.select).toHaveBeenCalledWith(
-      'correspondence_type, document_status, subject, reference_number, correspondence_date, recipient_name, responsible_engineer_name, responsible_manager_name, approved_at, updated_at'
+      'id, correspondence_type, document_status, subject, reference_number, correspondence_date, recipient_name, responsible_engineer_name, responsible_manager_name, approved_at, updated_at'
     );
     expect(query.eq).toHaveBeenCalledWith('project_id', identity.projectId);
     expect(query.eq).toHaveBeenCalledWith('client_id', identity.clientId);
@@ -77,6 +77,7 @@ describe('Stage 6B-3A read-only correspondence workspace', () => {
     const query = correspondenceQuery({
       data: [
         {
+          id: '11111111-1111-4111-8111-111111111111',
           correspondence_type: 'engineering_delivery',
           document_status: 'draft',
           subject: 'خطاب تسليم أولي',
@@ -89,6 +90,7 @@ describe('Stage 6B-3A read-only correspondence workspace', () => {
           updated_at: '2026-08-01T08:00:00Z',
         },
         {
+          id: '22222222-2222-4222-8222-222222222222',
           correspondence_type: 'cd_cover_letter',
           document_status: 'preparing',
           subject: 'خطاب تغطية',
@@ -101,6 +103,7 @@ describe('Stage 6B-3A read-only correspondence workspace', () => {
           updated_at: '2026-08-02T08:00:00Z',
         },
         {
+          id: '33333333-3333-4333-8333-333333333333',
           correspondence_type: 'engineering_delivery',
           document_status: 'ready',
           subject: 'خطاب جاهز',
@@ -113,6 +116,7 @@ describe('Stage 6B-3A read-only correspondence workspace', () => {
           updated_at: '2026-08-03T08:00:00Z',
         },
         {
+          id: '44444444-4444-4444-8444-444444444444',
           correspondence_type: 'cd_cover_letter',
           document_status: 'approved',
           subject: 'خطاب معتمد',
@@ -220,7 +224,8 @@ describe('Stage 6B-3A read-only correspondence workspace', () => {
     expect(component).toContain('setQuery');
     expect(component).not.toContain('record.body');
     expect(component).not.toContain('onSave');
-    expect(component).not.toContain('<button');
+    expect(component).toContain('مرفقات سجل المراسلات الجديد');
+    expect(component).not.toContain('approveStage6DocumentsAndTransition');
     expect(component).toContain('grid-cols-1 gap-3 sm:grid-cols-3');
     expect(component).toContain('sm:grid-cols-2 lg:grid-cols-4');
     expect(component).toContain('sm:grid-cols-2 lg:grid-cols-3');
@@ -238,12 +243,15 @@ describe('Stage 6B-3A read-only correspondence workspace', () => {
     const stage6Schema = read('scripts/sql/056_stage6b_project_correspondences_schema.sql');
     const stage6Rpcs = read('scripts/sql/057_stage6b_correspondence_persistence_rpcs.sql');
 
+    expect(loader).not.toMatch(/\.rpc\s*\(/);
+    expect(loader).not.toMatch(/\.(insert|update|delete|upsert)\s*\(/);
     for (const source of [loader, component]) {
-      expect(source).not.toMatch(/\.rpc\s*\(/);
-      expect(source).not.toMatch(/\.(insert|update|delete|upsert)\s*\(/);
       expect(source).not.toContain('ensure_or_resolve_engineering_project_for_client');
       expect(source).not.toContain('saveReportData');
       expect(source).not.toContain('transitionProjectEngineeringStage');
+      expect(source).not.toContain('approveStage6DocumentsAndTransition');
+      expect(source).not.toContain('finalize_project_correspondence_attachment');
+      expect(source).not.toContain('request_delete_project_correspondence_attachment');
     }
     expect(modal.indexOf('<ReadOnlyCorrespondenceWorkspace')).toBeLessThan(modal.indexOf('<EngineeringDeliverySection'));
     expect(stage6Gate).toContain("v_target NOT IN ('supervision_visits', 'transmittals', 'final_report')");

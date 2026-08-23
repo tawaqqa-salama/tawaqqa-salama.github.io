@@ -128,11 +128,12 @@ describe('Stage 6B-3D1 server approval orchestration contract', () => {
     expect(migration).not.toContain('GRANT DELETE ON public.project_correspondences TO authenticated');
   });
 
-  it('keeps all approved editing surfaces, PDF/templates, and Workspace behavior frozen for D1', () => {
+  it('keeps all approved editing surfaces, PDF/templates, and Workspace approval behavior frozen for D1', () => {
     expect(modal).toContain('EngineeringDeliverySection');
     expect(workspace).not.toContain('approve_stage6_documents_and_transition');
-    expect(workspace).not.toContain('<button');
-    expect(workspace).not.toMatch(/\.rpc\s*\(/);
+    expect(workspace).toContain('مرفقات سجل المراسلات الجديد');
+    expect(workspace).not.toContain('finalize_project_correspondence_attachment');
+    expect(workspace).not.toContain('request_delete_project_correspondence_attachment');
     expect(deliveryForm).toContain('حفظ بيانات الخطاب');
     expect(cdForm).toContain('حفظ بيانات الخطاب');
     expect(deliveryPrint).not.toContain('projectCode');

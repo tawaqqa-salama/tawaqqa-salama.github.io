@@ -212,9 +212,11 @@ describe('Stage 6B-3C2 approved forms bridge integration', () => {
     expect(modal).toContain('setStage6WorkspaceRevision((revision) => revision + 1);');
     expect(modal).toContain("if (activeStage === 'transmittals') {");
     expect(modal).toContain('العقد الخادمي المخصص فقط');
-    expect(workspace).not.toContain('<button');
+    expect(workspace).toContain('مرفقات سجل المراسلات الجديد');
     expect(workspace).not.toContain('onSave');
-    expect(workspace).not.toMatch(/\.rpc\s*\(/);
+    expect(workspace).not.toContain('approveStage6DocumentsAndTransition');
+    expect(workspace).not.toContain('finalize_project_correspondence_attachment');
+    expect(workspace).not.toContain('request_delete_project_correspondence_attachment');
   });
 
   it('preserves the approved editing surfaces, document templates, and Stage 6A authority while guarding print after save success', () => {

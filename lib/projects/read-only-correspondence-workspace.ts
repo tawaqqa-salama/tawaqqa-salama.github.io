@@ -19,6 +19,8 @@ export type RelationalCorrespondenceStatus = keyof typeof RELATIONAL_CORRESPONDE
 export type RelationalCorrespondenceType = keyof typeof RELATIONAL_CORRESPONDENCE_TYPE_LABELS;
 
 export type ReadOnlyCorrespondenceRecord = {
+  /** Internal correspondence handle for attachment metadata RPCs; never render it. */
+  id: string;
   correspondenceType: RelationalCorrespondenceType;
   documentStatus: RelationalCorrespondenceStatus;
   subject: string;
@@ -59,6 +61,7 @@ export type LegacyStage6DocumentSummary = {
 };
 
 type CorrespondenceRow = {
+  id: string;
   correspondence_type: string;
   document_status: string;
   subject: string;
@@ -90,7 +93,11 @@ function normalizeRecord(row: CorrespondenceRow): ReadOnlyCorrespondenceRecord |
     return null;
   }
 
+  const id = text(row.id);
+  if (!id) return null;
+
   return {
+    id,
     correspondenceType: row.correspondence_type,
     documentStatus: row.document_status,
     subject: text(row.subject) || '—',
@@ -127,7 +134,7 @@ export async function loadReadOnlyCorrespondenceWorkspace(
     const { data, error } = await supabase
       .from('project_correspondences')
       .select(
-        'correspondence_type, document_status, subject, reference_number, correspondence_date, recipient_name, responsible_engineer_name, responsible_manager_name, approved_at, updated_at'
+        'id, correspondence_type, document_status, subject, reference_number, correspondence_date, recipient_name, responsible_engineer_name, responsible_manager_name, approved_at, updated_at'
       )
       .eq('project_id', identity.projectId)
       .eq('client_id', normalizedClientId)

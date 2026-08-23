@@ -128,10 +128,12 @@ describe('Stage 6B-3C1 full document singleton bridge contract', () => {
     expect(migration).not.toContain('GRANT DELETE ON public.project_correspondences TO authenticated');
   });
 
-  it('does not alter approved forms, workspace read-only behavior, templates, Storage, or later-stage scope', () => {
-    expect(workspace).not.toContain('<button');
+  it('does not alter approved forms, workspace correspondence semantics, templates, Storage policy, or later-stage scope', () => {
+    expect(workspace).toContain('مرفقات سجل المراسلات الجديد');
     expect(workspace).not.toContain('onSave');
-    expect(workspace).not.toMatch(/\.rpc\s*\(/);
+    expect(workspace).not.toContain('approveStage6DocumentsAndTransition');
+    expect(workspace).not.toContain('finalize_project_correspondence_attachment');
+    expect(workspace).not.toContain('request_delete_project_correspondence_attachment');
     expect(modal.indexOf('<ReadOnlyCorrespondenceWorkspace')).toBeLessThan(modal.indexOf('<EngineeringDeliverySection'));
     expect(deliveryForm).toContain('حفظ بيانات الخطاب');
     expect(cdForm).toContain('حفظ بيانات الخطاب');
