@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import Link from 'next/link';
 import { seedBuildingPlanFromClient } from '@/lib/projects/building-plan';
 import { seedSpaceSafetyFromClient } from '@/lib/projects/design-center/space-safety';
@@ -83,6 +83,11 @@ import {
   type Stage6SingletonDocumentType,
 } from '@/lib/projects/stage6-singleton-document-bridge';
 import {
+  approveStage6DocumentsAndTransition,
+  stage6ApprovalErrorMessage,
+  type Stage6ApprovalErrorCode,
+} from '@/lib/projects/stage6-approval-orchestration';
+import {
   hydrateEngineeringWithStage4,
   loadStage4LiveBundle,
 } from '@/lib/projects/stage4-live-store';
@@ -122,6 +127,8 @@ export default function ProjectReportModal({
   const [data, setData] = useState<ProjectEngineeringData | null>(null);
   const [saving, setSaving] = useState(false);
   const [stage6WorkspaceRevision, setStage6WorkspaceRevision] = useState(0);
+  const [stage6ApprovalReloadRequired, setStage6ApprovalReloadRequired] = useState(false);
+  const stage6ApprovalInFlightRef = useRef(false);
   const [message, setMessage] = useState<string | null>(null);
   const [company, setCompany] = useState<CompanyProfile | null>(null);
   const [invoicePromptOpen, setInvoicePromptOpen] = useState(false);
@@ -394,6 +401,16 @@ export default function ProjectReportModal({
     }
   };
 
+  const reloadStage6CanonicalState = async (): Promise<ProjectEngineeringData | null> => {
+    const canonical = await loadEngineeringLive(client.id);
+    if (!canonical) return null;
+
+    setData(canonical);
+    setActiveStage(resolveActiveStage(client, canonical, null));
+    setStage6WorkspaceRevision((revision) => revision + 1);
+    return canonical;
+  };
+
   const patch = (partial: Partial<ProjectEngineeringData>) => setData({ ...data, ...partial });
 
   const selectStage = (stageId: WorkflowStageId) => {
@@ -471,33 +488,74 @@ export default function ProjectReportModal({
       }
     }
 
-    // Stage 6A: the server validates only the canonical locked payload, marks
-    // the two singleton documents approved, and advances the engineering stage
-    // atomically. Never save browser-held data after this RPC succeeds.
+    // Stage 6D2: preserve the existing button and Stage 6A UX blockers, but
+    // replace its only browser mutation boundary with Migration 061. 061 calls
+    // 055 internally; the browser must never call 055, 057, or a generic save
+    // alongside this approval path.
     if (activeStage === 'transmittals') {
+      if (stage6ApprovalReloadRequired) {
+        setMessage('تعذر تأكيد حالة الخادم السابقة. أعد تحميل ملف المشروع وراجع الحالة الكانونية قبل اعتماد المرحلة.');
+        return;
+      }
+      if (stage6ApprovalInFlightRef.current) return;
+
+      stage6ApprovalInFlightRef.current = true;
       setSaving(true);
+      setMessage(null);
       try {
-        const transition = await transitionProjectEngineeringStage(client.id, 'final_report');
-        if (!transition.ok) {
-          setMessage(
-            'تعذر اعتماد المرحلة: ' +
-              (transition.blockers.map(workflowBlockerMessage).join(' — ') || transition.message)
-          );
+        const approval = await approveStage6DocumentsAndTransition({
+          clientId: client.id,
+          identity: client.primary_engineering_project_identity,
+        });
+
+        if (!approval.ok) {
+          const mustReload: Stage6ApprovalErrorCode[] = [
+            'CANONICAL_STALE_REVISION',
+            'CORRESPONDENCE_STALE_VERSION',
+            'CORRESPONDENCE_SINGLETON_CONFLICT',
+            'NETWORK_OR_RPC_FAILURE',
+          ];
+          const baseMessage = stage6ApprovalErrorMessage(approval.code);
+
+          if (mustReload.includes(approval.code)) {
+            const canonical = await reloadStage6CanonicalState();
+            if (canonical) {
+              setStage6ApprovalReloadRequired(false);
+              setMessage(`${baseMessage} تم إعادة تحميل الحالة الكانونية الحالية للمراجعة؛ لم يُنفذ أي retry تلقائي.`);
+            } else {
+              setStage6ApprovalReloadRequired(true);
+              setMessage(`${baseMessage} تعذر إعادة تحميل الحالة الكانونية؛ أعد تحميل ملف المشروع قبل محاولة اعتماد جديدة.`);
+            }
+            return;
+          }
+
+          setMessage(baseMessage);
           return;
         }
-        const canonical = await loadEngineeringLive(client.id);
+
+        const canonical = await reloadStage6CanonicalState();
         if (!canonical) {
-          throw new Error('اكتمل انتقال المرحلة على الخادم لكن تعذر إعادة تحميل الحالة الكانونية.');
+          setStage6ApprovalReloadRequired(true);
+          setMessage('نجحت معاملة الاعتماد على الخادم، لكن تعذر تحميل الحالة الكانونية. أعد تحميل ملف المشروع قبل متابعة العمل.');
+          return;
         }
-        setData(canonical);
-        setActiveStage('final_report');
+
+        setStage6ApprovalReloadRequired(false);
         setMessage('تم اعتماد المرحلة والانتقال إلى: التقرير النهائي');
         requestAnimationFrame(() => onUpdated());
         return;
-      } catch (error) {
-        setMessage(error instanceof Error ? error.message : 'تعذر اعتماد مرحلة المشروع على الخادم');
+      } catch {
+        const canonical = await reloadStage6CanonicalState();
+        if (canonical) {
+          setStage6ApprovalReloadRequired(false);
+          setMessage('تعذر تأكيد نتيجة الاتصال بخدمة الاعتماد. تم إعادة تحميل الحالة الكانونية للمراجعة؛ لم يتم إجراء retry تلقائي.');
+        } else {
+          setStage6ApprovalReloadRequired(true);
+          setMessage('تعذر تأكيد نتيجة الاتصال بخدمة الاعتماد أو إعادة تحميل الحالة الكانونية. أعد تحميل ملف المشروع قبل محاولة اعتماد جديدة.');
+        }
         return;
       } finally {
+        stage6ApprovalInFlightRef.current = false;
         setSaving(false);
       }
     }
