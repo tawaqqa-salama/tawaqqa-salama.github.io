@@ -51,6 +51,13 @@ export interface FloorLevel {
   usages?: FloorUsage[];
 }
 
+/** هوية مشروع هندسي primary منشأة خادميًا؛ لا تُشتق من clientId ولا تُحفظ داخل payload الهندسي. */
+export interface CanonicalProjectIdentity {
+  clientId: string;
+  projectId: string;
+  projectCode: string;
+}
+
 export interface ClientRecord {
   id: string;
   created_at?: string;
@@ -131,6 +138,8 @@ export interface ClientRecord {
   visit_status?: string | null;
   inspection_checklist?: InspectionChecklistItem[] | null;
   project_engineering_data?: ProjectEngineeringData | null;
+  /** سياق read-only لملف المشروع فقط؛ يبقى route وpayload engineering معتمدين على clientId. */
+  primary_engineering_project_identity?: CanonicalProjectIdentity | null;
   final_report_status?: string | null;
   license_number?: string | null;
   license_expiry_date?: string | null;

@@ -5,6 +5,7 @@ import Link from 'next/link';
 import { useRouter, useSearchParams } from 'next/navigation';
 import dynamic from 'next/dynamic';
 import { fetchClientById } from '@/lib/data/fetchers';
+import { resolvePrimaryEngineeringProjectIdentity } from '@/lib/projects/primary-engineering-project-identity';
 import { invalidateClient, invalidateErpLists } from '@/lib/data/hooks';
 import { mergeLocalClientOverrides } from '@/lib/supabase/safe-client-write';
 import { useLanguage } from '@/lib/i18n/LanguageProvider';
@@ -51,7 +52,12 @@ function ProjectFileInner() {
           setError('تعذّر العثور على المشروع.');
           return;
         }
-        setClient(mergeLocalClientOverrides(full));
+        const merged = mergeLocalClientOverrides(full);
+        // Read an already-established canonical identity only. This must never
+        // call the ensure resolver because ordinary page viewing is non-mutating.
+        const identity = await resolvePrimaryEngineeringProjectIdentity(merged.id);
+        if (cancelled) return;
+        setClient({ ...merged, primary_engineering_project_identity: identity });
       } catch {
         if (!cancelled) {
           setClient(null);
@@ -71,7 +77,10 @@ function ProjectFileInner() {
     await invalidateErpLists();
     if (id) await invalidateClient(id);
     const full = await fetchClientById(id);
-    if (full) setClient(mergeLocalClientOverrides(full));
+    if (!full) return;
+    const merged = mergeLocalClientOverrides(full);
+    const identity = await resolvePrimaryEngineeringProjectIdentity(merged.id);
+    setClient({ ...merged, primary_engineering_project_identity: identity });
   }, [id]);
 
   if (loading) {
