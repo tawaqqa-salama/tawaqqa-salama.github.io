@@ -32,6 +32,8 @@ import type {
 } from '@/lib/types/project-reports';
 import TechnicalEvidenceManager from '@/components/projects/TechnicalEvidenceManager';
 import TechnicalRecommendationReview from '@/components/projects/TechnicalRecommendationReview';
+import FireProtectionDesignSection from '@/components/projects/FireProtectionDesignSection';
+import type { FireProtectionDesign } from '@/lib/types/fire-protection-design';
 
 const REPORT_STATUSES = ['مسودة', 'قيد الإعداد', 'مكتمل', 'معتمد'] as const;
 
@@ -53,6 +55,10 @@ type Props = {
   onPrint: () => void;
   saving: boolean;
   onPersistEvidenceMetadata: (next: TechnicalEvidenceState) => Promise<void>;
+  /** The same canonical project-level state previously rendered above this report. */
+  fireProtectionDesign: FireProtectionDesign;
+  fireProtectionHighlighted?: boolean;
+  onFireProtectionDesignChange: (next: FireProtectionDesign) => void;
   /** Preserved workflow marker; it does not control accordion visibility. */
   chapter?: TechReportChapterId;
   onChapterChange?: (chapter: TechReportChapterId) => void;
@@ -67,6 +73,9 @@ export default function TechnicalReportSection({
   onPrint,
   saving,
   onPersistEvidenceMetadata,
+  fireProtectionDesign,
+  fireProtectionHighlighted,
+  onFireProtectionDesignChange,
   chapter,
   onChapterChange,
 }: Props) {
@@ -152,6 +161,9 @@ export default function TechnicalReportSection({
                     data={data}
                     saving={saving}
                     onPersistEvidenceMetadata={onPersistEvidenceMetadata}
+                    fireProtectionDesign={fireProtectionDesign}
+                    fireProtectionHighlighted={fireProtectionHighlighted}
+                    onFireProtectionDesignChange={onFireProtectionDesignChange}
                   />
                 </div>
               ) : null}
@@ -232,6 +244,9 @@ function SectionBody({
   data,
   saving,
   onPersistEvidenceMetadata,
+  fireProtectionDesign,
+  fireProtectionHighlighted,
+  onFireProtectionDesignChange,
 }: {
   id: TechnicalReportUiSectionId;
   source: ReturnType<typeof buildTechnicalReportSourceData>;
@@ -245,13 +260,16 @@ function SectionBody({
   data: ProjectEngineeringData;
   saving: boolean;
   onPersistEvidenceMetadata: (next: TechnicalEvidenceState) => Promise<void>;
+  fireProtectionDesign: FireProtectionDesign;
+  fireProtectionHighlighted?: boolean;
+  onFireProtectionDesignChange: (next: FireProtectionDesign) => void;
 }) {
   if (id === 'project_summary') return <ProjectSummary source={source} setOverride={setOverride} clearOverride={clearOverride} />;
   if (id === 'occupancy_spaces') return <OccupancySpaces source={source} setOverride={setOverride} clearOverride={clearOverride} />;
   if (id === 'structural') return <Structural source={source} setOverride={setOverride} clearOverride={clearOverride} />;
   if (id === 'egress') return <Egress source={source} report={report} setOverride={setOverride} clearOverride={clearOverride} updateItems={updateItems} />;
   if (id === 'civil_defense') return <CivilDefense source={source} report={report} patch={patch} />;
-  if (id === 'fire_fighting') return <SafetySystems source={source} report={report} setOverride={setOverride} clearOverride={clearOverride} updateItems={updateItems} kind="fire" />;
+  if (id === 'fire_fighting') return <div className="space-y-5"><FireProtectionDesignSection design={fireProtectionDesign} highlighted={fireProtectionHighlighted} onChange={onFireProtectionDesignChange} /><SafetySystems source={source} report={report} setOverride={setOverride} clearOverride={clearOverride} updateItems={updateItems} kind="fire" /></div>;
   if (id === 'alarm_evacuation') return <SafetySystems source={source} report={report} setOverride={setOverride} clearOverride={clearOverride} updateItems={updateItems} kind="alarm" />;
   if (id === 'electrical') return <Electrical source={source} report={report} patch={patch} />;
   if (id === 'mechanical') return <Mechanical report={report} updateItems={updateItems} />;

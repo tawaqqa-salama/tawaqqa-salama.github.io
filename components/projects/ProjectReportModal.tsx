@@ -11,7 +11,6 @@ import {
   seedProjectEngineeringFromClient,
 } from '@/lib/business/project-reports';
 import TechnicalReportSection from '@/components/projects/TechnicalReportSection';
-import FireProtectionDesignSection from '@/components/projects/FireProtectionDesignSection';
 import ComplianceMatrixPanel from '@/components/projects/ComplianceMatrixPanel';
 import { printTechnicalReport } from '@/components/projects/TechnicalReportPrint';
 import {
@@ -862,17 +861,6 @@ export default function ProjectReportModal({
                       تُحدَّث تلقائياً عند إعادة إصدار التقرير.
                     </div>
                   ) : null}
-                  <FireProtectionDesignSection
-                    design={mergeFireProtectionDesign(
-                      data.fire_protection_design || EMPTY_FIRE_PROTECTION_DESIGN
-                    )}
-                    highlighted={shouldUseAdminUcReport({
-                      client,
-                      report: data.technical_report,
-                      engineeringData: data,
-                    })}
-                    onChange={(fire_protection_design) => patch({ fire_protection_design })}
-                  />
                   <ComplianceMatrixPanel
                     client={client}
                     data={data}
@@ -892,6 +880,15 @@ export default function ProjectReportModal({
                         stayOpen: true,
                       })
                     }
+                    fireProtectionDesign={mergeFireProtectionDesign(
+                      data.fire_protection_design || EMPTY_FIRE_PROTECTION_DESIGN
+                    )}
+                    fireProtectionHighlighted={shouldUseAdminUcReport({
+                      client,
+                      report: data.technical_report,
+                      engineeringData: data,
+                    })}
+                    onFireProtectionDesignChange={(fire_protection_design) => patch({ fire_protection_design })}
                     onPersistEvidenceMetadata={async (evidence) => {
                       const ok = await save(
                         {
