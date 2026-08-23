@@ -129,7 +129,7 @@ describe('Stage 6B-3D1 server approval orchestration contract', () => {
   });
 
   it('keeps all approved editing surfaces, PDF/templates, and Workspace behavior frozen for D1', () => {
-    expect(modal).not.toContain('approve_stage6_documents_and_transition');
+    expect(modal).toContain('EngineeringDeliverySection');
     expect(workspace).not.toContain('approve_stage6_documents_and_transition');
     expect(workspace).not.toContain('<button');
     expect(workspace).not.toMatch(/\.rpc\s*\(/);

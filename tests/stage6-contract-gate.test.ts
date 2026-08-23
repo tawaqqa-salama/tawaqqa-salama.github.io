@@ -176,7 +176,7 @@ describe('Stage 6A singleton contract and server transition gate', () => {
     expect(wrapper).toContain("'supervision_visits' | 'transmittals' | 'final_report'");
     expect(wrapper).toContain("STAGE6_ENGINEERING_DELIVERY_INCOMPLETE");
     expect(wrapper).toContain("STAGE6_CD_COVER_LETTER_INCOMPLETE");
-    expect(modal).toContain("transitionProjectEngineeringStage(client.id, 'final_report')");
+    expect(modal).toContain('approveStage6DocumentsAndTransition({');
     expect(modal).toContain('const canonical = await loadEngineeringLive(client.id);');
     expect(migration).toContain("v_target NOT IN ('supervision_visits', 'transmittals', 'final_report')");
     expect(migration).toContain("IF v_target = 'final_report' THEN");
