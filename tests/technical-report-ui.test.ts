@@ -48,11 +48,16 @@ describe('technical report UI reorganization', () => {
     expect(legacy.source.floors[0].spaces[0].occupancy.value).toBe('B');
   });
 
-  it('implements mobile-first cards and does not import PDF or hydraulic modules into the reorganized component', () => {
+  it('implements mobile-first cards and renders the existing hydraulic instance inside fire-fighting without importing PDF output', () => {
     const component = readFileSync('components/projects/TechnicalReportSection.tsx', 'utf8');
+    const modal = readFileSync('components/projects/ProjectReportModal.tsx', 'utf8');
     expect(component).toContain('grid-cols-1');
     expect(component).toContain('sm:grid-cols-2');
-    expect(component).not.toContain('FireProtectionDesignSection');
+    expect(component).toContain("if (id === 'fire_fighting')");
+    expect(component).toContain('<FireProtectionDesignSection');
+    expect(component).toContain('fireProtectionDesign');
     expect(component).not.toContain('TechnicalReportPrint');
+    expect(modal).not.toContain('<FireProtectionDesignSection');
+    expect(modal).toContain('onFireProtectionDesignChange={(fire_protection_design) => patch({ fire_protection_design })}');
   });
 });
