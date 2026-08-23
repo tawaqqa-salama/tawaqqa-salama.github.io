@@ -2,3 +2,6 @@ project_id = "ezmdkwgziyencejfevso"
 
 [functions.building-permit-ocr]
 verify_jwt = true
+
+[functions.project-correspondence-attachment-broker]
+verify_jwt = true
