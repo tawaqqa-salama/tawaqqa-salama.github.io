@@ -105,16 +105,23 @@ function collectSafeBreaks(body: HTMLElement, canvasWidth: number, pageCanvasHei
     '.official-figure-row',
     '.official-approvals',
     '.official-signature-box',
+    '.cover',
+    '.toc-block',
+    '.chapter',
+    '.tbl',
+    '.attachments-section',
     '.keep',
   ].join(',');
   const safeBreaks = Array.from(body.querySelectorAll<HTMLElement>(safeSelectors))
     .flatMap((element) => {
       const rect = element.getBoundingClientRect();
-      const tableGuard = element.matches('.official-table-wrap') ? Math.round(12 * scale) : 0;
+      const tableGuard = element.matches('.official-table-wrap, .tbl') ? Math.round(14 * scale) : 0;
       return [toCanvasPoint(rect.top) - tableGuard, toCanvasPoint(rect.bottom)];
     })
     .filter((point) => point > 0 && point < canvasWidth * 150);
-  const forcedBreaks = Array.from(body.querySelectorAll<HTMLElement>('.official-cover, .official-toc-page, .official-approvals'))
+  const forcedBreaks = Array.from(
+    body.querySelectorAll<HTMLElement>('.official-cover, .official-toc-page, .official-approvals, .cover, .toc-block')
+  )
     .map((element) => toCanvasPoint(element.getBoundingClientRect().bottom))
     .filter((point) => point > 0 && point < canvasWidth * 150);
 

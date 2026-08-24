@@ -3,7 +3,6 @@ import type { ClientRecord } from '@/lib/types/client';
 import type { ProjectEngineeringData, TechnicalReport } from '@/lib/types/project-reports';
 import { generateAdminUcReport } from '@/lib/projects/admin-uc-report/generate';
 import { buildAdminUcReportHtml } from '@/lib/projects/admin-uc-report/template';
-import { appendComplianceMatrixToReportHtml } from '@/lib/projects/compliance';
 import type { DocumentPreviewPayload } from '@/lib/print/document-preview';
 
 export type AdminUcTechnicalReportParams = {
@@ -13,7 +12,11 @@ export type AdminUcTechnicalReportParams = {
   engineeringData?: ProjectEngineeringData | null;
 };
 
-/** يبني HTML التقرير الإداري نفسه لاستعمال المعاينة أو الطباعة أو تنزيل PDF. */
+/**
+ * يبني وثيقة التقرير الرسمي نفسها لاستعمال المعاينة أو الطباعة أو تنزيل PDF.
+ * تشخيصات المطابقة التفصيلية تبقى داخل واجهة المراجعة الهندسية ولا تُلحق
+ * بتقرير العميل الرسمي؛ هذا لا يغير محرك المطابقة أو حالته أو حساباته.
+ */
 export function buildAdminUcTechnicalReportPayload(
   params: AdminUcTechnicalReportParams
 ): DocumentPreviewPayload {
@@ -23,12 +26,7 @@ export function buildAdminUcTechnicalReportPayload(
     engineeringData: params.engineeringData,
     company: params.company,
   });
-  const baseHtml = buildAdminUcReportHtml({ document, company: params.company });
-  const html = appendComplianceMatrixToReportHtml({
-    html: baseHtml,
-    client: params.client,
-    engineeringData: params.engineeringData,
-  });
+  const html = buildAdminUcReportHtml({ document, company: params.company });
   return {
     title: `التقرير الفني — مبنى إداري تحت الإنشاء — ${document.project_name}`,
     html,
