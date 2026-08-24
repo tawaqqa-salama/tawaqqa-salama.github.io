@@ -133,6 +133,10 @@ export type EngineeringStudyDocument = {
   client_code: string;
   /** Owner / client display name for cover */
   owner_name?: string;
+  /** Prepared-by name for the official approval page. */
+  prepared_by?: string;
+  /** Executive office approval name for the official approval page. */
+  executive_director?: string;
   /** Cover / page-1 project facade */
   cover_image?: EngineeringStudyImage | null;
   sections: EngineeringStudySection[];

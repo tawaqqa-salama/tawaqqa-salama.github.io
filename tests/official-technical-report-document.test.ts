@@ -21,6 +21,11 @@ function reportFixture() {
     ...EMPTY_TECHNICAL_REPORT,
     outgoing_number: 'TR-OFFICIAL-001',
     report_date: '2026-08-23',
+    safety_engineer_name: 'مهندس سلامة اختبار',
+    executive_director_name: 'مدير تنفيذي اختبار',
+    overview_text: 'نبذة كهربائية مميزة',
+    exits_items: [{ id: 'egress-note', enabled: true, notes: 'ملاحظة مخارج مميزة', selectedOptions: [], photos: [] }],
+    ventilation_items: [{ id: 'vent-note', enabled: true, notes: 'ملاحظة تهوية مميزة', selectedOptions: [], photos: [] }],
     floor_uses: [
       {
         id: 'floor-1',
@@ -81,9 +86,22 @@ function engineeringData() {
   return {
     ...EMPTY_PROJECT_ENGINEERING_DATA,
     technical_report: report,
+    building_plan: {
+      ...EMPTY_PROJECT_ENGINEERING_DATA.building_plan,
+      building_permit_number: 'PERMIT-1',
+      building_permit_date: '2026-01-20',
+      floors_description: 'وصف أدوار مميز',
+      fire_alarm_system: 'نعم',
+      sprinkler_system: 'نعم',
+      electrical_grounding: 'نعم',
+      lightning_protection: 'نعم',
+      backup_generator: 'نعم',
+    },
     fire_protection_design: {
       ...EMPTY_PROJECT_ENGINEERING_DATA.fire_protection_design,
       water_supply: { water_source: 'خزان أرضي', tank_type: 'أرضي', tank_material: 'خرسانة' },
+      egress: { metrics: [{ label: 'عدد المخارج', value: '3', note: 'مطابق للمخطط', source: 'engineer_input' }] },
+      sprinkler: { required: 'yes', system_type: 'رطب', zones_count: '2', sprinkler_type: 'معلق', k_factor: 'K80', design_pressure: '1 bar', design_flow: '200 L/min', source: 'engineer_input' },
       pump: {
         exists: 'yes',
         type: 'UL',
@@ -148,6 +166,27 @@ describe('official technical report PDF document', () => {
     expect(content).not.toContain('متطلب كودي / قاعدة');
     expect(content).not.toContain('Preliminary Engineering Check');
     expect(content).not.toContain('لم يتم إدخال القيمة');
+    expect(content).toContain('تاريخ رخصة البناء');
+    expect(content).toContain('2026-01-20');
+    expect(content).toContain('وصف أدوار مميز');
+    expect(content).toContain('نظام الإنذار وفق بيانات المخطط');
+    expect(content).toContain('نظام الرش وفق بيانات المخطط');
+    expect(content).toContain('التأريض');
+    expect(content).toContain('مانع الصواعق');
+    expect(content).toContain('المولد الاحتياطي');
+    expect(content).toContain('ملاحظة مخارج مميزة');
+    expect(content).toContain('ملاحظة تهوية مميزة');
+    expect(content).toContain('نبذة كهربائية مميزة');
+    expect(content).toContain('عدد المخارج');
+  });
+
+  it('does not synthesize fixture recommendations when a project has no approved recommendations', () => {
+    const report = { ...reportFixture(), recommendations_v2: { version: 1, items: [] } } as typeof EMPTY_TECHNICAL_REPORT;
+    const document = generateOfficialTechnicalReportDocument({ client, report, engineeringData: { ...engineeringData(), technical_report: report } });
+    const content = allDocumentText(document);
+
+    expect(content).not.toContain('توصية هندسية معتمدة مميزة رقم');
+    expect(content).not.toContain('توصية معتمدة للعرض في التقرير.');
   });
 
   it('uses a formal report structure, only final recommendations, and unique section identifiers', () => {
@@ -189,5 +228,7 @@ describe('official technical report PDF document', () => {
     expect(html).toContain('من');
     expect(html).not.toContain('GitHub Pages URL');
     expect(html).not.toContain('browser URL');
+    expect(html).toContain('مهندس سلامة اختبار');
+    expect(html).toContain('مدير تنفيذي اختبار');
   });
 });

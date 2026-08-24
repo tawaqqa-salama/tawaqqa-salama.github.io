@@ -23,6 +23,8 @@ import { resolveLifecycleMode } from '@/lib/projects/admin-uc-report/select';
 import { lifecyclePhrases, supportingStatusLabel, yesNoLabel } from '@/lib/projects/admin-uc-report/tone';
 import { getClientIdentitySnapshot } from '@/lib/projects/client-identity';
 import { buildTechnicalReportSourceData, type TechnicalReportSourceField } from '@/lib/projects/technical-report-source-data';
+import { resolvePreferredEgressMetrics, resolvePreferredHazard } from '@/lib/projects/technical-report-source-priority';
+import { manualExtinguisherTypeLabel } from '@/lib/projects/technical-report-binding-registry';
 
 export type AdminUcTocEntry = { id: string; title: string; number: number };
 
@@ -81,7 +83,15 @@ export type AdminUcDocument = {
 function sourceFieldDisplay(field: TechnicalReportSourceField | undefined): string {
   const value = field?.final_value ?? field?.value;
   if (value === null || value === undefined || value === '') return NOT_ENTERED_AR;
-  return String(value);
+  return Array.isArray(value) ? value.map(String).filter(Boolean).join('، ') || NOT_ENTERED_AR : String(value);
+}
+
+function selectedNotes(items: TechnicalReport['firefighting_items']): string[] {
+  return items
+    .filter((item) => item.enabled)
+    .flatMap((item) => [item.notes, ...item.selectedOptions])
+    .map((item) => String(item || '').trim())
+    .filter(Boolean);
 }
 
 const CORE_TOC: AdminUcTocEntry[] = [
@@ -162,6 +172,7 @@ export function generateAdminUcReport(params: {
   });
   const lifecycle = resolveLifecycleMode({ client, report });
   const phrases = lifecyclePhrases(lifecycle);
+  const spaceHazards = reportSource.floors.flatMap((floor) => floor.spaces.map((space) => sourceFieldDisplay(space.hazard_classification)));
 
   let design = mergeFireProtectionDesign(engineeringData?.fire_protection_design);
   design = {
@@ -179,7 +190,7 @@ export function generateAdminUcReport(params: {
         identity.building_area ||
         identity.land_area ||
         '',
-      hazard_class: design.occupancy.hazard_class || report.risk_class || '',
+      hazard_class: resolvePreferredHazard(design.occupancy.hazard_class || report.risk_class, spaceHazards),
     },
   };
   if (!design.review_rows.length) {
@@ -199,6 +210,12 @@ export function generateAdminUcReport(params: {
   }
 
   const tankCheck = getTankVolumeCheck(design);
+  const preferredEgressMetrics = resolvePreferredEgressMetrics(design.egress.metrics);
+  const exitsNotes = selectedNotes(report.exits_items);
+  const ventilationNotes = selectedNotes(report.ventilation_items);
+  const alarmPanelLocations = reportSource.floors.flatMap((floor) =>
+    floor.spaces.map((space) => sourceFieldDisplay(space.quantities.alarm_panel_locations)).filter((value) => value !== NOT_ENTERED_AR)
+  );
   const brand =
     company?.legal_name ||
     company?.name ||
@@ -272,6 +289,8 @@ export function generateAdminUcReport(params: {
                   engineeringData?.building_plan?.building_permit_number
               ),
             ],
+            ['تاريخ رخصة البناء', formatFactOrUnavailable(engineeringData?.building_plan?.building_permit_date)],
+            ['وصف الأدوار', formatFactOrUnavailable(engineeringData?.building_plan?.floors_description)],
           ],
         },
       ],
@@ -326,15 +345,15 @@ export function generateAdminUcReport(params: {
           kind: 'p',
           text: `يشمل القسم عدد المخارج، عروض المخارج، مسافات الهروب، اتجاه فتح الأبواب، السلالم، الممرات، والوصول إلى منطقة آمنة. ${phrases.providedVerb} هذه المتطلبات ضمن المخططات التنفيذية.`,
         },
-        design.egress.metrics.length
+        preferredEgressMetrics.length
           ? {
               kind: 'table' as const,
               caption: 'بيانات المخارج من المخطط / الإدخال',
               headers: ['البند', 'القيمة', 'الملاحظة'],
-              rows: design.egress.metrics.map((m) => [
+              rows: preferredEgressMetrics.map((m) => [
                 m.label,
                 formatDisplayOrNotEntered(m.value),
-                m.note?.trim() || '—',
+                m.note || '—',
               ]),
             }
           : {
@@ -344,6 +363,7 @@ export function generateAdminUcReport(params: {
         ...(design.egress.notes?.trim()
           ? [{ kind: 'p' as const, text: design.egress.notes.trim() }]
           : []),
+        ...exitsNotes.map((text) => ({ kind: 'p' as const, text })),
       ],
     },
     {
@@ -352,7 +372,7 @@ export function generateAdminUcReport(params: {
       title: 'وصول آليات الدفاع المدني',
       blocks: [
         { kind: 'h2', text: 'وصول آليات الإطفاء' },
-        { kind: 'p', text: phrases.accessLead },
+        { kind: 'p', text: `${phrases.accessLead} البيانات التالية موروثة من مصدر التصميم الفني للقراءة فقط، ولا ينشئ التقرير قيمًا افتراضية لها.` },
         {
           kind: 'table',
           headers: ['البند', 'القيمة'],
@@ -457,6 +477,11 @@ export function generateAdminUcReport(params: {
               VALUE_SOURCE_LABEL_AR[design.pump.pressure.source],
             ],
             [
+              'التدفق المقنن للمضخة الكهربائية',
+              formatMeasured(design.pump.rated_flow),
+              VALUE_SOURCE_LABEL_AR[design.pump.rated_flow.source],
+            ],
+            [
               'ضغط التشغيل المطلوب',
               formatMeasured(design.pump.rated_pressure),
               VALUE_SOURCE_LABEL_AR[design.pump.rated_pressure.source],
@@ -527,6 +552,8 @@ export function generateAdminUcReport(params: {
           kind: 'table',
           headers: ['البند', 'القيمة'],
           rows: [
+            ['نظام الرش وفق بيانات المخطط', formatDisplayOrNotEntered(engineeringData?.building_plan?.sprinkler_system)],
+            ['إجمالي عدد المرشات حسب المساحات', sourceFieldDisplay(reportSource.aggregates.total_sprinklers)],
             ['هل النظام مطلوب؟', yesNoLabel(design.sprinkler.required)],
             ['نوع النظام', formatDisplayOrNotEntered(design.sprinkler.system_type)],
             ['عدد المناطق', formatDisplayOrNotEntered(design.sprinkler.zones_count)],
@@ -539,7 +566,7 @@ export function generateAdminUcReport(params: {
         { kind: 'h2', text: 'Standpipe / Hose Reel' },
         {
           kind: 'p',
-          text: `${yesNoLabel(design.standpipe.required)} — ${formatDisplayOrNotEntered(design.standpipe.notes)}`,
+          text: `مصدر موروث/قراءة فقط — ${yesNoLabel(design.standpipe.required)} — ${formatDisplayOrNotEntered(design.standpipe.notes)}`,
         },
         { kind: 'h2', text: 'الطفايات' },
         design.extinguishers.length
@@ -547,7 +574,7 @@ export function generateAdminUcReport(params: {
               kind: 'table' as const,
               headers: ['نوع الطفاية', 'العدد', 'الموقع', 'القدرة'],
               rows: design.extinguishers.map((e) => [
-                formatDisplayOrNotEntered(e.type),
+                formatDisplayOrNotEntered(manualExtinguisherTypeLabel(e.type)),
                 formatDisplayOrNotEntered(e.count),
                 formatDisplayOrNotEntered(e.location),
                 formatDisplayOrNotEntered(e.rating),
@@ -573,12 +600,14 @@ export function generateAdminUcReport(params: {
           kind: 'table',
           headers: ['العنصر', 'البيان'],
           rows: [
+            ['نظام الإنذار وفق بيانات المخطط', formatDisplayOrNotEntered(engineeringData?.building_plan?.fire_alarm_system)],
             ['لوحة التحكم', formatDisplayOrNotEntered(design.fire_alarm.control_panel)],
             ['عدد لوحات الإنذار', sourceFieldDisplay(reportSource.aggregates.total_fire_alarm_panels)],
             ['كواشف الدخان', sourceFieldDisplay(reportSource.aggregates.total_smoke_detectors)],
             ['كواشف الحرارة', sourceFieldDisplay(reportSource.aggregates.total_heat_detectors)],
             ['نقاط النداء اليدوي', formatDisplayOrNotEntered(design.fire_alarm.manual_call_points)],
             ['أجراس الإنذار / أجهزة التنبيه', sourceFieldDisplay(reportSource.aggregates.total_alarm_bells)],
+            ['مواقع لوحات الإنذار', alarmPanelLocations.join('، ') || NOT_ENTERED_AR],
             ['الإنذار الصوتي', formatDisplayOrNotEntered(design.fire_alarm.voice_alarm)],
             ['الربط مع الأنظمة الأخرى', formatDisplayOrNotEntered(design.fire_alarm.integration)],
           ],
@@ -586,6 +615,7 @@ export function generateAdminUcReport(params: {
         ...(design.fire_alarm.notes?.trim()
           ? [{ kind: 'p' as const, text: design.fire_alarm.notes.trim() }]
           : []),
+        ...selectedNotes(report.alarm_items).map((text) => ({ kind: 'p' as const, text })),
       ],
     },
     {
@@ -600,6 +630,9 @@ export function generateAdminUcReport(params: {
           rows: [
             ['إنارة الطوارئ — الكمية حسب المساحات', sourceFieldDisplay(reportSource.aggregates.total_emergency_lights), 'توزيع حسب الدور والمساحة من مركز التصاميم', '—'],
             ['لوحات مخارج الطوارئ — الكمية حسب المساحات', sourceFieldDisplay(reportSource.aggregates.total_signs), 'توزيع حسب الدور والمساحة من مركز التصاميم', '—'],
+            ['التأريض', formatDisplayOrNotEntered(engineeringData?.building_plan?.electrical_grounding), 'بيانات المخطط', '—'],
+            ['مانع الصواعق', formatDisplayOrNotEntered(engineeringData?.building_plan?.lightning_protection), 'بيانات المخطط', '—'],
+            ['المولد الاحتياطي', formatDisplayOrNotEntered(engineeringData?.building_plan?.backup_generator), 'بيانات المخطط', '—'],
             ...((
             [
               ['إنارة الطوارئ — الحالة الفنية', design.supporting_systems.emergency_lighting],
@@ -617,6 +650,8 @@ export function generateAdminUcReport(params: {
           ])),
           ],
         },
+        ...ventilationNotes.map((text) => ({ kind: 'p' as const, text })),
+        ...(report.overview_text?.trim() ? [{ kind: 'p' as const, text: report.overview_text.trim() }] : []),
       ],
     },
     {
@@ -644,7 +679,7 @@ export function generateAdminUcReport(params: {
         {
           kind: 'p',
           text:
-            design.summary_text?.trim() ||
+            design.summary_text?.trim() || report.overview_text?.trim() ||
             `خلصت الدراسة إلى تحديد المدخلات التصميمية الأساسية لأنظمة السلامة في المبنى الإداري تحت الإنشاء، بما في ذلك مضخة الحريق وخزان مياه الإطفاء، مع التأكيد على ضرورة مطابقتها بالحسابات الهيدروليكية والمخططات التنفيذية المعتمدة قبل التنفيذ.`,
         },
         { kind: 'h2', text: 'أهم التوصيات' },

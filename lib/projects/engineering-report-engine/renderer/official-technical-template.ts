@@ -92,9 +92,10 @@ function toc(
   return `<section class="official-toc-page"><div class="official-page-brand"><span>${esc(companyName)}</span><strong>${text(doc.title_ar)}</strong><span>${text(doc.project_name)}</span></div><div class="official-page-rules"></div><h1>المحتويات</h1><div class="official-toc">${rows}</div></section>`;
 }
 
-function approvals(company: CompanyProfile): string {
-  const office = company.legal_name || company.name || '—';
-  return `<section class="official-approvals keep"><h2 class="official-chapter">الاعتماد والتوقيعات</h2><p class="official-paragraph">يُستكمل اعتماد التقرير وفق الصلاحيات المعتمدة للمكتب والاستشاري المسؤول.</p><div class="official-signature-grid"><div class="official-signature-box"><strong>المهندس المُعد</strong><span>الاسم: ........................................</span><span>التوقيع: .....................................</span><span>التاريخ: ......................................</span></div><div class="official-stamp">${company.stamp_url ? `<img src="${esc(company.stamp_url)}" alt="" />` : `<span>${esc(company.stamp_text || 'ختم المكتب')}</span>`}</div><div class="official-signature-box"><strong>اعتماد المكتب</strong><span>الجهة: ${text(office)}</span><span>التوقيع / الختم: ............................</span><span>التاريخ: ......................................</span></div></div></section>`;
+function approvals(doc: EngineeringStudyDocument, company: CompanyProfile): string {
+  const office = doc.executive_director || company.legal_name || company.name || '—';
+  const preparedBy = doc.prepared_by || '........................................';
+  return `<section class="official-approvals keep"><h2 class="official-chapter">الاعتماد والتوقيعات</h2><p class="official-paragraph">يُستكمل اعتماد التقرير وفق الصلاحيات المعتمدة للمكتب والاستشاري المسؤول.</p><div class="official-signature-grid"><div class="official-signature-box"><strong>المهندس المُعد</strong><span>الاسم: ${text(preparedBy)}</span><span>التوقيع: .....................................</span><span>التاريخ: ......................................</span></div><div class="official-stamp">${company.stamp_url ? `<img src="${esc(company.stamp_url)}" alt="" />` : `<span>${esc(company.stamp_text || 'ختم المكتب')}</span>`}</div><div class="official-signature-box"><strong>اعتماد المكتب</strong><span>الجهة: ${text(office)}</span><span>التوقيع / الختم: ............................</span><span>التاريخ: ......................................</span></div></div></section>`;
 }
 
 function css(doc: EngineeringStudyDocument, company: CompanyProfile): string {
@@ -145,7 +146,8 @@ function css(doc: EngineeringStudyDocument, company: CompanyProfile): string {
   .official-page-brand span:last-child { text-align:end; }
   .official-page-rules { height:2.1mm; border-top:.75mm solid #b32020; border-bottom:.6mm solid #2d2925; }
   .official-toc-page h1 { text-align:center; color:#8f1b1b; font-size:19px; margin:16mm 0 9mm; }
-  .official-toc-row { display:flex; align-items:baseline; gap:4px; margin:4px 0; }
+  .official-toc { font-size:10.2px; line-height:1.38; }
+  .official-toc-row { display:flex; align-items:baseline; gap:4px; margin:2px 0; break-inside:avoid; page-break-inside:avoid; }
   .official-toc-row em { min-width:10mm; font-weight:800; font-style:normal; text-align:end; }
   .official-toc-row span { font-weight:700; }
   .official-toc-row i { flex:1; border-bottom:1px dotted #414141; transform:translateY(-3px); }
@@ -162,7 +164,7 @@ function css(doc: EngineeringStudyDocument, company: CompanyProfile): string {
   .official-table { width:100%; table-layout:fixed; border-collapse:collapse; font-size:10px; }
   .official-table thead { display:table-header-group; }
   .official-table tr { page-break-inside:avoid; break-inside:avoid; }
-  .official-table th, .official-table td { border:1px solid #555; padding:4px 5px; overflow-wrap:anywhere; vertical-align:middle; text-align:center; }
+  .official-table th, .official-table td { border:1px solid #555; padding:4px 5px; overflow-wrap:anywhere; vertical-align:middle; text-align:center; unicode-bidi:plaintext; }
   .official-table th { background:#c8c8c8; color:#181818; font-weight:800; }
   .official-reference { margin:5px 0 8px; padding:5px 8px; border-inline-start:2px solid #5f5a55; background:#efefef; font-size:9.5px; }
   .official-reference strong { display:block; color:#171717; margin-bottom:2px; }
@@ -204,5 +206,5 @@ export function buildOfficialTechnicalReportHtml(params: {
   const { blocks, chapters } = documentToFlowBlocks(doc);
   const pageMap = estimateFlowTocPages(chapters, blocks);
   const body = blocks.map((block) => renderBlock(block, doc.locale)).join('\n');
-  return `<!DOCTYPE html><html lang="${doc.locale}" dir="${doc.locale === 'ar' ? 'rtl' : 'ltr'}"><head><meta charset="utf-8"/><title>${esc(doc.title_ar)} — ${esc(doc.project_name)}</title><style>${css(doc, company)}</style></head><body>${cover(doc, company)}${toc(doc, company, chapters, pageMap)}<main class="official-document">${body}${approvals(company)}</main></body></html>`;
+  return `<!DOCTYPE html><html lang="${doc.locale}" dir="${doc.locale === 'ar' ? 'rtl' : 'ltr'}"><head><meta charset="utf-8"/><title>${esc(doc.title_ar)} — ${esc(doc.project_name)}</title><style>${css(doc, company)}</style></head><body>${cover(doc, company)}${toc(doc, company, chapters, pageMap)}<main class="official-document">${body}${approvals(doc, company)}</main></body></html>`;
 }
