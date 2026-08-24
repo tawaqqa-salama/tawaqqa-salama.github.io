@@ -188,7 +188,7 @@ html, body {
 .p { margin: 0 0 5mm; text-align: right; line-height: 1.88; }
 .ul, .ol { margin: 0 0 6mm; padding-inline-start: 8mm; }
 .ul li, .ol li { margin: 1.5mm 0; padding-inline-start: 1.5mm; }
-.note { margin: 6mm 0 8mm; padding: 4mm 5mm; border: 1px solid #d3b56c; border-right: 4px solid #b68d2e; background: #fffaf0; color: #4f4120; font-size: 10.8pt; line-height: 1.7; }
+.note { margin: 6mm 0 8mm; padding: 4mm 5mm; border: 1px solid #d3b56c; border-right: 4px solid #b68d2e; background: #fffaf0; color: #4f4120; font-size: 11.4pt; line-height: 1.78; }
 .tbl { margin: 4mm 0 9mm; break-inside: avoid; page-break-inside: avoid; }
 .tbl-cap { margin-bottom: 3mm; color: #1f5945; font-size: 11pt; font-weight: 800; }
 table { width: 100%; border-collapse: collapse; table-layout: fixed; font-size: 10.7pt; line-height: 1.58; }
@@ -203,6 +203,8 @@ tr { break-inside: avoid; page-break-inside: avoid; }
 .chapter-water .tbl, .chapter-alarm .tbl, .chapter-suppression .tbl { margin-bottom: 10mm; }
 .chapter-water .h2, .chapter-alarm .h2, .chapter-suppression .h2 { margin-top: 11mm; }
 .chapter-water .h2 + .p { color: #395947; font-size: 11pt; }
+.chapter-summary .p, .chapter-summary .ol { font-size: 11.5pt; line-height: 1.82; }
+.chapter-summary .ol li { margin: 1.8mm 0; }
 .keep, .keep-next { break-inside: avoid; page-break-inside: avoid; }
 .keep-next { break-after: avoid; page-break-after: avoid; }
 .attachments-section { page-break-before: always; break-before: page; margin-top: 8mm; }
