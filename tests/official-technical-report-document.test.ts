@@ -183,9 +183,9 @@ describe('official technical report PDF document', () => {
     const html = buildOfficialTechnicalReportHtml({ document, company: DEFAULT_COMPANY_PROFILE });
 
     expect(html).toContain('@page { size:A4 portrait');
-    expect(html).toContain('official-running-header');
+    expect(html).toContain('@top-center');
     expect(html).toContain('TR-OFFICIAL-001');
-    expect(html).toContain('صفحة');
+    expect(html).toContain('رقم الصفحة:');
     expect(html).toContain('من');
     expect(html).not.toContain('GitHub Pages URL');
     expect(html).not.toContain('browser URL');
