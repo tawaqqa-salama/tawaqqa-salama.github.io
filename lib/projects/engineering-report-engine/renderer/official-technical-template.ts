@@ -43,29 +43,37 @@ function renderBlock(block: FlowBlock, locale: 'ar' | 'en'): string {
   }
 }
 
+function coverLocation(doc: EngineeringStudyDocument): string {
+  const projectDescription = doc.sections.find((section) => section.id === 'project_description');
+  const rows = projectDescription?.tables?.flatMap((table) => table.rows) || [];
+  const lookup = (label: string) => rows.find(([key]) => key === label)?.[1]?.trim() || '';
+  return [lookup('المدينة'), lookup('الحي'), lookup('الشارع')].filter(Boolean).join(' — ') || '—';
+}
+
 function cover(doc: EngineeringStudyDocument, company: CompanyProfile): string {
   const companyName = company.legal_name || company.name || 'توقع سلامة للاستشارات';
   const logo = company.logo_url
     ? `<img class="official-cover-logo" src="${esc(company.logo_url)}" alt="" />`
-    : `<div class="official-cover-logo-fallback">${esc(company.name || 'توقع')}</div>`;
-  const projectImage = doc.cover_image?.src
-    ? `<figure class="official-cover-image"><img src="${esc(doc.cover_image.src)}" alt="" /><figcaption>${text(doc.cover_image.caption_ar)}</figcaption></figure>`
-    : '';
+    : `<div class="official-cover-logo-fallback">توقع</div>`;
+  const location = coverLocation(doc);
   return `<section class="official-cover">
+    <div class="official-cover-grid" aria-hidden="true"></div>
+    <div class="official-cover-orbit official-cover-orbit-a" aria-hidden="true"></div>
+    <div class="official-cover-orbit official-cover-orbit-b" aria-hidden="true"></div>
     <div class="official-cover-frame">
-      <div class="official-cover-company">${logo}<div><div class="official-cover-company-name">${esc(companyName)}</div><div class="official-cover-tagline">${esc(company.tagline || 'للاستشارات الهندسية والسلامة والوقاية من الحريق')}</div></div></div>
-      <div class="official-cover-divider"></div>
-      <table class="official-cover-project"><tbody><tr><th>المشروع:</th></tr><tr><td>${text(doc.project_name)}</td></tr></tbody></table>
-      <div class="official-cover-divider"></div>
-      <div class="official-cover-title"><div>تقرير فني في أنظمة السلامة والوقاية من الحريق</div><h1>${text(doc.title_ar)}</h1><p>المالك: ${text(reportValue(doc.owner_name))}</p></div>
-      ${projectImage}
-      <div class="official-cover-divider official-cover-divider-bottom"></div>
-      <table class="official-cover-metadata"><tbody>
-        <tr><th>التاريخ</th><td>${text(reportValue(doc.report_date))}</td></tr>
-        <tr><th>رقم التقرير</th><td>${text(reportValue(doc.report_number))}</td></tr>
-        <tr><th>النسخة</th><td>01</td></tr>
-        <tr><th>الجهة الاستشارية</th><td>${text(companyName)}</td></tr>
-      </tbody></table>
+      <header class="official-cover-company">${logo}<div><div class="official-cover-company-name">${esc(companyName)}</div><div class="official-cover-tagline">${esc(company.tagline || 'منصة توقع لإدارة السلامة والوقاية من الحريق')}</div></div></header>
+      <main class="official-cover-content">
+        <div class="official-cover-eyebrow">TECHNICAL REPORT · FIRE & LIFE SAFETY</div>
+        <h1>التقرير الفني</h1>
+        <p class="official-cover-subtitle">تقرير أنظمة السلامة والوقاية من الحريق</p>
+        <div class="official-cover-accent-line"></div>
+        <table class="official-cover-project"><tbody>
+          <tr><th>اسم المشروع</th><td>${text(doc.project_name)}</td></tr>
+          <tr><th>المالك</th><td>${text(reportValue(doc.owner_name))}</td></tr>
+          <tr><th>الموقع</th><td>${text(location)}</td></tr>
+        </tbody></table>
+      </main>
+      <footer class="official-cover-metadata"><div><span>رقم التقرير</span><strong>${text(reportValue(doc.report_number))}</strong></div><div><span>التاريخ</span><strong>${text(reportValue(doc.report_date))}</strong></div><div><span>الإصدار</span><strong>01</strong></div></footer>
     </div>
   </section>`;
 }
@@ -103,28 +111,33 @@ function css(doc: EngineeringStudyDocument, company: CompanyProfile): string {
   * { box-sizing:border-box; }
   html, body { margin:0; padding:0; width:210mm; background:#f7f7f7; }
   body { color:#151515; font-family:"Noto Naskh Arabic","IBM Plex Sans Arabic",Tahoma,Arial,sans-serif; font-size:11.2px; line-height:1.85; -webkit-print-color-adjust:exact; print-color-adjust:exact; font-variant-ligatures:common-ligatures; font-feature-settings:"liga" 1,"calt" 1; }
-  .official-cover { position:relative; z-index:30; min-height:273mm; padding:0; page-break-after:always; break-after:page; display:flex; background:#efd09c; }
-  .official-cover-frame { flex:1; display:flex; flex-direction:column; min-height:249mm; margin:0; padding:13mm 14mm 11mm; text-align:center; }
-  .official-cover-company { width:92mm; min-height:39mm; background:#fff; display:flex; gap:9px; justify-content:flex-start; align-items:center; padding:4mm; text-align:start; }
-  .official-cover-logo { width:52mm; height:29mm; object-fit:contain; object-position:center; }
-  .official-cover-logo-fallback { width:29mm; height:29mm; border:1.5px solid #8f6f2e; display:flex; align-items:center; justify-content:center; font-weight:800; color:#674a13; }
-  .official-cover-company-name { color:#202020; font-weight:800; font-size:14px; }
-  .official-cover-tagline { color:#555; font-size:8.5px; max-width:45mm; line-height:1.45; }
-  .official-cover-divider { width:100%; border-top:1.2mm solid #36302b; margin:5mm 0; }
-  .official-cover-divider-bottom { margin-top:auto; }
-  .official-cover-project { width:100%; border-collapse:collapse; direction:rtl; margin:0; font-size:15px; }
-  .official-cover-project th { display:block; width:100%; padding:0 8mm 3mm; text-align:right; font-size:16px; }
-  .official-cover-project td { display:block; width:72%; padding:0; margin:0 auto; overflow-wrap:anywhere; text-align:center; font-weight:800; }
-  .official-cover-title { margin:7mm 0 6mm; }
-  .official-cover-title > div { color:#171717; font-weight:800; font-size:15px; }
-  .official-cover-title h1 { margin:3mm 0; color:#171717; font-size:20px; line-height:1.45; }
-  .official-cover-title p { margin:3mm 0 0; font-size:14px; font-weight:800; }
-  .official-cover-image { margin:0 auto 6mm; width:100%; max-width:160mm; border:1px solid #2e2a26; background:#fff; }
-  .official-cover-image img { display:block; width:100%; max-height:68mm; object-fit:contain; }
-  .official-cover-image figcaption { padding:3px 6px; color:#aa1717; font-size:9px; font-weight:700; border-top:1px solid #2e2a26; }
-  .official-cover-metadata { width:58%; margin-left:auto; border-collapse:collapse; font-size:10px; }
-  .official-cover-metadata th, .official-cover-metadata td { border:0; padding:1.2mm 2mm; text-align:start; }
-  .official-cover-metadata th { width:36%; color:#171717; font-weight:800; }
+  .official-cover { position:relative; z-index:30; isolation:isolate; min-height:273mm; overflow:hidden; padding:0; page-break-after:always; break-after:page; display:flex; color:#eff8fb; background:linear-gradient(140deg,#081d35 0%,#0b2d4d 52%,#0b5a68 100%); }
+  .official-cover::before { content:""; position:absolute; z-index:-1; inset:-30mm -16mm auto auto; width:160mm; height:160mm; border:1.1mm solid rgba(57,211,190,.32); border-radius:50%; box-shadow:0 0 0 15mm rgba(57,211,190,.045),0 0 0 31mm rgba(57,211,190,.035); }
+  .official-cover::after { content:""; position:absolute; z-index:-1; left:-55mm; bottom:-27mm; width:150mm; height:105mm; transform:rotate(-24deg); background:linear-gradient(90deg,rgba(239,178,65,.76),rgba(239,178,65,.1)); clip-path:polygon(0 54%,100% 0,100% 30%,0 84%); }
+  .official-cover-grid { position:absolute; z-index:-1; inset:0; opacity:.12; background-image:linear-gradient(rgba(227,248,251,.6) 1px,transparent 1px),linear-gradient(90deg,rgba(227,248,251,.6) 1px,transparent 1px); background-size:12mm 12mm; mask-image:linear-gradient(140deg,black,transparent 75%); }
+  .official-cover-orbit { position:absolute; z-index:-1; border:1px solid rgba(255,255,255,.2); border-radius:50%; }
+  .official-cover-orbit-a { width:88mm; height:88mm; right:-22mm; top:48mm; }
+  .official-cover-orbit-b { width:56mm; height:56mm; right:-5mm; top:64mm; border-color:rgba(239,178,65,.55); }
+  .official-cover-frame { flex:1; display:flex; flex-direction:column; min-height:249mm; margin:0; padding:14mm 15mm 12mm; text-align:right; }
+  .official-cover-company { display:grid; grid-template-columns:auto 1fr; gap:4mm; align-items:center; padding-bottom:7mm; border-bottom:1px solid rgba(239,248,251,.42); text-align:start; }
+  .official-cover-logo { width:45mm; height:22mm; border-radius:2mm; background:#fff; padding:2mm; object-fit:contain; object-position:center; }
+  .official-cover-logo-fallback { width:26mm; height:22mm; border:1px solid #44d8c4; border-radius:2mm; display:flex; align-items:center; justify-content:center; color:#44d8c4; font-size:10px; font-weight:800; }
+  .official-cover-company-name { color:#fff; font-weight:800; font-size:13px; }
+  .official-cover-tagline { max-width:55mm; margin-top:1mm; color:#b8d2dc; font-size:8.5px; line-height:1.45; }
+  .official-cover-content { width:100%; max-width:132mm; margin:auto 0 0; padding:13mm 0 5mm; }
+  .official-cover-eyebrow { color:#44d8c4; font-size:8px; font-weight:800; letter-spacing:1.1px; }
+  .official-cover-content h1 { margin:5mm 0 1mm; color:#fff; font-size:32px; line-height:1.15; font-weight:900; }
+  .official-cover-subtitle { margin:0; color:#d4e6ea; font-size:16px; font-weight:700; }
+  .official-cover-accent-line { width:44mm; height:1.5mm; margin:7mm 0 7mm; background:linear-gradient(90deg,#44d8c4 0 58%,#efb241 58% 100%); }
+  .official-cover-project { width:100%; border-collapse:collapse; font-size:12px; background:rgba(2,17,31,.36); border:1px solid rgba(231,247,249,.26); }
+  .official-cover-project th, .official-cover-project td { padding:3.1mm 4mm; border-bottom:1px solid rgba(231,247,249,.16); text-align:start; }
+  .official-cover-project tr:last-child th, .official-cover-project tr:last-child td { border-bottom:0; }
+  .official-cover-project th { width:30%; color:#44d8c4; font-weight:800; }
+  .official-cover-project td { color:#fff; font-weight:700; overflow-wrap:anywhere; }
+  .official-cover-metadata { display:grid; grid-template-columns:repeat(3,1fr); gap:3mm; margin-top:auto; padding-top:10mm; }
+  .official-cover-metadata > div { min-height:18mm; padding:3mm 4mm; border:1px solid rgba(231,247,249,.35); background:rgba(3,19,35,.28); display:flex; flex-direction:column; gap:1mm; }
+  .official-cover-metadata span { color:#9ec6d1; font-size:8.5px; font-weight:700; }
+  .official-cover-metadata strong { color:#fff; font-size:10px; font-weight:800; }
   .official-toc-page { min-height:0; padding:0; page-break-after:always; break-after:page; }
   .official-page-brand { display:grid; grid-template-columns:1fr 1.5fr 1fr; align-items:center; min-height:20mm; font-size:8.5px; font-weight:800; }
   .official-page-brand span:first-child { text-align:start; }
