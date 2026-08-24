@@ -32,6 +32,7 @@ export function printEngineeringStudy(params: {
       title,
       html,
       fileName: `engineering-study-${params.clientCode || params.document.client_code || 'report'}`,
+      downloadFormat: 'pdf',
     });
   });
 }

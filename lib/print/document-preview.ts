@@ -2,9 +2,14 @@ export type DocumentPreviewPayload = {
   title: string;
   html: string;
   fileName?: string;
+  /** Reports that must download as a real PDF rather than the printable HTML source. */
+  downloadFormat?: 'html' | 'pdf';
 };
 
 type Listener = (payload: DocumentPreviewPayload | null) => void;
+type IdleCallbackWindow = Window & {
+  requestIdleCallback?: (callback: () => void, options?: { timeout: number }) => number;
+};
 
 const PREVIEW_EVENT = 'tawaqqa:document-preview';
 
@@ -46,11 +51,9 @@ function trackPrint(payload: DocumentPreviewPayload) {
       })
     );
   };
-  if (typeof window !== 'undefined' && typeof (window as Window & { requestIdleCallback?: Function }).requestIdleCallback === 'function') {
-    (window as Window & { requestIdleCallback: (cb: () => void, opts?: { timeout: number }) => number }).requestIdleCallback(
-      run,
-      { timeout: 1200 }
-    );
+  const idleWindow = window as IdleCallbackWindow;
+  if (typeof window !== 'undefined' && typeof idleWindow.requestIdleCallback === 'function') {
+    idleWindow.requestIdleCallback(run, { timeout: 1200 });
   } else {
     setTimeout(run, 0);
   }
@@ -127,7 +130,7 @@ export function closeDocumentPreview() {
   listener?.(null);
 }
 
-export function downloadHtmlDocument(html: string, fileName: string) {
+function trackExport(fileName: string) {
   void import('@/lib/activity/logger').then(({ logActivity }) =>
     logActivity({
       actionType: 'EXPORT',
@@ -135,11 +138,27 @@ export function downloadHtmlDocument(html: string, fileName: string) {
       metadata: { fileName },
     })
   );
-  const blob = new Blob([html], { type: 'text/html;charset=utf-8' });
+}
+
+function downloadBlob(blob: Blob, fileName: string) {
   const url = URL.createObjectURL(blob);
   const link = document.createElement('a');
   link.href = url;
-  link.download = fileName.endsWith('.html') ? fileName : `${fileName}.html`;
+  link.download = fileName;
   link.click();
-  URL.revokeObjectURL(url);
+  setTimeout(() => URL.revokeObjectURL(url), 0);
+}
+
+export function downloadHtmlDocument(html: string, fileName: string) {
+  const safeName = fileName.endsWith('.html') ? fileName : `${fileName}.html`;
+  trackExport(safeName);
+  downloadBlob(new Blob([html], { type: 'text/html;charset=utf-8' }), safeName);
+}
+
+/** Generates and downloads a real PDF in the browser for the explicitly opted-in report. */
+export async function downloadPdfDocument(html: string, fileName: string) {
+  const { htmlDocumentToPdfFile } = await import('@/lib/print/html-to-pdf');
+  const pdf = await htmlDocumentToPdfFile(html, fileName);
+  trackExport(pdf.name);
+  downloadBlob(pdf, pdf.name);
 }
