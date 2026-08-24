@@ -4,6 +4,7 @@ import { useEffect, useMemo, useState } from 'react';
 import {
   closeDocumentPreview,
   downloadHtmlDocument,
+  downloadPdfDocument,
   registerDocumentPreviewListener,
   type DocumentPreviewPayload,
 } from '@/lib/print/document-preview';
@@ -11,6 +12,7 @@ import {
 export default function DocumentPreviewSheet() {
   const [payload, setPayload] = useState<DocumentPreviewPayload | null>(null);
   const [mobileFit, setMobileFit] = useState(true);
+  const [isDownloading, setIsDownloading] = useState(false);
 
   useEffect(() => registerDocumentPreviewListener(setPayload), []);
 
@@ -50,6 +52,22 @@ export default function DocumentPreviewSheet() {
   }, [payload, mobileFit]);
 
   if (!payload) return null;
+
+  const downloadNow = async () => {
+    const fileName = payload.fileName || payload.title || 'document';
+    setIsDownloading(true);
+    try {
+      if (payload.downloadFormat === 'pdf') {
+        await downloadPdfDocument(payload.html, fileName);
+      } else {
+        downloadHtmlDocument(payload.html, fileName);
+      }
+    } catch {
+      alert('تعذر إنشاء ملف PDF. استخدم زر «طباعة» واختر «حفظ كملف PDF»، ثم أعد المحاولة.');
+    } finally {
+      setIsDownloading(false);
+    }
+  };
 
   const printNow = () => {
     // Prefer a same-origin hidden iframe — browsers often block window.open() popups.
@@ -165,12 +183,11 @@ export default function DocumentPreviewSheet() {
         </button>
         <button
           type="button"
-          onClick={() =>
-            downloadHtmlDocument(payload.html, payload.fileName || payload.title || 'document')
-          }
-          className="touch-target flex-1 rounded-xl bg-slate-800 text-white text-sm font-semibold"
+          onClick={() => void downloadNow()}
+          disabled={isDownloading}
+          className="touch-target flex-1 rounded-xl bg-slate-800 text-white text-sm font-semibold disabled:opacity-60"
         >
-          تحميل
+          {isDownloading ? 'جارٍ إعداد الملف…' : payload.downloadFormat === 'pdf' ? 'تحميل PDF' : 'تحميل'}
         </button>
         <button
           type="button"

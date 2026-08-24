@@ -28,6 +28,7 @@ export function printAdminUcTechnicalReport(params: {
       title: `التقرير الفني — مبنى إداري تحت الإنشاء — ${document.project_name}`,
       html,
       fileName: `admin-uc-technical-report-${params.client.client_code || 'report'}`,
+      downloadFormat: 'pdf',
     });
   });
 }

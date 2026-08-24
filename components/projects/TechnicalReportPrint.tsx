@@ -83,5 +83,6 @@ export async function printTechnicalReport(params: {
     title,
     html,
     fileName: `engineering-study-${params.client.client_code || document.client_code || 'report'}`,
+    downloadFormat: 'pdf',
   });
 }
