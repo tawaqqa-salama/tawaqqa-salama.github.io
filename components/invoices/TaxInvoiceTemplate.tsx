@@ -276,8 +276,8 @@ export async function printTaxInvoice(invoice: TaxInvoice) {
 export async function downloadTaxInvoice(invoice: TaxInvoice) {
   const company = await loadCompanyProfile();
   const html = buildTaxInvoiceHtml(invoice, company);
-  const { downloadHtmlDocument } = await import('@/lib/print/document-preview');
-  downloadHtmlDocument(html, invoice.invoice_number);
+  const { downloadPdfDocument } = await import('@/lib/print/document-preview');
+  await downloadPdfDocument(html, invoice.invoice_number);
 }
 
 export async function shareTaxInvoiceWhatsApp(invoice: TaxInvoice, phone?: string | null) {

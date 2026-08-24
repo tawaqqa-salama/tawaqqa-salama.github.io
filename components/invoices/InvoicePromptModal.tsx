@@ -107,7 +107,7 @@ export default function InvoicePromptModal({
                   onClick={onDownload}
                   className="px-3 py-2 rounded-xl border text-sm font-semibold"
                 >
-                  تحميل PDF/HTML
+                  تحميل PDF
                 </button>
               )}
               <button
@@ -115,7 +115,7 @@ export default function InvoicePromptModal({
                 onClick={onPreview}
                 className="px-3 py-2 rounded-xl bg-[#635bdb] text-white text-sm font-semibold"
               >
-                استعراض وطباعة
+                معاينة
               </button>
             </>
           )}

@@ -2,7 +2,7 @@ export type DocumentPreviewPayload = {
   title: string;
   html: string;
   fileName?: string;
-  /** Explicit opt-in: reports use a real PDF download; legacy documents retain HTML download. */
+  /** PDF is the default for generated documents; HTML remains an explicit legacy-compatibility opt-out. */
   downloadFormat?: 'html' | 'pdf';
 };
 

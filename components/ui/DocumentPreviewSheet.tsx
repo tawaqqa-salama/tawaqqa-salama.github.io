@@ -58,7 +58,7 @@ export default function DocumentPreviewSheet() {
     if (downloading) return;
     setDownloading(true);
     try {
-      if (payload.downloadFormat === 'pdf') {
+      if (payload.downloadFormat !== 'html') {
         await downloadPdfDocument(payload.html, payload.fileName || payload.title || 'document');
       } else {
         downloadHtmlDocument(payload.html, payload.fileName || payload.title || 'document');
@@ -112,7 +112,7 @@ export default function DocumentPreviewSheet() {
           onClick={() => void download()}
           className="touch-target flex-1 rounded-xl bg-slate-800 text-white text-sm font-semibold disabled:opacity-60"
         >
-          {downloading ? 'جاري توليد PDF...' : payload.downloadFormat === 'pdf' ? 'تحميل PDF' : 'تحميل HTML'}
+          {downloading ? 'جاري توليد PDF...' : payload.downloadFormat !== 'html' ? 'تحميل PDF' : 'تحميل HTML'}
         </button>
         <button
           type="button"
