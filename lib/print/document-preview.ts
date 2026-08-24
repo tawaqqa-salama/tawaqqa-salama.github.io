@@ -2,6 +2,8 @@ export type DocumentPreviewPayload = {
   title: string;
   html: string;
   fileName?: string;
+  /** PDF is the default for generated documents; HTML remains an explicit legacy-compatibility opt-out. */
+  downloadFormat?: 'html' | 'pdf';
 };
 
 type Listener = (payload: DocumentPreviewPayload | null) => void;
@@ -46,18 +48,28 @@ function trackPrint(payload: DocumentPreviewPayload) {
       })
     );
   };
-  if (typeof window !== 'undefined' && typeof (window as Window & { requestIdleCallback?: Function }).requestIdleCallback === 'function') {
-    (window as Window & { requestIdleCallback: (cb: () => void, opts?: { timeout: number }) => number }).requestIdleCallback(
-      run,
-      { timeout: 1200 }
-    );
+  type IdleCapableWindow = Window & {
+    requestIdleCallback?: (callback: () => void, options?: { timeout: number }) => number;
+  };
+  const idleWindow = window as IdleCapableWindow;
+  if (typeof window !== 'undefined' && typeof idleWindow.requestIdleCallback === 'function') {
+    idleWindow.requestIdleCallback(run, { timeout: 1200 });
   } else {
     setTimeout(run, 0);
   }
 }
 
+function triggerDownload(file: Blob, fileName: string) {
+  const url = URL.createObjectURL(file);
+  const link = document.createElement('a');
+  link.href = url;
+  link.download = fileName;
+  link.click();
+  URL.revokeObjectURL(url);
+}
+
 /**
- * يفتح معاينة الطباعة دون html2canvas — HTML خام داخل iframe معزول.
+ * يفتح معاينة المستند دون HTML→PDF — HTML خام داخل iframe معزول.
  * يبني القالب في مهمة جزئية لتقليل تجمّد الواجهة.
  */
 export function openDocumentPreview(payload: DocumentPreviewPayload) {
@@ -70,7 +82,7 @@ export function openDocumentPreview(payload: DocumentPreviewPayload) {
       return;
     }
     pending = payload;
-    // Fallback إن لم تُحمَّل واجهة المعاينة بعد مهلة قصيرة
+    // Fallback إن لم تُحمّل واجهة المعاينة بعد مهلة قصيرة
     setTimeout(() => {
       if (listener) {
         if (pending === payload) {
@@ -127,19 +139,101 @@ export function closeDocumentPreview() {
   listener?.(null);
 }
 
+/** يطبع مباشرةً من HTML المعتمد في iframe مخفي؛ لا يفتح معاينة التقرير. */
+export function printDocumentHtml(payload: DocumentPreviewPayload) {
+  trackPrint(payload);
+  const runPrint = (doc: Document, win: Window, cleanup?: () => void) => {
+    try {
+      doc.title = ' ';
+    } catch {
+      /* ignore */
+    }
+    const trigger = () => {
+      try {
+        win.focus();
+      } catch {
+        /* ignore */
+      }
+      win.print();
+      cleanup?.();
+    };
+    if (doc.fonts?.ready) {
+      void doc.fonts.ready.then(() => setTimeout(trigger, 120));
+    } else {
+      setTimeout(trigger, 350);
+    }
+  };
+
+  try {
+    const blob = new Blob([payload.html], { type: 'text/html;charset=utf-8' });
+    const blobUrl = URL.createObjectURL(blob);
+    const iframe = document.createElement('iframe');
+    iframe.setAttribute('aria-hidden', 'true');
+    iframe.style.cssText =
+      'position:fixed;right:0;bottom:0;width:0;height:0;border:0;opacity:0;pointer-events:none;';
+    document.body.appendChild(iframe);
+
+    const cleanup = () => {
+      try {
+        URL.revokeObjectURL(blobUrl);
+      } catch {
+        /* ignore */
+      }
+      setTimeout(() => {
+        try {
+          document.body.removeChild(iframe);
+        } catch {
+          /* ignore */
+        }
+      }, 60_000);
+    };
+
+    iframe.onload = () => {
+      const idoc = iframe.contentDocument;
+      const iwin = iframe.contentWindow;
+      if (!idoc || !iwin) {
+        cleanup();
+        return;
+      }
+      runPrint(idoc, iwin, cleanup);
+    };
+    iframe.src = blobUrl;
+  } catch {
+    // Fallback: popup window (may be blocked)
+    const w = window.open('about:blank', '_blank', 'noopener,noreferrer,width=900,height=700');
+    if (!w) {
+      alert('تعذّر فتح الطباعة. جرّب زر «تحميل PDF» ثم اطبع الملف، أو اسمح بالنوافذ المنبثقة لهذا الموقع.');
+      return;
+    }
+    w.document.open();
+    w.document.write(payload.html);
+    w.document.close();
+    runPrint(w.document, w);
+  }
+}
+
 export function downloadHtmlDocument(html: string, fileName: string) {
   void import('@/lib/activity/logger').then(({ logActivity }) =>
     logActivity({
       actionType: 'EXPORT',
-      details: `تصدير مستند: ${fileName}`,
+      details: `تصدير مستند HTML: ${fileName}`,
       metadata: { fileName },
     })
   );
-  const blob = new Blob([html], { type: 'text/html;charset=utf-8' });
-  const url = URL.createObjectURL(blob);
-  const link = document.createElement('a');
-  link.href = url;
-  link.download = fileName.endsWith('.html') ? fileName : `${fileName}.html`;
-  link.click();
-  URL.revokeObjectURL(url);
+  const safeName = fileName.endsWith('.html') ? fileName : `${fileName}.html`;
+  triggerDownload(new Blob([html], { type: 'text/html;charset=utf-8' }), safeName);
+}
+
+/** يحوّل HTML التقرير إلى ملف PDF حقيقي ثم ينزله من المتصفح. */
+export async function downloadPdfDocument(html: string, fileName: string) {
+  const { htmlDocumentToPdfFile } = await import('@/lib/print/html-to-pdf');
+  const pdf = await htmlDocumentToPdfFile(html, fileName);
+  void import('@/lib/activity/logger').then(({ logActivity }) =>
+    logActivity({
+      actionType: 'EXPORT',
+      details: `تصدير مستند PDF: ${pdf.name}`,
+      metadata: { fileName: pdf.name, mimeType: pdf.type },
+    })
+  );
+  triggerDownload(pdf, pdf.name);
 }

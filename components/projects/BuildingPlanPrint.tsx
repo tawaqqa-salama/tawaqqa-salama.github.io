@@ -219,6 +219,6 @@ export async function exportBuildingPlanReport(client: ClientRecord, report: Bui
   const general = getBuildingPlanGeneralInfo(client);
   const company = await loadCompanyProfile();
   const html = buildBuildingPlanPrintHtml(client, report, general, company);
-  const { downloadHtmlDocument } = await import('@/lib/print/document-preview');
-  downloadHtmlDocument(html, `building-plan-${client.client_code}`);
+  const { downloadPdfDocument } = await import('@/lib/print/document-preview');
+  await downloadPdfDocument(html, `building-plan-${client.client_code}`);
 }

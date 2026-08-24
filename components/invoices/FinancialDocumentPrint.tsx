@@ -310,6 +310,6 @@ export async function printFinancialDocument(document: FinancialDocument) {
 export async function exportFinancialDocument(document: FinancialDocument) {
   const company = await loadCompanyProfile();
   const html = buildPrintHtml(document, company);
-  const { downloadHtmlDocument } = await import('@/lib/print/document-preview');
-  downloadHtmlDocument(html, document.documentNumber);
+  const { downloadPdfDocument } = await import('@/lib/print/document-preview');
+  await downloadPdfDocument(html, document.documentNumber);
 }
