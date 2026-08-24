@@ -2,7 +2,7 @@ import type { CompanyProfile } from '@/lib/company-profile';
 import type { ClientRecord } from '@/lib/types/client';
 import type { ProjectEngineeringData, TechnicalReport } from '@/lib/types/project-reports';
 import { type ReportLocale } from '@/lib/projects/engineering-report-engine';
-import { generateTechnicalReportDocument } from '@/lib/projects/technical-report-document';
+import { generateOfficialTechnicalReportDocument } from '@/lib/projects/official-technical-report-document';
 import {
   printAdminUcTechnicalReport,
   shouldUseAdminUcReport,
@@ -10,15 +10,14 @@ import {
 import { hydrateTechnicalReportPhotosForDisplay } from '@/lib/projects/technical-report-photos';
 import { hydrateTechnicalEvidenceForDisplay } from '@/lib/projects/technical-report-evidence';
 import { probeEvidenceMediaPresentation } from '@/lib/projects/technical-report-media-presentation';
-import { appendComplianceMatrixToReportHtml } from '@/lib/projects/compliance';
-import { buildEngineeringStudyHtml } from '@/lib/projects/engineering-report-engine/print-html';
+import { buildOfficialTechnicalReportHtml } from '@/lib/projects/engineering-report-engine/renderer/official-technical-template';
 import { openDocumentPreview } from '@/lib/print/document-preview';
 
 /**
  * Technical report print router:
  * - Administrative + under construction → independent Admin UC template
- * - Otherwise → Nasaim-style engineering study
- * Both paths append the SBC Compliance Matrix without removing existing sections.
+ * - Otherwise → official client-facing technical report template
+ * The official report deliberately excludes workflow, validation, provenance, and internal compliance diagnostics.
  */
 export async function printTechnicalReport(params: {
   client: ClientRecord;
@@ -62,7 +61,7 @@ export async function printTechnicalReport(params: {
     return;
   }
 
-  const document = generateTechnicalReportDocument({
+  const document = generateOfficialTechnicalReportDocument({
     client: params.client,
     report,
     engineeringData,
@@ -70,14 +69,9 @@ export async function printTechnicalReport(params: {
     evidenceMediaPresentation,
   });
 
-  const baseHtml = buildEngineeringStudyHtml({
+  const html = buildOfficialTechnicalReportHtml({
     document,
     company: params.company,
-  });
-  const html = appendComplianceMatrixToReportHtml({
-    html: baseHtml,
-    client: params.client,
-    engineeringData,
   });
 
   const title =
