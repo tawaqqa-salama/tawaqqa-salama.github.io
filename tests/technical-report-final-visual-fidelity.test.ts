@@ -69,6 +69,14 @@ function engineeringData(): ProjectEngineeringData {
         duration_min: { value: 60, unit: 'min', source: 'engineer_input' },
         source: 'engineer_input',
       },
+      sprinkler: {
+        ...EMPTY_FIRE_PROTECTION_DESIGN.sprinkler,
+        system_type: 'wet',
+        sprinkler_type: 'upright',
+      },
+      extinguishers: [
+        { id: 'ext-1', type: 'dry_chemical', count: '4', location: 'الممرات', rating: '6 كجم' },
+      ],
     }),
   };
 }
@@ -99,6 +107,10 @@ describe('technical report final visual and print fidelity', () => {
     expect(html).toContain('79.493 m³');
     expect(html).toContain('unicode-bidi: plaintext');
     expect(html).not.toContain('class="attachments-section"');
+    expect(html).toContain('رطب (Wet Pipe)');
+    expect(html).toContain('رأسي (Upright)');
+    expect(html).toContain('مسحوق كيميائي جاف (Dry Chemical)');
+    expect(html).toContain('لم تُدخل بيانات النظام');
   });
 
   it('keeps raw compliance diagnostics out of the official administrative payload', () => {

@@ -157,18 +157,18 @@ html, body {
 .cover-mark { width: 55mm; min-height: 20mm; display: flex; align-items: center; justify-content: flex-start; }
 .logo { max-width: 52mm; max-height: 18mm; object-fit: contain; filter: brightness(0) invert(1); }
 .logo-fb { display: inline-block; padding: 6px 12px; border: 1px solid #b8e0c1; color: #fff; font-weight: 700; font-size: 13pt; }
-.cover-office { color: #d8ebdc; font-weight: 700; font-size: 11pt; max-width: 67mm; line-height: 1.55; }
+.cover-office { color: #d8ebdc; font-weight: 700; font-size: 12pt; max-width: 67mm; line-height: 1.55; }
 .cover-rule { flex: 1; height: 1px; background: rgba(216, 235, 220, .58); }
 .cover-title { margin-top: 40mm; max-width: 138mm; }
-.cover-kicker { color: #b8e0c1; font-size: 12pt; font-weight: 700; letter-spacing: .03em; }
+.cover-kicker { color: #b8e0c1; font-size: 12.5pt; font-weight: 700; letter-spacing: .03em; }
 .cover-title h1 { margin: 6mm 0 3mm; color: #fff; font-size: 36pt; line-height: 1.18; font-weight: 800; }
-.cover-title p { margin: 0; color: #e5f1e8; font-size: 16pt; line-height: 1.62; }
+.cover-title p { margin: 0; color: #e5f1e8; font-size: 17pt; line-height: 1.62; }
 .cover-subtype { display: inline-block; margin-top: 9mm; padding: 2.5mm 7mm; border: 1px solid #9bd0a7; color: #fff; font-size: 12pt; font-weight: 700; }
 .cover-details { margin-top: auto; display: grid; grid-template-columns: 1fr 1fr; gap: 0; border-top: 1px solid rgba(216, 235, 220, .55); border-right: 1px solid rgba(216, 235, 220, .55); background: rgba(6, 35, 27, .34); }
 .cover-details > div { min-height: 20mm; padding: 3.5mm 5mm; border-left: 1px solid rgba(216, 235, 220, .55); border-bottom: 1px solid rgba(216, 235, 220, .55); }
-.cover-details span { display: block; color: #b8e0c1; font-size: 9.5pt; font-weight: 700; }
+.cover-details span { display: block; color: #b8e0c1; font-size: 10.2pt; font-weight: 700; }
 .cover-details strong { display: block; margin-top: 1mm; color: #fff; font-size: 11.5pt; font-weight: 700; line-height: 1.45; unicode-bidi: plaintext; }
-.cover-footer { display: flex; justify-content: space-between; gap: 12px; margin-top: 9mm; color: #cce3d1; font-size: 9.5pt; }
+.cover-footer { display: flex; justify-content: space-between; gap: 12px; margin-top: 9mm; color: #cce3d1; font-size: 10.2pt; }
 .core { direction: rtl; }
 .toc-block { margin: 0 0 16mm; padding: 0 0 8mm; border-bottom: 2px solid #2e7158; }
 .section-eyebrow { color: #2e7158; font-size: 10pt; font-weight: 700; letter-spacing: .04em; }

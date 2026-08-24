@@ -86,6 +86,30 @@ function sourceFieldDisplay(field: TechnicalReportSourceField | undefined): stri
   return Array.isArray(value) ? value.map(String).filter(Boolean).join('، ') || NOT_ENTERED_AR : String(value);
 }
 
+/** Presentation-only labels. Canonical values remain unchanged in project state. */
+const ADMIN_UC_CLIENT_FACING_LABELS: Readonly<Record<string, string>> = {
+  wet: 'رطب (Wet Pipe)',
+  upright: 'رأسي (Upright)',
+  dry_chemical: 'مسحوق كيميائي جاف (Dry Chemical)',
+};
+
+function clientFacingDesignValue(value: unknown): string {
+  const raw = String(value ?? '').trim();
+  if (!raw) return NOT_ENTERED_AR;
+  return ADMIN_UC_CLIENT_FACING_LABELS[raw] || formatDisplayOrNotEntered(raw);
+}
+
+function quantityAndSupportingStatus(
+  quantity: string,
+  status: 'required' | 'not_required' | 'by_design' | 'unknown'
+): string {
+  const statusLabel = supportingStatusLabel(status);
+  if (quantity === NOT_ENTERED_AR && statusLabel === NOT_ENTERED_AR) return NOT_ENTERED_AR;
+  if (quantity === NOT_ENTERED_AR) return `الحالة الفنية: ${statusLabel}`;
+  if (statusLabel === NOT_ENTERED_AR) return `${quantity} — الحالة الفنية: ${NOT_ENTERED_AR}`;
+  return `${quantity} — الحالة الفنية: ${statusLabel}`;
+}
+
 function selectedNotes(items: TechnicalReport['firefighting_items']): string[] {
   return items
     .filter((item) => item.enabled)
@@ -409,108 +433,63 @@ export function generateAdminUcReport(params: {
       title: 'إمداد مياه الإطفاء',
       blocks: [
         { kind: 'h2', text: 'إمداد مياه الإطفاء' },
+        { kind: 'h3', text: 'مصدر المياه وبيانات الخزان' },
         {
           kind: 'table',
           headers: ['البند', 'القيمة', 'المصدر'],
           rows: [
-            [
-              'مصدر المياه',
-              formatDisplayOrNotEntered(design.water_supply.water_source),
-              VALUE_SOURCE_LABEL_AR[design.water_tank.source],
-            ],
-            [
-              'نوع الخزان',
-              formatDisplayOrNotEntered(design.water_supply.tank_type),
-              VALUE_SOURCE_LABEL_AR[design.water_tank.source],
-            ],
-            [
-              'مادة الخزان',
-              formatDisplayOrNotEntered(design.water_supply.tank_material),
-              VALUE_SOURCE_LABEL_AR[design.water_tank.source],
-            ],
-            [
-              'سعة خزان مياه الإطفاء التصميمية (تلقائي)',
-              formatMeasured(design.water_tank.capacity_m3),
-              VALUE_SOURCE_LABEL_AR[design.water_tank.capacity_m3.source],
-            ],
-            [
-              'الطلب المائي Q',
-              formatMeasured(design.water_tank.water_demand_lpm),
-              VALUE_SOURCE_LABEL_AR[design.water_tank.water_demand_lpm.source],
-            ],
-            [
-              'مدة التشغيل T',
-              formatMeasured(design.water_tank.duration_min),
-              VALUE_SOURCE_LABEL_AR[design.water_tank.duration_min.source],
-            ],
-            [
-              'معادلة الدفاع المدني',
-              design.water_tank.formula_ar ||
-                'V (م³) = Q (لتر/دقيقة) × T (دقيقة) ÷ 1000',
-              VALUE_SOURCE_LABEL_AR.rule_requirement,
-            ],
+            ['مصدر المياه', formatDisplayOrNotEntered(design.water_supply.water_source), VALUE_SOURCE_LABEL_AR[design.water_tank.source]],
+            ['نوع الخزان', formatDisplayOrNotEntered(design.water_supply.tank_type), VALUE_SOURCE_LABEL_AR[design.water_tank.source]],
+            ['مادة الخزان', formatDisplayOrNotEntered(design.water_supply.tank_material), VALUE_SOURCE_LABEL_AR[design.water_tank.source]],
+          ],
+        },
+        { kind: 'h3', text: 'السعة والطلب المائي' },
+        {
+          kind: 'table',
+          headers: ['البند', 'القيمة', 'المصدر'],
+          rows: [
+            ['سعة خزان مياه الإطفاء التصميمية (تلقائي)', formatMeasured(design.water_tank.capacity_m3), VALUE_SOURCE_LABEL_AR[design.water_tank.capacity_m3.source]],
+            ['الطلب المائي Q', formatMeasured(design.water_tank.water_demand_lpm), VALUE_SOURCE_LABEL_AR[design.water_tank.water_demand_lpm.source]],
+            ['مدة التشغيل T', formatMeasured(design.water_tank.duration_min), VALUE_SOURCE_LABEL_AR[design.water_tank.duration_min.source]],
+            ['معادلة الدفاع المدني', design.water_tank.formula_ar || 'V (م³) = Q (لتر/دقيقة) × T (دقيقة) ÷ 1000', VALUE_SOURCE_LABEL_AR.rule_requirement],
           ],
         },
         { kind: 'h2', text: 'مجموعة مضخات الحريق الثلاثية (مدخلات تصميمية)' },
         {
           kind: 'p',
-          text: 'المجموعة قياسية ثلاثية: كهرباء + ديزل + جوكي. نوع الاعتماد UL أو non UL فقط. القيم Design Input وليست اعتماداً تلقائياً وتحتاج مطابقة مع الحسابات الهيدروليكية المعتمدة.',
+          text: 'المجموعة قياسية ثلاثية: كهرباء + ديزل + جوكي. القيم مدخلات تصميمية وتتطلب مطابقة مع الحسابات الهيدروليكية المعتمدة؛ لا تمثل اعتماداً تلقائياً.',
         },
+        { kind: 'h3', text: 'المضخة الكهربائية (Electric)' },
         {
           kind: 'table',
           headers: ['البند', 'القيمة المدخلة', 'المصدر'],
           rows: [
             ['هل توجد مجموعة مضخات؟', yesNoLabel(design.pump.exists), VALUE_SOURCE_LABEL_AR[design.pump.source]],
-            [
-              'نوع المضخة (الاعتماد)',
-              formatDisplayOrNotEntered(design.pump.type),
-              VALUE_SOURCE_LABEL_AR[design.pump.source],
-            ],
-            [
-              'سعة مضخة الكهرباء',
-              formatMeasured(design.pump.capacity),
-              VALUE_SOURCE_LABEL_AR[design.pump.capacity.source],
-            ],
-            [
-              'ضغط مضخة الكهرباء',
-              formatMeasured(design.pump.pressure),
-              VALUE_SOURCE_LABEL_AR[design.pump.pressure.source],
-            ],
-            [
-              'التدفق المقنن للمضخة الكهربائية',
-              formatMeasured(design.pump.rated_flow),
-              VALUE_SOURCE_LABEL_AR[design.pump.rated_flow.source],
-            ],
-            [
-              'ضغط التشغيل المطلوب',
-              formatMeasured(design.pump.rated_pressure),
-              VALUE_SOURCE_LABEL_AR[design.pump.rated_pressure.source],
-            ],
-            [
-              'سعة مضخة الديزل',
-              formatMeasured(design.diesel_pump.capacity),
-              VALUE_SOURCE_LABEL_AR[design.diesel_pump.capacity.source],
-            ],
-            [
-              'ضغط مضخة الديزل',
-              formatMeasured(design.diesel_pump.pressure),
-              VALUE_SOURCE_LABEL_AR[design.diesel_pump.pressure.source],
-            ],
-            [
-              'مضخة الجوكي',
-              yesNoLabel(design.jockey_pump.exists),
-              VALUE_SOURCE_LABEL_AR[design.jockey_pump.source],
-            ],
-            [
-              'سعة الجوكي',
-              formatMeasured(design.jockey_pump.capacity),
-              VALUE_SOURCE_LABEL_AR[design.jockey_pump.capacity.source],
-            ],
-            [
-              'ضغط الجوكي',
-              formatMeasured(design.jockey_pump.pressure),
-              VALUE_SOURCE_LABEL_AR[design.jockey_pump.pressure.source],
-            ],
+            ['نوع المضخة (الاعتماد)', formatDisplayOrNotEntered(design.pump.type), VALUE_SOURCE_LABEL_AR[design.pump.source]],
+            ['السعة', formatMeasured(design.pump.capacity), VALUE_SOURCE_LABEL_AR[design.pump.capacity.source]],
+            ['الضغط', formatMeasured(design.pump.pressure), VALUE_SOURCE_LABEL_AR[design.pump.pressure.source]],
+            ['التدفق المقنن', formatMeasured(design.pump.rated_flow), VALUE_SOURCE_LABEL_AR[design.pump.rated_flow.source]],
+            ['ضغط التشغيل المطلوب', formatMeasured(design.pump.rated_pressure), VALUE_SOURCE_LABEL_AR[design.pump.rated_pressure.source]],
+          ],
+        },
+        { kind: 'h3', text: 'مضخة الديزل (Diesel)' },
+        {
+          kind: 'table',
+          headers: ['البند', 'القيمة المدخلة', 'المصدر'],
+          rows: [
+            ['الحالة', yesNoLabel(design.diesel_pump.exists), VALUE_SOURCE_LABEL_AR[design.diesel_pump.source]],
+            ['السعة', formatMeasured(design.diesel_pump.capacity), VALUE_SOURCE_LABEL_AR[design.diesel_pump.capacity.source]],
+            ['الضغط', formatMeasured(design.diesel_pump.pressure), VALUE_SOURCE_LABEL_AR[design.diesel_pump.pressure.source]],
+          ],
+        },
+        { kind: 'h3', text: 'مضخة الجوكي (Jockey)' },
+        {
+          kind: 'table',
+          headers: ['البند', 'القيمة المدخلة', 'المصدر'],
+          rows: [
+            ['الحالة', yesNoLabel(design.jockey_pump.exists), VALUE_SOURCE_LABEL_AR[design.jockey_pump.source]],
+            ['السعة', formatMeasured(design.jockey_pump.capacity), VALUE_SOURCE_LABEL_AR[design.jockey_pump.capacity.source]],
+            ['الضغط', formatMeasured(design.jockey_pump.pressure), VALUE_SOURCE_LABEL_AR[design.jockey_pump.pressure.source]],
           ],
         },
         { kind: 'h3', text: 'النتيجة الهندسية — حجم الخزان (اشتراطات الدفاع المدني)' },
@@ -555,18 +534,29 @@ export function generateAdminUcReport(params: {
             ['نظام الرش وفق بيانات المخطط', formatDisplayOrNotEntered(engineeringData?.building_plan?.sprinkler_system)],
             ['إجمالي عدد المرشات حسب المساحات', sourceFieldDisplay(reportSource.aggregates.total_sprinklers)],
             ['هل النظام مطلوب؟', yesNoLabel(design.sprinkler.required)],
-            ['نوع النظام', formatDisplayOrNotEntered(design.sprinkler.system_type)],
+            ['نوع النظام', clientFacingDesignValue(design.sprinkler.system_type)],
             ['عدد المناطق', formatDisplayOrNotEntered(design.sprinkler.zones_count)],
-            ['نوع الرشاش', formatDisplayOrNotEntered(design.sprinkler.sprinkler_type)],
+            ['نوع الرشاش', clientFacingDesignValue(design.sprinkler.sprinkler_type)],
             ['K-Factor', formatDisplayOrNotEntered(design.sprinkler.k_factor)],
             ['الضغط التصميمي', formatDisplayOrNotEntered(design.sprinkler.design_pressure)],
             ['التدفق التصميمي', formatDisplayOrNotEntered(design.sprinkler.design_flow)],
           ],
         },
-        { kind: 'h2', text: 'Standpipe / Hose Reel' },
+        { kind: 'h2', text: 'نظام المواسير الرأسية وبكرات الحريق (Standpipe / Hose Reel)' },
         {
-          kind: 'p',
-          text: `مصدر موروث/قراءة فقط — ${yesNoLabel(design.standpipe.required)} — ${formatDisplayOrNotEntered(design.standpipe.notes)}`,
+          kind: 'table',
+          headers: ['البند', 'البيان'],
+          rows:
+            design.standpipe.required === 'unknown' && !design.standpipe.notes?.trim()
+              ? [
+                  ['حالة البيانات', 'لم تُدخل بيانات النظام'],
+                  ['المصدر', 'بيانات موروثة / قراءة فقط'],
+                ]
+              : [
+                  ['حالة النظام', yesNoLabel(design.standpipe.required)],
+                  ['الملاحظات', formatDisplayOrNotEntered(design.standpipe.notes)],
+                  ['المصدر', 'بيانات موروثة / قراءة فقط'],
+                ],
         },
         { kind: 'h2', text: 'الطفايات' },
         design.extinguishers.length
@@ -574,7 +564,7 @@ export function generateAdminUcReport(params: {
               kind: 'table' as const,
               headers: ['نوع الطفاية', 'العدد', 'الموقع', 'القدرة'],
               rows: design.extinguishers.map((e) => [
-                formatDisplayOrNotEntered(manualExtinguisherTypeLabel(e.type)),
+                clientFacingDesignValue(manualExtinguisherTypeLabel(e.type)),
                 formatDisplayOrNotEntered(e.count),
                 formatDisplayOrNotEntered(e.location),
                 formatDisplayOrNotEntered(e.rating),
@@ -628,26 +618,40 @@ export function generateAdminUcReport(params: {
           kind: 'table',
           headers: ['العنصر', 'الحالة / الكمية', 'الملاحظة', 'التوصية'],
           rows: [
-            ['إنارة الطوارئ — الكمية حسب المساحات', sourceFieldDisplay(reportSource.aggregates.total_emergency_lights), 'توزيع حسب الدور والمساحة من مركز التصاميم', '—'],
-            ['لوحات مخارج الطوارئ — الكمية حسب المساحات', sourceFieldDisplay(reportSource.aggregates.total_signs), 'توزيع حسب الدور والمساحة من مركز التصاميم', '—'],
+            [
+              'إنارة الطوارئ',
+              quantityAndSupportingStatus(
+                sourceFieldDisplay(reportSource.aggregates.total_emergency_lights),
+                design.supporting_systems.emergency_lighting.status
+              ),
+              design.supporting_systems.emergency_lighting.note?.trim() || 'توزيع حسب الدور والمساحة من مركز التصاميم',
+              design.supporting_systems.emergency_lighting.recommendation?.trim() || '—',
+            ],
+            [
+              'لوحات مخارج الطوارئ',
+              quantityAndSupportingStatus(
+                sourceFieldDisplay(reportSource.aggregates.total_signs),
+                design.supporting_systems.exit_signs.status
+              ),
+              design.supporting_systems.exit_signs.note?.trim() || 'توزيع حسب الدور والمساحة من مركز التصاميم',
+              design.supporting_systems.exit_signs.recommendation?.trim() || '—',
+            ],
             ['التأريض', formatDisplayOrNotEntered(engineeringData?.building_plan?.electrical_grounding), 'بيانات المخطط', '—'],
             ['مانع الصواعق', formatDisplayOrNotEntered(engineeringData?.building_plan?.lightning_protection), 'بيانات المخطط', '—'],
             ['المولد الاحتياطي', formatDisplayOrNotEntered(engineeringData?.building_plan?.backup_generator), 'بيانات المخطط', '—'],
-            ...((
-            [
-              ['إنارة الطوارئ — الحالة الفنية', design.supporting_systems.emergency_lighting],
-              ['لوحات مخارج الطوارئ', design.supporting_systems.exit_signs],
-              ['التحكم بالدخان', design.supporting_systems.smoke_control],
-              ['التهوية', design.supporting_systems.ventilation],
-              ['السلامة الكهربائية', design.supporting_systems.electrical_safety],
-              ['مصدر الطاقة الاحتياطية', design.supporting_systems.emergency_power],
-            ] as const
-          ).map(([label, s]) => [
-            label,
-            supportingStatusLabel(s.status),
-            s.note?.trim() || '—',
-            s.recommendation?.trim() || '—',
-          ])),
+            ...(
+              [
+                ['التحكم بالدخان', design.supporting_systems.smoke_control],
+                ['التهوية', design.supporting_systems.ventilation],
+                ['السلامة الكهربائية', design.supporting_systems.electrical_safety],
+                ['مصدر الطاقة الاحتياطية', design.supporting_systems.emergency_power],
+              ] as const
+            ).map(([label, s]) => [
+              label,
+              supportingStatusLabel(s.status),
+              s.note?.trim() || '—',
+              s.recommendation?.trim() || '—',
+            ]),
           ],
         },
         ...ventilationNotes.map((text) => ({ kind: 'p' as const, text })),
