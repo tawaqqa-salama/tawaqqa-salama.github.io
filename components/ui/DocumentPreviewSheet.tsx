@@ -4,6 +4,8 @@ import { useEffect, useMemo, useState } from 'react';
 import {
   closeDocumentPreview,
   downloadHtmlDocument,
+  downloadPdfDocument,
+  printDocumentHtml,
   registerDocumentPreviewListener,
   type DocumentPreviewPayload,
 } from '@/lib/print/document-preview';
@@ -11,6 +13,7 @@ import {
 export default function DocumentPreviewSheet() {
   const [payload, setPayload] = useState<DocumentPreviewPayload | null>(null);
   const [mobileFit, setMobileFit] = useState(true);
+  const [downloading, setDownloading] = useState(false);
 
   useEffect(() => registerDocumentPreviewListener(setPayload), []);
 
@@ -51,80 +54,20 @@ export default function DocumentPreviewSheet() {
 
   if (!payload) return null;
 
-  const printNow = () => {
-    // Prefer a same-origin hidden iframe — browsers often block window.open() popups.
-    // Use a blob: URL so Chrome print headers/footers do NOT stamp the project page
-    // (https://tawaqqa-salama.github.io/projects/file/?id=...).
-    const runPrint = (doc: Document, win: Window, cleanup?: () => void) => {
-      try {
-        doc.title = ' ';
-      } catch {
-        /* ignore */
-      }
-      const trigger = () => {
-        try {
-          win.focus();
-        } catch {
-          /* ignore */
-        }
-        win.print();
-        cleanup?.();
-      };
-      if (doc.fonts?.ready) {
-        void doc.fonts.ready.then(() => setTimeout(trigger, 120));
-      } else {
-        setTimeout(trigger, 350);
-      }
-    };
-
+  const download = async () => {
+    if (downloading) return;
+    setDownloading(true);
     try {
-      const blob = new Blob([payload.html], { type: 'text/html;charset=utf-8' });
-      const blobUrl = URL.createObjectURL(blob);
-      const iframe = document.createElement('iframe');
-      iframe.setAttribute('aria-hidden', 'true');
-      iframe.style.cssText =
-        'position:fixed;right:0;bottom:0;width:0;height:0;border:0;opacity:0;pointer-events:none;';
-      document.body.appendChild(iframe);
-
-      const cleanup = () => {
-        try {
-          URL.revokeObjectURL(blobUrl);
-        } catch {
-          /* ignore */
-        }
-        setTimeout(() => {
-          try {
-            document.body.removeChild(iframe);
-          } catch {
-            /* ignore */
-          }
-        }, 60_000);
-      };
-
-      iframe.onload = () => {
-        const idoc = iframe.contentDocument;
-        const iwin = iframe.contentWindow;
-        if (!idoc || !iwin) {
-          cleanup();
-          return;
-        }
-        runPrint(idoc, iwin, cleanup);
-      };
-      iframe.src = blobUrl;
-      return;
-    } catch {
-      // Fallback: popup window (may be blocked)
-      const w = window.open('about:blank', '_blank', 'noopener,noreferrer,width=900,height=700');
-      if (!w) {
-        alert(
-          'تعذّر فتح الطباعة. جرّب زر «تحميل» ثم اطبع الملف، أو اسمح بالنوافذ المنبثقة لهذا الموقع.'
-        );
-        return;
+      if (payload.downloadFormat === 'pdf') {
+        await downloadPdfDocument(payload.html, payload.fileName || payload.title || 'document');
+      } else {
+        downloadHtmlDocument(payload.html, payload.fileName || payload.title || 'document');
       }
-      w.document.open();
-      w.document.write(payload.html);
-      w.document.close();
-      runPrint(w.document, w);
+    } catch (error) {
+      const details = error instanceof Error ? ` (${error.message})` : '';
+      alert(`تعذّر توليد ملف PDF. استخدم زر «طباعة» ثم اختر «حفظ بتنسيق PDF».${details}`);
+    } finally {
+      setDownloading(false);
     }
   };
 
@@ -133,7 +76,7 @@ export default function DocumentPreviewSheet() {
       <div className="bg-white border-b px-3 py-2 flex items-center justify-between gap-2 shrink-0">
         <div className="min-w-0">
           <p className="text-sm font-bold truncate">{payload.title}</p>
-          <p className="text-[11px] text-gray-500">معاينة قبل الطباعة / التحميل</p>
+          <p className="text-[11px] text-gray-500">معاينة مستقلة قبل الطباعة أو تنزيل الملف</p>
         </div>
         <button
           type="button"
@@ -165,16 +108,15 @@ export default function DocumentPreviewSheet() {
         </button>
         <button
           type="button"
-          onClick={() =>
-            downloadHtmlDocument(payload.html, payload.fileName || payload.title || 'document')
-          }
-          className="touch-target flex-1 rounded-xl bg-slate-800 text-white text-sm font-semibold"
+          disabled={downloading}
+          onClick={() => void download()}
+          className="touch-target flex-1 rounded-xl bg-slate-800 text-white text-sm font-semibold disabled:opacity-60"
         >
-          تحميل
+          {downloading ? 'جاري توليد PDF...' : payload.downloadFormat === 'pdf' ? 'تحميل PDF' : 'تحميل HTML'}
         </button>
         <button
           type="button"
-          onClick={printNow}
+          onClick={() => printDocumentHtml(payload)}
           className="touch-target flex-1 rounded-xl bg-blue-600 text-white text-sm font-semibold"
         >
           طباعة

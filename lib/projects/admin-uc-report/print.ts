@@ -4,13 +4,19 @@ import type { ProjectEngineeringData, TechnicalReport } from '@/lib/types/projec
 import { generateAdminUcReport } from '@/lib/projects/admin-uc-report/generate';
 import { buildAdminUcReportHtml } from '@/lib/projects/admin-uc-report/template';
 import { appendComplianceMatrixToReportHtml } from '@/lib/projects/compliance';
+import type { DocumentPreviewPayload } from '@/lib/print/document-preview';
 
-export function printAdminUcTechnicalReport(params: {
+export type AdminUcTechnicalReportParams = {
   client: ClientRecord;
   report: TechnicalReport;
   company: CompanyProfile;
   engineeringData?: ProjectEngineeringData | null;
-}) {
+};
+
+/** يبني HTML التقرير الإداري نفسه لاستعمال المعاينة أو الطباعة أو تنزيل PDF. */
+export function buildAdminUcTechnicalReportPayload(
+  params: AdminUcTechnicalReportParams
+): DocumentPreviewPayload {
   const document = generateAdminUcReport({
     client: params.client,
     report: params.report,
@@ -23,11 +29,17 @@ export function printAdminUcTechnicalReport(params: {
     client: params.client,
     engineeringData: params.engineeringData,
   });
+  return {
+    title: `التقرير الفني — مبنى إداري تحت الإنشاء — ${document.project_name}`,
+    html,
+    fileName: `admin-uc-technical-report-${params.client.client_code || 'report'}`,
+    downloadFormat: 'pdf',
+  };
+}
+
+/** توافق خلفي: الاسم السابق يفتح المعاينة فقط. */
+export function printAdminUcTechnicalReport(params: AdminUcTechnicalReportParams) {
   void import('@/lib/print/document-preview').then(({ openDocumentPreview }) => {
-    openDocumentPreview({
-      title: `التقرير الفني — مبنى إداري تحت الإنشاء — ${document.project_name}`,
-      html,
-      fileName: `admin-uc-technical-report-${params.client.client_code || 'report'}`,
-    });
+    openDocumentPreview(buildAdminUcTechnicalReportPayload(params));
   });
 }

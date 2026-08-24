@@ -53,7 +53,9 @@ type Props = {
   report: TechnicalReport;
   onChange: (next: TechnicalReport) => void;
   onSave: () => void;
+  onPreview: () => void;
   onPrint: () => void;
+  onDownload: () => void;
   saving: boolean;
   onPersistEvidenceMetadata: (next: TechnicalEvidenceState) => Promise<void>;
   /** The same canonical project-level state previously rendered above this report. */
@@ -71,7 +73,9 @@ export default function TechnicalReportSection({
   report,
   onChange,
   onSave,
+  onPreview,
   onPrint,
+  onDownload,
   saving,
   onPersistEvidenceMetadata,
   fireProtectionDesign,
@@ -120,7 +124,9 @@ export default function TechnicalReportSection({
             <select value={report.status} onChange={(e) => patch({ status: e.target.value as TechnicalReport['status'] })} className="rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm">
               {REPORT_STATUSES.map((status) => <option key={status} value={status}>{status}</option>)}
             </select>
-            <button type="button" onClick={onPrint} className="rounded-xl border border-slate-300 px-3 py-2 text-sm font-semibold text-slate-700">معاينة PDF / طباعة A4</button>
+            <button type="button" onClick={onPreview} className="rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm font-semibold text-slate-700">معاينة</button>
+            <button type="button" onClick={onPrint} className="rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm font-semibold text-slate-700">طباعة A4</button>
+            <button type="button" onClick={onDownload} className="rounded-xl border border-slate-800 bg-slate-800 px-3 py-2 text-sm font-semibold text-white">تحميل PDF</button>
             <button type="button" disabled={saving} onClick={onSave} className="rounded-xl bg-[#635bdb] px-3 py-2 text-sm font-semibold text-white disabled:opacity-60">{saving ? 'جاري الحفظ...' : 'حفظ التقرير'}</button>
           </div>
         </div>

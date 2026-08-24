@@ -18,4 +18,15 @@ describe('technical report print router', () => {
     expect(source).not.toContain("appendComplianceMatrixToReportHtml");
     expect(source).not.toContain("from '@/lib/projects/compliance'");
   });
+
+  it('routes preview, print, and download through the same approved HTML payload', () => {
+    expect(source).toContain('buildTechnicalReportDocumentPayload');
+    expect(source).toContain('previewTechnicalReport');
+    expect(source).toContain('printTechnicalReport');
+    expect(source).toContain('downloadTechnicalReportPdf');
+    expect(source).toContain('openDocumentPreview(await buildTechnicalReportDocumentPayload(params))');
+    expect(source).toContain('printDocumentHtml(await buildTechnicalReportDocumentPayload(params))');
+    expect(source).toContain("downloadFormat: 'pdf'");
+    expect(source).toContain('downloadPdfDocument(payload.html, payload.fileName || payload.title)');
+  });
 });

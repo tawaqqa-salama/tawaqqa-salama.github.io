@@ -60,4 +60,23 @@ describe('technical report UI reorganization', () => {
     expect(modal).not.toContain('<FireProtectionDesignSection');
     expect(modal).toContain('onFireProtectionDesignChange={(fire_protection_design) => patch({ fire_protection_design })}');
   });
+
+  it('separates preview, A4 print, and PDF download controls without coupling them to save', () => {
+    const component = readFileSync('components/projects/TechnicalReportSection.tsx', 'utf8');
+    const modal = readFileSync('components/projects/ProjectReportModal.tsx', 'utf8');
+
+    expect(component).toContain('onPreview: () => void');
+    expect(component).toContain('onPrint: () => void');
+    expect(component).toContain('onDownload: () => void');
+    expect(component).toContain('>معاينة</button>');
+    expect(component).toContain('>طباعة A4</button>');
+    expect(component).toContain('>تحميل PDF</button>');
+    expect(component).not.toContain('معاينة PDF / طباعة A4');
+    expect(modal).toContain('onPreview={handlePreviewTechnical}');
+    expect(modal).toContain('onPrint={handlePrintTechnical}');
+    expect(modal).toContain('onDownload={handleDownloadTechnical}');
+    expect(modal).toContain('const handlePreviewTechnical');
+    expect(modal).toContain('const handlePrintTechnical');
+    expect(modal).toContain('const handleDownloadTechnical');
+  });
 });

@@ -12,7 +12,11 @@ import {
 } from '@/lib/business/project-reports';
 import TechnicalReportSection from '@/components/projects/TechnicalReportSection';
 import ComplianceMatrixPanel from '@/components/projects/ComplianceMatrixPanel';
-import { printTechnicalReport } from '@/components/projects/TechnicalReportPrint';
+import {
+  downloadTechnicalReportPdf,
+  previewTechnicalReport,
+  printTechnicalReport,
+} from '@/components/projects/TechnicalReportPrint';
 import {
   mergeFireProtectionDesign,
   shouldUseAdminUcReport,
@@ -595,26 +599,32 @@ export default function ProjectReportModal({
     );
   };
 
-  const handlePrintTechnical = async () => {
-    let report = data.technical_report;
-    if (!report.outgoing_number?.trim()) {
-      const outgoingNumber = await ensureOutgoingNumber(report.outgoing_number);
-      const nextData: ProjectEngineeringData = {
-        ...data,
-        technical_report: { ...report, outgoing_number: outgoingNumber },
-      };
-      await save(nextData, 'تم إصدار رقم الصادر تلقائياً.', { issueOutgoing: false, stayOpen: true });
-      report = nextData.technical_report;
+  const withTechnicalReportDocument = async (
+    action: (params: {
+      client: ClientRecord;
+      report: ProjectEngineeringData['technical_report'];
+      company: CompanyProfile;
+      engineeringData: ProjectEngineeringData;
+      locale: 'ar';
+    }) => Promise<void>
+  ) => {
+    try {
+      const profile = await loadCompanyProfile();
+      await action({
+        client,
+        report: data.technical_report,
+        company: profile,
+        engineeringData: data,
+        locale: 'ar',
+      });
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : 'تعذر تجهيز التقرير الفني.');
     }
-    const profile = await loadCompanyProfile();
-    await printTechnicalReport({
-      client,
-      report,
-      company: profile,
-      engineeringData: data,
-      locale: 'ar',
-    });
   };
+
+  const handlePreviewTechnical = () => void withTechnicalReportDocument(previewTechnicalReport);
+  const handlePrintTechnical = () => void withTechnicalReportDocument(printTechnicalReport);
+  const handleDownloadTechnical = () => void withTechnicalReportDocument(downloadTechnicalReportPdf);
 
   const nextTechChapter =
     activeStage === 'technical_report' ? nextTechReportChapter(techReportChapter) : null;
@@ -903,7 +913,9 @@ export default function ProjectReportModal({
                       );
                       if (!ok) throw new Error('تعذر حفظ بيانات المرفق على السيرفر؛ لم يبدأ حذف الملف.');
                     }}
-                    onPrint={() => void handlePrintTechnical()}
+                    onPreview={handlePreviewTechnical}
+                    onPrint={handlePrintTechnical}
+                    onDownload={handleDownloadTechnical}
                   />
                 </div>
               )}
