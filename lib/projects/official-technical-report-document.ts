@@ -101,6 +101,12 @@ function supportingStatus(value: FireProtectionDesign['supporting_systems'][keyo
   return '';
 }
 
+function supportingDisplay(value: FireProtectionDesign['supporting_systems'][keyof FireProtectionDesign['supporting_systems']]) {
+  return [supportingStatus(value), compact(value.note), compact(value.recommendation)]
+    .filter(Boolean)
+    .join(' — ');
+}
+
 function pumpRows(label: string, pump: FireProtectionDesign['pump'] | FireProtectionDesign['diesel_pump'] | FireProtectionDesign['jockey_pump']): Row[] {
   const output: Row[] = [];
   const status = yesNo(pump.exists);
@@ -278,6 +284,7 @@ export function generateOfficialTechnicalReportDocument(params: {
     design.jockey_pump.pressure.value,
   ].some((value) => value !== null && value !== undefined && String(value).trim() !== '');
   const hasSprinklerDesign = Boolean(rawDesign) && [
+    yesNo(design.sprinkler.required),
     design.sprinkler.system_type,
     design.sprinkler.zones_count,
     design.sprinkler.sprinkler_type,
@@ -343,22 +350,23 @@ export function generateOfficialTechnicalReportDocument(params: {
 
   const alarmRowsFromDesign = rows(
     row('لوحة التحكم', design.fire_alarm.control_panel),
-    row('كواشف الدخان', design.fire_alarm.smoke_detectors),
-    row('كواشف الحرارة', design.fire_alarm.heat_detectors),
+    row('عدد لوحات الإنذار', sourceValue(source.aggregates.total_fire_alarm_panels)),
+    row('كواشف الدخان', sourceValue(source.aggregates.total_smoke_detectors)),
+    row('كواشف الحرارة', sourceValue(source.aggregates.total_heat_detectors)),
     row('نقاط النداء اليدوية', design.fire_alarm.manual_call_points),
-    row('أجهزة التنبيه', design.fire_alarm.bells),
+    row('أجهزة التنبيه', sourceValue(source.aggregates.total_alarm_bells)),
     row('نظام الإخلاء الصوتي', design.fire_alarm.voice_alarm),
     row('تكامل الأنظمة', design.fire_alarm.integration),
     row('ملاحظات فنية', design.fire_alarm.notes)
   );
 
   const supportingRows = rows(
-    row('إنارة الطوارئ', supportingStatus(design.supporting_systems.emergency_lighting)),
-    row('اللوحات الإرشادية', supportingStatus(design.supporting_systems.exit_signs)),
-    row('التحكم بالدخان', supportingStatus(design.supporting_systems.smoke_control)),
-    row('التهوية', supportingStatus(design.supporting_systems.ventilation)),
-    row('السلامة الكهربائية', supportingStatus(design.supporting_systems.electrical_safety)),
-    row('القدرة الاحتياطية', supportingStatus(design.supporting_systems.emergency_power))
+    row('إنارة الطوارئ', supportingDisplay(design.supporting_systems.emergency_lighting)),
+    row('اللوحات الإرشادية', supportingDisplay(design.supporting_systems.exit_signs)),
+    row('التحكم بالدخان', supportingDisplay(design.supporting_systems.smoke_control)),
+    row('التهوية', supportingDisplay(design.supporting_systems.ventilation)),
+    row('السلامة الكهربائية', supportingDisplay(design.supporting_systems.electrical_safety)),
+    row('القدرة الاحتياطية', supportingDisplay(design.supporting_systems.emergency_power))
   );
 
   const firefightingNotes = selectedSystemNotes(report.firefighting_items);

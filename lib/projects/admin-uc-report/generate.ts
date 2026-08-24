@@ -1,6 +1,10 @@
 import type { CompanyProfile } from '@/lib/company-profile';
 import type { ClientRecord } from '@/lib/types/client';
-import type { ProjectEngineeringData, TechnicalReport } from '@/lib/types/project-reports';
+import {
+  EMPTY_PROJECT_ENGINEERING_DATA,
+  type ProjectEngineeringData,
+  type TechnicalReport,
+} from '@/lib/types/project-reports';
 import {
   NOT_AVAILABLE_AR,
   NOT_ENTERED_AR,
@@ -18,6 +22,7 @@ import {
 import { resolveLifecycleMode } from '@/lib/projects/admin-uc-report/select';
 import { lifecyclePhrases, supportingStatusLabel, yesNoLabel } from '@/lib/projects/admin-uc-report/tone';
 import { getClientIdentitySnapshot } from '@/lib/projects/client-identity';
+import { buildTechnicalReportSourceData, type TechnicalReportSourceField } from '@/lib/projects/technical-report-source-data';
 
 export type AdminUcTocEntry = { id: string; title: string; number: number };
 
@@ -72,6 +77,12 @@ export type AdminUcDocument = {
     tank_check_label: string;
   };
 };
+
+function sourceFieldDisplay(field: TechnicalReportSourceField | undefined): string {
+  const value = field?.final_value ?? field?.value;
+  if (value === null || value === undefined || value === '') return NOT_ENTERED_AR;
+  return String(value);
+}
 
 const CORE_TOC: AdminUcTocEntry[] = [
   { id: 'intro', number: 1, title: 'المقدمة' },
@@ -143,6 +154,12 @@ export function generateAdminUcReport(params: {
 }): AdminUcDocument {
   const { client, report, engineeringData, company } = params;
   const identity = getClientIdentitySnapshot(client);
+  const reportSource = buildTechnicalReportSourceData({
+    client,
+    engineeringData: engineeringData
+      ? { ...engineeringData, technical_report: report }
+      : { ...EMPTY_PROJECT_ENGINEERING_DATA, technical_report: report },
+  });
   const lifecycle = resolveLifecycleMode({ client, report });
   const phrases = lifecyclePhrases(lifecycle);
 
@@ -557,10 +574,11 @@ export function generateAdminUcReport(params: {
           headers: ['العنصر', 'البيان'],
           rows: [
             ['لوحة التحكم', formatDisplayOrNotEntered(design.fire_alarm.control_panel)],
-            ['كواشف الدخان', formatDisplayOrNotEntered(design.fire_alarm.smoke_detectors)],
-            ['كواشف الحرارة', formatDisplayOrNotEntered(design.fire_alarm.heat_detectors)],
+            ['عدد لوحات الإنذار', sourceFieldDisplay(reportSource.aggregates.total_fire_alarm_panels)],
+            ['كواشف الدخان', sourceFieldDisplay(reportSource.aggregates.total_smoke_detectors)],
+            ['كواشف الحرارة', sourceFieldDisplay(reportSource.aggregates.total_heat_detectors)],
             ['نقاط النداء اليدوي', formatDisplayOrNotEntered(design.fire_alarm.manual_call_points)],
-            ['أجراس الإنذار', formatDisplayOrNotEntered(design.fire_alarm.bells)],
+            ['أجراس الإنذار / أجهزة التنبيه', sourceFieldDisplay(reportSource.aggregates.total_alarm_bells)],
             ['الإنذار الصوتي', formatDisplayOrNotEntered(design.fire_alarm.voice_alarm)],
             ['الربط مع الأنظمة الأخرى', formatDisplayOrNotEntered(design.fire_alarm.integration)],
           ],
@@ -578,10 +596,13 @@ export function generateAdminUcReport(params: {
         { kind: 'h2', text: 'أنظمة السلامة المساندة' },
         {
           kind: 'table',
-          headers: ['العنصر', 'الحالة', 'الملاحظة', 'التوصية'],
-          rows: (
+          headers: ['العنصر', 'الحالة / الكمية', 'الملاحظة', 'التوصية'],
+          rows: [
+            ['إنارة الطوارئ — الكمية حسب المساحات', sourceFieldDisplay(reportSource.aggregates.total_emergency_lights), 'توزيع حسب الدور والمساحة من مركز التصاميم', '—'],
+            ['لوحات مخارج الطوارئ — الكمية حسب المساحات', sourceFieldDisplay(reportSource.aggregates.total_signs), 'توزيع حسب الدور والمساحة من مركز التصاميم', '—'],
+            ...((
             [
-              ['إنارة الطوارئ', design.supporting_systems.emergency_lighting],
+              ['إنارة الطوارئ — الحالة الفنية', design.supporting_systems.emergency_lighting],
               ['لوحات مخارج الطوارئ', design.supporting_systems.exit_signs],
               ['التحكم بالدخان', design.supporting_systems.smoke_control],
               ['التهوية', design.supporting_systems.ventilation],
@@ -593,7 +614,8 @@ export function generateAdminUcReport(params: {
             supportingStatusLabel(s.status),
             s.note?.trim() || '—',
             s.recommendation?.trim() || '—',
-          ]),
+          ])),
+          ],
         },
       ],
     },

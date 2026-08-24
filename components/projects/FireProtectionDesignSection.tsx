@@ -68,10 +68,9 @@ export default function FireProtectionDesignSection({
       }`}
     >
       <div>
-        <h3 className="text-base font-bold text-gray-900">التصميم الهيدروليكي — مجموعة المضخات الثلاثية</h3>
+        <h3 className="text-base font-bold text-gray-900">أنظمة مكافحة الحريق والتصميم الهيدروليكي</h3>
         <p className="text-xs text-gray-600 mt-1 leading-relaxed">
-          مجموعة مضخات الحريق قياسية ثلاثية: كهرباء + ديزل + جوكي. نوع الاعتماد UL أو non UL فقط.
-          يُحسب خزان الإطفاء تلقائياً وفق اشتراطات الدفاع المدني بالمعادلة المرفقة.
+          تُدخل مواصفات نظام الرش ومجموعة المضخات والخزان مباشرة في المصدر الفني الكانوني. كميات الأجهزة وتوزيعها حسب الدور والمساحة تبقى في مركز التصاميم ولا تُنسخ هنا.
         </p>
       </div>
 
@@ -365,6 +364,87 @@ export default function FireProtectionDesignSection({
       </div>
 
       <div className="border-t border-emerald-100 pt-3 space-y-3">
+        <h4 className="text-sm font-bold text-gray-900">نظام الرش الآلي</h4>
+        <p className="text-xs leading-relaxed text-gray-600">
+          خصائص نظام الرش التالية تخص التصميم الفني فقط. لا تُدخل أعداد المرشات هنا؛ فهي محفوظة حسب الدور والمساحة في مركز التصاميم.
+        </p>
+        <div className="grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-3">
+          <Select
+            label="هل نظام الرش مطلوب؟"
+            value={design.sprinkler.required}
+            onChange={(required) =>
+              patch({
+                sprinkler: {
+                  ...design.sprinkler,
+                  required: required as YesNoUnknown,
+                  source: 'engineer_input',
+                },
+              })
+            }
+            options={[
+              { value: 'unknown', label: 'لم يُحدَّد بعد' },
+              { value: 'yes', label: 'نعم' },
+              { value: 'no', label: 'لا' },
+            ]}
+          />
+          <Field
+            label="عدد المناطق"
+            value={design.sprinkler.zones_count}
+            onChange={(zones_count) =>
+              patch({
+                sprinkler: { ...design.sprinkler, zones_count, source: 'engineer_input' },
+              })
+            }
+          />
+          <Field
+            label="نوع النظام"
+            value={design.sprinkler.system_type}
+            onChange={(system_type) =>
+              patch({
+                sprinkler: { ...design.sprinkler, system_type, source: 'engineer_input' },
+              })
+            }
+          />
+          <Field
+            label="نوع الرشاش"
+            value={design.sprinkler.sprinkler_type}
+            onChange={(sprinkler_type) =>
+              patch({
+                sprinkler: { ...design.sprinkler, sprinkler_type, source: 'engineer_input' },
+              })
+            }
+          />
+          <Field
+            label="K-Factor"
+            value={design.sprinkler.k_factor}
+            onChange={(k_factor) =>
+              patch({
+                sprinkler: { ...design.sprinkler, k_factor, source: 'engineer_input' },
+              })
+            }
+          />
+          <Field
+            label="الضغط التصميمي"
+            value={design.sprinkler.design_pressure}
+            onChange={(design_pressure) =>
+              patch({
+                sprinkler: { ...design.sprinkler, design_pressure, source: 'engineer_input' },
+              })
+            }
+          />
+          <Field
+            label="التدفق التصميمي"
+            value={design.sprinkler.design_flow}
+            onChange={(design_flow) =>
+              patch({
+                sprinkler: { ...design.sprinkler, design_flow, source: 'engineer_input' },
+              })
+            }
+          />
+        </div>
+      </div>
+
+      <div className="border-t border-emerald-100 pt-3 space-y-3">
         <h4 className="text-sm font-bold text-gray-900">خزان مياه الإطفاء — حساب تلقائي (الدفاع المدني)</h4>
         <div className="rounded-xl border border-emerald-200 bg-emerald-50/50 px-3 py-2 text-sm space-y-1">
           <div className="font-bold text-emerald-950">المعادلة المعتمدة</div>
@@ -485,40 +565,6 @@ export default function FireProtectionDesignSection({
         />
       </div>
 
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-3 border-t border-emerald-100 pt-3">
-        <Field
-          label="درجة الخطورة (قابلة للتعديل)"
-          value={design.occupancy.hazard_class}
-          onChange={(hazard_class) =>
-            patch({
-              occupancy: { ...design.occupancy, hazard_class, source: 'engineer_input' },
-            })
-          }
-        />
-        <Field
-          label="عدد مخارج الطوارئ (اختياري)"
-          value={design.egress.metrics.find((m) => m.label === 'عدد المخارج')?.value || ''}
-          onChange={(v) => {
-            const others = design.egress.metrics.filter((m) => m.label !== 'عدد المخارج');
-            patch({
-              egress: {
-                ...design.egress,
-                metrics: v.trim()
-                  ? [
-                      ...others,
-                      {
-                        label: 'عدد المخارج',
-                        value: v,
-                        note: 'مطابق للمخطط / إدخال المهندس',
-                        source: 'engineer_input',
-                      },
-                    ]
-                  : others,
-              },
-            });
-          }}
-        />
-      </div>
     </div>
   );
 }
