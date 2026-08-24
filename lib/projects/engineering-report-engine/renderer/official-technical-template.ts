@@ -164,7 +164,7 @@ function css(doc: EngineeringStudyDocument, company: CompanyProfile): string {
   .official-table { width:100%; table-layout:fixed; border-collapse:collapse; font-size:10px; }
   .official-table thead { display:table-header-group; }
   .official-table tr { page-break-inside:avoid; break-inside:avoid; }
-  .official-table th, .official-table td { border:1px solid #555; padding:4px 5px; overflow-wrap:anywhere; vertical-align:middle; text-align:center; }
+  .official-table th, .official-table td { border:1px solid #555; padding:4px 5px; overflow-wrap:anywhere; vertical-align:middle; text-align:center; unicode-bidi:plaintext; }
   .official-table th { background:#c8c8c8; color:#181818; font-weight:800; }
   .official-reference { margin:5px 0 8px; padding:5px 8px; border-inline-start:2px solid #5f5a55; background:#efefef; font-size:9.5px; }
   .official-reference strong { display:block; color:#171717; margin-bottom:2px; }

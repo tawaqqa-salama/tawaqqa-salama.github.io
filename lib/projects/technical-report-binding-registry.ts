@@ -1,3 +1,6 @@
+import { ACTIVITY_RULES } from '@/lib/constants/clients';
+import { hazardClassificationLabel } from '@/lib/projects/design-center/safety-rules';
+
 export type TechnicalReportBindingDisposition = 'rendered' | 'intentionally_not_in_pdf';
 export type TechnicalReportDisplayCondition = 'always' | 'when_available' | 'when_approved' | 'when_system_exists';
 
@@ -98,6 +101,26 @@ export const MANUAL_EXTINGUISHER_TYPE_LABELS: Readonly<Record<string, string>> =
 export function manualExtinguisherTypeLabel(value: unknown): string {
   const normalized = String(value ?? '').trim();
   return MANUAL_EXTINGUISHER_TYPE_LABELS[normalized] || normalized;
+}
+
+export function technicalReportActivityLabel(value: unknown): string {
+  const normalized = String(value ?? '').trim();
+  return ACTIVITY_RULES[normalized]?.label || normalized;
+}
+
+const TECHNICAL_REPORT_HAZARD_LABELS: Readonly<Record<string, string>> = {
+  light_hazard: 'خطورة خفيفة',
+  ordinary_hazard_group_1: 'خطورة عادية — المجموعة الأولى',
+  ordinary_hazard_group_2: 'خطورة عادية — المجموعة الثانية',
+  extra_hazard_group_1: 'خطورة إضافية — المجموعة الأولى',
+  extra_hazard_group_2: 'خطورة إضافية — المجموعة الثانية',
+  high_piled_storage: 'تخزين مرتفع — يتطلب مراجعة هندسية',
+  special_hazard: 'خطورة أو إشغال خاص — يتطلب مراجعة هندسية',
+};
+
+export function technicalReportHazardLabel(value: unknown): string {
+  const normalized = String(value ?? '').trim();
+  return TECHNICAL_REPORT_HAZARD_LABELS[normalized] || hazardClassificationLabel(normalized);
 }
 
 export function hasBinding(id: string): boolean {

@@ -180,6 +180,15 @@ describe('official technical report PDF document', () => {
     expect(content).toContain('عدد المخارج');
   });
 
+  it('does not synthesize fixture recommendations when a project has no approved recommendations', () => {
+    const report = { ...reportFixture(), recommendations_v2: { version: 1, items: [] } } as typeof EMPTY_TECHNICAL_REPORT;
+    const document = generateOfficialTechnicalReportDocument({ client, report, engineeringData: { ...engineeringData(), technical_report: report } });
+    const content = allDocumentText(document);
+
+    expect(content).not.toContain('توصية هندسية معتمدة مميزة رقم');
+    expect(content).not.toContain('توصية معتمدة للعرض في التقرير.');
+  });
+
   it('uses a formal report structure, only final recommendations, and unique section identifiers', () => {
     const report = reportFixture();
     const document = generateOfficialTechnicalReportDocument({ client, report, engineeringData: engineeringData() });

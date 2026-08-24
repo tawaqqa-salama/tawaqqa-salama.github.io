@@ -15,7 +15,7 @@ import {
   type YesNoUnknown,
 } from '@/lib/types/fire-protection-design';
 import { mergeFireProtectionDesign } from '@/lib/projects/admin-uc-report/design';
-import { manualExtinguisherTypeLabel } from '@/lib/projects/technical-report-binding-registry';
+import { manualExtinguisherTypeLabel, technicalReportActivityLabel, technicalReportHazardLabel } from '@/lib/projects/technical-report-binding-registry';
 import { resolvePreferredEgressMetrics, resolvePreferredHazard } from '@/lib/projects/technical-report-source-priority';
 import { buildTechnicalReportSourceData, type TechnicalReportSourceField } from '@/lib/projects/technical-report-source-data';
 import {
@@ -186,7 +186,7 @@ export function generateOfficialTechnicalReportDocument(params: {
     floor.spaces.map((space) => [
       sourceValue(floor.name) || '—',
       sourceValue(space.name) || '—',
-      sourceValue(space.activity_use) || '—',
+      technicalReportActivityLabel(sourceValue(space.activity_use)) || '—',
       withUnit(sourceValue(space.area_m2), 'م²') || '—',
       sourceValue(space.occupants) || '—',
       withUnit(sourceValue(space.travel_distance_m), 'م') || '—',
@@ -196,9 +196,9 @@ export function generateOfficialTechnicalReportDocument(params: {
     floor.spaces.map((space) => [
       sourceValue(floor.name) || '—',
       sourceValue(space.name) || '—',
-      sourceValue(space.activity_use) || '—',
+      technicalReportActivityLabel(sourceValue(space.activity_use)) || '—',
       sourceValue(space.occupancy) || '—',
-      sourceValue(space.hazard_classification) || '—',
+      technicalReportHazardLabel(sourceValue(space.hazard_classification)) || '—',
     ])
   );
   const occupantRows = floors.flatMap((floor) =>

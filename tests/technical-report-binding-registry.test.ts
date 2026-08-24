@@ -3,6 +3,8 @@ import {
   TECHNICAL_REPORT_BINDING_REGISTRY,
   hasBinding,
   manualExtinguisherTypeLabel,
+  technicalReportActivityLabel,
+  technicalReportHazardLabel,
 } from '@/lib/projects/technical-report-binding-registry';
 
 describe('technical report binding registry', () => {
@@ -39,8 +41,10 @@ describe('technical report binding registry', () => {
     }
   });
 
-  it('renders a user-facing Arabic label for a stored extinguisher identifier', () => {
+  it('renders user-facing Arabic labels for stored technical identifiers', () => {
     expect(manualExtinguisherTypeLabel('carbon_dioxide')).toBe('ثاني أكسيد الكربون CO₂');
     expect(manualExtinguisherTypeLabel('custom_type')).toBe('custom_type');
+    expect(technicalReportActivityLabel('office')).toBe('مكاتب / إداري');
+    expect(technicalReportHazardLabel('ordinary_hazard_group_1')).toBe('خطورة عادية — المجموعة الأولى');
   });
 });
