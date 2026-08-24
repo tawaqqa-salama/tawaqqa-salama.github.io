@@ -116,6 +116,8 @@ export type TechnicalReportSourceAggregates = {
   total_sprinklers: TechnicalReportSourceField<number | null>;
   total_smoke_detectors: TechnicalReportSourceField<number | null>;
   total_heat_detectors: TechnicalReportSourceField<number | null>;
+  total_fire_alarm_panels: TechnicalReportSourceField<number | null>;
+  total_alarm_bells: TechnicalReportSourceField<number | null>;
   total_emergency_lights: TechnicalReportSourceField<number | null>;
   total_signs: TechnicalReportSourceField<number | null>;
   total_alarm_devices: TechnicalReportSourceField<number | null>;
@@ -675,6 +677,8 @@ function buildAggregates(floors: TechnicalReportSourceFloor[]): TechnicalReportS
     total_sprinklers: makeDerivedField('aggregates.total_sprinklers', aggregateQuantities(floors, (space) => space.quantities.sprinklers.value)),
     total_smoke_detectors: makeDerivedField('aggregates.total_smoke_detectors', aggregateQuantities(floors, (space) => space.quantities.smoke_detectors.value)),
     total_heat_detectors: makeDerivedField('aggregates.total_heat_detectors', aggregateQuantities(floors, (space) => space.quantities.heat_detectors.value)),
+    total_fire_alarm_panels: makeDerivedField('aggregates.total_fire_alarm_panels', aggregateQuantities(floors, (space) => space.quantities.fire_alarm_panels.value)),
+    total_alarm_bells: makeDerivedField('aggregates.total_alarm_bells', aggregateQuantities(floors, (space) => space.quantities.alarm_bells.value)),
     total_emergency_lights: makeDerivedField('aggregates.total_emergency_lights', aggregateQuantities(floors, (space) => space.quantities.emergency_lights.value)),
     total_signs: makeDerivedField('aggregates.total_signs', aggregateQuantities(floors, (space) => space.quantities.signs.value)),
     total_alarm_devices: makeDerivedField('aggregates.total_alarm_devices', aggregateQuantities(floors, (space) => {

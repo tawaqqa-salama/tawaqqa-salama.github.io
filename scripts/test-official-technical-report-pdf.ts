@@ -8,6 +8,7 @@ import { generateOfficialTechnicalReportDocument } from '../lib/projects/officia
 import type { ClientRecord } from '../lib/types/client';
 import { EMPTY_PROJECT_ENGINEERING_DATA, EMPTY_TECHNICAL_REPORT } from '../lib/types/project-reports';
 import { EMPTY_FIRE_PROTECTION_DESIGN } from '../lib/types/fire-protection-design';
+import { emptySafetyQuantities } from '../lib/projects/design-center/space-safety';
 
 const outDir = '/tmp/official-technical-report-pdf';
 mkdirSync(outDir, { recursive: true });
@@ -164,6 +165,39 @@ async function main() {
     engineeringData: {
       ...EMPTY_PROJECT_ENGINEERING_DATA,
       technical_report: report as never,
+      design_center: {
+        ...EMPTY_PROJECT_ENGINEERING_DATA.design_center,
+        space_safety: {
+          source: 'project_engineering',
+          floors: [
+            {
+              id: 'ground',
+              label: 'الدور الأرضي',
+              repeat_count: 1,
+              areas: [
+                {
+                  id: 'ground-office',
+                  label: 'مكاتب إدارية',
+                  activity_type: 'office',
+                  area_m2: 300,
+                  hazard_suggested: 'ordinary_hazard_group_1',
+                  suppression_suggested: ['رش آلي'],
+                  quantities: {
+                    ...emptySafetyQuantities(),
+                    sprinklers: 18,
+                    fire_alarm_panels: 1,
+                    smoke_detectors: 14,
+                    heat_detectors: 3,
+                    alarm_bells: 4,
+                    emergency_lights: 8,
+                    signs: 6,
+                  },
+                },
+              ],
+            },
+          ],
+        },
+      },
       fire_protection_design: fireDesign,
     },
   });
