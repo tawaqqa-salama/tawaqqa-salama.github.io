@@ -15,6 +15,8 @@ import {
   type YesNoUnknown,
 } from '@/lib/types/fire-protection-design';
 import { mergeFireProtectionDesign } from '@/lib/projects/admin-uc-report/design';
+import { manualExtinguisherTypeLabel } from '@/lib/projects/technical-report-binding-registry';
+import { resolvePreferredEgressMetrics, resolvePreferredHazard } from '@/lib/projects/technical-report-source-priority';
 import { buildTechnicalReportSourceData, type TechnicalReportSourceField } from '@/lib/projects/technical-report-source-data';
 import {
   codeEvidenceReferenceLines,
@@ -118,7 +120,7 @@ function pumpRows(label: string, pump: FireProtectionDesign['pump'] | FireProtec
   return output;
 }
 
-function selectedSystemNotes(items: TechnicalReport['firefighting_items'] | TechnicalReport['alarm_items']): string[] {
+function selectedSystemNotes(items: TechnicalReport['firefighting_items']): string[] {
   return items
     .filter((item) => item.enabled)
     .flatMap((item) => [compact(item.notes), ...item.selectedOptions.map(compact)])
@@ -156,6 +158,11 @@ export function generateOfficialTechnicalReportDocument(params: {
   const ownerName = sourceValue(project.owner_name) || params.client.owner_name || params.client.name || '';
   const buildingArea = withUnit(sourceValue(project.building_area_m2), 'م²');
   const buildingHeight = withUnit(sourceValue(plan.building_height_m), 'م');
+  const preferredHazard = resolvePreferredHazard(
+    design.occupancy.hazard_class || report.risk_class,
+    floors.flatMap((floor) => floor.spaces.map((space) => sourceValue(space.hazard_classification)))
+  );
+  const preferredEgressMetrics = resolvePreferredEgressMetrics(design.egress.metrics);
 
   const basicRows = rows(
     row('اسم المشروع', projectName),
@@ -168,6 +175,7 @@ export function generateOfficialTechnicalReportDocument(params: {
     row('العنوان الوطني', sourceValue(project.national_address)),
     row('رقم القطعة', sourceValue(project.plot_number)),
     row('رقم رخصة البناء', sourceValue(project.building_permit_number)),
+    row('تاريخ رخصة البناء', sourceValue(project.building_permit_date)),
     row('مساحة الأرض', withUnit(sourceValue(project.land_area_m2), 'م²')),
     row('مساحة البناء', buildingArea),
     row('عدد الأدوار', sourceValue(project.floors_count)),
@@ -219,7 +227,7 @@ export function generateOfficialTechnicalReportDocument(params: {
         sourceValue(floor.name) || '—',
         sourceValue(space.name) || '—',
         sourceValue(space.quantities.manual_extinguishers),
-        sourceValue(space.quantities.manual_extinguisher_type) || '—',
+        manualExtinguisherTypeLabel(sourceValue(space.quantities.manual_extinguisher_type)) || '—',
         sourceValue(space.quantities.manual_extinguisher_size) || '—',
       ])
   );
@@ -240,6 +248,7 @@ export function generateOfficialTechnicalReportDocument(params: {
         sourceValue(space.quantities.smoke_detectors) || '—',
         sourceValue(space.quantities.heat_detectors) || '—',
         sourceValue(space.quantities.alarm_bells) || '—',
+        sourceValue(space.quantities.alarm_panel_locations) || '—',
       ])
   );
   const emergencyRows = floors.flatMap((floor) =>
@@ -260,7 +269,9 @@ export function generateOfficialTechnicalReportDocument(params: {
     row('أتريوم', sourceValue(plan.atrium_exists)),
     row('عدد الأقبية', sourceValue(plan.basement_floors_count)),
     row('العمق تحت الأرض', withUnit(sourceValue(plan.underground_depth_m), 'م')),
-    row('مبنى بلا نوافذ', sourceValue(plan.windowless_building))
+    row('مبنى بلا نوافذ', sourceValue(plan.windowless_building)),
+    row('وصف الأدوار', sourceValue(plan.floors_description)),
+    row('درجة الخطورة المعتمدة', preferredHazard)
   );
 
   const hasWaterDesign = Boolean(rawDesign) && [
@@ -334,6 +345,8 @@ export function generateOfficialTechnicalReportDocument(params: {
   ];
 
   const sprinklerRows = rows(
+    row('نظام الرش وفق بيانات المخطط', sourceValue(plan.sprinkler_system)),
+    row('إجمالي عدد المرشات', sourceValue(source.aggregates.total_sprinklers)),
     row('حالة نظام الرش الآلي', yesNo(design.sprinkler.required)),
     row('نوع النظام', design.sprinkler.system_type),
     row('عدد المناطق', design.sprinkler.zones_count),
@@ -349,6 +362,7 @@ export function generateOfficialTechnicalReportDocument(params: {
   );
 
   const alarmRowsFromDesign = rows(
+    row('نظام الإنذار وفق بيانات المخطط', sourceValue(plan.fire_alarm_system)),
     row('لوحة التحكم', design.fire_alarm.control_panel),
     row('عدد لوحات الإنذار', sourceValue(source.aggregates.total_fire_alarm_panels)),
     row('كواشف الدخان', sourceValue(source.aggregates.total_smoke_detectors)),
@@ -371,6 +385,16 @@ export function generateOfficialTechnicalReportDocument(params: {
 
   const firefightingNotes = selectedSystemNotes(report.firefighting_items);
   const alarmNotes = selectedSystemNotes(report.alarm_items);
+  const exitsNotes = selectedSystemNotes(report.exits_items);
+  const ventilationNotes = selectedSystemNotes(report.ventilation_items);
+  const electricalRows = rows(
+    row('التأريض', sourceValue(plan.electrical_grounding)),
+    row('مانع الصواعق', sourceValue(plan.lightning_protection)),
+    row('المولد الاحتياطي', sourceValue(plan.backup_generator)),
+    row('ملاحظات السلامة الكهربائية', compact(report.overview_text))
+  );
+  const egressMetricRows = preferredEgressMetrics
+    .map((metric) => [metric.label, metric.value, metric.note || '—']);
   const evidenceSectionIds: Record<TechnicalReportPdfEvidenceGroup, EngineeringStudySectionId> = {
     site_access: 'site_access_evidence',
     existing_condition: 'existing_condition_evidence',
@@ -444,8 +468,9 @@ export function generateOfficialTechnicalReportDocument(params: {
         ))])]
       : []),
     section('means_of_egress', 9, 'وسائل الخروج', [
-      'تُراجع مسارات الخروج وسعة المخارج ومسافات السفر وفق الإشغال الفعلي والتوزيع المعماري المسجل للمشروع.'
-    ]),
+      'تُراجع مسارات الخروج وسعة المخارج ومسافات السفر وفق الإشغال الفعلي والتوزيع المعماري المسجل للمشروع.',
+      ...exitsNotes,
+    ], egressMetricRows.length ? [dataTable('مقاييس الإخلاء المعتمدة', ['البند', 'القيمة', 'الملاحظة'], egressMetricRows)] : []),
     ...(occupantRows.length ? [section('occupant_load', 10, 'حمل الإشغال', [], [dataTable('حمل الإشغال', ['الدور', 'المساحة / الاستخدام', 'المساحة', 'عدد الشاغلين'], occupantRows)])] : []),
     ...(egressRows.length ? [
       section('exit_capacity', 11, 'سعة المخارج', [], [dataTable('سعة المخارج', ['الدور', 'الشاغلون', 'المخارج', 'السلالم', 'أقصى مسافة سفر'], egressRows)]),
@@ -457,28 +482,28 @@ export function generateOfficialTechnicalReportDocument(params: {
     section('fire_compartments', 14, 'تقسيمات ومقصورات الحريق', [
       'تُراجع المقصورات والفواصل ووسائل الحماية المرتبطة بها وفق المخططات والمواصفات المعتمدة للمشروع.'
     ]),
-    ...(civilDefenseRows.length ? [section('fire_truck_access', 15, 'وصول آليات الدفاع المدني', [], [
-      twoColumnTable('بيانات الوصول والجهات ذات الصلة', civilDefenseRows),
+    ...(civilDefenseRows.length ? [section('fire_truck_access', 15, 'وصول آليات الدفاع المدني', ['تُعرض بيانات الوصول ووصلة الدفاع المدني هنا كمعلومات موروثة من مصدر التصميم الفني، ولا تُنشأ قيم افتراضية داخل التقرير.'], [
+      twoColumnTable('بيانات الوصول والجهات ذات الصلة — مصدر موروث', civilDefenseRows),
     ])] : []),
     ...(hasWaterDesign || hasPumpDesign || hasStandpipeDesign || hasSprinklerDesign || extinguisherRows.length || design.extinguishers.length || firefightingNotes.length || supportingRows.length ? [section('mechanical_fire_safety', 16, 'أنظمة السلامة الميكانيكية ومكافحة الحريق', ['تُعرض الأنظمة الميكانيكية المسجلة للمشروع في الأقسام التالية.'])] : []),
     ...(hasWaterDesign && waterRows.length ? [section('fire_water_supply', 17, 'إمداد مياه الإطفاء', [], [twoColumnTable('إمداد مياه الإطفاء والخزان', waterRows)])] : []),
     ...(hasPumpDesign && pumps.length ? [section('fire_pump_analysis', 18, 'مضخات الحريق', [], [twoColumnTable('مجموعة مضخات الحريق', pumps)])] : []),
-    ...(hasStandpipeDesign && standpipeRows.length ? [section('hose_reel_study', 19, 'نظام Hose Reel / Standpipe', [], [twoColumnTable('بيانات النظام', standpipeRows)])] : []),
+    ...(hasStandpipeDesign && standpipeRows.length ? [section('hose_reel_study', 19, 'نظام Hose Reel / Standpipe', ['تُعرض هذه البيانات من مصدر التصميم الفني الموروث للقراءة فقط.'], [twoColumnTable('بيانات النظام — مصدر موروث', standpipeRows)])] : []),
     ...(hasSprinklerDesign && sprinklerRows.length ? [section('sprinkler_system', 20, 'نظام الرش الآلي', [], [twoColumnTable('بيانات نظام الرش الآلي', sprinklerRows)])] : []),
     ...(extinguisherRows.length || design.extinguishers.length ? [section('portable_extinguishers', 21, 'الطفايات اليدوية', [], [
       ...(extinguisherRows.length ? [dataTable('حصر الطفايات اليدوية', ['الدور', 'المساحة', 'العدد', 'النوع', 'السعة'], extinguisherRows)] : []),
-      ...(design.extinguishers.length ? [dataTable('تفاصيل الطفايات المسجلة', ['النوع', 'العدد', 'الموقع', 'التصنيف'], design.extinguishers.map((item) => [item.type || '—', item.count || '—', item.location || '—', item.rating || '—']))] : []),
+      ...(design.extinguishers.length ? [dataTable('تفاصيل الطفايات المسجلة — مصدر موروث', ['النوع', 'العدد', 'الموقع', 'التصنيف'], design.extinguishers.map((item) => [manualExtinguisherTypeLabel(item.type) || '—', item.count || '—', item.location || '—', item.rating || '—']))] : []),
     ])] : []),
     ...(firefightingNotes.length ? [section('special_suppression', 22, 'أنظمة إطفاء خاصة', firefightingNotes)] : []),
-    ...(supportingRows.length ? [section('mechanical_ventilation', 23, 'التهوية والتحكم بالدخان والأنظمة الداعمة', [], [twoColumnTable('الأنظمة الداعمة', supportingRows)])] : []),
-    ...(alarmRowsFromDesign.length || alarmRows.length || alarmNotes.length || emergencyRows.length ? [section('electrical_fire_safety', 24, 'أنظمة السلامة الكهربائية', ['تُعرض أنظمة الإنذار والكشف والإنارة الإرشادية المسجلة للمشروع في الأقسام التالية.'])] : []),
+    ...(supportingRows.length || ventilationNotes.length ? [section('mechanical_ventilation', 23, 'التهوية والتحكم بالدخان والأنظمة الداعمة', ventilationNotes, supportingRows.length ? [twoColumnTable('الأنظمة الداعمة', supportingRows)] : [])] : []),
+    ...(alarmRowsFromDesign.length || alarmRows.length || alarmNotes.length || emergencyRows.length || electricalRows.length ? [section('electrical_fire_safety', 24, 'أنظمة السلامة الكهربائية', ['تُعرض أنظمة الإنذار والكشف والإنارة الإرشادية المسجلة للمشروع في الأقسام التالية.'], electricalRows.length ? [twoColumnTable('بيانات السلامة الكهربائية', electricalRows)] : [])] : []),
     ...(alarmRowsFromDesign.length || alarmRows.length || alarmNotes.length ? [section('fire_alarm_study', 25, 'نظام إنذار وكشف الحريق', [...alarmNotes], [
       ...(alarmRowsFromDesign.length ? [twoColumnTable('مكونات نظام الإنذار', alarmRowsFromDesign)] : []),
-      ...(alarmRows.length ? [dataTable('توزيع أجهزة الإنذار والكشف', ['الدور', 'المساحة', 'لوحات الإنذار', 'كواشف الدخان', 'كواشف الحرارة', 'أجهزة التنبيه'], alarmRows)] : []),
+      ...(alarmRows.length ? [dataTable('توزيع أجهزة الإنذار والكشف', ['الدور', 'المساحة', 'لوحات الإنذار', 'كواشف الدخان', 'كواشف الحرارة', 'أجهزة التنبيه', 'مواقع اللوحات'], alarmRows)] : []),
     ])] : []),
     ...(emergencyRows.length ? [section('emergency_lighting', 26, 'إنارة الطوارئ واللوحات الإرشادية', [], [dataTable('إنارة الطوارئ واللوحات الإرشادية', ['الدور', 'المساحة', 'إنارة الطوارئ', 'اللوحات الإرشادية'], emergencyRows)])] : []),
     section('conclusion', 27, 'الخلاصة الفنية', [
-      compact(design.summary_text) || `يلخص هذا التقرير البيانات الهندسية والأنظمة المسجلة للمشروع «${projectName}» وقت إصداره، ويُقرأ مع المخططات والمستندات المعتمدة ذات الصلة.`
+      compact(design.summary_text) || compact(report.overview_text) || `يلخص هذا التقرير البيانات الهندسية والأنظمة المسجلة للمشروع «${projectName}» وقت إصداره، ويُقرأ مع المخططات والمستندات المعتمدة ذات الصلة.`
     ]),
     ...(pdfContent.recommendations.length ? [section('engineering_recommendations', 28, 'التوصيات الهندسية المعتمدة', pdfContent.recommendations.map((item) => item.text))] : []),
     ...evidenceSections,
@@ -494,6 +519,8 @@ export function generateOfficialTechnicalReportDocument(params: {
     project_name: projectName,
     client_code: params.client.client_code || '',
     owner_name: ownerName,
+    prepared_by: compact(report.safety_engineer_name),
+    executive_director: compact(report.executive_director_name),
     cover_image: report.facade_photo?.dataUrl
       ? {
           src: report.facade_photo.dataUrl,
