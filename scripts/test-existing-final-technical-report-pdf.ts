@@ -4,6 +4,7 @@ import { spawnSync } from 'child_process';
 import { pathToFileURL } from 'url';
 import type { CompanyProfile } from '../lib/company-profile';
 import { buildExistingFinalTechnicalReportHtml } from '../lib/projects/engineering-report-engine/renderer/existing-final-technical-template';
+import { documentToFlowBlocks } from '../lib/projects/engineering-report-engine/renderer/flow-document';
 import { buildExistingTechnicalReportModel } from '../lib/projects/existing-technical-report-model';
 import { buildExistingFinalTechnicalReportDocument } from '../lib/projects/existing-final-technical-report-document';
 import type { ClientRecord } from '../lib/types/client';
@@ -160,6 +161,54 @@ const fireDesign = {
   summary_text: 'تُعرض أنظمة السلامة والوقاية من الحريق وفق البيانات الفنية المتاحة والمخططات والمستندات المرتبطة بالمشروع.',
 };
 
+async function renderPdf(htmlPath: string, pdfPath: string): Promise<void> {
+  const chrome = spawnSync('chromium', [
+    '--headless=new', '--disable-gpu', '--no-sandbox', '--allow-file-access-from-files',
+    `--print-to-pdf=${pdfPath}`, '--no-pdf-header-footer', '--print-to-pdf-no-header', pathToFileURL(htmlPath).href,
+  ], { encoding: 'utf8', timeout: 120000 });
+  if (chrome.status !== 0) throw new Error(chrome.stderr || chrome.stdout || 'تعذر إنشاء PDF الرسمي.');
+}
+
+async function extractPdfPages(pdfPath: string): Promise<{ pdf: any; pages: string[] }> {
+  const pdfjs = await import('pdfjs-dist/legacy/build/pdf.mjs');
+  const pdf = await pdfjs.getDocument({ data: new Uint8Array(readFileSync(pdfPath)), useSystemFonts: true }).promise;
+  const pages: string[] = [];
+  for (let pageNo = 1; pageNo <= pdf.numPages; pageNo += 1) {
+    const page = await pdf.getPage(pageNo);
+    const content = await page.getTextContent();
+    pages.push(content.items.map((item) => ('str' in item ? item.str : '')).join(' ').trim());
+  }
+  const extracted = spawnSync('pdftotext', ['-layout', pdfPath, '-'], { encoding: 'utf8', timeout: 30000 });
+  const cliPages = extracted.status === 0
+    ? extracted.stdout.split('\f').slice(0, pdf.numPages).map((page) => page.trim())
+    : [];
+  return { pdf, pages: cliPages.length > 0 ? cliPages : pages };
+}
+
+function normalizePdfText(value: string): string {
+  return value
+    .replace(/[\u200E\u200F\u202A-\u202E\u2066-\u2069]/g, '')
+    .replace(/[\s\u0640]+/g, '')
+    .replace(/[\u202B\u202C]/g, '');
+}
+
+function detectSectionPageMap(pages: string[], chapters: { id: string; title: string }[]): Record<string, number> {
+  const map: Record<string, number> = {};
+  const clean = (value: string) => value.replace(/[\u200E\u200F\u202A-\u202E\u2066-\u2069]/g, '');
+  for (const chapter of [...chapters, { id: 'approvals', title: '9. الاعتماد والتوقيعات' }]) {
+    const prefix = `SECTION_PAGE_${chapter.id}`;
+    const pageIndex = pages.findIndex((rawPage, index) => {
+      if (index < 1) return false;
+      const page = clean(rawPage);
+      const start = page.indexOf(prefix);
+      return start >= 0 && page.indexOf('MARKEREND', start + prefix.length) >= 0;
+    });
+    if (pageIndex < 0) throw new Error(`تعذر اكتشاف الصفحة الفعلية للقسم من marker: ${chapter.id}`);
+    map[chapter.id] = pageIndex + 1;
+  }
+  return map;
+}
+
 async function main() {
   const engineeringData = {
       ...EMPTY_PROJECT_ENGINEERING_DATA,
@@ -242,25 +291,39 @@ async function main() {
     };
   const model = buildExistingTechnicalReportModel(client, engineeringData as never, company);
   const document = buildExistingFinalTechnicalReportDocument(model);
-  const html = buildExistingFinalTechnicalReportHtml({ document, company });
+  const { chapters } = documentToFlowBlocks(document);
   const htmlPath = join(outDir, 'official-technical-report.html');
+  const pass1PdfPath = join(outDir, 'official-technical-report-pass1.pdf');
   const pdfPath = join(outDir, 'official-technical-report.pdf');
-  writeFileSync(htmlPath, html, 'utf8');
-  const chrome = spawnSync('chromium', [
-    '--headless=new', '--disable-gpu', '--no-sandbox', '--allow-file-access-from-files',
-    `--print-to-pdf=${pdfPath}`, '--no-pdf-header-footer', '--print-to-pdf-no-header', pathToFileURL(htmlPath).href,
-  ], { encoding: 'utf8', timeout: 120000 });
-  if (chrome.status !== 0) throw new Error(chrome.stderr || chrome.stdout || 'تعذر إنشاء PDF الرسمي.');
+  const verificationPdfPath = join(outDir, 'official-technical-report-verification.pdf');
 
-  const pdfjs = await import('pdfjs-dist/legacy/build/pdf.mjs');
-  const pdf = await pdfjs.getDocument({ data: new Uint8Array(readFileSync(pdfPath)), useSystemFonts: true }).promise;
-  const pages: string[] = [];
-  for (let pageNo = 1; pageNo <= pdf.numPages; pageNo += 1) {
-    const page = await pdf.getPage(pageNo);
-    const content = await page.getTextContent();
-    pages.push(content.items.map((item) => ('str' in item ? item.str : '')).join(' ').trim());
-  }
+  // Pass 1: render without page numbers, then detect physical section pages from the PDF.
+  const htmlPass1 = buildExistingFinalTechnicalReportHtml({ document, company, includeDetectionMarkers: true });
+  writeFileSync(htmlPath, htmlPass1, 'utf8');
+  await renderPdf(htmlPath, pass1PdfPath);
+  const pass1 = await extractPdfPages(pass1PdfPath);
+  const pageMap = detectSectionPageMap(pass1.pages, chapters);
+
+  // Pass 2: inject the detected physical page map and verify stability with markers.
+  const htmlPass2Verification = buildExistingFinalTechnicalReportHtml({ document, company, pageMap, includeDetectionMarkers: true });
+  writeFileSync(htmlPath, htmlPass2Verification, 'utf8');
+  await renderPdf(htmlPath, verificationPdfPath);
+  const verificationPdf = await extractPdfPages(verificationPdfPath);
+  const verifiedPageMap = detectSectionPageMap(verificationPdf.pages, chapters);
+  // Final render: same page map, but no detection markers in the delivered PDF.
+  const htmlPass2 = buildExistingFinalTechnicalReportHtml({ document, company, pageMap });
+  writeFileSync(htmlPath, htmlPass2, 'utf8');
+  await renderPdf(htmlPath, pdfPath);
+  const finalPdf = await extractPdfPages(pdfPath);
+  const pageMapStable = JSON.stringify(pageMap) === JSON.stringify(verifiedPageMap);
+  if (!pageMapStable) throw new Error(`TOC page map was not stable: ${JSON.stringify({ pageMap, verifiedPageMap })}`);
+
+  const pages = finalPdf.pages;
   const renderedText = pages.join('\n');
+  const visibleNewlineArtifacts = renderedText.match(/\\n|n\\/g) || [];
+  if (visibleNewlineArtifacts.length) {
+    throw new Error(`Visible escaped newline artifacts detected: ${visibleNewlineArtifacts.join(', ')}`);
+  }
   const fixtureIdentityLeakage = renderedText.match(/(?:منشأة\s+اختبار|ختم\s+اختبار|OFFICIAL[-_ ]?FIX|FIXTURE|Demo|Mock|Test)/gi) || [];
   if (fixtureIdentityLeakage.length) {
     throw new Error(`Fixture identity leakage detected: ${fixtureIdentityLeakage.join(', ')}`);
@@ -268,14 +331,19 @@ async function main() {
   const result = {
     htmlPath,
     pdfPath,
-    pageCount: pdf.numPages,
+    pass1PdfPath,
+    pageCount: finalPdf.pdf.numPages,
     blankPages: pages.flatMap((page, index) => page ? [] : [index + 1]),
     assessmentSystemsRendered: model.assessment_sections.flatMap((section) => section.systems.map((system) => system.system_key)),
     assessmentSummary: model.summary,
     requiredAssessmentFields: ['البند', 'الوضع الراهن', 'المطلوب حسب الكود / التصميم', 'الفجوة', 'حالة المطابقة', 'الإجراء المطلوب', 'المرجع / الدليل'].filter((field) => JSON.stringify(document).includes(field)),
-    internalTerms: ['إدخال المهندس', 'محسوب من المدخلات', 'Preliminary Engineering Check', 'لم يتم إدخال القيمة', 'حالة التقرير:', 'workflow', 'undefined', 'null', 'N/A', 'NEEDS_DATA', 'BLOCKED', 'RULE_NOT_CONFIGURED', 'fire_protection_design.', 'project_engineering_live.', 'design_center.'].filter((term) => renderedText.includes(term)),
+    internalTerms: ['إدخال المهندس', 'محسوب من المدخلات', 'Preliminary Engineering Check', 'لم يتم إدخال القيمة', 'حالة التقرير:', 'workflow', 'undefined', 'null', 'N/A', 'NEEDS_DATA', 'BLOCKED', 'RULE_NOT_CONFIGURED', 'fire_protection_design.', 'project_engineering_live.', 'design_center.', 'K80', 'K-Factor K80'].filter((term) => renderedText.includes(term)),
     numericZeroPlaceholders: ['إجمالي المخارج:0', 'إجمالي الشاغلين:0', 'عدد المرشات:0'].filter((term) => renderedText.includes(term)),
     fixtureIdentityLeakage,
+    visibleNewlineArtifacts,
+    pageMap,
+    verifiedPageMap,
+    pageMapStable,
     pages,
   };
   writeFileSync(join(outDir, 'result.json'), JSON.stringify(result, null, 2));

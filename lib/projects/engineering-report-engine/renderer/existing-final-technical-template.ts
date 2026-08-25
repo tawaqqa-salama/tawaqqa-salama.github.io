@@ -32,10 +32,10 @@ function renderTableCell(value: string, tag: 'th' | 'td', className = ''): strin
   return `<${tag}${classAttr}><bdi dir="${direction}" class="official-cell-text">${content}</bdi></${tag}>`;
 }
 
-function renderBlock(block: FlowBlock, locale: 'ar' | 'en'): string {
+function renderBlock(block: FlowBlock, locale: 'ar' | 'en', includeDetectionMarkers = false): string {
   switch (block.kind) {
     case 'chapter':
-      return `<section class="official-section official-section-heading ${block.id.includes('evidence') ? 'appendix-start' : ''}" id="sec-${esc(block.id)}"><h2 class="official-chapter">${text(block.title)}</h2></section>`;
+      return `<section class="official-section official-section-heading ${block.id.includes('evidence') ? 'appendix-start' : ''}" id="sec-${esc(block.id)}"><h2 class="official-chapter">${includeDetectionMarkers ? `<span class="official-section-detection-marker">SECTION_PAGE_${esc(block.id)}MARKEREND</span>` : ''}${text(block.title)}</h2></section>`;
     case 'subsection':
       return `<h3 class="official-subchapter keep-next">${text(block.title)}</h3>`;
     case 'paragraph':
@@ -108,21 +108,22 @@ function cover(doc: EngineeringStudyDocument, company: CompanyProfile): string {
 function toc(
   doc: EngineeringStudyDocument,
   company: CompanyProfile,
-  chapters: { id: string; title: string; displayNo: number }[]
+  chapters: { id: string; title: string; displayNo: number }[],
+  pageMap: Record<string, number> = {}
 ): string {
   const companyName = company.legal_name || company.name || 'توقع سلامة للاستشارات';
   const tocChapters = [...chapters, { id: 'approvals', title: '9. الاعتماد والتوقيعات', displayNo: 9 }];
   const rows = tocChapters.map((chapter) => {
     const label = chapter.title.replace(/^\d+(?:\.\d+)?\.\s*/, '');
-    return `<div class="official-toc-row"><em>${String(chapter.displayNo).padStart(2, '0')}</em><span>${text(label)}</span><i></i><b class="official-toc-page-no" data-toc-target="sec-${esc(chapter.id)}">—</b></div>`;
+    return `<div class="official-toc-row"><em>${String(chapter.displayNo).padStart(2, '0')}</em><span>${text(label)}</span><i></i><b class="official-toc-page-no" data-toc-target="sec-${esc(chapter.id)}">${pageMap[chapter.id] ?? '—'}</b></div>`;
   }).join('');
   return `<section class="official-toc-page"><div class="official-page-brand"><span>${esc(companyName)}</span><strong>${text(doc.title_ar)}</strong><span>${text(doc.project_name)}</span></div><div class="official-page-rules"></div><h1>المحتويات</h1><div class="official-toc">${rows}</div></section>`;
 }
 
-function approvals(doc: EngineeringStudyDocument, company: CompanyProfile): string {
+function approvals(doc: EngineeringStudyDocument, company: CompanyProfile, includeDetectionMarkers = false): string {
   const office = doc.executive_director || company.legal_name || company.name || '—';
   const preparedBy = doc.prepared_by || '........................................';
-  return `<section id="sec-approvals" class="official-approvals keep"><h2 class="official-chapter">الاعتماد والتوقيعات</h2><div class="official-approval-meta"><span>رقم التقرير: <bdi dir="ltr">${text(reportValue(doc.report_number))}</bdi></span><span>التاريخ: <bdi dir="auto">${text(reportValue(doc.report_date))}</bdi></span><span>الجهة: ${text(office)}</span></div><p class="official-paragraph">يُستكمل اعتماد التقرير وفق الصلاحيات المعتمدة للمكتب والاستشاري المسؤول.</p><div class="official-signature-grid"><div class="official-signature-box"><strong>المهندس المُعد</strong><span>الاسم: ${text(preparedBy)}</span><span>التوقيع: .....................................</span><span>التاريخ: ......................................</span></div><div class="official-stamp">${company.stamp_url ? `<img src="${esc(company.stamp_url)}" alt="" />` : `<span>${esc(company.stamp_text || 'ختم المكتب')}</span>`}</div><div class="official-signature-box"><strong>اعتماد المكتب</strong><span>الجهة: ${text(office)}</span><span>التوقيع / الختم: ............................</span><span>التاريخ: ......................................</span></div><div class="official-approval-notes"><strong>ملاحظات الاعتماد</strong><span></span><span></span><span></span></div></div></section>`;
+  return `<section id="sec-approvals" class="official-approvals keep"><h2 class="official-chapter">${includeDetectionMarkers ? '<span class="official-section-detection-marker">SECTION_PAGE_approvalsMARKEREND</span>' : ''}الاعتماد والتوقيعات</h2><div class="official-approval-meta"><span>رقم التقرير: <bdi dir="ltr">${text(reportValue(doc.report_number))}</bdi></span><span>التاريخ: <bdi dir="auto">${text(reportValue(doc.report_date))}</bdi></span><span>الجهة: ${text(office)}</span></div><p class="official-paragraph">يُستكمل اعتماد التقرير وفق الصلاحيات المعتمدة للمكتب والاستشاري المسؤول.</p><div class="official-signature-grid"><div class="official-signature-box"><strong>المهندس المُعد</strong><span>الاسم: ${text(preparedBy)}</span><span>التوقيع: .....................................</span><span>التاريخ: ......................................</span></div><div class="official-stamp">${company.stamp_url ? `<img src="${esc(company.stamp_url)}" alt="" />` : `<span>${esc(company.stamp_text || 'ختم المكتب')}</span>`}</div><div class="official-signature-box"><strong>اعتماد المكتب</strong><span>الجهة: ${text(office)}</span><span>التوقيع / الختم: ............................</span><span>التاريخ: ......................................</span></div><div class="official-approval-notes"><strong>ملاحظات الاعتماد</strong><span></span><span></span><span></span></div></div></section>`;
 }
 
 function css(doc: EngineeringStudyDocument, company: CompanyProfile): string {
@@ -183,7 +184,7 @@ function css(doc: EngineeringStudyDocument, company: CompanyProfile): string {
   .official-document { width:100%; }
   .official-section { margin:0; padding:0; }
   .official-section-heading { break-after:avoid-page; page-break-after:avoid; margin:0; }
-  .official-chapter { color:#123d4c; font-size:14px; font-weight:800; padding-bottom:1mm; margin:10px 0 7px; border-bottom:1px solid #1b8f91; text-align:start; break-after:avoid-page; page-break-after:avoid; }
+  .official-chapter { color:#123d4c; font-size:14px; font-weight:800; padding-bottom:1mm; margin:10px 0 7px; border-bottom:1px solid #1b8f91; text-align:start; break-after:avoid-page; page-break-after:avoid; } .official-section-detection-marker { display:inline; color:#123d4c; font-size:6px; line-height:1; white-space:nowrap; }
   .official-section-heading + .official-paragraph, .official-section-heading + .official-table-wrap, .official-section-heading + .official-reference { break-before:avoid-page; page-break-before:avoid; }
   .official-subchapter { color:#171717; font-size:12.5px; font-weight:800; margin:9px 0 4px; text-align:start; }
   .official-paragraph { margin:0 0 7px; text-align:justify; }
@@ -253,9 +254,12 @@ function css(doc: EngineeringStudyDocument, company: CompanyProfile): string {
 export function buildExistingFinalTechnicalReportHtml(params: {
   document: EngineeringStudyDocument;
   company: CompanyProfile;
+  pageMap?: Record<string, number>;
+  includeDetectionMarkers?: boolean;
 }): string {
   const { document: doc, company } = params;
   const { blocks, chapters } = documentToFlowBlocks(doc);
-  const body = blocks.map((block) => renderBlock(block, doc.locale)).join('\\n');
-  return `<!DOCTYPE html><html lang="${doc.locale}" dir="${doc.locale === 'ar' ? 'rtl' : 'ltr'}"><head><meta charset="utf-8"/><title>${esc(doc.title_ar)} — ${esc(doc.project_name)}</title><style>${css(doc, company)}</style></head><body>${cover(doc, company)}${toc(doc, company, chapters)}<main class="official-document">${body}${approvals(doc, company)}</main></body></html>`;
+  const includeDetectionMarkers = Boolean(params.includeDetectionMarkers);
+  const body = blocks.map((block) => renderBlock(block, doc.locale, includeDetectionMarkers)).join('\n');
+  return `<!DOCTYPE html><html lang="${doc.locale}" dir="${doc.locale === 'ar' ? 'rtl' : 'ltr'}"><head><meta charset="utf-8"/><title>${esc(doc.title_ar)} — ${esc(doc.project_name)}</title><style>${css(doc, company)}</style></head><body>${cover(doc, company)}${toc(doc, company, chapters, params.pageMap)}<main class="official-document">${body}${approvals(doc, company, includeDetectionMarkers)}</main></body></html>`;
 }
