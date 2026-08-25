@@ -139,6 +139,7 @@ describe('PR 7 — EXISTING final A4 technical report document', () => {
     expect(content).not.toContain('NEEDS_DATA');
     expect(content).not.toContain('RULE_NOT_CONFIGURED');
     expect(content).not.toContain('إدخال المهندس');
+    expect(content).toContain('غير محددة من المهندس');
     expect(content).not.toContain('fire_protection_design.');
     expect(model.assessment_basis.every((item) => !item.source.includes('fire_protection_design.'))).toBe(true);
   });
@@ -153,7 +154,11 @@ describe('PR 7 — EXISTING final A4 technical report document', () => {
     expect(html).toContain('@page { size:A4 portrait');
     expect(html).toContain('class="official-cover"');
     expect(html).toContain('class="official-toc-page"');
-    expect(html).toContain('class="official-table-wrap keep"');
+    expect(html).toContain('class="official-table-wrap"');
+    expect(html).toContain('official-summary-metrics');
+    expect(html).toContain('official-cell-text');
+    expect(html).toContain('border-top:.75mm solid #1b8f91');
+    expect(html).not.toContain('border-top:.75mm solid #b32020');
     expect(html).toContain('class="official-approvals keep"');
     expect(html).toContain('@bottom-center');
     expect(html).toContain('التقرير الفني لتقييم الموقع القائم');

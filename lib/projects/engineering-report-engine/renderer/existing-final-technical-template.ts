@@ -16,10 +16,19 @@ function reportValue(value: string | undefined, fallback = '—'): string {
   return value && value.trim() ? value.trim() : fallback;
 }
 
+function isLtrEngineeringValue(value: string): boolean {
+  return !/[\u0600-\u06ff]/.test(value) && /[A-Za-z0-9]/.test(value);
+}
+
+function renderTableCell(value: string, tag: 'th' | 'td'): string {
+  const direction = isLtrEngineeringValue(value) ? 'ltr' : 'auto';
+  return `<${tag}><bdi dir="${direction}" class="official-cell-text">${text(value)}</bdi></${tag}>`;
+}
+
 function renderBlock(block: FlowBlock, locale: 'ar' | 'en'): string {
   switch (block.kind) {
     case 'chapter':
-      return `<section class="official-section ${block.id.includes('evidence') ? 'appendix-start' : ''}" id="sec-${esc(block.id)}"><h2 class="official-chapter keep-next">${text(block.title)}</h2></section>`;
+      return `<section class="official-section official-section-heading ${block.id.includes('evidence') ? 'appendix-start' : ''}" id="sec-${esc(block.id)}"><h2 class="official-chapter">${text(block.title)}</h2></section>`;
     case 'subsection':
       return `<h3 class="official-subchapter keep-next">${text(block.title)}</h3>`;
     case 'paragraph':
@@ -28,8 +37,14 @@ function renderBlock(block: FlowBlock, locale: 'ar' | 'en'): string {
       return `<ol class="official-list">${block.items.map((item) => `<li>${text(item)}</li>`).join('')}</ol>`;
     case 'reference_note':
       return `<aside class="official-reference keep"><strong>${locale === 'ar' ? `المراجع (${block.referenceNo})` : `References (${block.referenceNo})`}</strong><div>${block.refs.map(text).join('<br/>')}</div></aside>`;
-    case 'table':
-      return `<section class="official-table-wrap keep"><div class="official-table-caption">${text(locale === 'ar' ? `[ ${block.caption} ]` : `[ ${block.caption} ]`)}</div><table class="official-table"><thead><tr>${block.headers.map((header) => `<th><bdi dir="auto">${text(header)}</bdi></th>`).join('')}</tr></thead><tbody>${block.rows.map((row) => `<tr>${row.map((cell) => `<td><bdi dir="auto">${text(cell)}</bdi></td>`).join('')}</tr>`).join('')}</tbody></table></section>`;
+    case 'table': {
+      const isSummary = block.caption.includes('ملخص حالات');
+      if (isSummary) {
+        return `<section class="official-summary-block"><div class="official-table-caption">${text(`[ ${block.caption} ]`)}</div><div class="official-summary-metrics">${block.rows.map(([label, value]) => `<div class="official-summary-metric"><span>${text(label)}</span><strong dir="ltr">${text(value)}</strong></div>`).join('')}</div></section>`;
+      }
+      const rows = block.rows.map((row) => `<tr>${row.map((cell) => renderTableCell(cell, 'td')).join('')}</tr>`).join('');
+      return `<section class="official-table-wrap"><div class="official-table-caption">${text(locale === 'ar' ? `[ ${block.caption} ]` : `[ ${block.caption} ]`)}</div><table class="official-table"><thead><tr>${block.headers.map((header) => renderTableCell(header, 'th')).join('')}</tr></thead><tbody>${rows}</tbody></table></section>`;
+    }
     case 'figure':
       return `<figure class="official-figure official-figure-${esc(block.layout)} official-figure-${esc(block.variant)} keep"><div class="official-figure-media"><img src="${esc(block.src)}" alt="" /></div><figcaption>${text(block.caption)}</figcaption>${block.note ? `<p class="official-figure-note">${text(block.note)}</p>` : ''}</figure>`;
     case 'figure_row':
@@ -95,7 +110,7 @@ function toc(
 function approvals(doc: EngineeringStudyDocument, company: CompanyProfile): string {
   const office = doc.executive_director || company.legal_name || company.name || '—';
   const preparedBy = doc.prepared_by || '........................................';
-  return `<section class="official-approvals keep"><h2 class="official-chapter">الاعتماد والتوقيعات</h2><p class="official-paragraph">يُستكمل اعتماد التقرير وفق الصلاحيات المعتمدة للمكتب والاستشاري المسؤول.</p><div class="official-signature-grid"><div class="official-signature-box"><strong>المهندس المُعد</strong><span>الاسم: ${text(preparedBy)}</span><span>التوقيع: .....................................</span><span>التاريخ: ......................................</span></div><div class="official-stamp">${company.stamp_url ? `<img src="${esc(company.stamp_url)}" alt="" />` : `<span>${esc(company.stamp_text || 'ختم المكتب')}</span>`}</div><div class="official-signature-box"><strong>اعتماد المكتب</strong><span>الجهة: ${text(office)}</span><span>التوقيع / الختم: ............................</span><span>التاريخ: ......................................</span></div></div></section>`;
+  return `<section class="official-approvals keep"><h2 class="official-chapter">الاعتماد والتوقيعات</h2><div class="official-approval-meta"><span>رقم التقرير: <bdi dir="ltr">${text(reportValue(doc.report_number))}</bdi></span><span>التاريخ: <bdi dir="auto">${text(reportValue(doc.report_date))}</bdi></span><span>الجهة: ${text(office)}</span></div><p class="official-paragraph">يُستكمل اعتماد التقرير وفق الصلاحيات المعتمدة للمكتب والاستشاري المسؤول.</p><div class="official-signature-grid"><div class="official-signature-box"><strong>المهندس المُعد</strong><span>الاسم: ${text(preparedBy)}</span><span>التوقيع: .....................................</span><span>التاريخ: ......................................</span></div><div class="official-stamp">${company.stamp_url ? `<img src="${esc(company.stamp_url)}" alt="" />` : `<span>${esc(company.stamp_text || 'ختم المكتب')}</span>`}</div><div class="official-signature-box"><strong>اعتماد المكتب</strong><span>الجهة: ${text(office)}</span><span>التوقيع / الختم: ............................</span><span>التاريخ: ......................................</span></div><div class="official-approval-notes"><strong>ملاحظات الاعتماد</strong><span></span><span></span><span></span></div></div></section>`;
 }
 
 function css(doc: EngineeringStudyDocument, company: CompanyProfile): string {
@@ -107,7 +122,7 @@ function css(doc: EngineeringStudyDocument, company: CompanyProfile): string {
   const projectName = escapeMarginText(doc.project_name);
   const ownerName = escapeMarginText(reportValue(doc.owner_name, doc.project_name));
   return `${getEmbeddedArabicFontCss()}
-  @page { size:A4 portrait; margin:35mm 15mm 25mm 15mm; @top-left { content:"${companyName}"; border-bottom:.75pt solid #b32020; padding-bottom:4mm; font-family:"Noto Naskh Arabic",Tahoma,sans-serif; font-size:8pt; font-weight:700; color:#171717; } @top-center { content:"${reportTitle} — ${projectName}"; border-bottom:.75pt solid #b32020; padding-bottom:4mm; font-family:"Noto Naskh Arabic",Tahoma,sans-serif; font-size:8.5pt; font-weight:700; color:#171717; } @top-right { content:"المالك: ${ownerName}"; border-bottom:.75pt solid #b32020; padding-bottom:4mm; font-family:"Noto Naskh Arabic",Tahoma,sans-serif; font-size:8pt; font-weight:700; color:#171717; } @bottom-center { content:"رقم الصفحة: " counter(page) " من " counter(pages) "  |  تاريخ التقرير: ${reportDate}  |  النسخة: 01  |  رقم التقرير: ${reportNo}"; border-top:.5pt solid #555; padding-top:2mm; font-family:"Noto Naskh Arabic",Tahoma,sans-serif; font-size:8pt; color:#171717; } }
+  @page { size:A4 portrait; margin:35mm 15mm 25mm 15mm; @top-left { content:"${companyName}"; border-bottom:.75pt solid #1b8f91; padding-bottom:4mm; font-family:"Noto Naskh Arabic",Tahoma,sans-serif; font-size:8pt; font-weight:700; color:#171717; } @top-center { content:"${reportTitle} — ${projectName}"; border-bottom:.75pt solid #1b8f91; padding-bottom:4mm; font-family:"Noto Naskh Arabic",Tahoma,sans-serif; font-size:8.5pt; font-weight:700; color:#171717; } @top-right { content:"المالك: ${ownerName}"; border-bottom:.75pt solid #1b8f91; padding-bottom:4mm; font-family:"Noto Naskh Arabic",Tahoma,sans-serif; font-size:8pt; font-weight:700; color:#171717; } @bottom-center { content:"رقم الصفحة: " counter(page) " من " counter(pages) "  |  تاريخ التقرير: ${reportDate}  |  النسخة: 01  |  رقم التقرير: ${reportNo}"; border-top:.5pt solid #555; padding-top:2mm; font-family:"Noto Naskh Arabic",Tahoma,sans-serif; font-size:8pt; color:#171717; } }
   @page :first { margin:12mm; @top-left { content:none; } @top-center { content:none; } @top-right { content:none; } @bottom-center { content:none; } }
   * { box-sizing:border-box; }
   html, body { margin:0; padding:0; width:210mm; background:#f7f7f7; }
@@ -117,15 +132,15 @@ function css(doc: EngineeringStudyDocument, company: CompanyProfile): string {
   .official-cover::after { content:""; position:absolute; z-index:-1; left:-55mm; bottom:-27mm; width:150mm; height:105mm; transform:rotate(-24deg); background:linear-gradient(90deg,rgba(239,178,65,.76),rgba(239,178,65,.1)); clip-path:polygon(0 54%,100% 0,100% 30%,0 84%); }
   .official-cover-grid { position:absolute; z-index:-1; inset:0; opacity:.12; background-image:linear-gradient(rgba(227,248,251,.6) 1px,transparent 1px),linear-gradient(90deg,rgba(227,248,251,.6) 1px,transparent 1px); background-size:12mm 12mm; mask-image:linear-gradient(140deg,black,transparent 75%); }
   .official-cover-orbit { position:absolute; z-index:-1; border:1px solid rgba(255,255,255,.2); border-radius:50%; }
-  .official-cover-orbit-a { width:88mm; height:88mm; right:-22mm; top:48mm; }
-  .official-cover-orbit-b { width:56mm; height:56mm; right:-5mm; top:64mm; border-color:rgba(239,178,65,.55); }
+  .official-cover-orbit-a { width:78mm; height:78mm; right:-19mm; top:51mm; }
+  .official-cover-orbit-b { width:49mm; height:49mm; right:-3mm; top:68mm; border-color:rgba(239,178,65,.55); }
   .official-cover-frame { flex:1; display:flex; flex-direction:column; min-height:249mm; margin:0; padding:14mm 15mm 12mm; text-align:right; }
   .official-cover-company { display:grid; grid-template-columns:auto 1fr; gap:4mm; align-items:center; padding-bottom:7mm; border-bottom:1px solid rgba(239,248,251,.42); text-align:start; }
   .official-cover-logo { width:45mm; height:22mm; border-radius:2mm; background:#fff; padding:2mm; object-fit:contain; object-position:center; }
   .official-cover-logo-fallback { width:26mm; height:22mm; border:1px solid #44d8c4; border-radius:2mm; display:flex; align-items:center; justify-content:center; color:#44d8c4; font-size:10px; font-weight:800; }
   .official-cover-company-name { color:#fff; font-weight:800; font-size:13px; }
   .official-cover-tagline { max-width:55mm; margin-top:1mm; color:#b8d2dc; font-size:8.5px; line-height:1.45; }
-  .official-cover-content { width:100%; max-width:132mm; margin:auto 0 0; padding:13mm 0 5mm; }
+  .official-cover-content { width:100%; max-width:132mm; margin:auto 0 0; padding:10mm 0 6mm; }
   .official-cover-eyebrow { color:#44d8c4; font-size:8px; font-weight:800; letter-spacing:0; }
   .official-cover-content h1 { margin:5mm 0 1mm; color:#fff; font-size:29px; line-height:1.2; font-weight:900; max-width:120mm; }
   .official-cover-subtitle { margin:0; color:#d4e6ea; font-size:16px; font-weight:700; }
@@ -144,8 +159,8 @@ function css(doc: EngineeringStudyDocument, company: CompanyProfile): string {
   .official-page-brand span:first-child { text-align:start; }
   .official-page-brand strong { text-align:center; font-size:10px; }
   .official-page-brand span:last-child { text-align:end; }
-  .official-page-rules { height:2.1mm; border-top:.75mm solid #b32020; border-bottom:.6mm solid #2d2925; }
-  .official-toc-page h1 { text-align:center; color:#8f1b1b; font-size:19px; margin:16mm 0 9mm; }
+  .official-page-rules { height:2.1mm; border-top:.75mm solid #1b8f91; border-bottom:.6mm solid #d2a33b; }
+  .official-toc-page h1 { text-align:center; color:#167b7f; font-size:19px; margin:16mm 0 9mm; }
   .official-toc { font-size:10.2px; line-height:1.38; }
   .official-toc-row { display:flex; align-items:baseline; gap:4px; margin:2px 0; break-inside:avoid; page-break-inside:avoid; }
   .official-toc-row em { min-width:10mm; font-weight:800; font-style:normal; text-align:end; }
@@ -154,20 +169,29 @@ function css(doc: EngineeringStudyDocument, company: CompanyProfile): string {
   .official-toc-row b { min-width:10mm; text-align:start; color:#171717; }
   .official-document { width:100%; }
   .official-section { margin:0; padding:0; }
-  .official-chapter { color:#161616; font-size:14px; font-weight:800; padding-bottom:1mm; margin:10px 0 7px; border-bottom:0; text-align:start; }
+  .official-section-heading { break-after:avoid-page; page-break-after:avoid; margin:0; }
+  .official-chapter { color:#123d4c; font-size:14px; font-weight:800; padding-bottom:1mm; margin:10px 0 7px; border-bottom:1px solid #1b8f91; text-align:start; break-after:avoid-page; page-break-after:avoid; }
+  .official-section-heading + .official-paragraph, .official-section-heading + .official-table-wrap, .official-section-heading + .official-reference { break-before:avoid-page; page-break-before:avoid; }
   .official-subchapter { color:#171717; font-size:12.5px; font-weight:800; margin:9px 0 4px; text-align:start; }
   .official-paragraph { margin:0 0 7px; text-align:justify; }
   .official-list { margin:2px 0 8px; padding-inline-start:22px; }
   .official-list li { margin:0 0 4px; page-break-inside:avoid; break-inside:avoid; }
-  .official-table-wrap { margin:5px 0 10px; }
-  .official-table-caption { color:#171717; font-weight:800; font-size:10px; margin-bottom:3px; text-align:start; }
-  .official-table { width:100%; table-layout:fixed; border-collapse:collapse; font-size:10px; }
+  .official-table-wrap { margin:5px 0 10px; break-inside:auto; page-break-inside:auto; }
+  .official-table-caption { color:#123d4c; font-weight:800; font-size:10px; margin-bottom:3px; text-align:start; }
+  .official-summary-block { margin:5px 0 10px; break-inside:avoid; page-break-inside:avoid; }
+  .official-summary-metrics { display:grid; grid-template-columns:repeat(5,minmax(0,1fr)); gap:3mm; }
+  .official-summary-metric { min-height:22mm; padding:3mm 2mm; border:1px solid #b8c8ca; border-top:1.5mm solid #1b8f91; background:#f4f8f8; display:flex; flex-direction:column; align-items:center; justify-content:center; text-align:center; }
+  .official-summary-metric span { color:#23434a; font-size:8.5px; font-weight:800; line-height:1.35; }
+  .official-summary-metric strong { color:#123d4c; font-size:17px; line-height:1; margin-top:2mm; }
+  .official-table { width:100%; table-layout:fixed; border-collapse:collapse; font-size:10px; direction:rtl; }
   .official-table thead { display:table-header-group; }
   .official-table tr { page-break-inside:avoid; break-inside:avoid; }
-  .official-table th, .official-table td { border:1px solid #555; padding:4px 5px; overflow-wrap:anywhere; word-break:break-word; white-space:normal; min-width:0; max-width:0; vertical-align:middle; text-align:right; direction:rtl; unicode-bidi:plaintext; }
-  .official-table th bdi, .official-table td bdi { display:block; max-width:100%; overflow-wrap:anywhere; word-break:break-word; white-space:normal; }
-  .official-table th { background:#c8c8c8; color:#181818; font-weight:800; }
-  .official-reference { margin:5px 0 8px; padding:5px 8px; border-inline-start:2px solid #5f5a55; background:#efefef; font-size:9.5px; }
+  .official-table th, .official-table td { border:1px solid #a8b4b7; padding:4px 5px; overflow-wrap:anywhere; word-break:normal; white-space:normal; min-width:0; vertical-align:top; text-align:right; direction:rtl; unicode-bidi:plaintext; line-height:1.65; }
+  .official-table th:first-child, .official-table td:first-child { width:29%; }
+  .official-cell-text { display:block; max-width:100%; overflow-wrap:anywhere; word-break:normal; white-space:normal; unicode-bidi:isolate; }
+  .official-table th bdi, .official-table td bdi { display:block; max-width:100%; overflow-wrap:anywhere; word-break:normal; white-space:normal; unicode-bidi:isolate; }
+  .official-table th { background:#e6f1f1; color:#123d4c; font-weight:800; }
+  .official-reference { margin:5px 0 8px; padding:5px 8px; border-inline-start:2px solid #1b8f91; background:#f1f7f6; font-size:9.5px; }
   .official-reference strong { display:block; color:#171717; margin-bottom:2px; }
   .official-figure, .official-figure-row { page-break-inside:avoid; break-inside:avoid; }
   .official-figure { margin:5px 0 9px; }
@@ -181,18 +205,22 @@ function css(doc: EngineeringStudyDocument, company: CompanyProfile): string {
   .official-figure-full_width .official-figure-media, .official-figure-map .official-figure-media, .official-figure-code .official-figure-media { width:100%; }
   .official-figure-full_width .official-figure-media img { max-height:118mm; }
   .official-figure-code .official-figure-media img { max-height:128mm; }
-  .official-figure figcaption { color:#bd1f1f; font-size:10px; font-weight:700; text-align:center; margin-top:3px; }
+  .official-figure figcaption { color:#167b7f; font-size:10px; font-weight:700; text-align:center; margin-top:3px; }
   .official-figure-note { color:#444; font-size:9px; text-align:center; margin:2px 0 0; }
   .official-code-sequence { margin:0; }
   .official-unit { margin:0 0 7px; }
   .appendix-start { break-before:page; page-break-before:always; }
-  .official-approvals { margin-top:12px; padding-top:8px; border-top:1px solid #555; break-before:page; page-break-before:always; }
+  .official-approvals { margin-top:12px; padding-top:8px; border-top:1px solid #1b8f91; break-before:page; page-break-before:always; }
+  .official-approval-meta { display:flex; flex-wrap:wrap; gap:4mm 8mm; margin:5mm 0 7mm; padding:3mm 4mm; border:1px solid #b8c8ca; background:#f4f8f8; color:#23434a; font-size:9.5px; }
+  .official-approval-meta span { white-space:nowrap; }
   .official-signature-grid { display:grid; grid-template-columns:1fr auto 1fr; gap:12px; align-items:start; margin-top:14px; }
-  .official-signature-box { min-height:42mm; border:1px solid #555; padding:9px; display:flex; flex-direction:column; gap:8px; }
+  .official-signature-box { min-height:58mm; border:1px solid #555; padding:9px; display:flex; flex-direction:column; gap:8px; }
   .official-signature-box strong { color:#171717; }
-  .official-stamp { width:80px; height:80px; border:1px dashed #555; display:flex; align-items:center; justify-content:center; text-align:center; color:#171717; padding:5px; margin-top:8px; overflow:hidden; font-weight:700; font-size:9px; }
+  .official-stamp { width:92px; height:92px; border:1px dashed #555; display:flex; align-items:center; justify-content:center; text-align:center; color:#171717; padding:5px; margin-top:8px; overflow:hidden; font-weight:700; font-size:9px; }
   .official-stamp img { max-width:100%; max-height:100%; width:auto; height:auto; object-fit:contain; }
-  .keep, .official-table-wrap, .official-figure, .official-signature-box { page-break-inside:avoid; break-inside:avoid; }
+  .official-approval-notes { grid-column:1 / -1; min-height:34mm; margin-top:5mm; padding:3mm 4mm; border:1px solid #b8c8ca; background:#fafcfc; color:#23434a; display:flex; flex-direction:column; gap:4mm; }
+  .official-approval-notes span { display:block; border-bottom:1px dotted #9aaeb1; height:5mm; }
+  .keep, .official-figure, .official-signature-box, .official-summary-block { page-break-inside:avoid; break-inside:avoid; }
   .keep-next { page-break-after:avoid; break-after:avoid-page; }
   @media screen { .official-cover,.official-toc-page,.official-document { box-shadow:0 0 0 1px #d4d4d4; } }
   @media screen and (max-width:600px) { html, body { width:100%; max-width:100%; } .official-cover-frame { padding-inline:5mm; } .official-cover-content { max-width:100%; } .official-cover-content h1 { font-size:24px; } .official-cover-subtitle { font-size:13px; } .official-cover-project { font-size:10px; } .official-cover-project th,.official-cover-project td { padding:2.2mm 2.5mm; } .official-page-brand { grid-template-columns:1fr; gap:2mm; text-align:center; } .official-page-brand span:first-child,.official-page-brand span:last-child,.official-page-brand strong { text-align:center; } .official-table-wrap { width:100%; } .official-table { table-layout:auto; font-size:8px; } .official-table th,.official-table td { padding:2px 3px; overflow-wrap:anywhere; word-break:break-word; } .official-toc { font-size:9px; } }

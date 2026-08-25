@@ -118,7 +118,7 @@ export function buildExistingFinalTechnicalReportDocument(
       model.recommendations.length
         ? 'تتضمن هذه القائمة الإجراءات والتوصيات الصريحة المرتبطة بتقييم المهندس أو التوصيات المحفوظة والمعتمدة فقط.'
         : 'لا توجد إجراءات أو توصيات معتمدة مسجلة حتى الآن.',
-    ], model.recommendations.length ? [table('الإجراءات والتوصيات الصريحة', ['المنظومة', 'الأولوية', 'النص', 'المصدر'], model.recommendations.map((item) => [item.system_label || 'عام', item.priority || 'لم تُحدد أولوية.', item.text, item.source === 'ASSESSMENT_ACTION' ? 'إجراء التقييم' : 'توصية معتمدة']))] : []),
+    ], model.recommendations.length ? [table('الإجراءات والتوصيات الصريحة', ['المنظومة', 'الأولوية', 'النص', 'المصدر'], model.recommendations.map((item) => [item.system_label || 'عام', item.priority || 'غير محددة من المهندس', item.text, item.source === 'ASSESSMENT_ACTION' ? 'إجراء التقييم' : 'توصية معتمدة']))] : []),
 
     section('conclusion', 8, 'الملخص والخلاصة وحدود الدراسة', [conclusion(model), ...model.limitations]),
   ];
