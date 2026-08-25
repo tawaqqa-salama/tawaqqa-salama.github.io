@@ -34,6 +34,7 @@ import Stage5TraceabilityPanel from '@/components/projects/Stage5TraceabilityPan
 import SupervisionReportSection from '@/components/projects/SupervisionReportSection';
 import DesignCenterSection from '@/components/projects/DesignCenterSection';
 import ExistingProjectAssessmentSection from '@/components/projects/ExistingProjectAssessmentSection';
+import ExistingTechnicalReportPreview from '@/components/projects/ExistingTechnicalReportPreview';
 import UnderConstructionStudySection from '@/components/projects/UnderConstructionStudySection';
 import BuildingPlanReportSection from '@/components/projects/BuildingPlanReportSection';
 import WorkflowStageRail from '@/components/projects/WorkflowStageRail';
@@ -899,66 +900,74 @@ export default function ProjectReportModal({
               )}
 
               {activeStage === 'technical_report' && (
-                <div className="space-y-4">
-                  {shouldUseAdminUcReport({
-                    client,
-                    report: data.technical_report,
-                    engineeringData: data,
-                  }) ? (
-                    <div className="rounded-xl border border-emerald-200 bg-emerald-50 px-3 py-2 text-xs text-emerald-950 leading-relaxed">
-                      قالب التقرير النشط:{' '}
-                      <strong>التقرير الفني — مبنى إداري تحت الإنشاء</strong>
-                      . التقرير الأساسي ≈ 11 صفحة؛ المرفقات قسم منفصل. قيم المضخة والخزان أدناه
-                      تُحدَّث تلقائياً عند إعادة إصدار التقرير.
-                    </div>
-                  ) : null}
-                  <ComplianceMatrixPanel
-                    client={client}
-                    data={data}
-                    onChange={(compliance) => patch({ compliance })}
-                  />
-                  <TechnicalReportSection
-                    client={client}
-                    data={data}
-                    report={data.technical_report}
-                    saving={saving}
-                    chapter={techReportChapter}
-                    onChapterChange={setTechReportChapterAndPersist}
-                    onChange={(technical_report) => patch({ technical_report })}
-                    onSave={() =>
-                      save({ ...data }, 'تم حفظ التقرير الفني.', {
-                        issueOutgoing: true,
-                        stayOpen: true,
-                      })
-                    }
-                    fireProtectionDesign={mergeFireProtectionDesign(
-                      data.fire_protection_design || EMPTY_FIRE_PROTECTION_DESIGN
-                    )}
-                    fireProtectionHighlighted={shouldUseAdminUcReport({
+                projectClassification === 'EXISTING' ? (
+                  <ExistingTechnicalReportPreview client={client} data={data} company={company} />
+                ) : projectClassification === null ? (
+                  <div className="border border-amber-200 bg-amber-50 px-4 py-4 text-sm leading-7 text-amber-950">
+                    لا يمكن فتح معاينة التقرير الفني لمسار الموقع القائم قبل تصنيف هوية المشروع. يبقى المشروع القديم غير المصنف محايدًا ولا يُعامل كموقع قائم أو مشروع قيد الإنشاء.
+                  </div>
+                ) : (
+                  <div className="space-y-4">
+                    {shouldUseAdminUcReport({
                       client,
                       report: data.technical_report,
                       engineeringData: data,
-                    })}
-                    onFireProtectionDesignChange={(fire_protection_design) => patch({ fire_protection_design })}
-                    onPersistEvidenceMetadata={async (evidence) => {
-                      const ok = await save(
-                        {
-                          ...data,
-                          technical_report: {
-                            ...data.technical_report,
-                            evidence,
+                    }) ? (
+                      <div className="rounded-xl border border-emerald-200 bg-emerald-50 px-3 py-2 text-xs text-emerald-950 leading-relaxed">
+                        قالب التقرير النشط:{' '}
+                        <strong>التقرير الفني — مبنى إداري تحت الإنشاء</strong>
+                        . التقرير الأساسي ≈ 11 صفحة؛ المرفقات قسم منفصل. قيم المضخة والخزان أدناه
+                        تُحدَّث تلقائياً عند إعادة إصدار التقرير.
+                      </div>
+                    ) : null}
+                    <ComplianceMatrixPanel
+                      client={client}
+                      data={data}
+                      onChange={(compliance) => patch({ compliance })}
+                    />
+                    <TechnicalReportSection
+                      client={client}
+                      data={data}
+                      report={data.technical_report}
+                      saving={saving}
+                      chapter={techReportChapter}
+                      onChapterChange={setTechReportChapterAndPersist}
+                      onChange={(technical_report) => patch({ technical_report })}
+                      onSave={() =>
+                        save({ ...data }, 'تم حفظ التقرير الفني.', {
+                          issueOutgoing: true,
+                          stayOpen: true,
+                        })
+                      }
+                      fireProtectionDesign={mergeFireProtectionDesign(
+                        data.fire_protection_design || EMPTY_FIRE_PROTECTION_DESIGN
+                      )}
+                      fireProtectionHighlighted={shouldUseAdminUcReport({
+                        client,
+                        report: data.technical_report,
+                        engineeringData: data,
+                      })}
+                      onFireProtectionDesignChange={(fire_protection_design) => patch({ fire_protection_design })}
+                      onPersistEvidenceMetadata={async (evidence) => {
+                        const ok = await save(
+                          {
+                            ...data,
+                            technical_report: {
+                              ...data.technical_report,
+                              evidence,
+                            },
                           },
-                        },
-                        'تم حفظ بيانات المرفق قبل تنفيذ الحذف الآمن.',
-                        { stayOpen: true, techReportFocus: true }
-                      );
-                      if (!ok) throw new Error('تعذر حفظ بيانات المرفق على السيرفر؛ لم يبدأ حذف الملف.');
-                    }}
-                    onPreview={handlePreviewTechnical}
-                    onPrint={handlePrintTechnical}
-                    onDownload={handleDownloadTechnical}
-                  />
-                </div>
+                          'تم حفظ بيانات المرفق قبل تنفيذ الحذف الآمن.',
+                          { stayOpen: true, techReportFocus: true }
+                        );
+                        if (!ok) throw new Error('تعذر حفظ بيانات المرفق على السيرفر؛ لم يبدأ حذف الملف.');
+                      }}
+                      onPreview={handlePreviewTechnical}
+                      onPrint={handlePrintTechnical}
+                      onDownload={handleDownloadTechnical}
+                    />
+                  </div>
+                )
               )}
 
               {activeStage === 'visits_supervision' && (
