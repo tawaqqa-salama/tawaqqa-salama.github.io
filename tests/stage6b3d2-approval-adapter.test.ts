@@ -18,6 +18,7 @@ const identity = {
   clientId: 'client-1',
   projectId: 'project-1',
   projectCode: 'PRJ-2026-000001',
+  projectClassification: null,
 };
 
 function liveRead(updatedAt = '2026-08-23T10:00:00.000Z', error: unknown = null) {

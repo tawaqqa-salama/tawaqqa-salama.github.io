@@ -13,6 +13,11 @@ import ActivityRequirementsPanel from '@/components/clients/ActivityRequirements
 import NumericInput from '@/components/ui/NumericInput';
 import { parseLocalizedNumber } from '@/lib/validation/numeric-input';
 import type { ClientFormData, FloorLevel } from '@/lib/types/client';
+import {
+  PROJECT_CLASSIFICATIONS,
+  projectClassificationDescription,
+  projectClassificationLabel,
+} from '@/lib/projects/project-classification';
 
 const EMPTY_FORM: ClientFormData = {
   owner_name: '',
@@ -29,6 +34,7 @@ const EMPTY_FORM: ClientFormData = {
   building_area: '',
   floors_count: '',
   project_status: '',
+  project_classification: '',
   floor_levels: [],
 };
 
@@ -275,6 +281,31 @@ export default function AddClientModal({
             onChange={setFloorLevels}
             maxFloors={activityRule?.maxFloors}
           />
+
+          <div className="rounded-xl border border-blue-100 bg-blue-50/40 p-3">
+            <label className="block text-xs font-semibold text-gray-800 mb-1">تصنيف المشروع الهندسي</label>
+            <select
+              required
+              value={formData.project_classification}
+              onChange={(e) => setFormData((prev) => ({ ...prev, project_classification: e.target.value as ClientFormData['project_classification'] }))}
+              className="w-full p-2.5 border rounded-xl text-sm focus:ring-2 focus:ring-blue-500 outline-none bg-white"
+                         >
+               <option value="">اختر تصنيف المشروع الهندسي...</option>
+               {PROJECT_CLASSIFICATIONS.map((classification) => (
+
+                <option key={classification} value={classification}>
+                  {projectClassificationLabel(classification)}
+                </option>
+              ))}
+            </select>
+                         <p className="mt-1 text-[11px] leading-5 text-gray-600">
+               {formData.project_classification
+                 ? `${projectClassificationDescription(formData.project_classification)}. `
+                 : 'يلزم اختيار التصنيف صراحة قبل الحفظ. '}
+               هذا التصنيف ثابت لهوية المشروع ولا يعتمد على حالة المشروع التشغيلية.
+             </p>
+
+          </div>
 
           <div>
             <label className="block text-xs font-semibold text-gray-700 mb-1">حالة المشروع</label>

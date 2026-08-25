@@ -1,5 +1,6 @@
 import { ACTIVITY_RULES } from '@/lib/constants/clients';
 import type { ClientFormData, FloorLevel } from '@/lib/types/client';
+import { isProjectClassification } from '@/lib/projects/project-classification';
 import { calcBuildingArea, calcFloorsCount, floorUsageArea, normalizeFloorLevels } from '@/lib/business/floors';
 import {
   parseLocalizedInteger,
@@ -74,6 +75,10 @@ export function validateActivityConstraints(input: {
 }
 
 export function validateClientForm(formData: ClientFormData): string | null {
+  if (!isProjectClassification(formData.project_classification)) {
+    return 'اختر تصنيف المشروع الهندسي: موقع قائم أو مشروع قيد الإنشاء.';
+  }
+
   const phone = sanitizeIntegerInput(formData.phone);
 
   if (!/^05\d{8}$/.test(phone)) {

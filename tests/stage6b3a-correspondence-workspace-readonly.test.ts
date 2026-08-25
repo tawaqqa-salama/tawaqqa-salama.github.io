@@ -35,6 +35,7 @@ const identity = {
   clientId: 'client-6b3a',
   projectId: 'project-6b3a',
   projectCode: 'PRJ-2026-000091',
+  projectClassification: null,
 };
 
 describe('Stage 6B-3A read-only correspondence workspace', () => {

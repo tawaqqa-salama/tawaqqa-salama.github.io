@@ -1,5 +1,6 @@
 import { supabase } from '@/lib/supabase';
 import type { CanonicalProjectIdentity } from '@/lib/types/client';
+import { normalizeProjectClassification } from '@/lib/projects/project-classification';
 
 /**
  * Resolves an already-established primary engineering project identity.
@@ -34,7 +35,7 @@ export async function resolvePrimaryEngineeringProjectIdentity(
     // and the composite pair must resolve exactly as stored by IDENTITY-1/2.
     const { data: project, error: projectError } = await supabase
       .from('projects')
-      .select('id, client_id, project_code')
+      .select('id, client_id, project_code, project_classification')
       .eq('id', mapping.project_id)
       .eq('client_id', normalizedClientId)
       .maybeSingle();
@@ -53,6 +54,8 @@ export async function resolvePrimaryEngineeringProjectIdentity(
       clientId: normalizedClientId,
       projectId: project.id,
       projectCode: project.project_code,
+      // Legacy NULL remains null. Do not infer from client status, report data, or design payload.
+      projectClassification: normalizeProjectClassification(project.project_classification),
     };
   } catch {
     // Identity is optional until a future project-centric feature needs it.

@@ -1,6 +1,7 @@
 import type { ProjectEngineeringData } from '@/lib/types/project-reports';
 import type { QuotationDocumentsState } from '@/lib/types/quotation-documents';
 import type { SalesPaymentType } from '@/lib/types/sales';
+import type { ProjectClassification } from '@/lib/projects/project-classification';
 
 export interface InspectionChecklistItem {
   id: string;
@@ -56,6 +57,8 @@ export interface CanonicalProjectIdentity {
   clientId: string;
   projectId: string;
   projectCode: string;
+  /** Read-only canonical value from public.projects. Null preserves legacy projects without classification. */
+  projectClassification: ProjectClassification | null;
 }
 
 export interface ClientRecord {
@@ -162,7 +165,14 @@ export interface ClientFormData {
   land_area: string;
   building_area: string;
   floors_count: string;
+  /** Operational Sales status only; it never selects the technical-report path. */
   project_status: string;
+  /**
+   * Sales draft selection. Empty is allowed only before local validation so the
+   * user must actively choose an identity classification; server payloads accept
+   * ProjectClassification only.
+   */
+  project_classification: ProjectClassification | '';
   floor_levels?: FloorLevel[];
 }
 
