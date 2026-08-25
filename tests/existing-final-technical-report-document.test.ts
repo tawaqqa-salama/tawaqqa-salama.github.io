@@ -139,6 +139,8 @@ describe('PR 7 — EXISTING final A4 technical report document', () => {
     expect(content).not.toContain('NEEDS_DATA');
     expect(content).not.toContain('RULE_NOT_CONFIGURED');
     expect(content).not.toContain('إدخال المهندس');
+    expect(content).not.toContain('fire_protection_design.');
+    expect(model.assessment_basis.every((item) => !item.source.includes('fire_protection_design.'))).toBe(true);
   });
 
   it('renders an A4 cover, TOC, semantic sections, running header/footer, and approval page', () => {
@@ -159,6 +161,16 @@ describe('PR 7 — EXISTING final A4 technical report document', () => {
     expect(html).not.toContain('NEEDS_DATA');
   });
 
+  it('does not print unrecorded aggregate zeros as real engineering values', () => {
+    const data = parseProjectEngineeringData({ ...EMPTY_PROJECT_ENGINEERING_DATA, design_center: EMPTY_PROJECT_ENGINEERING_DATA.design_center });
+    const model = buildExistingTechnicalReportModel(client, data);
+    const values = model.engineering_sections.flatMap((section) => section.rows.map((row) => `${row.label}:${row.value}`));
+
+    expect(values).not.toContain('إجمالي المخارج:0');
+    expect(values).not.toContain('إجمالي الشاغلين:0');
+    expect(values).not.toContain('عدد المرشات:0');
+  });
+
   it('keeps sparse assessment neutral and does not infer compliance', () => {
     const data = parseProjectEngineeringData({ ...EMPTY_PROJECT_ENGINEERING_DATA, existing_assessment: undefined });
     const model = buildExistingTechnicalReportModel(client, data);
@@ -169,6 +181,7 @@ describe('PR 7 — EXISTING final A4 technical report document', () => {
     expect(model.summary).toEqual({ total_assessed_systems: 0, compliant: 0, non_compliant: 0, needs_completion: 0, not_applicable: 0 });
     expect(content).toContain('لا يتضمن الملف الحالي بنود تقييم مكتملة');
     expect(content).not.toContain('المبنى مطابق');
+    expect(content).toContain('لا توجد إجراءات أو توصيات معتمدة مسجلة حتى الآن.');
   });
 
   it('keeps all four explicit assessment statuses and long Arabic text in the final document', () => {

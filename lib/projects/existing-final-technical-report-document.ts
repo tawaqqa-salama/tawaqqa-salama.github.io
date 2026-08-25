@@ -50,19 +50,19 @@ function status(status: ExistingTechnicalReportStatus): string {
   return existingTechnicalReportStatusLabel(status);
 }
 
-function assessmentRows(model: ExistingTechnicalReportModel): string[][] {
-  return model.assessment_sections.flatMap((group) =>
-    group.systems.map((item) => [
-      `${group.label} — ${item.system_label}`,
-      text(item.existing_condition) || 'لم يكتمل تقييم هذا البند.',
-      text(item.required_condition) || 'لم تُسجل قيمة.',
-      text(item.gap) || 'لم تُسجل فجوة.',
-      status(item.compliance_status),
-      text(item.required_action) || 'لم يُسجل إجراء مطلوب.',
-      text(item.requirement_reference) || 'لم يُسجل مرجع.',
-      [text(item.notes), item.evidence.length ? `أدلة مرتبطة: ${item.evidence.length}` : ''].filter(Boolean).join(' — ') || 'لا توجد ملاحظات أو أدلة مسجلة.',
-    ])
-  );
+function assessmentTables(model: ExistingTechnicalReportModel): EngineeringStudySection['tables'] {
+  return model.assessment_sections.flatMap((group) => group.systems.map((item) => table(
+    `${group.label} — ${item.system_label}`,
+    ['البند', 'البيان'],
+    [
+      ['الوضع الراهن', [text(item.existing_condition), text(item.notes)].filter(Boolean).join(' — ') || 'لم يكتمل تقييم هذا البند.'],
+      ['المطلوب حسب الكود / التصميم', text(item.required_condition) || 'لم تُسجل قيمة.'],
+      ['الفجوة', text(item.gap) || 'لم تُسجل فجوة.'],
+      ['حالة المطابقة', status(item.compliance_status)],
+      ['الإجراء المطلوب', text(item.required_action) || 'لم يُسجل إجراء مطلوب.'],
+      ['المرجع / الدليل', [text(item.requirement_reference), item.evidence.length ? `أدلة مرتبطة: ${item.evidence.length}` : ''].filter(Boolean).join(' — ') || 'لم يُسجل مرجع أو دليل.'],
+    ]
+  )));
 }
 
 function summaryRows(model: ExistingTechnicalReportModel): string[][] {
@@ -104,23 +104,23 @@ export function buildExistingFinalTechnicalReportDocument(
       'تُعرض المراجع التالية كما ارتبطت ببنود التقييم، دون إضافة مراجع أو استنتاجات كودية جديدة داخل طبقة التقرير.',
     ], [table('المراجع المرتبطة بالتقييم', ['المرجع', 'المصدر'], model.assessment_basis.map((item) => [item.reference, item.source]))])] : []),
     section('summary', 4, 'الملخص التنفيذي للتقييم', [
-      'يعرض الملخص أعداد الحالات الصريحة المسجلة في تقييم المهندس فقط. لا يحول التقرير هذه الأعداد إلى نتيجة مطابقة عامة للمبنى.',
-    ], [table('ملخص حالات التقييم', ['البند', 'العدد'], summaryRows(model))]),
+      model.summary.total_assessed_systems
+        ? 'يعرض الملخص أعداد الحالات الصريحة المسجلة في تقييم المهندس فقط. لا يحول التقرير هذه الأعداد إلى نتيجة مطابقة عامة للمبنى.'
+        : 'لم يكتمل تقييم بنود الموقع القائم بعد. لا تُستنتج حالة مطابقة عامة للمبنى من غياب التقييم.',
+    ], model.summary.total_assessed_systems ? [table('ملخص حالات التقييم', ['البند', 'العدد'], summaryRows(model))] : []),
     ...(model.assessment_sections.length ? [section('engineering_compliance_review', 5, 'التقييم التفصيلي للأنظمة', [
-      'تُعرض كل منظومة في صف مستقل وفق التسلسل: الوضع الراهن، المطلوب حسب الكود أو التصميم، الفجوة، حالة المطابقة، الإجراء المطلوب، المرجع، والملاحظات أو الأدلة.',
-    ], [table(
-      'مصفوفة التقييم التفصيلي',
-      ['البند', 'الوضع الراهن', 'المطلوب حسب الكود / التصميم', 'الفجوة', 'حالة المطابقة', 'الإجراء المطلوب', 'المرجع', 'الملاحظات / الأدلة'],
-      assessmentRows(model)
-    )])] : []),
-    ...(model.engineering_sections.length ? [section('building_requirements', 6, 'القيم الهندسية المسجلة', [
-      'تُعرض القيم الهندسية النهائية التي يوردها نموذج التقرير للقراءة فقط. لا يعيد هذا التقرير حساب التدفقات أو الضغوط أو الكميات.',
+      'تُعرض كل منظومة في بطاقة مستقلة وفق التسلسل: الوضع الراهن، المطلوب حسب الكود أو التصميم، الفجوة، حالة المطابقة، الإجراء المطلوب، المرجع أو الدليل، والملاحظات. لا تُنشأ بطاقات للأنظمة التي لا تتوفر لها بيانات تقييم قابلة للعرض.',
+    ], assessmentTables(model))] : []),
+    ...(model.engineering_sections.length ? [section('building_requirements', 6, 'البيانات الهندسية المرجعية', [
+      'تُعرض هذه القيم كبيانات مرجعية داعمة للتقييم فقط، كما يوردها نموذج التقرير للقراءة فقط. لا يعيد هذا التقرير حساب التدفقات أو الضغوط أو الكميات.',
     ], model.engineering_sections.map((item) => twoColumn(item.label, item.rows)))] : []),
-    ...(model.recommendations.length ? [section('engineering_recommendations', 7, 'التوصيات والإجراءات المطلوبة', [
-      'تتضمن هذه القائمة الإجراءات والتوصيات الصريحة المرتبطة بتقييم المهندس أو التوصيات المحفوظة والمعتمدة فقط.',
-    ], [table('الإجراءات والتوصيات الصريحة', ['المنظومة', 'الأولوية', 'النص', 'المصدر'], model.recommendations.map((item) => [item.system_label || 'عام', item.priority || 'لم تُحدد أولوية.', item.text, item.source === 'ASSESSMENT_ACTION' ? 'إجراء التقييم' : 'توصية معتمدة']))])] : []),
-    section('conclusion', 8, 'الملخص والخلاصة', [conclusion(model)]),
-    section('owner_information', 9, 'حدود الدراسة', model.limitations),
+    section('existing_recommendations', 7, 'التوصيات والإجراءات المطلوبة', [
+      model.recommendations.length
+        ? 'تتضمن هذه القائمة الإجراءات والتوصيات الصريحة المرتبطة بتقييم المهندس أو التوصيات المحفوظة والمعتمدة فقط.'
+        : 'لا توجد إجراءات أو توصيات معتمدة مسجلة حتى الآن.',
+    ], model.recommendations.length ? [table('الإجراءات والتوصيات الصريحة', ['المنظومة', 'الأولوية', 'النص', 'المصدر'], model.recommendations.map((item) => [item.system_label || 'عام', item.priority || 'لم تُحدد أولوية.', item.text, item.source === 'ASSESSMENT_ACTION' ? 'إجراء التقييم' : 'توصية معتمدة']))] : []),
+
+    section('conclusion', 8, 'الملخص والخلاصة وحدود الدراسة', [conclusion(model), ...model.limitations]),
   ];
 
   return {

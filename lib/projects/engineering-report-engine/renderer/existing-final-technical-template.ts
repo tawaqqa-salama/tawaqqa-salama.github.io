@@ -29,7 +29,7 @@ function renderBlock(block: FlowBlock, locale: 'ar' | 'en'): string {
     case 'reference_note':
       return `<aside class="official-reference keep"><strong>${locale === 'ar' ? `المراجع (${block.referenceNo})` : `References (${block.referenceNo})`}</strong><div>${block.refs.map(text).join('<br/>')}</div></aside>`;
     case 'table':
-      return `<section class="official-table-wrap keep"><div class="official-table-caption">${text(locale === 'ar' ? `[ ${block.caption} ]` : `[ ${block.caption} ]`)}</div><table class="official-table"><thead><tr>${block.headers.map((header) => `<th>${text(header)}</th>`).join('')}</tr></thead><tbody>${block.rows.map((row) => `<tr>${row.map((cell) => `<td>${text(cell)}</td>`).join('')}</tr>`).join('')}</tbody></table></section>`;
+      return `<section class="official-table-wrap keep"><div class="official-table-caption">${text(locale === 'ar' ? `[ ${block.caption} ]` : `[ ${block.caption} ]`)}</div><table class="official-table"><thead><tr>${block.headers.map((header) => `<th><bdi dir="auto">${text(header)}</bdi></th>`).join('')}</tr></thead><tbody>${block.rows.map((row) => `<tr>${row.map((cell) => `<td><bdi dir="auto">${text(cell)}</bdi></td>`).join('')}</tr>`).join('')}</tbody></table></section>`;
     case 'figure':
       return `<figure class="official-figure official-figure-${esc(block.layout)} official-figure-${esc(block.variant)} keep"><div class="official-figure-media"><img src="${esc(block.src)}" alt="" /></div><figcaption>${text(block.caption)}</figcaption>${block.note ? `<p class="official-figure-note">${text(block.note)}</p>` : ''}</figure>`;
     case 'figure_row':
@@ -164,7 +164,8 @@ function css(doc: EngineeringStudyDocument, company: CompanyProfile): string {
   .official-table { width:100%; table-layout:fixed; border-collapse:collapse; font-size:10px; }
   .official-table thead { display:table-header-group; }
   .official-table tr { page-break-inside:avoid; break-inside:avoid; }
-  .official-table th, .official-table td { border:1px solid #555; padding:4px 5px; overflow-wrap:anywhere; vertical-align:middle; text-align:center; unicode-bidi:plaintext; }
+  .official-table th, .official-table td { border:1px solid #555; padding:4px 5px; overflow-wrap:anywhere; word-break:break-word; white-space:normal; min-width:0; max-width:0; vertical-align:middle; text-align:right; direction:rtl; unicode-bidi:plaintext; }
+  .official-table th bdi, .official-table td bdi { display:block; max-width:100%; overflow-wrap:anywhere; word-break:break-word; white-space:normal; }
   .official-table th { background:#c8c8c8; color:#181818; font-weight:800; }
   .official-reference { margin:5px 0 8px; padding:5px 8px; border-inline-start:2px solid #5f5a55; background:#efefef; font-size:9.5px; }
   .official-reference strong { display:block; color:#171717; margin-bottom:2px; }

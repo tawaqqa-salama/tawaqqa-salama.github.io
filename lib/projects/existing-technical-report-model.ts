@@ -122,6 +122,7 @@ function locationFromClient(client: ClientRecord): string | null {
 
 function valueRow(label: string, value: string | number | null | undefined): { label: string; value: string } | null {
   if (value === null || value === undefined || value === '') return null;
+  if (typeof value === 'number' && value === 0) return null;
   return { label, value: String(value) };
 }
 
@@ -174,7 +175,9 @@ function reportSystem(
 }
 
 function isRenderableAssessment(system: ExistingAssessmentSystem): boolean {
-  return Object.keys(system).length > 0;
+  if (Object.keys(system).length === 0) return false;
+  if (system.applicable === false && !system.compliance_status) return false;
+  return true;
 }
 
 function assessmentSections(data: ProjectEngineeringData): ExistingTechnicalReportAssessmentSection[] {
@@ -244,11 +247,26 @@ function recommendations(
   return unique([...actions, ...unlinkedApproved], (item) => `${item.source}:${item.text}`);
 }
 
+function assessmentSourceLabel(source: string | null): string {
+  const labels: Record<string, string> = {
+    'fire_protection_design.fire_truck_access': 'بيانات الوصول ضمن التصميم الفني',
+    'fire_protection_design.water_supply': 'بيانات مصدر المياه ضمن التصميم الفني',
+    'fire_protection_design.water_tank': 'بيانات الخزان ضمن التصميم الفني',
+    'fire_protection_design.pump': 'بيانات المضخات ضمن التصميم الفني',
+    'fire_protection_design.standpipe': 'بيانات المواسير الرأسية ضمن التصميم الفني',
+    'fire_protection_design.sprinkler': 'بيانات الرش ضمن التصميم الفني ومركز التصاميم',
+    'fire_protection_design.extinguishers': 'بيانات الطفايات ضمن التصميم الفني',
+    'fire_protection_design.fire_alarm': 'بيانات إنذار الحريق ضمن التصميم الفني ومركز التصاميم',
+    'fire_protection_design.supporting_systems': 'متطلبات الأنظمة المساندة في التصميم الفني',
+  };
+  return (source && labels[source]) || (source?.includes('fire_protection_design') ? 'بيانات التصميم الفني' : source || 'مرجع تقييم مدخل من المهندس');
+}
+
 function assessmentBasis(sections: ExistingTechnicalReportAssessmentSection[]): Array<{ reference: string; source: string }> {
   return unique(
     sections.flatMap((section) => section.systems.flatMap((system) =>
       system.requirement_reference
-        ? [{ reference: system.requirement_reference, source: system.requirement_source || 'مرجع تقييم مدخل من المهندس' }]
+        ? [{ reference: system.requirement_reference, source: assessmentSourceLabel(system.requirement_source) }]
         : []
     )),
     (item) => `${item.reference}:${item.source}`
@@ -262,19 +280,21 @@ function displayValue(value: unknown): string {
 }
 
 function measuredValue(value: { value: number | null; unit: string }): string {
+  if (value.value === null || value.value === 0) return '';
   return formatMeasured(value as never, { empty: '' });
 }
 
 function engineeringSections(client: ClientRecord, data: ProjectEngineeringData): ExistingTechnicalReportEngineeringSection[] {
   const source = buildTechnicalReportSourceData({ client, engineeringData: data });
   const design: FireProtectionDesign = mergeFireProtectionDesign(data.fire_protection_design || EMPTY_FIRE_PROTECTION_DESIGN);
+  const positiveCount = (value: number | null | undefined) => value && value > 0 ? value : null;
   const rows = (items: Array<{ label: string; value: unknown }>) => items
     .map(({ label, value }) => ({ label, value: displayValue(value) }))
-    .filter((item): item is { label: string; value: string } => Boolean(item.value));
+    .filter((item): item is { label: string; value: string } => Boolean(item.value) && item.value !== '0');
   const sections = [
     { id: 'egress', label: 'مقاييس الإخلاء', rows: rows([
-      { label: 'إجمالي الشاغلين', value: source.aggregates.total_occupants.value },
-      { label: 'إجمالي المخارج', value: source.aggregates.total_exits.value },
+      { label: 'إجمالي الشاغلين', value: positiveCount(source.aggregates.total_occupants.value) },
+      { label: 'إجمالي المخارج', value: positiveCount(source.aggregates.total_exits.value) },
       { label: 'أقصى مسافة سفر', value: source.aggregates.maximum_travel_distance_m.value ? `${source.aggregates.maximum_travel_distance_m.value} م` : '' },
     ]) },
     { id: 'water', label: 'إمداد مياه الإطفاء والخزان', rows: rows([
@@ -297,7 +317,7 @@ function engineeringSections(client: ClientRecord, data: ProjectEngineeringData)
       { label: 'ضغط مضخة الجوكي', value: measuredValue(design.jockey_pump.pressure) },
     ]) },
     { id: 'sprinkler', label: 'نظام الرش الآلي', rows: rows([
-      { label: 'عدد المرشات', value: source.aggregates.total_sprinklers.value },
+      { label: 'عدد المرشات', value: positiveCount(source.aggregates.total_sprinklers.value) },
       { label: 'نوع النظام', value: design.sprinkler.system_type },
       { label: 'نوع المرشات', value: design.sprinkler.sprinkler_type },
       { label: 'معامل K', value: design.sprinkler.k_factor },
@@ -305,10 +325,10 @@ function engineeringSections(client: ClientRecord, data: ProjectEngineeringData)
       { label: 'تصرف التصميم', value: design.sprinkler.design_flow },
     ]) },
     { id: 'alarm', label: 'نظام إنذار وكشف الحريق', rows: rows([
-      { label: 'عدد لوحات الإنذار', value: source.aggregates.total_fire_alarm_panels.value },
-      { label: 'كواشف الدخان', value: source.aggregates.total_smoke_detectors.value },
-      { label: 'كواشف الحرارة', value: source.aggregates.total_heat_detectors.value },
-      { label: 'أجهزة التنبيه', value: source.aggregates.total_alarm_bells.value },
+      { label: 'عدد لوحات الإنذار', value: positiveCount(source.aggregates.total_fire_alarm_panels.value) },
+      { label: 'كواشف الدخان', value: positiveCount(source.aggregates.total_smoke_detectors.value) },
+      { label: 'كواشف الحرارة', value: positiveCount(source.aggregates.total_heat_detectors.value) },
+      { label: 'أجهزة التنبيه', value: positiveCount(source.aggregates.total_alarm_bells.value) },
       { label: 'لوحات التحكم', value: design.fire_alarm.control_panel },
       { label: 'نقاط النداء اليدوية', value: design.fire_alarm.manual_call_points },
       { label: 'الإخلاء الصوتي', value: design.fire_alarm.voice_alarm },
