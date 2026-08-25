@@ -228,6 +228,9 @@ export function resolveCanonicalEngineeringDataset(params: {
     // the legacy spread even when live is undefined, so no fallback authority
     // can leak into a canonical-live project.
     existing_assessment: live.existing_assessment,
+    // PR 3: under-construction study is canonical-live only. Do not leak a
+    // legacy client JSON value into a project whose live payload exists.
+    under_construction_study: live.under_construction_study,
     plan_attachments: live.plan_attachments || legacy.plan_attachments,
     safety_blueprints: live.safety_blueprints || legacy.safety_blueprints,
     field_visits: live.field_visits?.length ? live.field_visits : legacy.field_visits,

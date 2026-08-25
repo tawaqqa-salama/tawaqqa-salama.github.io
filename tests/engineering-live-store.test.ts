@@ -92,6 +92,42 @@ describe('engineering live store (all stages)', () => {
     expect(fromMock).not.toHaveBeenCalled();
   });
 
+  it('persists an UNDER_CONSTRUCTION study through the canonical live RPC only', async () => {
+    const result = await saveEngineeringLive({
+      clientId: 'under-construction-client-01',
+      data: {
+        ...EMPTY_PROJECT_ENGINEERING_DATA,
+        under_construction_study: {
+          version: 1,
+          systems: {
+            sprinkler_system: {
+              applicable: true,
+              code_requirement: 'ينفذ النظام حسب الكود والتصميم المعتمد.',
+              selected_solution: 'شبكة رش آلي وفق المخططات.',
+              drawing_reference: 'FP-201',
+              calculation_reference: 'HYD-01',
+              implementation_note: 'تنسيق التنفيذ قبل إغلاق السقف.',
+            },
+          },
+        },
+      },
+    });
+
+    expect(result.error).toBeNull();
+    expect(rpcMock).toHaveBeenCalledWith(
+      'save_project_engineering_live',
+      expect.objectContaining({ p_client_id: 'under-construction-client-01' })
+    );
+    const payload = rpcMock.mock.calls[0][1].p_payload;
+    expect(payload.under_construction_study?.systems.sprinkler_system).toMatchObject({
+      applicable: true,
+      drawing_reference: 'FP-201',
+      calculation_reference: 'HYD-01',
+    });
+    expect(payload.under_construction_study?.systems.sprinkler_system).not.toHaveProperty('design_flow');
+    expect(fromMock).not.toHaveBeenCalled();
+  });
+
   it('persists evidence metadata and strips transient display URLs from the live payload', async () => {
     const result = await saveEngineeringLive({
       clientId: 'client-01',
