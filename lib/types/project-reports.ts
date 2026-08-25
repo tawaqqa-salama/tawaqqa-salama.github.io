@@ -4,6 +4,7 @@ import type { FireProtectionDesign } from '@/lib/types/fire-protection-design';
 import type { ReportPdfSnapshot } from '@/lib/types/report-pdf-snapshot';
 import type { EngineeringMeta } from '@/lib/projects/canonical-engineering';
 import type { ExistingProjectAssessment } from '@/lib/projects/existing-project-assessment';
+import type { UnderConstructionStudy } from '@/lib/projects/under-construction-study';
 
 export type { DesignCenterState };
 export type { FireProtectionDesign };
@@ -11,6 +12,7 @@ export type { ReportPdfSnapshot };
 export type { ProjectComplianceState };
 export type { EngineeringMeta };
 export type { ExistingProjectAssessment };
+export type { UnderConstructionStudy };
 
 /**
  * Canonical engineering dataset (logical shape).
@@ -899,6 +901,11 @@ export interface ProjectEngineeringData {
    * ولا يحدد التصنيف ولا ينسخ القيم التصميمية أو التخطيطية إلى مصدر موازٍ.
    */
   existing_assessment?: ExistingProjectAssessment;
+  /**
+   * دراسة تصميمية additive للمشروع قيد الإنشاء. بيانات المشروع والتصميم
+   * تبقى في مصادرها الكانونية؛ يخزن هذا القسم قرارات ومراجع المهندس فقط.
+   */
+  under_construction_study?: UnderConstructionStudy;
   /** مرحلة العقد والتعاقد (مرحلة 1) */
   contract_onboarding: ContractOnboardingReport;
   boq: BoqReport;

@@ -31,6 +31,7 @@ import { EMPTY_FIRE_PROTECTION_DESIGN } from '@/lib/types/fire-protection-design
 import { normalizeFieldVisitObservations } from '@/lib/projects/field-visit-observations';
 import { normalizeFieldVisitEvidenceForVisit } from '@/lib/projects/field-visit-evidence';
 import { normalizeExistingProjectAssessment } from '@/lib/projects/existing-project-assessment';
+import { normalizeUnderConstructionStudy } from '@/lib/projects/under-construction-study';
 
 export function parseProjectEngineeringData(raw: ClientRecord['project_engineering_data']): ProjectEngineeringData {
   if (!raw || typeof raw !== 'object') {
@@ -84,6 +85,9 @@ export function parseProjectEngineeringData(raw: ClientRecord['project_engineeri
     design_center: mergeDesignCenterDefaults(data.design_center),
     ...(data.existing_assessment !== undefined
       ? { existing_assessment: normalizeExistingProjectAssessment(data.existing_assessment) }
+      : {}),
+    ...(data.under_construction_study !== undefined
+      ? { under_construction_study: normalizeUnderConstructionStudy(data.under_construction_study) }
       : {}),
     contract_onboarding: {
       ...EMPTY_CONTRACT_ONBOARDING,

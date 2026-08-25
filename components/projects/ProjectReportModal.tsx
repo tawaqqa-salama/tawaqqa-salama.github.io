@@ -34,6 +34,7 @@ import Stage5TraceabilityPanel from '@/components/projects/Stage5TraceabilityPan
 import SupervisionReportSection from '@/components/projects/SupervisionReportSection';
 import DesignCenterSection from '@/components/projects/DesignCenterSection';
 import ExistingProjectAssessmentSection from '@/components/projects/ExistingProjectAssessmentSection';
+import UnderConstructionStudySection from '@/components/projects/UnderConstructionStudySection';
 import BuildingPlanReportSection from '@/components/projects/BuildingPlanReportSection';
 import WorkflowStageRail from '@/components/projects/WorkflowStageRail';
 import { useProjectStagesDrawer } from '@/components/layout/ProjectStagesDrawerContext';
@@ -722,9 +723,24 @@ export default function ProjectReportModal({
                         )
                       }
                     />
+                  ) : projectClassification === 'UNDER_CONSTRUCTION' ? (
+                    <UnderConstructionStudySection
+                      client={client}
+                      data={data}
+                      study={data.under_construction_study}
+                      saving={saving}
+                      onChange={(under_construction_study) => patch({ under_construction_study })}
+                      onSave={(under_construction_study) =>
+                        save(
+                          { ...data, under_construction_study },
+                          'تم حفظ دراسة المشروع قيد الإنشاء داخل الحمولة الهندسية الكانونية.',
+                          { stayOpen: true }
+                        )
+                      }
+                    />
                   ) : projectClassification === null ? (
                     <div className="rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm leading-6 text-slate-700">
-                      لا يمكن فتح نموذج تقييم الموقع القائم قبل تصنيف هوية المشروع. المشروع القديم غير المصنف
+                      لا يمكن فتح أي من مساري الدراسة قبل تصنيف هوية المشروع. المشروع القديم غير المصنف
                       يبقى محايدًا ولا يُستنتج تصنيفه من حالة العميل أو بيانات التقرير أو دورة حياة التصميم.
                     </div>
                   ) : null}
