@@ -71,12 +71,29 @@ function reportFixture(): ProjectEngineeringData {
       floors_description: 'ثلاثة أدوار تشغيلية',
       building_permit_number: 'BP-77',
     },
+    design_center: {
+      ...EMPTY_PROJECT_ENGINEERING_DATA.design_center,
+      space_safety: {
+        source: 'project_engineering',
+        floors: [{
+          id: 'existing-floor', label: 'الدور النموذجي', repeat_count: 1,
+          areas: [{
+            id: 'existing-area', label: 'مكاتب', area_m2: 1250, hazard_suggested: 'ordinary_hazard_group_1', suppression_suggested: [],
+            quantities: { sprinklers: 24, smoke_detectors: 12, heat_detectors: 2, fire_alarm_panels: 1, alarm_panel_locations: [], signs: 4, emergency_lights: 6, emergency_exits: 4, alarm_bells: 3, emergency_stairs: 2, manual_extinguishers: 8, elevators: 0, public_facilities: 0 },
+          }],
+        }],
+      },
+    },
     fire_protection_design: {
       ...EMPTY_FIRE_PROTECTION_DESIGN,
       sprinkler: {
         ...EMPTY_FIRE_PROTECTION_DESIGN.sprinkler,
         required: 'yes',
         system_type: 'Wet Pipe',
+        sprinkler_type: 'Upright',
+        k_factor: '5.6',
+        design_flow: '1403 GPM',
+        design_pressure: '14 bar',
         zones_count: '2',
       },
       pump: {
@@ -84,6 +101,13 @@ function reportFixture(): ProjectEngineeringData {
         exists: 'yes',
         rated_flow: { value: 1403, unit: 'GPM', source: 'hydraulic_calc' },
         rated_pressure: { value: 14, unit: 'bar', source: 'hydraulic_calc' },
+      },
+      fire_alarm: {
+        ...EMPTY_FIRE_PROTECTION_DESIGN.fire_alarm,
+        control_panel: 'FACP Addressable',
+        smoke_detectors: 'Addressable smoke detectors',
+        heat_detectors: 'Heat detectors',
+        bells: 'Audible and visual notification devices',
       },
     },
     existing_assessment: {
@@ -145,14 +169,19 @@ describe('PR 4 — EXISTING technical report derived model and preview', () => {
     expect(sprinkler).toMatchObject({
       applicable: true,
       existing_condition: expect.stringContaining('شبكة رش قائمة'),
-      required_condition: 'نظام رش آلي مطلوب · Wet Pipe · 2 منطقة',
+      required_condition: 'نظام رش آلي مطلوب · رطب (Wet Pipe) · رشاش رأسي (Upright) · K-Factor 5.6 · 1403 GPM · 14 bar · 2 منطقة · عدد المرشات حسب مركز التصاميم 24',
       gap: 'لم يكتمل التحقق من تعريف منطقة الرش.',
       compliance_status: 'NON_COMPLIANT',
       required_action: 'توثيق المنطقة، مراجعة التغطية، ثم اعتماد المعالجة من المهندس المختص.',
-      requirement_reference: 'بيانات الرش ضمن التصميم الفني',
+      requirement_reference: 'بيانات الرش ضمن التصميم الفني ومركز التصاميم',
       requirement_source: 'fire_protection_design.sprinkler',
     });
     expect(sprinkler?.required_condition).not.toContain('لا يجب أن يتقدم');
+    expect(sprinkler?.required_condition).toContain('رشاش رأسي (Upright)');
+    expect(sprinkler?.required_condition).toContain('K-Factor 5.6');
+    expect(sprinkler?.required_condition).toContain('عدد المرشات حسب مركز التصاميم 24');
+    const alarm = model.assessment_sections.flatMap((section) => section.systems);
+    expect(alarm.find((item) => item.system_key === 'smoke_detectors')?.required_condition).toContain('عدد كواشف الدخان حسب مركز التصاميم 12');
     expect(sprinkler?.evidence).toEqual([{ id: 'evidence-spr-01', system_key: 'sprinkler_system', system_label: 'نظام الرش الآلي' }]);
     expect(JSON.stringify(data)).toBe(before);
   });
@@ -237,6 +266,10 @@ describe('PR 4 — EXISTING technical report derived model and preview', () => {
     expect(preview).not.toContain('onPrint');
     expect(preview).not.toContain('onDownload');
     expect(preview).not.toContain('<button');
+    expect(preview).toContain("status === 'NOT_APPLICABLE'");
+    expect(preview).toContain('الحالة: لا ينطبق بقرار صريح من المهندس.');
+    expect(preview).toContain('userFacingSourceLabel(assessment.requirement_source)');
+    expect(preview).not.toContain('المصدر: {assessment.requirement_source}');
     expect(model).not.toContain('save_project_engineering_live');
     for (const file of [
       'components/projects/TechnicalReportPrint.tsx',

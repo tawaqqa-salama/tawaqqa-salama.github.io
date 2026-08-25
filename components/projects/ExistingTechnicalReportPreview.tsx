@@ -9,6 +9,7 @@ import {
 } from '@/lib/projects/existing-technical-report-model';
 import type { ClientRecord } from '@/lib/types/client';
 import type { ProjectEngineeringData } from '@/lib/types/project-reports';
+import { userFacingSourceLabel } from '@/lib/projects/preview-display';
 
 type ExistingTechnicalReportPreviewProps = {
   client: ClientRecord;
@@ -33,6 +34,23 @@ function ValueBlock({ label, value, tone = 'slate' }: { label: string; value: st
 
 function SystemAssessmentCard({ assessment }: { assessment: ExistingTechnicalReportSystemAssessment }) {
   const status = assessment.compliance_status;
+  if (status === 'NOT_APPLICABLE') {
+    return (
+      <article className="border border-slate-200 bg-white p-4 sm:p-5" aria-label={`تقييم ${assessment.system_label}`}>
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+          <div>
+            <h4 className="text-base font-bold text-slate-950">{assessment.system_label}</h4>
+            <p className="mt-1 text-sm leading-7 text-slate-700">الحالة: لا ينطبق بقرار صريح من المهندس.</p>
+            {assessment.notes ? <p className="mt-2 whitespace-pre-wrap break-words text-sm leading-7 text-slate-700">{assessment.notes}</p> : null}
+          </div>
+          <span className={`w-fit border px-2.5 py-1 text-xs font-bold ${existingTechnicalReportStatusClass(status)}`}>
+            {existingTechnicalReportStatusLabel(status)}
+          </span>
+        </div>
+        {assessment.evidence.length ? <p className="mt-3 text-xs text-slate-600">مراجع الأدلة: {assessment.evidence.map((evidence) => evidence.id).join('، ')}</p> : null}
+      </article>
+    );
+  }
   return (
     <article className="border border-slate-200 bg-white p-4 sm:p-5" aria-label={`تقييم ${assessment.system_label}`}>
       <div className="flex flex-col gap-3 border-b border-slate-200 pb-3 sm:flex-row sm:items-start sm:justify-between">
@@ -58,7 +76,7 @@ function SystemAssessmentCard({ assessment }: { assessment: ExistingTechnicalRep
         <div className="border border-slate-200 px-3 py-2">
           <p className="text-xs font-bold text-slate-600">المرجع</p>
           <p className="mt-1 break-words leading-6">{assessment.requirement_reference || 'لا يوجد مرجع مسجل لهذا البند.'}</p>
-          {assessment.requirement_source ? <p className="mt-1 text-xs text-slate-500">المصدر: {assessment.requirement_source}</p> : null}
+          {assessment.requirement_source ? <p className="mt-1 text-xs text-slate-500">المصدر: {userFacingSourceLabel(assessment.requirement_source)}</p> : null}
         </div>
         <div className="border border-slate-200 px-3 py-2">
           <p className="text-xs font-bold text-slate-600">الملاحظات / الأدلة</p>
@@ -125,7 +143,7 @@ export default function ExistingTechnicalReportPreview({ client, data, company }
         <h3 className="text-lg font-bold text-slate-950">أساس التقييم والمراجع</h3>
         {report.assessment_basis.length ? (
           <ul className="mt-3 divide-y divide-slate-100 text-sm">
-            {report.assessment_basis.map((item) => <li key={`${item.reference}:${item.source}`} className="py-3"><p className="font-semibold text-slate-900">{item.reference}</p><p className="mt-1 text-xs text-slate-600">المصدر: {item.source}</p></li>)}
+            {report.assessment_basis.map((item) => <li key={`${item.reference}:${item.source}`} className="py-3"><p className="font-semibold text-slate-900">{item.reference}</p><p className="mt-1 text-xs text-slate-600">المصدر: {userFacingSourceLabel(item.source)}</p></li>)}
           </ul>
         ) : <p className="mt-3 text-sm leading-7 text-slate-600">لا توجد مراجع تقييم مسجلة في البنود الحالية.</p>}
       </section>

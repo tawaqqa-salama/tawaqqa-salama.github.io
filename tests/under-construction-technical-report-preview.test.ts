@@ -113,6 +113,11 @@ function reportFixture(): ProjectEngineeringData {
         design_flow: '1403 GPM',
         source: 'hydraulic_calc',
       },
+      occupancy: {
+        ...EMPTY_FIRE_PROTECTION_DESIGN.occupancy,
+        hazard_class: 'ordinary_hazard_group_1',
+        source: 'project_drawings',
+      },
       fire_alarm: {
         ...EMPTY_FIRE_PROTECTION_DESIGN.fire_alarm,
         control_panel: 'FACP Addressable',
@@ -192,13 +197,15 @@ describe('PR 5 — UNDER_CONSTRUCTION technical report derived model and preview
     expect(sprinkler).toMatchObject({
       applicable: true,
       code_requirement: 'يجب تنفيذ شبكة رش آلي وفق الكود والتصميم المعتمد.',
-      selected_solution: 'نظام Wet Pipe مقسم إلى مناطق حسب المخططات.',
+      selected_solution: 'نظام رطب (Wet Pipe) مقسم إلى مناطق حسب المخططات.',
       drawing_reference: 'FP-301 Rev. B',
       calculation_reference: 'HYD-01',
       implementation_note: 'يلزم اختبار الضغط قبل إغلاق الأسقف.',
     });
     expect(sprinkler?.canonical_references).toEqual(expect.arrayContaining([
-      expect.objectContaining({ label: 'نوع النظام', value: 'Wet Pipe' }),
+      expect.objectContaining({ label: 'نوع النظام', value: 'رطب (Wet Pipe)' }),
+      expect.objectContaining({ label: 'تصنيف الخطورة', value: 'خطورة عادية — المجموعة الأولى' }),
+      expect.objectContaining({ label: 'نوع المرشات', value: 'رشاش رأسي (Upright)' }),
       expect.objectContaining({ label: 'عدد المرشات حسب مركز التصاميم', value: '24', source: 'DESIGN_CENTER' }),
     ]));
     expect(pump?.canonical_references).toEqual(expect.arrayContaining([
@@ -259,6 +266,22 @@ describe('PR 5 — UNDER_CONSTRUCTION technical report derived model and preview
     expect(JSON.stringify(model)).not.toContain('recommendations');
   });
 
+  it('deduplicates an identical reader-facing code reference while retaining both internal provenances and hiding raw paths from display fields', () => {
+    const model = buildUnderConstructionTechnicalReportModel(underConstructionClient, reportFixture());
+    const sbc = model.code_references.filter((item) => item.reference === 'SBC 801');
+    const projectCodes = model.project_references.find((item) => item.label === 'الأكواد والمراجع المتاحة');
+
+    expect(sbc).toHaveLength(1);
+    expect(sbc[0]?.sources).toEqual(expect.arrayContaining([
+      expect.objectContaining({ source: 'UNDER_CONSTRUCTION_STUDY' }),
+      expect.objectContaining({ source: 'FIRE_PROTECTION_DESIGN' }),
+    ]));
+    expect(projectCodes).toMatchObject({
+      reference: 'التصميم الفني لأنظمة الحريق',
+      raw_reference: 'fire_protection_design.applicable_codes',
+    });
+  });
+
   it('defines a traceable source matrix for project, study, design center, and hydraulic source families', () => {
     expect(UNDER_CONSTRUCTION_REPORT_SECTION_SOURCE_MATRIX).toEqual(expect.arrayContaining([
       expect.objectContaining({ section: 'بيانات التقرير والمشروع', sources: expect.arrayContaining(['project identity', 'building_plan']) }),
@@ -298,6 +321,8 @@ describe('PR 5 — UNDER_CONSTRUCTION technical report derived model and preview
     expect(preview).not.toContain('الوضع الراهن');
     expect(preview).not.toContain('الفجوة');
     expect(preview).not.toContain('قرار المطابقة');
+    expect(preview).not.toContain('fire_protection_design.');
+    expect(preview).toContain('المراجع وملاحظات التنفيذ');
     expect(model).not.toContain('save_project_engineering_live');
     expect(model).not.toContain('existing_assessment');
     expect(existingPreview).toContain('التقرير الفني لتقييم الموقع القائم');

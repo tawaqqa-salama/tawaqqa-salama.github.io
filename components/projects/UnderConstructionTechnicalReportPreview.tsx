@@ -60,6 +60,13 @@ function CanonicalReferences({ references }: { references: UnderConstructionTech
 }
 
 function StudySystemCard({ system }: { system: UnderConstructionTechnicalReportSystem }) {
+  const optionalReferences = [
+    { label: 'مرجع الكود', value: system.code_reference },
+    { label: 'مرجع المخطط / التصميم', value: system.drawing_reference },
+    { label: 'مرجع الحساب عند الحاجة', value: system.calculation_reference },
+    { label: 'ملاحظات التنفيذ', value: system.implementation_note, tone: 'amber' as const },
+  ];
+  const recordedOptionalReferences = optionalReferences.filter((item) => Boolean(item.value));
   return (
     <article className="border border-slate-200 bg-white p-4 sm:p-5" aria-label={`متطلبات ${system.system_label}`}>
       <div className="flex flex-col gap-2 border-b border-slate-200 pb-3 sm:flex-row sm:items-start sm:justify-between">
@@ -75,10 +82,11 @@ function StudySystemCard({ system }: { system: UnderConstructionTechnicalReportS
       <div className="mt-4 grid grid-cols-1 gap-3 lg:grid-cols-2">
         <ValueBlock label="المتطلب حسب الكود / التصميم" value={system.code_requirement} tone="indigo" />
         <ValueBlock label="الحل التصميمي المختار" value={system.selected_solution} tone="sky" />
-        <ValueBlock label="مرجع الكود" value={system.code_reference} />
-        <ValueBlock label="مرجع المخطط / التصميم" value={system.drawing_reference} />
-        <ValueBlock label="مرجع الحساب عند الحاجة" value={system.calculation_reference} />
-        <ValueBlock label="ملاحظات التنفيذ" value={system.implementation_note} tone="amber" />
+        {recordedOptionalReferences.length ? recordedOptionalReferences.map((item) => (
+          <ValueBlock key={item.label} label={item.label} value={item.value} tone={item.tone || 'slate'} />
+        )) : (
+          <ValueBlock label="المراجع وملاحظات التنفيذ" value="لم تُسجل مراجع كود أو مخطط أو حساب أو ملاحظات تنفيذ صريحة لهذا البند." />
+        )}
       </div>
 
       <section className="mt-4 border border-slate-200 bg-slate-50 p-3" aria-label={`قيم مصدرية لـ${system.system_label}`}>
@@ -140,7 +148,7 @@ export default function UnderConstructionTechnicalReportPreview({
               <li key={item.id} className="py-3">
                 <p className="font-semibold text-slate-900">{item.title}{item.reference ? ` — ${item.reference}` : ''}</p>
                 {item.note ? <p className="mt-1 whitespace-pre-wrap break-words leading-7 text-slate-700">{item.note}</p> : null}
-                <p className="mt-1 text-xs text-slate-500">المصدر: {item.source_label}</p>
+                <p className="mt-1 text-xs text-slate-500">المصدر: {item.sources.map((source) => source.source_label).join(' + ')}</p>
               </li>
             ))}
           </ul>

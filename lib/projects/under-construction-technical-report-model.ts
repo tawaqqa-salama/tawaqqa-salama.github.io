@@ -12,13 +12,17 @@ import {
 } from '@/lib/projects/under-construction-study';
 import type { ClientRecord } from '@/lib/types/client';
 import type { ProjectEngineeringData } from '@/lib/types/project-reports';
+import { humanizeEngineeringDisplayValue } from '@/lib/projects/preview-display';
 
 export type UnderConstructionTechnicalReportValue = {
   label: string;
   value: string;
   source: UnderConstructionReferenceSource;
   source_label: string;
+  /** Reader-facing source detail only. */
   reference: string | null;
+  /** Internal canonical-path provenance, intentionally not rendered by the preview. */
+  raw_reference: string | null;
 };
 
 export type UnderConstructionTechnicalReportSystem = {
@@ -45,8 +49,11 @@ export type UnderConstructionTechnicalReportCodeReference = {
   title: string;
   reference: string;
   note: string | null;
+  /** Primary provenance retained for compatibility. */
   source: 'UNDER_CONSTRUCTION_STUDY' | 'FIRE_PROTECTION_DESIGN';
   source_label: string;
+  /** All canonical provenances for one de-duplicated reader-facing reference. */
+  sources: Array<{ source: 'UNDER_CONSTRUCTION_STUDY' | 'FIRE_PROTECTION_DESIGN'; source_label: string }>;
 };
 
 export type UnderConstructionTechnicalReportImplementationNote = {
@@ -111,7 +118,7 @@ export const UNDER_CONSTRUCTION_REPORT_SECTION_SOURCE_MATRIX = [
 
 function cleanText(value: string | null | undefined): string | null {
   const text = value?.trim();
-  return text || null;
+  return text ? humanizeEngineeringDisplayValue(text) || text : null;
 }
 
 function unique<T>(items: T[], key: (item: T) => string): T[] {
@@ -136,6 +143,7 @@ function reportValue(value: {
   value: string;
   source: UnderConstructionReferenceSource;
   reference?: string;
+  raw_reference?: string;
 }): UnderConstructionTechnicalReportValue {
   return {
     label: value.label,
@@ -143,6 +151,7 @@ function reportValue(value: {
     source: value.source,
     source_label: UNDER_CONSTRUCTION_SOURCE_LABELS[value.source],
     reference: value.reference || null,
+    raw_reference: value.raw_reference || null,
   };
 }
 
@@ -199,13 +208,13 @@ function codeReferences(data: ProjectEngineeringData): UnderConstructionTechnica
   const studyReferences = (data.under_construction_study?.code_references || []).map(
     (item: UnderConstructionCodeReference) => ({
       id: `study:${item.id}`,
-      title: item.title,
-      reference: item.reference,
+      title: cleanText(item.title) || 'مرجع الدراسة',
+      reference: cleanText(item.reference) || '',
       note: cleanText(item.note),
       source: 'UNDER_CONSTRUCTION_STUDY' as const,
       source_label: 'دراسة المشروع قيد الإنشاء',
     })
-  );
+  ).filter((item) => Boolean(item.reference));
   const designReferences = (data.fire_protection_design?.applicable_codes || [])
     .map(cleanText)
     .filter((item): item is string => Boolean(item))
@@ -217,7 +226,17 @@ function codeReferences(data: ProjectEngineeringData): UnderConstructionTechnica
       source: 'FIRE_PROTECTION_DESIGN' as const,
       source_label: 'التصميم المعتمد',
     }));
-  return unique([...studyReferences, ...designReferences], (item) => `${item.title}:${item.reference}`);
+
+  return [...studyReferences, ...designReferences].reduce<UnderConstructionTechnicalReportCodeReference[]>((items, candidate) => {
+    const existing = items.find((item) => item.reference === candidate.reference);
+    const sourceEntry = { source: candidate.source, source_label: candidate.source_label };
+    if (existing) {
+      if (!existing.sources.some((item) => item.source === sourceEntry.source)) existing.sources.push(sourceEntry);
+      return items;
+    }
+    items.push({ ...candidate, sources: [sourceEntry] });
+    return items;
+  }, []);
 }
 
 function implementationNotes(

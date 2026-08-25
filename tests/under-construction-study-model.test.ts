@@ -143,7 +143,7 @@ describe('PR 3 — UNDER_CONSTRUCTION engineering study model', () => {
     const project = resolveUnderConstructionProjectReferences(client, data);
 
     expect(sprinkler).toEqual(expect.arrayContaining([
-      expect.objectContaining({ label: 'نوع النظام', value: 'Wet Pipe' }),
+      expect.objectContaining({ label: 'نوع النظام', value: 'رطب (Wet Pipe)', raw_reference: 'إدخال المهندس' }),
       expect.objectContaining({ label: 'عدد المرشات حسب مركز التصاميم', value: '24', source: 'DESIGN_CENTER' }),
     ]));
     expect(pump).toEqual(expect.arrayContaining([
