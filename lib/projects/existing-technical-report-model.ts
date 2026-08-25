@@ -13,6 +13,10 @@ import {
 } from '@/lib/projects/existing-project-assessment';
 import type { ClientRecord } from '@/lib/types/client';
 import type { ProjectEngineeringData, TechnicalProjectRecommendation } from '@/lib/types/project-reports';
+import { EMPTY_FIRE_PROTECTION_DESIGN, formatMeasured, type FireProtectionDesign } from '@/lib/types/fire-protection-design';
+import { mergeFireProtectionDesign } from '@/lib/projects/admin-uc-report/design';
+import { buildTechnicalReportSourceData } from '@/lib/projects/technical-report-source-data';
+import { humanizeEngineeringDisplayValue } from '@/lib/projects/preview-display';
 
 export type ExistingTechnicalReportStatus = ExistingAssessmentComplianceStatus | 'INCOMPLETE';
 
@@ -54,6 +58,12 @@ export type ExistingTechnicalReportRecommendation = {
   source: 'ASSESSMENT_ACTION' | 'APPROVED_RECOMMENDATION';
 };
 
+export type ExistingTechnicalReportEngineeringSection = {
+  id: string;
+  label: string;
+  rows: Array<{ label: string; value: string }>;
+};
+
 export type ExistingTechnicalReportModel = {
   project_identity: {
     project_code: string | null;
@@ -70,6 +80,7 @@ export type ExistingTechnicalReportModel = {
   building_information: Array<{ label: string; value: string }>;
   occupancy_and_classification: Array<{ label: string; value: string }>;
   assessment_basis: Array<{ reference: string; source: string }>;
+  engineering_sections: ExistingTechnicalReportEngineeringSection[];
   assessment_sections: ExistingTechnicalReportAssessmentSection[];
   summary: {
     total_assessed_systems: number;
@@ -244,6 +255,68 @@ function assessmentBasis(sections: ExistingTechnicalReportAssessmentSection[]): 
   );
 }
 
+function displayValue(value: unknown): string {
+  if (value === null || value === undefined || value === '') return '';
+  if (typeof value === 'boolean') return value ? 'نعم' : 'لا';
+  return humanizeEngineeringDisplayValue(String(value).trim()) || String(value).trim();
+}
+
+function measuredValue(value: { value: number | null; unit: string }): string {
+  return formatMeasured(value as never, { empty: '' });
+}
+
+function engineeringSections(client: ClientRecord, data: ProjectEngineeringData): ExistingTechnicalReportEngineeringSection[] {
+  const source = buildTechnicalReportSourceData({ client, engineeringData: data });
+  const design: FireProtectionDesign = mergeFireProtectionDesign(data.fire_protection_design || EMPTY_FIRE_PROTECTION_DESIGN);
+  const rows = (items: Array<{ label: string; value: unknown }>) => items
+    .map(({ label, value }) => ({ label, value: displayValue(value) }))
+    .filter((item): item is { label: string; value: string } => Boolean(item.value));
+  const sections = [
+    { id: 'egress', label: 'مقاييس الإخلاء', rows: rows([
+      { label: 'إجمالي الشاغلين', value: source.aggregates.total_occupants.value },
+      { label: 'إجمالي المخارج', value: source.aggregates.total_exits.value },
+      { label: 'أقصى مسافة سفر', value: source.aggregates.maximum_travel_distance_m.value ? `${source.aggregates.maximum_travel_distance_m.value} م` : '' },
+    ]) },
+    { id: 'water', label: 'إمداد مياه الإطفاء والخزان', rows: rows([
+      { label: 'مصدر مياه الإطفاء', value: design.water_supply.water_source },
+      { label: 'نوع الخزان', value: design.water_supply.tank_type },
+      { label: 'السعة المركبة', value: measuredValue(design.water_tank.capacity_m3) },
+      { label: 'معدل الطلب المائي', value: measuredValue(design.water_tank.water_demand_lpm) },
+      { label: 'مدة التخزين', value: measuredValue(design.water_tank.duration_min) },
+      { label: 'الحجم المطلوب المحسوب', value: design.water_tank.calculated_required_volume_m3 === null ? '' : `${design.water_tank.calculated_required_volume_m3} م³` },
+    ]) },
+    { id: 'pumps', label: 'مضخات الحريق', rows: rows([
+      { label: 'نوع مجموعة المضخات', value: design.pump.type },
+      { label: 'تدفق المضخة المقنن', value: measuredValue(design.pump.rated_flow) },
+      { label: 'ضغط المضخة المقنن', value: measuredValue(design.pump.rated_pressure) },
+      { label: 'تدفق المضخة الكهربائية', value: measuredValue(design.pump.capacity) },
+      { label: 'ضغط المضخة الكهربائية', value: measuredValue(design.pump.pressure) },
+      { label: 'تدفق مضخة الديزل', value: measuredValue(design.diesel_pump.capacity) },
+      { label: 'ضغط مضخة الديزل', value: measuredValue(design.diesel_pump.pressure) },
+      { label: 'تدفق مضخة الجوكي', value: measuredValue(design.jockey_pump.capacity) },
+      { label: 'ضغط مضخة الجوكي', value: measuredValue(design.jockey_pump.pressure) },
+    ]) },
+    { id: 'sprinkler', label: 'نظام الرش الآلي', rows: rows([
+      { label: 'عدد المرشات', value: source.aggregates.total_sprinklers.value },
+      { label: 'نوع النظام', value: design.sprinkler.system_type },
+      { label: 'نوع المرشات', value: design.sprinkler.sprinkler_type },
+      { label: 'معامل K', value: design.sprinkler.k_factor },
+      { label: 'ضغط التصميم', value: design.sprinkler.design_pressure },
+      { label: 'تصرف التصميم', value: design.sprinkler.design_flow },
+    ]) },
+    { id: 'alarm', label: 'نظام إنذار وكشف الحريق', rows: rows([
+      { label: 'عدد لوحات الإنذار', value: source.aggregates.total_fire_alarm_panels.value },
+      { label: 'كواشف الدخان', value: source.aggregates.total_smoke_detectors.value },
+      { label: 'كواشف الحرارة', value: source.aggregates.total_heat_detectors.value },
+      { label: 'أجهزة التنبيه', value: source.aggregates.total_alarm_bells.value },
+      { label: 'لوحات التحكم', value: design.fire_alarm.control_panel },
+      { label: 'نقاط النداء اليدوية', value: design.fire_alarm.manual_call_points },
+      { label: 'الإخلاء الصوتي', value: design.fire_alarm.voice_alarm },
+    ]) },
+  ];
+  return sections.filter((section) => section.rows.length > 0);
+}
+
 /**
  * Pure read-only view for the EXISTING-project preview. It never persists a report
  * copy, does not infer compliance, and does not select a project route.
@@ -288,6 +361,7 @@ export function buildExistingTechnicalReportModel(
       valueRow('السلالم', building.stairs_count),
     ].filter((row): row is { label: string; value: string } => Boolean(row)),
     assessment_basis: assessmentBasis(sections),
+    engineering_sections: engineeringSections(client, data),
     assessment_sections: sections,
     summary: summary(sections),
     recommendations: recommendations(sections, data),

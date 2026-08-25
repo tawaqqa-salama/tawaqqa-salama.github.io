@@ -7,6 +7,7 @@ import {
 } from '@/lib/types/project-reports';
 import { type ReportLocale } from '@/lib/projects/engineering-report-engine';
 import { buildAdminUcTechnicalReportPayload } from '@/lib/projects/admin-uc-report';
+import { buildExistingFinalTechnicalReportDocument } from '@/lib/projects/existing-final-technical-report-document';
 import {
   buildExistingOutputModel,
   buildUnderConstructionOutputModel,
@@ -18,11 +19,10 @@ import {
   type TechnicalReportOutput,
   type UnderConstructionTechnicalReportOutput,
 } from '@/lib/projects/technical-report-output-router';
-import { generateOfficialTechnicalReportDocument } from '@/lib/projects/official-technical-report-document';
 import { hydrateTechnicalReportPhotosForDisplay } from '@/lib/projects/technical-report-photos';
 import { hydrateTechnicalEvidenceForDisplay } from '@/lib/projects/technical-report-evidence';
 import { probeEvidenceMediaPresentation } from '@/lib/projects/technical-report-media-presentation';
-import { buildOfficialTechnicalReportHtml } from '@/lib/projects/engineering-report-engine/renderer/official-technical-template';
+import { buildExistingFinalTechnicalReportHtml } from '@/lib/projects/engineering-report-engine/renderer/existing-final-technical-template';
 import {
   downloadPdfDocument,
   openDocumentPreview,
@@ -70,14 +70,8 @@ export async function buildTechnicalReportOutput(
 
   if (route.kind === 'EXISTING') {
     const model = buildExistingOutputModel(params.client, engineeringData, params.company);
-    const document = generateOfficialTechnicalReportDocument({
-      client: params.client,
-      report,
-      engineeringData,
-      locale: params.locale || 'ar',
-      evidenceMediaPresentation,
-    });
-    const html = buildOfficialTechnicalReportHtml({ document, company: params.company });
+    const document = buildExistingFinalTechnicalReportDocument(model);
+    const html = buildExistingFinalTechnicalReportHtml({ document, company: params.company });
     const payload: DocumentPreviewPayload = {
       title: document.locale === 'ar' ? `التقرير الفني — ${document.project_name}` : `Engineering Study — ${document.project_name}`,
       html,
