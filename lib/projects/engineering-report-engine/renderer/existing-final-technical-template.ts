@@ -111,7 +111,7 @@ function css(doc: EngineeringStudyDocument, company: CompanyProfile): string {
   @page :first { margin:12mm; @top-left { content:none; } @top-center { content:none; } @top-right { content:none; } @bottom-center { content:none; } }
   * { box-sizing:border-box; }
   html, body { margin:0; padding:0; width:210mm; background:#f7f7f7; }
-  body { color:#151515; font-family:"Noto Naskh Arabic","IBM Plex Sans Arabic",Tahoma,Arial,sans-serif; font-size:11.2px; line-height:1.85; -webkit-print-color-adjust:exact; print-color-adjust:exact; font-variant-ligatures:common-ligatures; font-feature-settings:"liga" 1,"calt" 1; }
+  body { color:#151515; font-family:"Noto Naskh Arabic","IBM Plex Sans Arabic",Tahoma,Arial,sans-serif; font-size:11.2px; line-height:1.85; letter-spacing:normal; -webkit-print-color-adjust:exact; print-color-adjust:exact; font-variant-ligatures:common-ligatures; font-feature-settings:"liga" 1,"calt" 1; }
   .official-cover { position:relative; z-index:30; isolation:isolate; min-height:273mm; overflow:hidden; padding:0; page-break-after:always; break-after:page; display:flex; color:#eff8fb; background:linear-gradient(140deg,#081d35 0%,#0b2d4d 52%,#0b5a68 100%); }
   .official-cover::before { content:""; position:absolute; z-index:-1; inset:-30mm -16mm auto auto; width:160mm; height:160mm; border:1.1mm solid rgba(57,211,190,.32); border-radius:50%; box-shadow:0 0 0 15mm rgba(57,211,190,.045),0 0 0 31mm rgba(57,211,190,.035); }
   .official-cover::after { content:""; position:absolute; z-index:-1; left:-55mm; bottom:-27mm; width:150mm; height:105mm; transform:rotate(-24deg); background:linear-gradient(90deg,rgba(239,178,65,.76),rgba(239,178,65,.1)); clip-path:polygon(0 54%,100% 0,100% 30%,0 84%); }
@@ -126,7 +126,7 @@ function css(doc: EngineeringStudyDocument, company: CompanyProfile): string {
   .official-cover-company-name { color:#fff; font-weight:800; font-size:13px; }
   .official-cover-tagline { max-width:55mm; margin-top:1mm; color:#b8d2dc; font-size:8.5px; line-height:1.45; }
   .official-cover-content { width:100%; max-width:132mm; margin:auto 0 0; padding:13mm 0 5mm; }
-  .official-cover-eyebrow { color:#44d8c4; font-size:8px; font-weight:800; letter-spacing:1.1px; }
+  .official-cover-eyebrow { color:#44d8c4; font-size:8px; font-weight:800; letter-spacing:0; }
   .official-cover-content h1 { margin:5mm 0 1mm; color:#fff; font-size:29px; line-height:1.2; font-weight:900; max-width:120mm; }
   .official-cover-subtitle { margin:0; color:#d4e6ea; font-size:16px; font-weight:700; }
   .official-cover-accent-line { width:44mm; height:1.5mm; margin:7mm 0 7mm; background:linear-gradient(90deg,#44d8c4 0 58%,#efb241 58% 100%); }

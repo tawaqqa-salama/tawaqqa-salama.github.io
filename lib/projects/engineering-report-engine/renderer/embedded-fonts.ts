@@ -38,5 +38,19 @@ export function getEmbeddedArabicFontCss(): string {
   font-display: block;
   src: url(data:font/ttf;base64,${NOTO_NASKH_ARABIC_BOLD_BASE64}) format('truetype');
 }
+@font-face {
+  font-family: 'Noto Naskh Arabic';
+  font-style: normal;
+  font-weight: 800;
+  font-display: block;
+  src: url(data:font/ttf;base64,${NOTO_NASKH_ARABIC_BOLD_BASE64}) format('truetype');
+}
+@font-face {
+  font-family: 'Noto Naskh Arabic';
+  font-style: normal;
+  font-weight: 900;
+  font-display: block;
+  src: url(data:font/ttf;base64,${NOTO_NASKH_ARABIC_BOLD_BASE64}) format('truetype');
+}
 `;
 }
