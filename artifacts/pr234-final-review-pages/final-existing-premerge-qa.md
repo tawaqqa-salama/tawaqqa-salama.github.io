@@ -19,7 +19,8 @@
 | القيم الهندسية mixed-unit معزولة Bidi | PASS |
 | الفهرس بلا أرقام تقريبية خاطئة | PASS — safe fallback `—` |
 | عدم تسرب هوية fixture | PASS |
-| لا raw internal enum names | PASS |
+| no raw internal enum names | PASS |
+| Mobile 375 Preview | PASS — responsive cover, no horizontal clipping |
 | صفحة اعتماد مستقلة | PASS |
 | لا قص أو overflow بصري في contact sheet | PASS |
 
@@ -47,6 +48,12 @@
 | `git diff --check` | PASS |
 | Next production build | PASS |
 | Static Export (`npm run build:user-pages`) | PASS |
+| Mobile Preview 375 | PASS |
+| Desktop Preview 1440 | PASS |
+
+## Preview / Print / Download fidelity
+
+The fixture, router tests, and action tests confirm one selected EXISTING document source is used for Preview, native Print, and Download PDF. The generated Download artifact is a real PDF, while Preview and Print use the same HTML document structure. The local action contract asserts zero save calls for all three actions. Mobile 375 was visually checked after responsive CSS correction; desktop 1440 remains within the document width without horizontal clipping.
 
 ## Safety
 
