@@ -1,12 +1,24 @@
 import type { CompanyProfile } from '@/lib/company-profile';
 import type { ClientRecord } from '@/lib/types/client';
-import type { ProjectEngineeringData, TechnicalReport } from '@/lib/types/project-reports';
-import { type ReportLocale } from '@/lib/projects/engineering-report-engine';
-import { generateOfficialTechnicalReportDocument } from '@/lib/projects/official-technical-report-document';
 import {
-  buildAdminUcTechnicalReportPayload,
-  shouldUseAdminUcReport,
-} from '@/lib/projects/admin-uc-report';
+  EMPTY_PROJECT_ENGINEERING_DATA,
+  type ProjectEngineeringData,
+  type TechnicalReport,
+} from '@/lib/types/project-reports';
+import { type ReportLocale } from '@/lib/projects/engineering-report-engine';
+import { buildAdminUcTechnicalReportPayload } from '@/lib/projects/admin-uc-report';
+import {
+  buildExistingOutputModel,
+  buildUnderConstructionOutputModel,
+} from '@/lib/projects/technical-report-output-builders';
+import {
+  resolveTechnicalReportOutput,
+  TechnicalReportOutputBlockedError,
+  type ExistingTechnicalReportOutput,
+  type TechnicalReportOutput,
+  type UnderConstructionTechnicalReportOutput,
+} from '@/lib/projects/technical-report-output-router';
+import { generateOfficialTechnicalReportDocument } from '@/lib/projects/official-technical-report-document';
 import { hydrateTechnicalReportPhotosForDisplay } from '@/lib/projects/technical-report-photos';
 import { hydrateTechnicalEvidenceForDisplay } from '@/lib/projects/technical-report-evidence';
 import { probeEvidenceMediaPresentation } from '@/lib/projects/technical-report-media-presentation';
@@ -26,15 +38,21 @@ export type TechnicalReportPrintParams = {
   locale?: ReportLocale;
 };
 
+function classificationOf(client: ClientRecord) {
+  return client.primary_engineering_project_identity?.projectClassification ?? null;
+}
+
 /**
- * Technical report router:
- * - Administrative + under construction → independent Admin UC template
- * - Otherwise → official client-facing technical report template
- * The same canonical HTML payload is reused for preview, print, and PDF download.
+ * Builds the one read-only output source for all three technical-report actions.
+ * The route is resolved before any template is selected and uses only the
+ * canonical project identity classification.
  */
-export async function buildTechnicalReportDocumentPayload(
+export async function buildTechnicalReportOutput(
   params: TechnicalReportPrintParams
-): Promise<DocumentPreviewPayload> {
+): Promise<TechnicalReportOutput> {
+  const route = resolveTechnicalReportOutput(classificationOf(params.client));
+  if (route.kind === 'BLOCKED') return route;
+
   const photosHydrated = await hydrateTechnicalReportPhotosForDisplay(params.report);
   const evidence = await hydrateTechnicalEvidenceForDisplay(params.client.id, photosHydrated.evidence);
   const evidenceMediaPresentation = Object.fromEntries(
@@ -45,54 +63,58 @@ export async function buildTechnicalReportDocumentPayload(
       ] as const)
     )
   );
-  // Presentation-only hydration and media measurements remain in memory for this document action.
   const report = { ...photosHydrated, evidence };
   const engineeringData = params.engineeringData
-    ? {
-        ...params.engineeringData,
-        technical_report: report,
-      }
-    : params.engineeringData;
+    ? { ...params.engineeringData, technical_report: report }
+    : { ...EMPTY_PROJECT_ENGINEERING_DATA, technical_report: report };
 
-  if (
-    shouldUseAdminUcReport({
+  if (route.kind === 'EXISTING') {
+    const model = buildExistingOutputModel(params.client, engineeringData, params.company);
+    const document = generateOfficialTechnicalReportDocument({
       client: params.client,
       report,
       engineeringData,
-    })
-  ) {
-    return buildAdminUcTechnicalReportPayload({
-      client: params.client,
-      report,
-      company: params.company,
-      engineeringData,
+      locale: params.locale || 'ar',
+      evidenceMediaPresentation,
     });
+    const html = buildOfficialTechnicalReportHtml({ document, company: params.company });
+    const payload: DocumentPreviewPayload = {
+      title: document.locale === 'ar' ? `التقرير الفني — ${document.project_name}` : `Engineering Study — ${document.project_name}`,
+      html,
+      fileName: `existing-technical-report-${params.client.client_code || document.client_code || 'report'}`,
+      downloadFormat: 'pdf',
+    };
+    const output: ExistingTechnicalReportOutput = {
+      kind: 'EXISTING',
+      project_classification: 'EXISTING',
+      model,
+      document: payload,
+    };
+    return output;
   }
 
-  const document = generateOfficialTechnicalReportDocument({
+  const model = buildUnderConstructionOutputModel(params.client, engineeringData, params.company);
+  const payload = buildAdminUcTechnicalReportPayload({
     client: params.client,
     report,
-    engineeringData,
-    locale: params.locale || 'ar',
-    evidenceMediaPresentation,
-  });
-
-  const html = buildOfficialTechnicalReportHtml({
-    document,
     company: params.company,
+    engineeringData,
   });
-
-  const title =
-    document.locale === 'ar'
-      ? `دراسة هندسية — ${document.project_name}`
-      : `Engineering Study — ${document.project_name}`;
-
-  return {
-    title,
-    html,
-    fileName: `engineering-study-${params.client.client_code || document.client_code || 'report'}`,
-    downloadFormat: 'pdf',
+  const output: UnderConstructionTechnicalReportOutput = {
+    kind: 'UNDER_CONSTRUCTION',
+    project_classification: 'UNDER_CONSTRUCTION',
+    model,
+    document: payload,
   };
+  return output;
+}
+
+export async function buildTechnicalReportDocumentPayload(
+  params: TechnicalReportPrintParams
+): Promise<DocumentPreviewPayload> {
+  const output = await buildTechnicalReportOutput(params);
+  if (output.kind === 'BLOCKED') throw new TechnicalReportOutputBlockedError(output.message);
+  return output.document;
 }
 
 /** يفتح معاينة فقط، من دون إطلاق طباعة أو تنزيل. */

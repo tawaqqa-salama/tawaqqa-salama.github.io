@@ -24,6 +24,11 @@ import DesignCenterSection from '@/components/projects/DesignCenterSection';
 import ExistingProjectAssessmentSection from '@/components/projects/ExistingProjectAssessmentSection';
 import ExistingTechnicalReportPreview from '@/components/projects/ExistingTechnicalReportPreview';
 import UnderConstructionTechnicalReportPreview from '@/components/projects/UnderConstructionTechnicalReportPreview';
+import {
+  downloadTechnicalReportPdf,
+  previewTechnicalReport,
+  printTechnicalReport,
+} from '@/components/projects/TechnicalReportPrint';
 import UnderConstructionStudySection from '@/components/projects/UnderConstructionStudySection';
 import BuildingPlanReportSection from '@/components/projects/BuildingPlanReportSection';
 import WorkflowStageRail from '@/components/projects/WorkflowStageRail';
@@ -593,6 +598,24 @@ export default function ProjectReportModal({
   const blockers = advancingTechChapter
     ? []
     : stageApprovalBlockers(activeStage, client, data);
+  const technicalReportOutputParams = {
+    client,
+    report: data.technical_report,
+    company: company || loadLocalCompanyProfile(),
+    engineeringData: data,
+  };
+
+  const runTechnicalReportAction = async (action: 'preview' | 'print' | 'download') => {
+    setMessage(null);
+    try {
+      if (action === 'preview') await previewTechnicalReport(technicalReportOutputParams);
+      if (action === 'print') await printTechnicalReport(technicalReportOutputParams);
+      if (action === 'download') await downloadTechnicalReportPdf(technicalReportOutputParams);
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : 'تعذر إخراج التقرير الفني.');
+    }
+  };
+
   const approveButtonLabel = advancingTechChapter
     ? `اعتماد والانتقال إلى: ${techReportChapterTitle(nextTechChapter)}`
     : activeStage === 'technical_report' && isLastTechReportChapter(techReportChapter)
@@ -853,15 +876,43 @@ export default function ProjectReportModal({
               )}
 
               {activeStage === 'technical_report' && (
-                projectClassification === 'EXISTING' ? (
-                  <ExistingTechnicalReportPreview client={client} data={data} company={company} />
-                ) : projectClassification === 'UNDER_CONSTRUCTION' ? (
-                  <UnderConstructionTechnicalReportPreview client={client} data={data} company={company} />
-                ) : projectClassification === null ? (
-                  <div className="border border-amber-200 bg-amber-50 px-4 py-4 text-sm leading-7 text-amber-950">
-                    لا يمكن فتح معاينة التقرير الفني لمسار الموقع القائم قبل تصنيف هوية المشروع. يبقى المشروع القديم غير المصنف محايدًا ولا يُعامل كموقع قائم أو مشروع قيد الإنشاء.
+                <>
+                  <div className="flex flex-wrap gap-2 border border-slate-200 bg-slate-50 p-3" aria-label="أفعال إخراج التقرير الفني">
+                    <button
+                      type="button"
+                      disabled={projectClassification === null}
+                      onClick={() => void runTechnicalReportAction('preview')}
+                      className="px-3 py-2 border border-slate-300 bg-white text-sm font-semibold disabled:cursor-not-allowed disabled:opacity-50"
+                    >
+                      معاينة التقرير
+                    </button>
+                    <button
+                      type="button"
+                      disabled={projectClassification === null}
+                      onClick={() => void runTechnicalReportAction('print')}
+                      className="px-3 py-2 border border-slate-300 bg-white text-sm font-semibold disabled:cursor-not-allowed disabled:opacity-50"
+                    >
+                      طباعة A4
+                    </button>
+                    <button
+                      type="button"
+                      disabled={projectClassification === null}
+                      onClick={() => void runTechnicalReportAction('download')}
+                      className="px-3 py-2 border border-slate-300 bg-white text-sm font-semibold disabled:cursor-not-allowed disabled:opacity-50"
+                    >
+                      تحميل PDF
+                    </button>
                   </div>
-                ) : null
+                  {projectClassification === 'EXISTING' ? (
+                    <ExistingTechnicalReportPreview client={client} data={data} company={company} />
+                  ) : projectClassification === 'UNDER_CONSTRUCTION' ? (
+                    <UnderConstructionTechnicalReportPreview client={client} data={data} company={company} />
+                  ) : projectClassification === null ? (
+                    <div className="border border-amber-200 bg-amber-50 px-4 py-4 text-sm leading-7 text-amber-950">
+                      لا يمكن فتح معاينة التقرير الفني لمسار الموقع القائم قبل تصنيف هوية المشروع؛ لا يمكن فتح معاينة التقرير الفني أو طباعته أو تنزيله قبل التصنيف. يبقى المشروع القديم غير المصنف محايدًا ولا يُعامل كموقع قائم أو مشروع قيد الإنشاء.
+                    </div>
+                  ) : null}
+                </>
               )}
 
               {activeStage === 'visits_supervision' && (
