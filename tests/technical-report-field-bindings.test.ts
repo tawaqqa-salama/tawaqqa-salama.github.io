@@ -285,7 +285,8 @@ describe('technical report field bindings', () => {
     ]) {
       expect(alarmUi).toContain(expected);
     }
-    expect(modal).toContain('onFireProtectionDesignChange={(fire_protection_design) => patch({ fire_protection_design })}');
+    expect(modal).toContain('UnderConstructionTechnicalReportPreview');
+    expect(modal).not.toContain('onFireProtectionDesignChange={(fire_protection_design) => patch({ fire_protection_design })}');
     expect(savePath).toContain('saveEngineeringLive');
     expect(reloadPath).toContain(".from('project_engineering_live')");
   });
