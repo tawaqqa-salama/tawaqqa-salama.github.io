@@ -30,6 +30,7 @@ import { mergeFireProtectionDesign } from '@/lib/projects/admin-uc-report/design
 import { EMPTY_FIRE_PROTECTION_DESIGN } from '@/lib/types/fire-protection-design';
 import { normalizeFieldVisitObservations } from '@/lib/projects/field-visit-observations';
 import { normalizeFieldVisitEvidenceForVisit } from '@/lib/projects/field-visit-evidence';
+import { normalizeExistingProjectAssessment } from '@/lib/projects/existing-project-assessment';
 
 export function parseProjectEngineeringData(raw: ClientRecord['project_engineering_data']): ProjectEngineeringData {
   if (!raw || typeof raw !== 'object') {
@@ -81,6 +82,9 @@ export function parseProjectEngineeringData(raw: ClientRecord['project_engineeri
       hydraulic_calculations: data.plan_attachments?.hydraulic_calculations || [],
     },
     design_center: mergeDesignCenterDefaults(data.design_center),
+    ...(data.existing_assessment !== undefined
+      ? { existing_assessment: normalizeExistingProjectAssessment(data.existing_assessment) }
+      : {}),
     contract_onboarding: {
       ...EMPTY_CONTRACT_ONBOARDING,
       ...data.contract_onboarding,

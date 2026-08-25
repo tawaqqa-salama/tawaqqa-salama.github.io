@@ -60,6 +60,38 @@ describe('engineering live store (all stages)', () => {
     expect(fromMock).not.toHaveBeenCalled();
   });
 
+  it('persists an EXISTING assessment through the canonical live RPC only', async () => {
+    const result = await saveEngineeringLive({
+      clientId: 'existing-client-01',
+      data: {
+        ...EMPTY_PROJECT_ENGINEERING_DATA,
+        existing_assessment: {
+          version: 1,
+          systems: {
+            sprinkler_system: {
+              existing_presence: 'PRESENT',
+              observed_configuration: 'شبكة مرشات قائمة',
+              compliance_status: 'NEEDS_COMPLETION',
+              action_text: 'استكمال التحقق الميداني من التغطية.',
+            },
+          },
+        },
+      },
+    });
+
+    expect(result.error).toBeNull();
+    expect(rpcMock).toHaveBeenCalledWith(
+      'save_project_engineering_live',
+      expect.objectContaining({ p_client_id: 'existing-client-01' })
+    );
+    const payload = rpcMock.mock.calls[0][1].p_payload;
+    expect(payload.existing_assessment?.systems.sprinkler_system).toMatchObject({
+      existing_presence: 'PRESENT',
+      compliance_status: 'NEEDS_COMPLETION',
+    });
+    expect(fromMock).not.toHaveBeenCalled();
+  });
+
   it('persists evidence metadata and strips transient display URLs from the live payload', async () => {
     const result = await saveEngineeringLive({
       clientId: 'client-01',
