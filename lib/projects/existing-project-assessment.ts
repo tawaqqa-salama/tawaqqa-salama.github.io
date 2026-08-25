@@ -1,4 +1,6 @@
 import type { ProjectEngineeringData } from '@/lib/types/project-reports';
+import { spaceSafetyTotals } from '@/lib/projects/design-space-safety-totals';
+import { humanizeEngineeringDisplayValue } from '@/lib/projects/preview-display';
 
 /**
  * Canonical, engineer-entered assessment for an EXISTING project. The observed
@@ -254,7 +256,9 @@ export type ExistingAssessmentRequirement = {
 };
 
 function joined(parts: Array<string | null | undefined>): string | null {
-  const clean = parts.map((value) => (value || '').trim()).filter(Boolean);
+  const clean = parts
+    .map((value) => humanizeEngineeringDisplayValue(value) || null)
+    .filter((value): value is string => Boolean(value));
   return clean.length ? clean.join(' · ') : null;
 }
 
@@ -277,6 +281,7 @@ export function resolveExistingAssessmentRequirement(
 ): ExistingAssessmentRequirement | null {
   const design = data.fire_protection_design;
   const plan = data.building_plan;
+  const spaceSafety = spaceSafetyTotals(data.design_center.space_safety);
   if (!design) return null;
 
   const fromSupporting = (field: keyof typeof design.supporting_systems, label: string) => {
@@ -334,10 +339,15 @@ export function resolveExistingAssessmentRequirement(
         joined([
           design.sprinkler.required === 'unknown' ? null : design.sprinkler.required === 'yes' ? 'نظام رش آلي مطلوب' : 'نظام الرش غير مطلوب',
           design.sprinkler.system_type,
+          design.sprinkler.sprinkler_type,
+          design.sprinkler.k_factor ? `K-Factor ${design.sprinkler.k_factor}` : null,
+          design.sprinkler.design_flow,
+          design.sprinkler.design_pressure,
           design.sprinkler.zones_count ? `${design.sprinkler.zones_count} منطقة` : null,
+          spaceSafety.sprinklers ? `عدد المرشات حسب مركز التصاميم ${spaceSafety.sprinklers}` : null,
         ]),
         'fire_protection_design.sprinkler',
-        'بيانات الرش ضمن التصميم الفني'
+        'بيانات الرش ضمن التصميم الفني ومركز التصاميم'
       );
     case 'fire_extinguishers':
       return sourceRequirement(
@@ -348,15 +358,31 @@ export function resolveExistingAssessmentRequirement(
         'بيانات الطفايات ضمن التصميم الفني'
       );
     case 'fire_alarm_control_panel':
-      return sourceRequirement(text(design.fire_alarm.control_panel) || null, 'fire_protection_design.fire_alarm', 'بيانات إنذار الحريق ضمن التصميم الفني');
+      return sourceRequirement(
+        joined([design.fire_alarm.control_panel, spaceSafety.fire_alarm_panels ? `عدد لوحات الإنذار حسب مركز التصاميم ${spaceSafety.fire_alarm_panels}` : null]),
+        'fire_protection_design.fire_alarm',
+        'بيانات إنذار الحريق ضمن التصميم الفني ومركز التصاميم'
+      );
     case 'smoke_detectors':
-      return sourceRequirement(text(design.fire_alarm.smoke_detectors) || null, 'fire_protection_design.fire_alarm', 'بيانات إنذار الحريق ضمن التصميم الفني');
+      return sourceRequirement(
+        joined([design.fire_alarm.smoke_detectors, spaceSafety.smoke_detectors ? `عدد كواشف الدخان حسب مركز التصاميم ${spaceSafety.smoke_detectors}` : null]),
+        'fire_protection_design.fire_alarm',
+        'بيانات إنذار الحريق ضمن التصميم الفني ومركز التصاميم'
+      );
     case 'heat_detectors':
-      return sourceRequirement(text(design.fire_alarm.heat_detectors) || null, 'fire_protection_design.fire_alarm', 'بيانات إنذار الحريق ضمن التصميم الفني');
+      return sourceRequirement(
+        joined([design.fire_alarm.heat_detectors, spaceSafety.heat_detectors ? `عدد كواشف الحرارة حسب مركز التصاميم ${spaceSafety.heat_detectors}` : null]),
+        'fire_protection_design.fire_alarm',
+        'بيانات إنذار الحريق ضمن التصميم الفني ومركز التصاميم'
+      );
     case 'manual_call_points':
       return sourceRequirement(text(design.fire_alarm.manual_call_points) || null, 'fire_protection_design.fire_alarm', 'بيانات إنذار الحريق ضمن التصميم الفني');
     case 'alarm_notification_devices':
-      return sourceRequirement(text(design.fire_alarm.bells) || null, 'fire_protection_design.fire_alarm', 'بيانات إنذار الحريق ضمن التصميم الفني');
+      return sourceRequirement(
+        joined([design.fire_alarm.bells, spaceSafety.alarm_bells ? `عدد أجهزة التنبيه حسب مركز التصاميم ${spaceSafety.alarm_bells}` : null]),
+        'fire_protection_design.fire_alarm',
+        'بيانات إنذار الحريق ضمن التصميم الفني ومركز التصاميم'
+      );
     case 'voice_evacuation':
       return sourceRequirement(text(design.fire_alarm.voice_alarm) || null, 'fire_protection_design.fire_alarm', 'بيانات إنذار الحريق ضمن التصميم الفني');
     case 'mechanical_ventilation':

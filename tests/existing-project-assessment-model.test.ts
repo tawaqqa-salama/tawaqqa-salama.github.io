@@ -129,9 +129,9 @@ describe('PR 2 — EXISTING project assessment canonical model', () => {
     const requirement = resolveExistingAssessmentRequirement(data, 'sprinkler_system');
 
     expect(requirement).toEqual({
-      text: 'نظام رش آلي مطلوب · Wet Pipe · 3 منطقة',
+      text: 'نظام رش آلي مطلوب · رطب (Wet Pipe) · 3 منطقة',
       source: 'fire_protection_design.sprinkler',
-      reference: 'بيانات الرش ضمن التصميم الفني',
+      reference: 'بيانات الرش ضمن التصميم الفني ومركز التصاميم',
     });
     expect(JSON.stringify(data.fire_protection_design)).toBe(snapshot);
   });

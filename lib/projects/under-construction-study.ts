@@ -1,5 +1,7 @@
 import type { ClientRecord } from '@/lib/types/client';
 import type { ProjectEngineeringData } from '@/lib/types/project-reports';
+import { spaceSafetyTotals } from '@/lib/projects/design-space-safety-totals';
+import { humanizeEngineeringDisplayValue, userFacingSourceLabel } from '@/lib/projects/preview-display';
 import { EMPTY_FIRE_PROTECTION_DESIGN, VALUE_SOURCE_LABEL_AR, type ValueSource } from '@/lib/types/fire-protection-design';
 
 /**
@@ -149,9 +151,13 @@ export const UNDER_CONSTRUCTION_SOURCE_LABELS: Record<UnderConstructionReference
 
 export type UnderConstructionSourceReference = {
   label: string;
+  /** User-facing value. The canonical value remains unchanged in project data. */
   value: string;
   source: UnderConstructionReferenceSource;
+  /** Reader-facing source detail, never a raw canonical path. */
   reference?: string;
+  /** Internal provenance retained for model tests and traceability. */
+  raw_reference?: string;
 };
 
 const SYSTEM_KEYS = new Set<string>(UNDER_CONSTRUCTION_SYSTEMS);
@@ -256,8 +262,17 @@ function reference(
   source: UnderConstructionReferenceSource,
   detail?: string
 ): UnderConstructionSourceReference[] {
-  const normalized = textValue(value);
-  return normalized ? [{ label, value: normalized, source, ...(detail ? { reference: detail } : {}) }] : [];
+  const canonicalDisplayValue = textValue(value);
+  const rawReference = textValue(detail);
+  const displayValue = humanizeEngineeringDisplayValue(canonicalDisplayValue);
+  return displayValue
+    ? [{
+      label,
+      value: displayValue,
+      source,
+      ...(rawReference ? { reference: userFacingSourceLabel(rawReference) || rawReference, raw_reference: rawReference } : {}),
+    }]
+    : [];
 }
 
 function supportingReference(
@@ -273,41 +288,6 @@ function supportingReference(
   );
 }
 
-function spaceSafetyTotals(data: ProjectEngineeringData) {
-  const floors = data.design_center.space_safety?.floors || [];
-  return floors.reduce(
-    (acc, floor) => {
-      for (const area of floor.areas || []) {
-        acc.area_m2 += Number(area.area_m2) || 0;
-        acc.sprinklers += Number(area.quantities.sprinklers) || 0;
-        acc.smoke_detectors += Number(area.quantities.smoke_detectors) || 0;
-        acc.heat_detectors += Number(area.quantities.heat_detectors) || 0;
-        acc.fire_alarm_panels += Number(area.quantities.fire_alarm_panels) || 0;
-        acc.alarm_bells += Number(area.quantities.alarm_bells) || 0;
-        acc.emergency_lights += Number(area.quantities.emergency_lights) || 0;
-        acc.exit_signs += Number(area.quantities.signs) || 0;
-        acc.emergency_exits += Number(area.quantities.emergency_exits) || 0;
-        acc.manual_extinguishers += Number(area.quantities.manual_extinguishers) || 0;
-        acc.max_travel_distance_m = Math.max(acc.max_travel_distance_m, Number(area.max_travel_distance_m) || 0);
-      }
-      return acc;
-    },
-    {
-      area_m2: 0,
-      sprinklers: 0,
-      smoke_detectors: 0,
-      heat_detectors: 0,
-      fire_alarm_panels: 0,
-      alarm_bells: 0,
-      emergency_lights: 0,
-      exit_signs: 0,
-      emergency_exits: 0,
-      manual_extinguishers: 0,
-      max_travel_distance_m: 0,
-    }
-  );
-}
-
 /** Project/design facts read from canonical sources only. Nothing returned here is persisted into the study. */
 export function resolveUnderConstructionProjectReferences(
   client: Pick<ClientRecord, 'name' | 'business_name' | 'owner_name' | 'city' | 'district' | 'activity_type' | 'building_area' | 'floors_count'>,
@@ -315,7 +295,7 @@ export function resolveUnderConstructionProjectReferences(
 ): UnderConstructionSourceReference[] {
   const plan = data.building_plan;
   const design = data.fire_protection_design || EMPTY_FIRE_PROTECTION_DESIGN;
-  const totals = spaceSafetyTotals(data);
+  const totals = spaceSafetyTotals(data.design_center.space_safety);
   return [
     ...reference('اسم المشروع / المنشأة', client.business_name || client.name, 'PROJECT'),
     ...reference('المالك', client.owner_name, 'PROJECT'),
@@ -339,7 +319,7 @@ export function resolveUnderConstructionSystemReferences(
 ): UnderConstructionSourceReference[] {
   const plan = data.building_plan;
   const design = data.fire_protection_design || EMPTY_FIRE_PROTECTION_DESIGN;
-  const totals = spaceSafetyTotals(data);
+  const totals = spaceSafetyTotals(data.design_center.space_safety);
   const designRef = (label: string, value: unknown, source: ValueSource | undefined) =>
     reference(label, value, sourceFromValueSource(source), source ? VALUE_SOURCE_LABEL_AR[source] : undefined);
   const quantityRef = (label: string, value: number) => value ? reference(label, value, 'DESIGN_CENTER') : [];
