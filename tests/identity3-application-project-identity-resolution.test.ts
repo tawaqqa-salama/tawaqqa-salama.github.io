@@ -32,13 +32,12 @@ describe('IDENTITY-3 application project identity resolution', () => {
   });
 
   it.each([
-    ['client-1', 'project-1', 'PRJ-2026-000001'],
-    ['client-2', 'project-2', 'PRJ-2026-000002'],
-    ['client-3', 'project-3', 'PRJ-2026-000003'],
-  ])('resolves the canonical mapped identity for %s', async (clientId, projectId, projectCode) => {
+    ['client-1', 'project-1', 'PRJ-2026-000001', 'EXISTING'],
+    ['client-2', 'project-2', 'PRJ-2026-000002', 'UNDER_CONSTRUCTION'],
+  ])('resolves the canonical mapped identity for %s', async (clientId, projectId, projectCode, projectClassification) => {
     const mappingQuery = queryResult({ data: { client_id: clientId, project_id: projectId }, error: null });
     const projectQuery = queryResult({
-      data: { id: projectId, client_id: clientId, project_code: projectCode },
+      data: { id: projectId, client_id: clientId, project_code: projectCode, project_classification: projectClassification },
       error: null,
     });
     fromMock.mockReturnValueOnce(mappingQuery).mockReturnValueOnce(projectQuery);
@@ -47,12 +46,34 @@ describe('IDENTITY-3 application project identity resolution', () => {
       clientId,
       projectId,
       projectCode,
+      projectClassification,
     });
     expect(fromMock).toHaveBeenNthCalledWith(1, 'primary_engineering_project_mappings');
     expect(mappingQuery.eq).toHaveBeenCalledWith('client_id', clientId);
     expect(fromMock).toHaveBeenNthCalledWith(2, 'projects');
     expect(projectQuery.eq).toHaveBeenCalledWith('id', projectId);
     expect(projectQuery.eq).toHaveBeenCalledWith('client_id', clientId);
+  });
+
+  it('preserves a legacy NULL classification without inferring from client status or payload state', async () => {
+    const mappingQuery = queryResult({ data: { client_id: 'legacy-client', project_id: 'legacy-project' }, error: null });
+    const projectQuery = queryResult({
+      data: {
+        id: 'legacy-project',
+        client_id: 'legacy-client',
+        project_code: 'PRJ-2026-000099',
+        project_classification: null,
+      },
+      error: null,
+    });
+    fromMock.mockReturnValueOnce(mappingQuery).mockReturnValueOnce(projectQuery);
+
+    await expect(resolvePrimaryEngineeringProjectIdentity('legacy-client')).resolves.toEqual({
+      clientId: 'legacy-client',
+      projectId: 'legacy-project',
+      projectCode: 'PRJ-2026-000099',
+      projectClassification: null,
+    });
   });
 
   it('keeps client-centric loading safe if the identity read throws unexpectedly', async () => {
@@ -100,6 +121,10 @@ describe('IDENTITY-3 application project identity resolution', () => {
     expect(identityReader).toContain(".from('primary_engineering_project_mappings')");
     expect(identityReader).toContain(".eq('client_id', normalizedClientId)");
     expect(identityReader).toContain(".from('projects')");
+    expect(identityReader).toContain('project_classification');
+    expect(identityReader).not.toContain('project_status');
+    expect(identityReader).not.toContain('building_status');
+    expect(identityReader).not.toContain('lifecycle_mode');
     expect(identityReader).toContain(".eq('id', mapping.project_id)");
   });
 

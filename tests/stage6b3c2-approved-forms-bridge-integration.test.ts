@@ -44,6 +44,7 @@ const identity: CanonicalProjectIdentity = {
   clientId,
   projectId,
   projectCode: 'PRJ-2026-000001',
+  projectClassification: null,
 };
 
 const delivery: EngineeringDeliveryReport = {

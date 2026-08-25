@@ -14,6 +14,8 @@ import ModuleTabBar from '@/components/layout/ModuleTabBar';
 import ResponsiveTable from '@/components/ui/ResponsiveTable';
 import RowActionsMenu from '@/components/ui/RowActionsMenu';
 import { insertClientSafe, mergeLocalClientOverrides } from '@/lib/supabase/safe-client-write';
+import { createOrResolveClassifiedEngineeringProject } from '@/lib/projects/classified-engineering-project-identity';
+import { isProjectClassification } from '@/lib/projects/project-classification';
 import { logActivity } from '@/lib/activity/logger';
 import { formatCurrency } from '@/lib/format/currency';
 import { parseLocalizedInteger, parseLocalizedNumber } from '@/lib/validation/client';
@@ -190,10 +192,16 @@ export default function SalesPage() {
   const clientMap = useMemo(() => new Map(hydratedClients.map((c) => [c.id, c])), [hydratedClients]);
 
   const handleAdd = async (formData: ClientFormData) => {
+    if (!isProjectClassification(formData.project_classification)) {
+      setErrorMessage('اختر تصنيف المشروع الهندسي قبل الحفظ.');
+      return;
+    }
+
+    const projectClassification = formData.project_classification;
     setIsSubmitting(true);
     setErrorMessage(null);
     const clientCode = await nextClientCode();
-    const { error } = await insertClientSafe({
+    const { data: createdClient, error } = await insertClientSafe({
       client_code: clientCode,
       name: formData.business_name || formData.owner_name,
       owner_name: formData.owner_name,
@@ -221,11 +229,24 @@ export default function SalesPage() {
       visit_status: 'لم تُجدول',
       final_report_status: 'قيد الإعداد',
     });
-    setIsSubmitting(false);
-    if (error) {
-      setErrorMessage(error);
+    if (error || !createdClient?.id) {
+      setIsSubmitting(false);
+      setErrorMessage(error || 'تعذر تثبيت العميل الجديد قبل إنشاء هوية المشروع.');
       return;
     }
+
+    const classificationResult = await createOrResolveClassifiedEngineeringProject({
+      clientId: String(createdClient.id),
+      projectClassification,
+    });
+    setIsSubmitting(false);
+    if (classificationResult.error || !classificationResult.identity) {
+      setErrorMessage(
+        'تم إنشاء العميل، لكن تعذر تثبيت هوية المشروع وتصنيفه الكانوني. لم تكتمل عملية إنشاء المشروع؛ لا تعِد إنشاء العميل، وراجع الخطأ مع مسؤول النظام.'
+      );
+      return;
+    }
+
     void logActivity({
       actionType: 'CREATE',
       module: 'sales',
