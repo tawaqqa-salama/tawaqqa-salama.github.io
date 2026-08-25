@@ -3,12 +3,14 @@ import type { ProjectComplianceState } from '@/lib/projects/compliance/types';
 import type { FireProtectionDesign } from '@/lib/types/fire-protection-design';
 import type { ReportPdfSnapshot } from '@/lib/types/report-pdf-snapshot';
 import type { EngineeringMeta } from '@/lib/projects/canonical-engineering';
+import type { ExistingProjectAssessment } from '@/lib/projects/existing-project-assessment';
 
 export type { DesignCenterState };
 export type { FireProtectionDesign };
 export type { ReportPdfSnapshot };
 export type { ProjectComplianceState };
 export type { EngineeringMeta };
+export type { ExistingProjectAssessment };
 
 /**
  * Canonical engineering dataset (logical shape).
@@ -892,6 +894,11 @@ export interface ProjectEngineeringData {
   plan_attachments: PlanAttachmentsState;
   /** مرحلة التصاميم — مركز الذكاء التصميمي (مرحلة 2) */
   design_center: DesignCenterState;
+  /**
+   * تقييم هندسي additive للموقع القائم فقط. يُحفظ في الحمولة الحية الكانونية
+   * ولا يحدد التصنيف ولا ينسخ القيم التصميمية أو التخطيطية إلى مصدر موازٍ.
+   */
+  existing_assessment?: ExistingProjectAssessment;
   /** مرحلة العقد والتعاقد (مرحلة 1) */
   contract_onboarding: ContractOnboardingReport;
   boq: BoqReport;

@@ -33,6 +33,7 @@ import RemediationFollowUpPanel from '@/components/projects/RemediationFollowUpP
 import Stage5TraceabilityPanel from '@/components/projects/Stage5TraceabilityPanel';
 import SupervisionReportSection from '@/components/projects/SupervisionReportSection';
 import DesignCenterSection from '@/components/projects/DesignCenterSection';
+import ExistingProjectAssessmentSection from '@/components/projects/ExistingProjectAssessmentSection';
 import BuildingPlanReportSection from '@/components/projects/BuildingPlanReportSection';
 import WorkflowStageRail from '@/components/projects/WorkflowStageRail';
 import { useProjectStagesDrawer } from '@/components/layout/ProjectStagesDrawerContext';
@@ -245,6 +246,10 @@ export default function ProjectReportModal({
   const stageMeta = WORKFLOW_STAGES.find((s) => s.id === activeStage);
 
   if (!client || !data) return null;
+
+  // Project classification is canonical project identity, never client status,
+  // report wording, fire-protection lifecycle, or workflow state.
+  const projectClassification = client.primary_engineering_project_identity?.projectClassification ?? null;
 
   const save = async (
     nextData: ProjectEngineeringData,
@@ -703,6 +708,26 @@ export default function ProjectReportModal({
                     <code className="font-mono">029</code> لفتح كل الأنواع. اسم الملف في خانة
                     الاختيار ≠ حفظ ناجح.
                   </div>
+                  {projectClassification === 'EXISTING' ? (
+                    <ExistingProjectAssessmentSection
+                      data={data}
+                      assessment={data.existing_assessment}
+                      saving={saving}
+                      onChange={(existing_assessment) => patch({ existing_assessment })}
+                      onSave={(existing_assessment) =>
+                        save(
+                          { ...data, existing_assessment },
+                          'تم حفظ تقييم الموقع القائم داخل الحمولة الهندسية الكانونية.',
+                          { stayOpen: true }
+                        )
+                      }
+                    />
+                  ) : projectClassification === null ? (
+                    <div className="rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm leading-6 text-slate-700">
+                      لا يمكن فتح نموذج تقييم الموقع القائم قبل تصنيف هوية المشروع. المشروع القديم غير المصنف
+                      يبقى محايدًا ولا يُستنتج تصنيفه من حالة العميل أو بيانات التقرير أو دورة حياة التصميم.
+                    </div>
+                  ) : null}
                   <DesignCenterSection
                     client={client}
                     data={data}

@@ -224,6 +224,10 @@ export function resolveCanonicalEngineeringDataset(params: {
     building_plan: mergeBuildingPlan(live.building_plan, legacy.building_plan, conflicts),
     fire_protection_design: fpLive || fpLegacy,
     design_center: live.design_center || legacy.design_center,
+    // PR 2: existing assessments are canonical-live only. Explicitly overwrite
+    // the legacy spread even when live is undefined, so no fallback authority
+    // can leak into a canonical-live project.
+    existing_assessment: live.existing_assessment,
     plan_attachments: live.plan_attachments || legacy.plan_attachments,
     safety_blueprints: live.safety_blueprints || legacy.safety_blueprints,
     field_visits: live.field_visits?.length ? live.field_visits : legacy.field_visits,
