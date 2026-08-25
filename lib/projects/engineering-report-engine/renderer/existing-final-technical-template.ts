@@ -4,7 +4,6 @@ import { esc, formatReportTextHtml } from '@/lib/projects/engineering-report-eng
 import { getEmbeddedArabicFontCss } from '@/lib/projects/engineering-report-engine/renderer/embedded-fonts';
 import {
   documentToFlowBlocks,
-  estimateFlowTocPages,
   type FlowBlock,
 } from '@/lib/projects/engineering-report-engine/renderer/flow-document';
 
@@ -26,9 +25,10 @@ function renderEngineeringTokens(value: string): string {
 }
 
 function renderTableCell(value: string, tag: 'th' | 'td', className = ''): string {
-  const direction = isLtrEngineeringValue(value) ? 'ltr' : 'auto';
+  const displayValue = value.replace(/^K(\d+(?:\.\d+)?)$/, 'K = $1');
+  const direction = isLtrEngineeringValue(displayValue) ? 'ltr' : 'auto';
   const classAttr = className ? ` class="${className}"` : '';
-  const content = direction === 'ltr' ? text(value) : renderEngineeringTokens(value);
+  const content = direction === 'ltr' ? text(displayValue) : renderEngineeringTokens(displayValue);
   return `<${tag}${classAttr}><bdi dir="${direction}" class="official-cell-text">${content}</bdi></${tag}>`;
 }
 
@@ -47,7 +47,7 @@ function renderBlock(block: FlowBlock, locale: 'ar' | 'en'): string {
     case 'table': {
       const isSummary = block.caption.includes('ملخص حالات');
       if (isSummary) {
-        return `<section class="official-summary-block"><div class="official-table-caption">${text(`[ ${block.caption} ]`)}</div><div class="official-summary-metrics">${block.rows.map(([label, value]) => `<div class="official-summary-metric"><span>${text(label)}</span><strong dir="ltr">${text(value)}</strong></div>`).join('')}</div></section>`;
+        return `<section class="official-summary-block"><div class="official-table-caption">${text(`[ ${block.caption} ]`)}</div><table class="official-summary-metrics" aria-label="${text(block.caption)}"><colgroup>${block.rows.map(() => '<col style="width:31mm" />').join('')}</colgroup><tbody><tr>${block.rows.map(([label, value]) => `<td class="official-summary-metric" style="width:31mm !important"><span>${text(label)}</span><strong dir="ltr">${text(value)}</strong></td>`).join('')}</tr></tbody></table></section>`;
       }
       const isEngineering = ['مقاييس الإخلاء', 'إمداد مياه الإطفاء والخزان', 'مضخات الحريق', 'نظام الرش الآلي', 'نظام إنذار وكشف الحريق'].some((label) => block.caption.includes(label));
       const tableClass = isEngineering ? ' official-engineering-sheet' : '';
@@ -108,14 +108,13 @@ function cover(doc: EngineeringStudyDocument, company: CompanyProfile): string {
 function toc(
   doc: EngineeringStudyDocument,
   company: CompanyProfile,
-  chapters: { id: string; title: string; displayNo: number }[],
-  pageMap: Record<string, number>
+  chapters: { id: string; title: string; displayNo: number }[]
 ): string {
   const companyName = company.legal_name || company.name || 'توقع سلامة للاستشارات';
   const tocChapters = [...chapters, { id: 'approvals', title: '9. الاعتماد والتوقيعات', displayNo: 9 }];
   const rows = tocChapters.map((chapter) => {
     const label = chapter.title.replace(/^\d+(?:\.\d+)?\.\s*/, '');
-    return `<div class="official-toc-row"><em>${String(chapter.displayNo).padStart(2, '0')}</em><span>${text(label)}</span><i></i><b>${pageMap[chapter.id] || '—'}</b></div>`;
+    return `<div class="official-toc-row"><em>${String(chapter.displayNo).padStart(2, '0')}</em><span>${text(label)}</span><i></i><b class="official-toc-page-no" data-toc-target="sec-${esc(chapter.id)}">—</b></div>`;
   }).join('');
   return `<section class="official-toc-page"><div class="official-page-brand"><span>${esc(companyName)}</span><strong>${text(doc.title_ar)}</strong><span>${text(doc.project_name)}</span></div><div class="official-page-rules"></div><h1>المحتويات</h1><div class="official-toc">${rows}</div></section>`;
 }
@@ -123,7 +122,7 @@ function toc(
 function approvals(doc: EngineeringStudyDocument, company: CompanyProfile): string {
   const office = doc.executive_director || company.legal_name || company.name || '—';
   const preparedBy = doc.prepared_by || '........................................';
-  return `<section class="official-approvals keep"><h2 class="official-chapter">الاعتماد والتوقيعات</h2><div class="official-approval-meta"><span>رقم التقرير: <bdi dir="ltr">${text(reportValue(doc.report_number))}</bdi></span><span>التاريخ: <bdi dir="auto">${text(reportValue(doc.report_date))}</bdi></span><span>الجهة: ${text(office)}</span></div><p class="official-paragraph">يُستكمل اعتماد التقرير وفق الصلاحيات المعتمدة للمكتب والاستشاري المسؤول.</p><div class="official-signature-grid"><div class="official-signature-box"><strong>المهندس المُعد</strong><span>الاسم: ${text(preparedBy)}</span><span>التوقيع: .....................................</span><span>التاريخ: ......................................</span></div><div class="official-stamp">${company.stamp_url ? `<img src="${esc(company.stamp_url)}" alt="" />` : `<span>${esc(company.stamp_text || 'ختم المكتب')}</span>`}</div><div class="official-signature-box"><strong>اعتماد المكتب</strong><span>الجهة: ${text(office)}</span><span>التوقيع / الختم: ............................</span><span>التاريخ: ......................................</span></div><div class="official-approval-notes"><strong>ملاحظات الاعتماد</strong><span></span><span></span><span></span></div></div></section>`;
+  return `<section id="sec-approvals" class="official-approvals keep"><h2 class="official-chapter">الاعتماد والتوقيعات</h2><div class="official-approval-meta"><span>رقم التقرير: <bdi dir="ltr">${text(reportValue(doc.report_number))}</bdi></span><span>التاريخ: <bdi dir="auto">${text(reportValue(doc.report_date))}</bdi></span><span>الجهة: ${text(office)}</span></div><p class="official-paragraph">يُستكمل اعتماد التقرير وفق الصلاحيات المعتمدة للمكتب والاستشاري المسؤول.</p><div class="official-signature-grid"><div class="official-signature-box"><strong>المهندس المُعد</strong><span>الاسم: ${text(preparedBy)}</span><span>التوقيع: .....................................</span><span>التاريخ: ......................................</span></div><div class="official-stamp">${company.stamp_url ? `<img src="${esc(company.stamp_url)}" alt="" />` : `<span>${esc(company.stamp_text || 'ختم المكتب')}</span>`}</div><div class="official-signature-box"><strong>اعتماد المكتب</strong><span>الجهة: ${text(office)}</span><span>التوقيع / الختم: ............................</span><span>التاريخ: ......................................</span></div><div class="official-approval-notes"><strong>ملاحظات الاعتماد</strong><span></span><span></span><span></span></div></div></section>`;
 }
 
 function css(doc: EngineeringStudyDocument, company: CompanyProfile): string {
@@ -190,24 +189,26 @@ function css(doc: EngineeringStudyDocument, company: CompanyProfile): string {
   .official-paragraph { margin:0 0 7px; text-align:justify; }
   .official-list { margin:2px 0 8px; padding-inline-start:22px; }
   .official-list li { margin:0 0 4px; page-break-inside:avoid; break-inside:avoid; }
-  .official-table-wrap { margin:4px 0 8px; break-inside:auto; page-break-inside:auto; }
+  .official-table-wrap { margin:5px 0 9px; break-inside:auto; page-break-inside:auto; }
   .official-table-caption { color:#123d4c; font-weight:800; font-size:10px; margin-bottom:3px; text-align:start; }
   .official-engineering-sheet { margin-top:5px; }
   .official-engineering-sheet .official-table-caption { color:#167b7f; font-size:10.5px; border-inline-start:2px solid #d2a33b; padding-inline-start:5px; }
   .official-engineering-sheet .official-table th { background:#f0f4f4; }
   .official-status-row td { background:#fcfdfd; }
-  .official-status-cell { display:inline-block !important; width:auto; min-width:23mm; padding:.35mm 2mm; border:1px solid #8aa5a8; border-radius:999px; background:#f1f7f6; color:#123d4c; font-weight:900; text-align:center; }
+  .official-status-cell { display:inline-block !important; width:auto; min-width:23mm; padding:.55mm 2mm; border:1px solid #8aa5a8; border-radius:999px; background:#f1f7f6; color:#123d4c; font-weight:900; text-align:center; }
   .official-status-row td:first-child { color:#123d4c; font-weight:800; }
   .official-engineering-run { direction:ltr; unicode-bidi:isolate; white-space:nowrap; display:inline-block; }
   .official-summary-block { margin:5px 0 10px; break-inside:avoid; page-break-inside:avoid; }
-  .official-summary-metrics { display:grid; grid-template-columns:repeat(5,minmax(0,1fr)); gap:3mm; }
-  .official-summary-metric { min-height:20mm; padding:2.5mm 2mm; border:1px solid #b8c8ca; border-top:1.5mm solid #1b8f91; background:#f4f8f8; display:flex; flex-direction:column; align-items:center; justify-content:center; text-align:center; }
+  .official-summary-metrics { width:155mm; max-width:100%; margin-inline:auto; table-layout:fixed; border-collapse:collapse; direction:rtl; }
+  .official-summary-metrics td { width:31mm !important; }
+  .official-summary-metrics td:first-child { width:31mm !important; }
+  .official-summary-metric { width:31mm; box-sizing:border-box !important; direction:rtl; min-width:0; min-height:20mm; padding:2.5mm 1.2mm; border:1px solid #b8c8ca; border-top:1.5mm solid #1b8f91; background:#f4f8f8; text-align:center; vertical-align:middle; }
   .official-summary-metric span { color:#23434a; font-size:8.5px; font-weight:800; line-height:1.35; }
   .official-summary-metric strong { color:#123d4c; font-size:17px; line-height:1; margin-top:2mm; font-variant-numeric:tabular-nums; }
   .official-table { width:100%; table-layout:fixed; border-collapse:collapse; font-size:9.7px; direction:rtl; }
   .official-table thead { display:table-header-group; }
   .official-table tr { page-break-inside:avoid; break-inside:avoid; }
-  .official-table th, .official-table td { border:1px solid #a8b4b7; padding:4px 5px; overflow-wrap:anywhere; word-break:normal; white-space:normal; min-width:0; vertical-align:top; text-align:right; direction:rtl; unicode-bidi:plaintext; line-height:1.5; }
+  .official-table th, .official-table td { border:1px solid #a8b4b7; padding:5px 5px; overflow-wrap:anywhere; word-break:normal; white-space:normal; min-width:0; vertical-align:top; text-align:right; direction:rtl; unicode-bidi:plaintext; line-height:1.5; }
   .official-table th:first-child, .official-table td:first-child { width:29%; }
   .official-cell-text { display:block; max-width:100%; overflow-wrap:anywhere; word-break:normal; white-space:normal; unicode-bidi:isolate; }
   .official-table th bdi, .official-table td bdi { display:block; max-width:100%; overflow-wrap:anywhere; word-break:normal; white-space:normal; unicode-bidi:isolate; }
@@ -255,7 +256,6 @@ export function buildExistingFinalTechnicalReportHtml(params: {
 }): string {
   const { document: doc, company } = params;
   const { blocks, chapters } = documentToFlowBlocks(doc);
-  const pageMap = estimateFlowTocPages(chapters, blocks);
-  const body = blocks.map((block) => renderBlock(block, doc.locale)).join('\n');
-  return `<!DOCTYPE html><html lang="${doc.locale}" dir="${doc.locale === 'ar' ? 'rtl' : 'ltr'}"><head><meta charset="utf-8"/><title>${esc(doc.title_ar)} — ${esc(doc.project_name)}</title><style>${css(doc, company)}</style></head><body>${cover(doc, company)}${toc(doc, company, chapters, pageMap)}<main class="official-document">${body}${approvals(doc, company)}</main></body></html>`;
+  const body = blocks.map((block) => renderBlock(block, doc.locale)).join('\\n');
+  return `<!DOCTYPE html><html lang="${doc.locale}" dir="${doc.locale === 'ar' ? 'rtl' : 'ltr'}"><head><meta charset="utf-8"/><title>${esc(doc.title_ar)} — ${esc(doc.project_name)}</title><style>${css(doc, company)}</style></head><body>${cover(doc, company)}${toc(doc, company, chapters)}<main class="official-document">${body}${approvals(doc, company)}</main></body></html>`;
 }

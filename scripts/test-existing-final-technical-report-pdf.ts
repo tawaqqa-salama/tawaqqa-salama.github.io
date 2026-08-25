@@ -17,9 +17,9 @@ mkdirSync(outDir, { recursive: true });
 const client: ClientRecord = {
     id: 'existing-final-report-fixture',
     primary_engineering_project_identity: { clientId: 'existing-final-report-fixture', projectId: 'existing-final-report-fixture', projectCode: 'PRJ-2026-EXISTING', projectClassification: 'EXISTING' },
-  client_code: 'OFFICIAL-FIX-01',
-  name: 'منشأة اختبار التقرير الرسمي',
-  business_name: 'منشأة اختبار التقرير الرسمي',
+  client_code: 'EX-FINAL-01',
+  name: 'منشأة الموقع القائم — التقرير الرسمي',
+  business_name: 'منشأة الموقع القائم — التقرير الرسمي',
   owner_name: 'مالك المنشأة',
   city: 'الرياض',
   district: 'العليا',
@@ -32,12 +32,12 @@ const company = {
   name: 'توقع سلامة',
   legal_name: 'توقع سلامة للاستشارات',
   tagline: 'للاستشارات الهندسية والسلامة والوقاية من الحريق',
-  stamp_text: 'ختم اختبار',
+  stamp_text: 'ختم المكتب',
 } as CompanyProfile;
 
 const report = {
   ...EMPTY_TECHNICAL_REPORT,
-  outgoing_number: 'TR-OFFICIAL-FIX-01',
+  outgoing_number: 'TR-EX-FINAL-01',
   report_date: '2026-08-23',
   floor_uses: [
     {
@@ -261,6 +261,10 @@ async function main() {
     pages.push(content.items.map((item) => ('str' in item ? item.str : '')).join(' ').trim());
   }
   const renderedText = pages.join('\n');
+  const fixtureIdentityLeakage = renderedText.match(/(?:منشأة\s+اختبار|ختم\s+اختبار|OFFICIAL[-_ ]?FIX|FIXTURE|Demo|Mock|Test)/gi) || [];
+  if (fixtureIdentityLeakage.length) {
+    throw new Error(`Fixture identity leakage detected: ${fixtureIdentityLeakage.join(', ')}`);
+  }
   const result = {
     htmlPath,
     pdfPath,
@@ -271,6 +275,7 @@ async function main() {
     requiredAssessmentFields: ['البند', 'الوضع الراهن', 'المطلوب حسب الكود / التصميم', 'الفجوة', 'حالة المطابقة', 'الإجراء المطلوب', 'المرجع / الدليل'].filter((field) => JSON.stringify(document).includes(field)),
     internalTerms: ['إدخال المهندس', 'محسوب من المدخلات', 'Preliminary Engineering Check', 'لم يتم إدخال القيمة', 'حالة التقرير:', 'workflow', 'undefined', 'null', 'N/A', 'NEEDS_DATA', 'BLOCKED', 'RULE_NOT_CONFIGURED', 'fire_protection_design.', 'project_engineering_live.', 'design_center.'].filter((term) => renderedText.includes(term)),
     numericZeroPlaceholders: ['إجمالي المخارج:0', 'إجمالي الشاغلين:0', 'عدد المرشات:0'].filter((term) => renderedText.includes(term)),
+    fixtureIdentityLeakage,
     pages,
   };
   writeFileSync(join(outDir, 'result.json'), JSON.stringify(result, null, 2));

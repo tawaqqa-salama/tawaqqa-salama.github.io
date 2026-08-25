@@ -529,6 +529,17 @@ export function sectionToFlowBlocks(
 
   if (section.id === 'summary') {
     const raw = sanitizeClientFacingText(paras.map((p) => p.text).join(' '), locale);
+    if (tables.length) {
+      for (const t of tables) {
+        blocks.push({
+          kind: 'table',
+          tableNo: ++counters.tables,
+          caption: locale === 'ar' ? t.caption_ar : t.caption_en,
+          headers: locale === 'ar' ? t.headers_ar : t.headers_en,
+          rows: t.rows,
+        });
+      }
+    }
     blocks.push({
       kind: 'paragraph',
       text:
@@ -538,7 +549,7 @@ export function sectionToFlowBlocks(
     });
     if (raw) {
       const facts = extractSummaryFacts(raw, locale);
-      if (facts.rows.length) {
+      if (facts.rows.length && !tables.length) {
         blocks.push({
           kind: 'table',
           tableNo: ++counters.tables,
