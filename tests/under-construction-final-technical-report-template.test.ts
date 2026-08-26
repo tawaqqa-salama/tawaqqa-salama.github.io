@@ -22,6 +22,7 @@ describe('UNDER_CONSTRUCTION final A4 technical report template', () => {
       applicable_codes: ['SBC 801'],
       occupancy: { ...EMPTY_FIRE_PROTECTION_DESIGN.occupancy, occupancy_type: 'مكاتب إدارية', hazard_class: 'ordinary_hazard_group_1', floors_count: '3' },
       sprinkler: { ...EMPTY_FIRE_PROTECTION_DESIGN.sprinkler, system_type: 'wet', k_factor: 'K80' },
+      water_tank: { ...EMPTY_FIRE_PROTECTION_DESIGN.water_tank, exists: 'yes', capacity_m3: { value: 120, unit: 'm³', input_unit: 'm³', source: 'engineer_input' } },
     },
     under_construction_study: {
       version: 1 as const,
@@ -50,6 +51,7 @@ describe('UNDER_CONSTRUCTION final A4 technical report template', () => {
     const html = buildUnderConstructionFinalTechnicalReportHtml({ model, company });
     expect(html).toContain('K = 80');
     expect(html).toContain('رطب (Wet Pipe)');
+    expect(html).not.toContain('رطب (رطب (Wet Pipe))');
     expect(html).not.toContain('ordinary_hazard_group_1');
     expect(html).not.toContain('NEEDS_DATA');
     expect(html).not.toContain('RULE_NOT_CONFIGURED');
@@ -70,11 +72,46 @@ describe('UNDER_CONSTRUCTION final A4 technical report template', () => {
     expect(final).toContain('>3</span>');
   });
 
+  it('separates requirements, design solutions, and engineering data without repeated system cards', () => {
+    const model = buildUnderConstructionTechnicalReportModel(client, data, company);
+    const html = buildUnderConstructionFinalTechnicalReportHtml({ model, company });
+    expect(html).toContain('class="requirements-table"');
+    expect(html).toContain('class="design-table"');
+    expect(html).toContain('class="engineering-data-table"');
+    expect(html).not.toContain('القيم الهندسية المرجعية — للعرض فقط من المصادر الكانونية');
+    expect(html).toContain('الاعتماد والتوقيعات');
+    expect(html).toContain('سعة الخزان');
+    expect((html.match(/نظام الرش الآلي/g) || []).length).toBeLessThanOrEqual(4);
+    const mapped = buildUnderConstructionFinalTechnicalReportHtml({ model, company, pageMap: { intro: 3, project: 3, building: 4, basis: 4, requirements: 5, engineering: 9, data: 15, recommendations: 21, summary: 21, approvals: 22 } });
+    expect(html).toContain('SECTION_PAGE_approvalsMARKEREND');
+    expect(mapped).not.toContain('SECTION_PAGE_');
+  });
+
+  it('keeps tank capacity canonical and preserves missing-data semantics without inventing values', () => {
+    const model = buildUnderConstructionTechnicalReportModel(client, data, company);
+    const html = buildUnderConstructionFinalTechnicalReportHtml({ model, company });
+    expect(html).toContain('سعة الخزان');
+    expect(model.engineering_data.some((item) => item.label === 'سعة الخزان' && item.value.includes('120'))).toBe(true);
+    expect(html).not.toContain('120 م³ م³');
+    const canonicalDesign = data.fire_protection_design || EMPTY_FIRE_PROTECTION_DESIGN;
+    const missingData = {
+      ...data,
+      fire_protection_design: { ...canonicalDesign, water_tank: { ...canonicalDesign.water_tank, capacity_m3: { ...canonicalDesign.water_tank.capacity_m3, value: null } } },
+    } as ProjectEngineeringData;
+    const missingModel = buildUnderConstructionTechnicalReportModel(client, missingData, company);
+    const missingHtml = buildUnderConstructionFinalTechnicalReportHtml({ model: missingModel, company });
+    expect(missingHtml).not.toContain('120');
+    expect(missingHtml).toContain('غير متوفر');
+  });
+
   it('keeps mobile rules separate from print rules and protects semantic blocks', () => {
     const model = buildUnderConstructionTechnicalReportModel(client, data, company);
     const html = buildUnderConstructionFinalTechnicalReportHtml({ model, company });
     expect(html).toContain('@media screen and (max-width: 600px)');
     expect(html).toContain('@media print');
+    expect(html).toContain('requirements-table');
+    expect(html).toContain('design-table');
+    expect(html).toContain('engineering-data-table');
     expect(html).toContain('page-break-inside: avoid');
     expect(html).not.toContain('overflow-x:');
   });
