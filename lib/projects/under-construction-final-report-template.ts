@@ -26,7 +26,7 @@ function normalizeDisplay(value: string | null | undefined): string {
 }
 
 function display(value: string | null | undefined, fallback = 'غير متوفر'): string {
-  return tx(normalizeDisplay(value), fallback);
+  return value?.trim() ? tx(normalizeDisplay(value)) : tx(fallback);
 }
 
 function referenceDisplay(value: string | null | undefined): string {
@@ -62,7 +62,7 @@ function renderRequirements(sections: UnderConstructionTechnicalReportSection[])
 function renderDesignSolutions(sections: UnderConstructionTechnicalReportSection[]): string {
   const systems = systemList(sections).filter((system) => system.applicable === true);
   if (!systems.length) return '<div class="empty-note">لم تُسجل حلول تصميمية لأنظمة مطلوبة بقرار صريح.</div>';
-  return `<table class="design-table"><thead><tr><th>النظام</th><th>الحل التصميمي المختار</th><th>مرجع المخطط / التصميم</th><th>ملاحظة التنفيذ</th></tr></thead><tbody>${systems.map((system) => `<tr><th>${tx(system.system_label)}</th><td>${display(system.selected_solution, 'لم يتم إدخال الحل التصميمي')}</td><td>${display(system.drawing_reference || system.code_reference)}</td><td>${display(system.implementation_note)}</td></tr>`).join('')}</tbody></table>`;
+  return `<table class="design-table"><thead><tr><th>النظام</th><th>الحل التصميمي المختار</th><th>مرجع المخطط / التصميم</th><th>ملاحظة التنفيذ</th></tr></thead><tbody>${systems.map((system) => `<tr><th>${tx(system.system_label)}</th><td>${display(system.selected_solution, 'لم يتم إدخال الحل التصميمي')}</td><td>${display(system.drawing_reference, 'لم يُسجل بالمخطط')}</td><td>${display(system.implementation_note, 'لم تُسجل ملاحظة تنفيذ')}</td></tr>`).join('')}</tbody></table>`;
 }
 
 function renderEngineeringDataSheet(model: UnderConstructionTechnicalReportModel): string {

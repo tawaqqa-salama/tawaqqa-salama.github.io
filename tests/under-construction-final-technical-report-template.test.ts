@@ -91,6 +91,28 @@ describe('UNDER_CONSTRUCTION final A4 technical report template', () => {
     expect(final).toContain('>3</span>');
   });
 
+  it('uses dedicated Section 06 fallbacks without changing real drawing references', () => {
+    const model = buildUnderConstructionTechnicalReportModel(client, data, company);
+    const html = buildUnderConstructionFinalTechnicalReportHtml({ model, company });
+    expect(html).toContain('لم يُسجل بالمخطط');
+    expect(html).toContain('لم تُسجل ملاحظة تنفيذ');
+    expect(html).not.toContain('<td>غير متوفر</td><td>غير متوفر</td>');
+    const referencedData = {
+      ...data,
+      under_construction_study: {
+        ...data.under_construction_study,
+        systems: {
+          ...data.under_construction_study?.systems,
+          sprinkler_system: { ...data.under_construction_study?.systems?.sprinkler_system, drawing_reference: 'FP-101', implementation_note: 'ملاحظة تنفيذ معتمدة' },
+        },
+      },
+    } as ProjectEngineeringData;
+    const referencedModel = buildUnderConstructionTechnicalReportModel(client, referencedData, company);
+    const referencedHtml = buildUnderConstructionFinalTechnicalReportHtml({ model: referencedModel, company });
+    expect(referencedHtml).toContain('FP-101');
+    expect(referencedHtml).toContain('ملاحظة تنفيذ معتمدة');
+  });
+
   it('separates requirements, design solutions, and engineering data without repeated system cards', () => {
     const model = buildUnderConstructionTechnicalReportModel(client, data, company);
     const html = buildUnderConstructionFinalTechnicalReportHtml({ model, company });
