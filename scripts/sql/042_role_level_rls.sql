@@ -248,9 +248,13 @@ BEGIN
 END $$;
 
 -- ─── Finance tables: staff/sales/engineer cannot write ───────────────────────
+-- This block is intentionally schema-aware. Finance tables do not all share the
+-- same tenant key, and a policy must never reference a column that is absent.
 DO $$
 DECLARE
   t text;
+  has_company_id boolean;
+  has_client_id boolean;
   finance text[] := ARRAY[
     'chart_of_accounts','cost_centers','journal_entries','vouchers','payments',
     'zatca_invoices','zatca_retry_queue',
@@ -266,7 +270,6 @@ BEGIN
 
     EXECUTE format('ALTER TABLE public.%I ENABLE ROW LEVEL SECURITY', t);
     EXECUTE format('REVOKE ALL ON public.%I FROM anon', t);
-    EXECUTE format('GRANT SELECT, INSERT, UPDATE, DELETE ON public.%I TO authenticated', t);
     EXECUTE format('GRANT ALL ON public.%I TO service_role', t);
 
     EXECUTE format('DROP POLICY IF EXISTS %I ON public.%I', t || '_tenant_isolation', t);
@@ -276,49 +279,131 @@ BEGIN
     EXECUTE format('DROP POLICY IF EXISTS %I ON public.%I', t || '_finance_update', t);
     EXECUTE format('DROP POLICY IF EXISTS %I ON public.%I', t || '_finance_delete', t);
 
-    EXECUTE format(
-      'CREATE POLICY %I ON public.%I FOR SELECT TO authenticated
-         USING (
-           (public.is_platform_admin() OR company_id = public.current_app_company_id())
-           AND public.app_can_read_finance()
-         )',
-      t || '_finance_select',
-      t
-    );
+    -- The retry queue has no UI/RPC consumer in the repository and is operational
+    -- infrastructure owned through zatca_invoice_id. Keep it service-role-only;
+    -- do not add a tenant key merely to satisfy this policy loop.
+    IF t = 'zatca_retry_queue' THEN
+      EXECUTE format('REVOKE ALL ON public.%I FROM authenticated', t);
+      CONTINUE;
+    END IF;
 
-    EXECUTE format(
-      'CREATE POLICY %I ON public.%I FOR INSERT TO authenticated
-         WITH CHECK (
-           (public.is_platform_admin() OR company_id = public.current_app_company_id())
-           AND public.app_can_write_finance()
-         )',
-      t || '_finance_insert',
-      t
-    );
+    SELECT EXISTS (
+      SELECT 1 FROM information_schema.columns
+      WHERE table_schema = 'public' AND table_name = t AND column_name = 'company_id'
+    ) INTO has_company_id;
 
-    EXECUTE format(
-      'CREATE POLICY %I ON public.%I FOR UPDATE TO authenticated
-         USING (
-           (public.is_platform_admin() OR company_id = public.current_app_company_id())
-           AND public.app_can_write_finance()
-         )
-         WITH CHECK (
-           (public.is_platform_admin() OR company_id = public.current_app_company_id())
-           AND public.app_can_write_finance()
-         )',
-      t || '_finance_update',
-      t
-    );
+    SELECT EXISTS (
+      SELECT 1 FROM information_schema.columns
+      WHERE table_schema = 'public' AND table_name = t AND column_name = 'client_id'
+    ) INTO has_client_id;
 
-    EXECUTE format(
-      'CREATE POLICY %I ON public.%I FOR DELETE TO authenticated
-         USING (
-           (public.is_platform_admin() OR company_id = public.current_app_company_id())
-           AND public.app_can_write_finance()
-         )',
-      t || '_finance_delete',
-      t
-    );
+    EXECUTE format('GRANT SELECT, INSERT, UPDATE, DELETE ON public.%I TO authenticated', t);
+
+    IF has_company_id THEN
+      EXECUTE format(
+        'CREATE POLICY %I ON public.%I FOR SELECT TO authenticated
+           USING (
+             (public.is_platform_admin() OR company_id = public.current_app_company_id())
+             AND public.app_can_read_finance()
+           )',
+        t || '_finance_select', t
+      );
+
+      EXECUTE format(
+        'CREATE POLICY %I ON public.%I FOR INSERT TO authenticated
+           WITH CHECK (
+             (public.is_platform_admin() OR company_id = public.current_app_company_id())
+             AND public.app_can_write_finance()
+           )',
+        t || '_finance_insert', t
+      );
+
+      EXECUTE format(
+        'CREATE POLICY %I ON public.%I FOR UPDATE TO authenticated
+           USING (
+             (public.is_platform_admin() OR company_id = public.current_app_company_id())
+             AND public.app_can_write_finance()
+           )
+           WITH CHECK (
+             (public.is_platform_admin() OR company_id = public.current_app_company_id())
+             AND public.app_can_write_finance()
+           )',
+        t || '_finance_update', t
+      );
+
+      EXECUTE format(
+        'CREATE POLICY %I ON public.%I FOR DELETE TO authenticated
+           USING (
+             (public.is_platform_admin() OR company_id = public.current_app_company_id())
+             AND public.app_can_write_finance()
+           )',
+        t || '_finance_delete', t
+      );
+    ELSIF has_client_id THEN
+      EXECUTE format(
+        'CREATE POLICY %I ON public.%I FOR SELECT TO authenticated
+           USING (
+             (public.is_platform_admin() OR EXISTS (
+               SELECT 1 FROM public.clients c
+               WHERE c.id::text = %I.client_id::text
+                 AND c.company_id = public.current_app_company_id()
+             ))
+             AND public.app_can_read_finance()
+           )',
+        t || '_finance_select', t, t
+      );
+
+      EXECUTE format(
+        'CREATE POLICY %I ON public.%I FOR INSERT TO authenticated
+           WITH CHECK (
+             (public.is_platform_admin() OR EXISTS (
+               SELECT 1 FROM public.clients c
+               WHERE c.id::text = %I.client_id::text
+                 AND c.company_id = public.current_app_company_id()
+             ))
+             AND public.app_can_write_finance()
+           )',
+        t || '_finance_insert', t, t
+      );
+
+      EXECUTE format(
+        'CREATE POLICY %I ON public.%I FOR UPDATE TO authenticated
+           USING (
+             (public.is_platform_admin() OR EXISTS (
+               SELECT 1 FROM public.clients c
+               WHERE c.id::text = %I.client_id::text
+                 AND c.company_id = public.current_app_company_id()
+             ))
+             AND public.app_can_write_finance()
+           )
+           WITH CHECK (
+             (public.is_platform_admin() OR EXISTS (
+               SELECT 1 FROM public.clients c
+               WHERE c.id::text = %I.client_id::text
+                 AND c.company_id = public.current_app_company_id()
+             ))
+             AND public.app_can_write_finance()
+           )',
+        t || '_finance_update', t, t, t
+      );
+
+      EXECUTE format(
+        'CREATE POLICY %I ON public.%I FOR DELETE TO authenticated
+           USING (
+             (public.is_platform_admin() OR EXISTS (
+               SELECT 1 FROM public.clients c
+               WHERE c.id::text = %I.client_id::text
+                 AND c.company_id = public.current_app_company_id()
+             ))
+             AND public.app_can_write_finance()
+           )',
+        t || '_finance_delete', t, t
+      );
+    ELSE
+      -- No tenant key and no safe relation: authenticated access is not granted.
+      -- service_role remains the only direct access path.
+      EXECUTE format('REVOKE ALL ON public.%I FROM authenticated', t);
+    END IF;
   END LOOP;
 END $$;
 
