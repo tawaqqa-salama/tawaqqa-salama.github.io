@@ -46,6 +46,25 @@ describe('UNDER_CONSTRUCTION final A4 technical report template', () => {
     expect(html).toContain('dir="rtl"');
   });
 
+  it('uses a professional display fallback for missing references and preserves real references exactly', () => {
+    const model = buildUnderConstructionTechnicalReportModel(client, data, company);
+    const missingReferenceHtml = buildUnderConstructionFinalTechnicalReportHtml({ model, company });
+    expect(missingReferenceHtml).toContain('لم يُسجل مرجع');
+    const referencedData = {
+      ...data,
+      under_construction_study: {
+        ...data.under_construction_study,
+        systems: {
+          ...data.under_construction_study?.systems,
+          sprinkler_system: { ...data.under_construction_study?.systems?.sprinkler_system, code_reference: 'NFPA 13' },
+        },
+      },
+    } as ProjectEngineeringData;
+    const referencedModel = buildUnderConstructionTechnicalReportModel(client, referencedData, company);
+    const referencedHtml = buildUnderConstructionFinalTechnicalReportHtml({ model: referencedModel, company });
+    expect(referencedHtml).toContain('NFPA 13');
+  });
+
   it('keeps display normalization and user-facing safety boundaries without leaking raw internals', () => {
     const model = buildUnderConstructionTechnicalReportModel(client, data, company);
     const html = buildUnderConstructionFinalTechnicalReportHtml({ model, company });
