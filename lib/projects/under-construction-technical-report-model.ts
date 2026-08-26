@@ -8,7 +8,8 @@ import {
   type UnderConstructionReferenceSource,
   type UnderConstructionStudySystem,
   type UnderConstructionSystemDefinition,
-  type UnderConstructionSystemKey,
+  UnderConstructionSystemKey,
+  UNDER_CONSTRUCTION_SYSTEM_DEFINITIONS,
 } from '@/lib/projects/under-construction-study';
 import type { ClientRecord } from '@/lib/types/client';
 import type { ProjectEngineeringData } from '@/lib/types/project-reports';
@@ -82,6 +83,8 @@ export type UnderConstructionTechnicalReportModel = {
   code_references: UnderConstructionTechnicalReportCodeReference[];
   report_sections: UnderConstructionTechnicalReportSection[];
   implementation_notes: UnderConstructionTechnicalReportImplementationNote[];
+  /** Canonical engineering values available for the focused Section 07 data sheet. */
+  engineering_data: UnderConstructionTechnicalReportValue[];
   limitations: string[];
 };
 
@@ -239,6 +242,11 @@ function codeReferences(data: ProjectEngineeringData): UnderConstructionTechnica
   }, []);
 }
 
+function canonicalEngineeringData(data: ProjectEngineeringData): UnderConstructionTechnicalReportValue[] {
+  const values = UNDER_CONSTRUCTION_SYSTEM_DEFINITIONS.flatMap((definition) => resolveUnderConstructionSystemReferences(data, definition.key).map(reportValue));
+  return unique(values, (item) => `${item.label}|${item.value}`);
+}
+
 function implementationNotes(
   sections: UnderConstructionTechnicalReportSection[],
   data: ProjectEngineeringData
@@ -294,6 +302,7 @@ export function buildUnderConstructionTechnicalReportModel(
     code_references: codeReferences(data),
     report_sections: sections,
     implementation_notes: implementationNotes(sections, data),
+    engineering_data: canonicalEngineeringData(data),
     limitations: [
       'هذه المعاينة قراءة فقط ومشتقة من دراسة المشروع والمصادر الكانونية المتاحة وقت العرض.',
       'لا تنشئ المعاينة متطلبًا أو حلًا أو افتراضًا هندسيًا عند غياب بيانات صريحة.',

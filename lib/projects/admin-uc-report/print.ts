@@ -1,8 +1,12 @@
 import type { CompanyProfile } from '@/lib/company-profile';
 import type { ClientRecord } from '@/lib/types/client';
-import type { ProjectEngineeringData, TechnicalReport } from '@/lib/types/project-reports';
-import { generateAdminUcReport } from '@/lib/projects/admin-uc-report/generate';
-import { buildAdminUcReportHtml } from '@/lib/projects/admin-uc-report/template';
+import {
+  EMPTY_PROJECT_ENGINEERING_DATA,
+  type ProjectEngineeringData,
+  type TechnicalReport,
+} from '@/lib/types/project-reports';
+import { buildUnderConstructionTechnicalReportModel } from '@/lib/projects/under-construction-technical-report-model';
+import { buildUnderConstructionFinalTechnicalReportHtml } from '@/lib/projects/under-construction-final-report-template';
 import type { DocumentPreviewPayload } from '@/lib/print/document-preview';
 
 export type AdminUcTechnicalReportParams = {
@@ -20,19 +24,24 @@ export type AdminUcTechnicalReportParams = {
 export function buildAdminUcTechnicalReportPayload(
   params: AdminUcTechnicalReportParams
 ): DocumentPreviewPayload {
-  const document = generateAdminUcReport({
-    client: params.client,
-    report: params.report,
-    engineeringData: params.engineeringData,
-    company: params.company,
-  });
-  const html = buildAdminUcReportHtml({ document, company: params.company });
+  const data = params.engineeringData || {
+    ...EMPTY_PROJECT_ENGINEERING_DATA,
+    technical_report: params.report,
+  };
+  const model = buildUnderConstructionTechnicalReportModel(params.client, data, params.company);
+  const html = buildUnderConstructionFinalTechnicalReportHtml({ model, company: params.company });
   return {
-    title: `التقرير الفني — مبنى إداري تحت الإنشاء — ${document.project_name}`,
+    title: `التقرير الفني للمبنى تحت الإنشاء — ${model.project_information.project_name}`,
     html,
-    fileName: `admin-uc-technical-report-${params.client.client_code || 'report'}`,
+    fileName: `under-construction-technical-report-${params.client.client_code || 'report'}`,
     downloadFormat: 'pdf',
   };
+}
+
+export function buildUnderConstructionFinalTechnicalReportPayload(
+  params: AdminUcTechnicalReportParams
+): DocumentPreviewPayload {
+  return buildAdminUcTechnicalReportPayload(params);
 }
 
 /** توافق خلفي: الاسم السابق يفتح المعاينة فقط. */
