@@ -20,12 +20,15 @@ function isLtrEngineeringValue(value: string): boolean {
 }
 
 function renderEngineeringTokens(value: string): string {
-  const escaped = text(value);
+  const displayValue = value.replace(/\bK-Factor\s+K(?=\d)/gi, 'K-Factor = ');
+  const escaped = text(displayValue);
   return escaped.replace(/((?:\d+(?:\.\d+)?\s*(?:GPM|bar|m³|L\/min|min|K80|UL)|\b(?:FDC|NFPA|Standpipe)\b)(?:\s*[•·/]\s*(?:\d+(?:\.\d+)?\s*(?:GPM|bar|m³|L\/min|min|K80|UL)|\b(?:FDC|NFPA|Standpipe)\b))*)/g, '<bdi dir="ltr" class="official-engineering-run">$1</bdi>');
 }
 
 function renderTableCell(value: string, tag: 'th' | 'td', className = ''): string {
-  const displayValue = value.replace(/^K(\d+(?:\.\d+)?)$/, 'K = $1');
+  const displayValue = value
+    .replace(/^K(\d+(?:\.\d+)?)$/, 'K = $1')
+    .replace(/\bK-Factor\s+K(?=\d)/gi, 'K-Factor = ');
   const direction = isLtrEngineeringValue(displayValue) ? 'ltr' : 'auto';
   const classAttr = className ? ` class="${className}"` : '';
   const content = direction === 'ltr' ? text(displayValue) : renderEngineeringTokens(displayValue);

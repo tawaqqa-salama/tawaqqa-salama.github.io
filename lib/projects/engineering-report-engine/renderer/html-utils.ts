@@ -29,7 +29,7 @@ export function normalizeCodeSpacing(text: string): string {
  * Do not wrap Latin codes in dir=ltr (Chrome PDF isolates corrupt extraction).
  */
 export function formatReportTextHtml(text: string): string {
-  return esc(normalizeCodeSpacing(String(text || '')).replace(/\bK(?:-?Factor\s*)?(\d+(?:\.\d+)?)\b/gi, 'K = $1'));
+  return esc(normalizeCodeSpacing(String(text || '')).replace(/\bK-Factor\s+K(?:-?Factor\s*)(\d+(?:\.\d+)?)\b/gi, 'K-Factor = $1').replace(/\bK(?:-?Factor\s*)(\d+(?:\.\d+)?)\b/gi, 'K = $1'));
 }
 
 /** @deprecated Use formatReportTextHtml */
