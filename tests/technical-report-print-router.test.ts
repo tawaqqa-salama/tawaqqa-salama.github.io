@@ -7,9 +7,12 @@ const source = readFileSync(
 );
 
 describe('technical report print router', () => {
-  it('uses the official client-facing technical report renderer for the non-admin path', () => {
-    expect(source).toContain("generateOfficialTechnicalReportDocument");
-    expect(source).toContain("buildOfficialTechnicalReportHtml");
+  it('uses the final ExistingTechnicalReportModel renderer for the non-admin path', () => {
+    expect(source).toContain('buildExistingFinalTechnicalReportDocument(model)');
+    expect(source).toContain('buildExistingFinalTechnicalReportHtml');
+    expect(source).toContain('buildAdminUcTechnicalReportPayload');
+    expect(source).not.toContain('generateOfficialTechnicalReportDocument');
+    expect(source).not.toContain('buildOfficialTechnicalReportHtml');
     expect(source).not.toContain("generateTechnicalReportDocument");
     expect(source).not.toContain("buildEngineeringStudyHtml");
   });

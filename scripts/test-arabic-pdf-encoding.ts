@@ -2,7 +2,7 @@
  * GATE TEST — Arabic PDF encoding before regenerating the full 24-page report.
  * Fail here ⇒ do not treat the full report as ready.
  */
-import { writeFileSync, mkdirSync } from 'fs';
+import { writeFileSync, mkdirSync, existsSync } from 'fs';
 import { join } from 'path';
 import { spawnSync } from 'child_process';
 import { pathToFileURL } from 'url';
@@ -71,8 +71,9 @@ if (html.includes('dir="ltr"') || html.includes('tawaqqa-salama.github.io')) {
   process.exit(2);
 }
 
+const chromeBinary = process.env.CHROME_BIN || (existsSync('/usr/bin/google-chrome') ? 'google-chrome' : 'chromium');
 const chrome = spawnSync(
-  'google-chrome',
+  chromeBinary,
   [
     '--headless=new',
     '--disable-gpu',

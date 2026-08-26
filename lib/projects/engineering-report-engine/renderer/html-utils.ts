@@ -17,6 +17,8 @@ export function stripBidiControls(text: string): string {
 /** Latin code token spacing only (NFPA13 → NFPA 13). Leaves Arabic untouched. */
 export function normalizeCodeSpacing(text: string): string {
   return stripBidiControls(text)
+    // Normalize persisted two-character escape sequences before HTML escaping.
+    .replace(/\\r?\\n/g, '\n')
     .replace(/\bNFPA\s*(\d+[A-Z]?)/gi, 'NFPA $1')
     .replace(/\bSBC\s*-?\s*(\d+)/gi, 'SBC $1');
 }
@@ -27,7 +29,7 @@ export function normalizeCodeSpacing(text: string): string {
  * Do not wrap Latin codes in dir=ltr (Chrome PDF isolates corrupt extraction).
  */
 export function formatReportTextHtml(text: string): string {
-  return esc(normalizeCodeSpacing(String(text || '')));
+  return esc(normalizeCodeSpacing(String(text || '')).replace(/\bK-Factor\s+K(?:-?Factor\s*)(\d+(?:\.\d+)?)\b/gi, 'K-Factor = $1').replace(/\bK(?:-?Factor\s*)(\d+(?:\.\d+)?)\b/gi, 'K = $1'));
 }
 
 /** @deprecated Use formatReportTextHtml */

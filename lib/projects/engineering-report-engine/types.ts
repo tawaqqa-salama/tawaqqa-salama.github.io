@@ -51,6 +51,7 @@ export type EngineeringStudySectionId =
   | 'code_evidence_references'
   | 'summary'
   | 'engineering_recommendations'
+  | 'existing_recommendations'
   | 'conclusion';
 
 export type EngineeringStudyParagraph = {

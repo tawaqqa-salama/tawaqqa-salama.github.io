@@ -40,6 +40,7 @@ export async function htmlDocumentToPdfFile(
   doc.write(html);
   doc.close();
   await waitForIframeReady(iframe);
+  await waitForDocumentFonts(doc);
 
   const body = doc.body;
   const canvas = await html2canvas(body, {
@@ -154,6 +155,28 @@ function chooseNextBreak(
   // this avoids cutting a table/figure even where it makes a taller page.
   const following = safeBreaks.find((point) => point > desired);
   return following || Math.min(desired, total);
+}
+
+async function waitForDocumentFonts(doc: Document): Promise<void> {
+  const fonts = doc.fonts;
+  if (!fonts?.ready) {
+    await new Promise((resolve) => setTimeout(resolve, 350));
+    return;
+  }
+
+  try {
+    await fonts.ready;
+    await Promise.all([
+      fonts.load('400 16px "Noto Naskh Arabic"'),
+      fonts.load('700 16px "Noto Naskh Arabic"'),
+      fonts.load('900 16px "Noto Naskh Arabic"'),
+    ]);
+  } catch {
+    // A font-load rejection must not prevent a user from receiving the PDF;
+    // the renderer still has the document's declared fallback stack.
+  }
+
+  await new Promise((resolve) => requestAnimationFrame(() => setTimeout(resolve, 80)));
 }
 
 function waitForIframeReady(iframe: HTMLIFrameElement): Promise<void> {
