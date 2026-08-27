@@ -36,19 +36,15 @@ jobs:
     steps:
       - name: Checkout PR code
         uses: actions/checkout@v4
-      - name: Set up pnpm
-        uses: pnpm/action-setup@v4
-        with:
-          version: 10
       - name: Set up Node.js
         uses: actions/setup-node@v4
         with:
           node-version: 22
-          cache: pnpm
+          cache: npm
       - name: Install dependencies
-        run: pnpm install --frozen-lockfile
+        run: npm ci
       - name: Validate baseline guards and manifest
-        run: pnpm vitest run tests/supabase-branch-baseline.test.ts tests/migration-bootstrap-reproducibility.test.ts
+        run: npm exec vitest -- run tests/supabase-branch-baseline.test.ts tests/migration-bootstrap-reproducibility.test.ts
       - name: Validate JavaScript syntax
         run: node --check scripts/branch-baseline-policy.mjs && node --check scripts/bootstrap-fresh-supabase-branch.mjs
 
@@ -73,17 +69,13 @@ jobs:
         with:
           ref: ${{ inputs.target_git_ref }}
           fetch-depth: 1
-      - name: Set up pnpm
-        uses: pnpm/action-setup@v4
-        with:
-          version: 10
       - name: Set up Node.js
         uses: actions/setup-node@v4
         with:
           node-version: 22
-          cache: pnpm
+          cache: npm
       - name: Install dependencies
-        run: pnpm install --frozen-lockfile
+        run: npm ci
       - name: Validate Preview credential contract without logging values
         shell: bash
         run: |
