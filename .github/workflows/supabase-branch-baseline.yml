@@ -1,0 +1,56 @@
+name: Supabase fresh branch baseline
+
+on:
+  workflow_dispatch:
+    inputs:
+      target_git_ref:
+        description: 'Feature/fix branch that owns the isolated Supabase branch'
+        required: true
+        default: 'fix/supabase-branch-baseline'
+        type: string
+      supabase_project_ref:
+        description: 'Preview branch project ref, never the Production ref'
+        required: true
+        type: string
+      confirm_fresh_branch:
+        description: 'Type CREATE_FRESH_BRANCH_BASELINE to authorize the guarded run'
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+jobs:
+  baseline:
+    if: github.ref != 'refs/heads/main' && github.ref != 'refs/heads/master'
+    runs-on: ubuntu-latest
+    environment: supabase-preview
+    env:
+      GITHUB_REF_NAME: ${{ inputs.target_git_ref }}
+      SUPABASE_PROJECT_REF: ${{ inputs.supabase_project_ref }}
+      SUPABASE_BRANCH_DATABASE_URL: ${{ secrets.SUPABASE_BRANCH_DATABASE_URL }}
+      BRANCH_BASELINE_APPLY: '1'
+      BRANCH_BASELINE_CONFIRM: ${{ inputs.confirm_fresh_branch }}
+    steps:
+      - name: Checkout requested branch
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.target_git_ref }}
+          fetch-depth: 1
+
+      - name: Set up pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 10
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Apply guarded 000–064 fresh-branch baseline
+        run: node scripts/bootstrap-fresh-supabase-branch.mjs
