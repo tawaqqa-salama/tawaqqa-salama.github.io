@@ -5,7 +5,10 @@ CREATE TABLE IF NOT EXISTS public.projects (
   id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
   company_id uuid NOT NULL REFERENCES public.companies(id) ON DELETE CASCADE,
   branch_id uuid REFERENCES public.branches(id) ON DELETE SET NULL,
-  client_id text,
+  -- Canonical project identity uses public.clients.id (uuid). Legacy text
+  -- client references remain on older non-identity tables; project identity and
+  -- Stage 6B contracts require this column to be UUID-compatible.
+  client_id uuid,
   project_code text NOT NULL,
   name text NOT NULL,
   description text,

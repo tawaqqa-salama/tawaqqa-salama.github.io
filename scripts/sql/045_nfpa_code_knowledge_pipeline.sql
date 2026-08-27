@@ -320,6 +320,9 @@ BEGIN
 
     EXECUTE format('DROP POLICY IF EXISTS %I ON public.%I', t || '_tenant', t);
     EXECUTE format('DROP POLICY IF EXISTS %I ON public.%I', t || '_tenant_select', t);
+    EXECUTE format('DROP POLICY IF EXISTS %I ON public.%I', t || '_tenant_insert', t);
+    EXECUTE format('DROP POLICY IF EXISTS %I ON public.%I', t || '_tenant_update', t);
+    EXECUTE format('DROP POLICY IF EXISTS %I ON public.%I', t || '_tenant_delete', t);
     EXECUTE format('DROP POLICY IF EXISTS %I ON public.%I', t || '_tenant_write', t);
     EXECUTE format('DROP POLICY IF EXISTS %I ON public.%I', t || '_platform_read', t);
 
