@@ -2,6 +2,7 @@ import path from 'node:path';
 
 export const PRODUCTION_SUPABASE_REF = 'ezmdkwgziyencejfevso';
 export const DIAGNOSTIC_STAGING_SUPABASE_REF = 'sgonaqeefshtdakmggvm';
+export const VALIDATION_SUPABASE_REF = 'jxbzuezrymhxwvdejohw';
 
 export const HISTORICAL_BASELINE_MANIFEST = [
   '000_extensions.sql',
@@ -98,6 +99,7 @@ export function assertSafeTarget({
   projectRef = '',
   productionRef = PRODUCTION_SUPABASE_REF,
   stagingRef = DIAGNOSTIC_STAGING_SUPABASE_REF,
+  validationRef = VALIDATION_SUPABASE_REF,
 }) {
   if (allowApply !== '1') {
     throw new Error('BRANCH_BASELINE_APPLY=1 is required; no database changes are allowed by default.');
@@ -124,11 +126,25 @@ export function assertSafeTarget({
   if (blocked) {
     throw new Error(`Refusing protected Supabase project ref: ${blocked}`);
   }
+  const normalizedProjectRef = normalizeRef(projectRef);
+  const normalizedValidationRef = normalizeRef(validationRef);
+  if (!normalizedProjectRef || normalizedProjectRef !== normalizedValidationRef) {
+    throw new Error(`Refusing non-validation Supabase project ref: ${projectRef || '<empty>'}`);
+  }
+  if (detectedRef !== normalizedValidationRef) {
+    throw new Error(`Database host ref does not match validation project ref: ${detectedRef || '<unverified>'}`);
+  }
   if (!detectedRef) {
     throw new Error('Refusing database URL without a verifiable Supabase project ref.');
   }
 
   return { targetRef: normalizedTarget, databaseHost: host, detectedRef };
+}
+
+export function assertNoUnexpectedPublicTables(tableNames) {
+  if (tableNames.length > 0) {
+    throw new Error(`Refusing unexpected public tables before baseline: ${tableNames.join(', ')}`);
+  }
 }
 
 export function assertNoBusinessData(rows) {

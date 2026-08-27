@@ -8,6 +8,7 @@ import {
   HISTORICAL_BASELINE_MANIFEST,
   assertManifestDoesNotIncludeProductionMigrations,
   assertNoBusinessData,
+  assertNoUnexpectedPublicTables,
   assertSafeTarget,
   resolveManifestPaths,
 } from './branch-baseline-policy.mjs';
@@ -43,6 +44,17 @@ for (const filePath of manifestPaths) {
 const client = new pg.Client({ connectionString: databaseUrl, application_name: 'tawaqqa-fresh-branch-baseline' });
 await client.connect();
 
+async function readUnexpectedPublicTables() {
+  const result = await client.query(`
+    SELECT table_name
+    FROM information_schema.tables
+    WHERE table_schema = 'public'
+      AND table_type = 'BASE TABLE'
+    ORDER BY table_name
+  `);
+  return result.rows.map((row) => row.table_name);
+}
+
 async function readBusinessTableCounts() {
   const rows = [];
   for (const tableName of BUSINESS_TABLES) {
@@ -58,9 +70,11 @@ async function readBusinessTableCounts() {
 }
 
 try {
+  const unexpectedPublicTables = await readUnexpectedPublicTables();
+  assertNoUnexpectedPublicTables(unexpectedPublicTables);
   const counts = await readBusinessTableCounts();
   assertNoBusinessData(counts);
-  console.log(`Verified fresh Supabase branch target ${projectRef || 'by database host'} for Git ref ${targetRef}.`);
+  console.log(`Verified validation Supabase project ref ${projectRef} for Git ref ${targetRef}; public schema is empty.`);
 
   for (const [index, filePath] of manifestPaths.entries()) {
     const file = HISTORICAL_BASELINE_MANIFEST[index];

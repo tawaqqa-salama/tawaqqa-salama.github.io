@@ -1,16 +1,25 @@
 name: Supabase fresh branch baseline
 
 on:
+  pull_request:
+    branches: [main]
+    paths:
+      - 'scripts/branch-baseline-policy.mjs'
+      - 'scripts/bootstrap-fresh-supabase-branch.mjs'
+      - 'scripts/sql/**'
+      - 'tests/supabase-branch-baseline.test.ts'
+      - '.github/workflows/supabase-branch-baseline.yml'
   workflow_dispatch:
     inputs:
       target_git_ref:
-        description: 'Feature/fix branch that owns the isolated Supabase branch'
+        description: 'Feature/fix branch that owns the isolated Supabase validation environment'
         required: true
         default: 'fix/supabase-branch-baseline'
         type: string
       supabase_project_ref:
-        description: 'Preview branch project ref, never the Production ref'
+        description: 'Must be jxbzuezrymhxwvdejohw; never Production or diagnostic Staging'
         required: true
+        default: 'jxbzuezrymhxwvdejohw'
         type: string
       confirm_fresh_branch:
         description: 'Type CREATE_FRESH_BRANCH_BASELINE to authorize the guarded run'
@@ -21,36 +30,70 @@ permissions:
   contents: read
 
 jobs:
-  baseline:
-    if: github.ref != 'refs/heads/main' && github.ref != 'refs/heads/master'
+  contract:
+    name: Baseline contract (no secrets)
     runs-on: ubuntu-latest
-    environment: supabase-preview
-    env:
-      GITHUB_REF_NAME: ${{ inputs.target_git_ref }}
-      SUPABASE_PROJECT_REF: ${{ inputs.supabase_project_ref }}
-      SUPABASE_BRANCH_DATABASE_URL: ${{ secrets.SUPABASE_BRANCH_DATABASE_URL }}
-      BRANCH_BASELINE_APPLY: '1'
-      BRANCH_BASELINE_CONFIRM: ${{ inputs.confirm_fresh_branch }}
     steps:
-      - name: Checkout requested branch
+      - name: Checkout PR code
         uses: actions/checkout@v4
-        with:
-          ref: ${{ inputs.target_git_ref }}
-          fetch-depth: 1
-
       - name: Set up pnpm
         uses: pnpm/action-setup@v4
         with:
           version: 10
-
       - name: Set up Node.js
         uses: actions/setup-node@v4
         with:
           node-version: 22
           cache: pnpm
-
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
+      - name: Validate baseline guards and manifest
+        run: pnpm vitest run tests/supabase-branch-baseline.test.ts tests/migration-bootstrap-reproducibility.test.ts
+      - name: Validate JavaScript syntax
+        run: node --check scripts/branch-baseline-policy.mjs && node --check scripts/bootstrap-fresh-supabase-branch.mjs
 
+  baseline:
+    name: Apply baseline to dedicated validation environment
+    if: github.event_name == 'workflow_dispatch' && github.ref != 'refs/heads/main' && github.ref != 'refs/heads/master'
+    runs-on: ubuntu-latest
+    environment:
+      name: supabase-preview
+      url: https://${{ inputs.supabase_project_ref }}.supabase.co
+    env:
+      GITHUB_REF_NAME: ${{ inputs.target_git_ref }}
+      SUPABASE_PROJECT_ID: ${{ inputs.supabase_project_ref }}
+      SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+      SUPABASE_DB_PASSWORD: ${{ secrets.SUPABASE_DB_PASSWORD }}
+      SUPABASE_BRANCH_DATABASE_URL: ${{ secrets.SUPABASE_BRANCH_DATABASE_URL }}
+      BRANCH_BASELINE_APPLY: '1'
+      BRANCH_BASELINE_CONFIRM: ${{ inputs.confirm_fresh_branch }}
+    steps:
+      - name: Checkout requested validation code
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.target_git_ref }}
+          fetch-depth: 1
+      - name: Set up pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 10
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+      - name: Validate Preview credential contract without logging values
+        shell: bash
+        run: |
+          test "$SUPABASE_PROJECT_ID" = "jxbzuezrymhxwvdejohw"
+          test "$SUPABASE_ACCESS_TOKEN" != ""
+          test "$SUPABASE_DB_PASSWORD" != ""
+          test "$SUPABASE_BRANCH_DATABASE_URL" != ""
+          case "$SUPABASE_BRANCH_DATABASE_URL" in
+            *"$SUPABASE_PROJECT_ID"*) ;;
+            *) echo 'Database URL does not contain the pinned validation project ref.' >&2; exit 1 ;;
+          esac
       - name: Apply guarded 000–064 fresh-branch baseline
         run: node scripts/bootstrap-fresh-supabase-branch.mjs
