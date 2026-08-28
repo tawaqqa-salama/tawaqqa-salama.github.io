@@ -92,6 +92,36 @@ export function extractSupabaseRef(databaseUrl) {
   return match?.[1] ?? null;
 }
 
+export function assertSupportedSupabaseConnection(databaseUrl, projectRef) {
+  let url;
+  try {
+    url = new URL(databaseUrl);
+  } catch {
+    throw new Error('Refusing malformed Supabase database URL.');
+  }
+  const host = url.hostname.toLowerCase();
+  const normalizedProjectRef = normalizeRef(projectRef);
+  const directHost = `db.${normalizedProjectRef}.supabase.co`;
+  if (host === directHost && (!url.port || url.port === '5432')) {
+    return { connectionType: 'direct', databaseHost: host };
+  }
+
+  const isOfficialPoolerHost = /^aws-\d+-[a-z0-9-]+\.pooler\.supabase\.com$/.test(host);
+  if (isOfficialPoolerHost) {
+    if (url.port !== '5432') {
+      throw new Error('Refusing non-Session Pooler connection; Session Pooler must use port 5432.');
+    }
+    const username = decodeURIComponent(url.username);
+    const expectedUsername = `postgres.${normalizedProjectRef}`;
+    if (username !== expectedUsername) {
+      throw new Error('Refusing Session Pooler URL whose username does not prove the validation project ref.');
+    }
+    return { connectionType: 'session-pooler', databaseHost: host };
+  }
+
+  throw new Error(`Refusing unsupported Supabase database host: ${url.hostname}`);
+}
+
 export function assertSafeTarget({
   allowApply,
   targetRef,
@@ -113,15 +143,15 @@ export function assertSafeTarget({
     throw new Error(`Refusing baseline on non-feature Git ref: ${targetRef}`);
   }
 
-  const url = new URL(databaseUrl);
-  const host = url.hostname.toLowerCase();
-  if (!host.endsWith('.supabase.co')) {
-    throw new Error(`Refusing non-Supabase database host: ${url.hostname}`);
+  let parsedUrl;
+  try {
+    parsedUrl = new URL(databaseUrl);
+  } catch {
+    throw new Error('Refusing malformed Supabase database URL.');
   }
-
   const detectedRef = extractSupabaseRef(databaseUrl);
   const candidates = [projectRef, detectedRef].map(normalizeRef).filter(Boolean);
-  const blockedRefs = [productionRef, stagingRef].map(normalizeRef).filter(Boolean);
+  const blockedRefs = [productionRef, stagingRef].map(normalizeRef);
   const blocked = candidates.find((candidate) => blockedRefs.includes(candidate));
   if (blocked) {
     throw new Error(`Refusing protected Supabase project ref: ${blocked}`);
@@ -131,14 +161,9 @@ export function assertSafeTarget({
   if (!normalizedProjectRef || normalizedProjectRef !== normalizedValidationRef) {
     throw new Error(`Refusing non-validation Supabase project ref: ${projectRef || '<empty>'}`);
   }
-  if (detectedRef !== normalizedValidationRef) {
-    throw new Error(`Database host ref does not match validation project ref: ${detectedRef || '<unverified>'}`);
-  }
-  if (!detectedRef) {
-    throw new Error('Refusing database URL without a verifiable Supabase project ref.');
-  }
 
-  return { targetRef: normalizedTarget, databaseHost: host, detectedRef };
+  const connection = assertSupportedSupabaseConnection(parsedUrl.toString(), normalizedProjectRef);
+  return { targetRef: normalizedTarget, ...connection, detectedRef };
 }
 
 export function assertNoUnexpectedPublicTables(tableNames) {

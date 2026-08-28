@@ -6,6 +6,8 @@ const root = process.cwd();
 const read = (file: string) => fs.readFileSync(path.join(root, file), 'utf8');
 const VALIDATION_REF = 'jxbzuezrymhxwvdejohw';
 const VALIDATION_DB_URL = `postgresql://postgres:secret@db.${VALIDATION_REF}.supabase.co:5432/postgres`;
+const SESSION_POOLER_HOST = 'aws-0-ap-northeast-2.pooler.supabase.com';
+const SESSION_POOLER_URL = `postgresql://postgres.${VALIDATION_REF}:secret@${SESSION_POOLER_HOST}:5432/postgres`;
 
 describe('Supabase fresh branch baseline safety contract', () => {
   it('keeps the historical manifest explicit, ordered, and limited to 000–064', async () => {
@@ -42,6 +44,30 @@ describe('Supabase fresh branch baseline safety contract', () => {
     })).rejects.toThrow(/non-validation Supabase project ref/);
   });
 
+  it('accepts Session Pooler only when username proves the pinned project ref', async () => {
+    const { assertSupportedSupabaseConnection } = await import('../scripts/branch-baseline-policy.mjs');
+    expect(assertSupportedSupabaseConnection(SESSION_POOLER_URL, VALIDATION_REF)).toMatchObject({
+      connectionType: 'session-pooler',
+      databaseHost: SESSION_POOLER_HOST,
+    });
+    expect(() => assertSupportedSupabaseConnection(
+      `postgresql://postgres.otherproject:secret@${SESSION_POOLER_HOST}:5432/postgres`,
+      VALIDATION_REF,
+    )).toThrow(/username does not prove/);
+    expect(() => assertSupportedSupabaseConnection(
+      `postgresql://postgres:secret@${SESSION_POOLER_HOST}:5432/postgres`,
+      VALIDATION_REF,
+    )).toThrow(/username does not prove/);
+    expect(() => assertSupportedSupabaseConnection(
+      `postgresql://postgres.${VALIDATION_REF}:secret@${SESSION_POOLER_HOST}:6543/postgres`,
+      VALIDATION_REF,
+    )).toThrow(/non-Session Pooler/);
+    expect(() => assertSupportedSupabaseConnection(
+      `postgresql://postgres.${VALIDATION_REF}:secret@fake.pooler.example.com:5432/postgres`,
+      VALIDATION_REF,
+    )).toThrow(/unsupported Supabase database host/);
+  });
+
   it('pins the database project and rejects protected refs explicitly', async () => {
     const { assertSafeTarget } = await import('../scripts/branch-baseline-policy.mjs');
     const base = {
@@ -53,7 +79,8 @@ describe('Supabase fresh branch baseline safety contract', () => {
     expect(() => assertSafeTarget({ ...base, projectRef: 'ezmdkwgziyencejfevso', databaseUrl: 'postgresql://postgres:secret@db.ezmdkwgziyencejfevso.supabase.co:5432/postgres' })).toThrow(/protected Supabase project ref/);
     expect(() => assertSafeTarget({ ...base, projectRef: 'sgonaqeefshtdakmggvm', databaseUrl: 'postgresql://postgres:secret@db.sgonaqeefshtdakmggvm.supabase.co:5432/postgres' })).toThrow(/protected Supabase project ref/);
     expect(() => assertSafeTarget({ ...base, projectRef: 'other-preview', databaseUrl: 'postgresql://postgres:secret@db.other-preview.supabase.co:5432/postgres' })).toThrow(/non-validation Supabase project ref/);
-    expect(() => assertSafeTarget({ ...base, databaseUrl: 'postgresql://postgres:secret@db.other-preview.supabase.co:5432/postgres' })).toThrow(/does not match validation/);
+    expect(() => assertSafeTarget({ ...base, databaseUrl: 'postgresql://postgres:secret@db.other-preview.supabase.co:5432/postgres' })).toThrow(/non-validation|unsupported/);
+    expect(() => assertSafeTarget({ ...base, databaseUrl: SESSION_POOLER_URL })).not.toThrow();
   });
 
   it('refuses default, protected, and non-feature Git refs', async () => {
