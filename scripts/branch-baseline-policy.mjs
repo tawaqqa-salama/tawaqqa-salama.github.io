@@ -2,7 +2,7 @@ import path from 'node:path';
 
 export const PRODUCTION_SUPABASE_REF = 'ezmdkwgziyencejfevso';
 export const DIAGNOSTIC_STAGING_SUPABASE_REF = 'sgonaqeefshtdakmggvm';
-export const VALIDATION_SUPABASE_REF = 'jxbzuezrymhxwvdejohw';
+export const VALIDATION_SUPABASE_REF = 'njuekzqxdhxpucelvlgu';
 
 export const HISTORICAL_BASELINE_MANIFEST = [
   '000_extensions.sql',
@@ -122,8 +122,7 @@ export function assertSupportedSupabaseConnection(databaseUrl, projectRef) {
   throw new Error(`Refusing unsupported Supabase database host: ${url.hostname}`);
 }
 
-export function assertSafeTarget({
-  allowApply,
+export function assertTargetIdentityGuards({
   targetRef,
   databaseUrl,
   projectRef = '',
@@ -131,10 +130,6 @@ export function assertSafeTarget({
   stagingRef = DIAGNOSTIC_STAGING_SUPABASE_REF,
   validationRef = VALIDATION_SUPABASE_REF,
 }) {
-  if (allowApply !== '1') {
-    throw new Error('BRANCH_BASELINE_APPLY=1 is required; no database changes are allowed by default.');
-  }
-
   const normalizedTarget = normalizeRef(targetRef);
   if (!normalizedTarget || normalizedTarget === 'main' || normalizedTarget === 'master') {
     throw new Error(`Refusing baseline on protected Git ref: ${targetRef || '<empty>'}`);
@@ -164,6 +159,52 @@ export function assertSafeTarget({
 
   const connection = assertSupportedSupabaseConnection(parsedUrl.toString(), normalizedProjectRef);
   return { targetRef: normalizedTarget, ...connection, detectedRef };
+}
+
+export function assertSafeTarget({
+  allowApply,
+  targetRef,
+  databaseUrl,
+  projectRef = '',
+  productionRef = PRODUCTION_SUPABASE_REF,
+  stagingRef = DIAGNOSTIC_STAGING_SUPABASE_REF,
+  validationRef = VALIDATION_SUPABASE_REF,
+}) {
+  if (allowApply !== '1') {
+    throw new Error('BRANCH_BASELINE_APPLY=1 is required; no database changes are allowed by default.');
+  }
+
+  return assertTargetIdentityGuards({
+    targetRef,
+    databaseUrl,
+    projectRef,
+    productionRef,
+    stagingRef,
+    validationRef,
+  });
+}
+
+export function assertSafePreflightTarget({
+  allowPreflight,
+  targetRef,
+  databaseUrl,
+  projectRef = '',
+  productionRef = PRODUCTION_SUPABASE_REF,
+  stagingRef = DIAGNOSTIC_STAGING_SUPABASE_REF,
+  validationRef = VALIDATION_SUPABASE_REF,
+}) {
+  if (allowPreflight !== '1') {
+    throw new Error('BRANCH_BASELINE_PREFLIGHT=1 is required; preflight is disabled by default.');
+  }
+
+  return assertTargetIdentityGuards({
+    targetRef,
+    databaseUrl,
+    projectRef,
+    productionRef,
+    stagingRef,
+    validationRef,
+  });
 }
 
 export function assertNoUnexpectedPublicTables(tableNames) {

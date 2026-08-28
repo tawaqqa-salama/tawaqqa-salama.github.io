@@ -4,7 +4,7 @@ import { describe, expect, it } from 'vitest';
 
 const root = process.cwd();
 const read = (file: string) => fs.readFileSync(path.join(root, file), 'utf8');
-const VALIDATION_REF = 'jxbzuezrymhxwvdejohw';
+const VALIDATION_REF = 'njuekzqxdhxpucelvlgu';
 const VALIDATION_DB_URL = `postgresql://postgres:secret@db.${VALIDATION_REF}.supabase.co:5432/postgres`;
 const SESSION_POOLER_HOST = 'aws-0-ap-northeast-2.pooler.supabase.com';
 const SESSION_POOLER_URL = `postgresql://postgres.${VALIDATION_REF}:secret@${SESSION_POOLER_HOST}:5432/postgres`;
@@ -123,6 +123,8 @@ describe('Supabase fresh branch baseline safety contract', () => {
     expect(workflow).toContain('pull_request:');
     expect(workflow).toContain('Baseline contract (no secrets)');
     expect(workflow).toContain('workflow_dispatch:');
+    expect(workflow).toContain("default: 'preflight-only'");
+    expect(workflow).toContain('preflight-supabase-branch.mjs');
     expect(workflow).toContain('SUPABASE_PROJECT_ID');
     expect(workflow).toContain('SUPABASE_ACCESS_TOKEN');
     expect(workflow).toContain('SUPABASE_DB_PASSWORD');

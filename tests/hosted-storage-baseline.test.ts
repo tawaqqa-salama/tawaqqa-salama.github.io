@@ -4,7 +4,7 @@ import { describe, expect, it, vi } from 'vitest';
 
 const root = process.cwd();
 const read = (file: string) => fs.readFileSync(path.join(root, file), 'utf8');
-const validationRef = 'jxbzuezrymhxwvdejohw';
+const validationRef = 'njuekzqxdhxpucelvlgu';
 
 function assertNoManagedBucketDml(sql: string) {
   expect(sql).not.toMatch(/\b(?:insert\s+into|update|delete\s+from|alter\s+table)\s+storage\.buckets\b/i);
