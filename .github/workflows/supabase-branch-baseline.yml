@@ -46,6 +46,7 @@ permissions:
 jobs:
   contract:
     name: Baseline contract (no secrets)
+    if: github.event_name == 'pull_request'
     runs-on: ubuntu-latest
     steps:
       - name: Checkout PR code
