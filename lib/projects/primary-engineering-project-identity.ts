@@ -1,5 +1,6 @@
 import { supabase } from '@/lib/supabase';
 import type { CanonicalProjectIdentity } from '@/lib/types/client';
+import { syncProjectClassificationFromBasicData } from '@/lib/projects/basic-data-project-classification';
 import { normalizeProjectClassification } from '@/lib/projects/project-classification';
 
 /**
@@ -50,12 +51,19 @@ export async function resolvePrimaryEngineeringProjectIdentity(
       return null;
     }
 
+    let projectClassification = normalizeProjectClassification(project.project_classification);
+    if (projectClassification === null) {
+      const syncResult = await syncProjectClassificationFromBasicData(normalizedClientId);
+      if (syncResult.projectClassification) {
+        projectClassification = syncResult.projectClassification;
+      }
+    }
+
     return {
       clientId: normalizedClientId,
       projectId: project.id,
       projectCode: project.project_code,
-      // Legacy NULL remains null. Do not infer from client status, report data, or design payload.
-      projectClassification: normalizeProjectClassification(project.project_classification),
+      projectClassification,
     };
   } catch {
     // Identity is optional until a future project-centric feature needs it.

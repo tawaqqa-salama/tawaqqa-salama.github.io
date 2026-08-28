@@ -178,12 +178,13 @@ describe('PROJECT CLASSIFICATION foundation contract', () => {
     expect(salesPage).not.toContain('project_classification: formData.project_classification,\n      pipeline_stage');
   });
 
-  it('keeps ProjectContext read-only and uses only public.projects classification, never client status or report payloads', () => {
+  it('keeps ProjectContext read-only and syncs legacy NULL projects only through explicit Basic Data RPC', () => {
     expect(projectReader).toContain(".select('id, client_id, project_code, project_classification')");
-    expect(projectReader).toContain('projectClassification: normalizeProjectClassification(project.project_classification)');
+    expect(projectReader).toContain('normalizeProjectClassification(project.project_classification)');
+    expect(projectReader).toContain('syncProjectClassificationFromBasicData');
     expect(projectReader).not.toContain('project_status');
     expect(projectReader).not.toContain('building_status');
     expect(projectReader).not.toContain('lifecycle_mode');
-    expect(projectReader).not.toContain('.rpc(');
+    expect(projectReader).not.toContain(".from('projects').update");
   });
 });

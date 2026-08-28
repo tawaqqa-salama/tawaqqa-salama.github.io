@@ -40,7 +40,7 @@ describe('migration bootstrap reproducibility contract', () => {
     expect(runner).not.toContain('scripts/local-supabase-compatibility-bootstrap.sql\',\n  \'000_extensions.sql');
   });
 
-  it('uses an explicit deterministic manifest through migration 064', () => {
+  it('uses an explicit deterministic manifest through migration 065', () => {
     const runner = read('scripts/apply-full-dds-schema-local.mjs');
     for (const file of [
       '000_extensions.sql',
@@ -51,6 +51,7 @@ describe('migration bootstrap reproducibility contract', () => {
       '046_nfpa_code_knowledge_pipeline_repair.sql',
       '056_stage6b_project_correspondences_schema.sql',
       '064_project_classification_foundation.sql',
+      '065_basic_data_project_classification_sync.sql',
     ]) {
       expect(runner).toContain(`'${file}'`);
     }

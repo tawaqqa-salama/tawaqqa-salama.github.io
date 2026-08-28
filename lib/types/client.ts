@@ -86,6 +86,8 @@ export interface ClientRecord {
   floors_count?: number | null;
   floor_levels?: FloorLevel[] | null;
   project_status?: string | null;
+  /** Canonical Basic Data engineering classification; synced to public.projects.project_classification. */
+  project_classification?: ProjectClassification | null;
   pipeline_stage?: PipelineStage | null;
   lead_status?: string | null;
   lead_notes?: string | null;

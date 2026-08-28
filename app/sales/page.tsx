@@ -219,6 +219,7 @@ export default function SalesPage() {
       floors_count: parseLocalizedInteger(formData.floors_count),
       floor_levels: formData.floor_levels || [],
       project_status: formData.project_status,
+      project_classification: projectClassification,
       pipeline_stage: 'sales',
       sales_payment_type: 'نقدي',
       financial_status: 'بانتظار الدفعة',

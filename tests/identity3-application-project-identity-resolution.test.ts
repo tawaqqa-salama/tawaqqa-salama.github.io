@@ -3,10 +3,12 @@ import { resolve } from 'node:path';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 const fromMock = vi.fn();
+const rpcMock = vi.fn();
 
 vi.mock('@/lib/supabase', () => ({
   supabase: {
     from: (...args: unknown[]) => fromMock(...args),
+    rpc: (...args: unknown[]) => rpcMock(...args),
   },
 }));
 
@@ -55,7 +57,7 @@ describe('IDENTITY-3 application project identity resolution', () => {
     expect(projectQuery.eq).toHaveBeenCalledWith('client_id', clientId);
   });
 
-  it('preserves a legacy NULL classification without inferring from client status or payload state', async () => {
+  it('preserves a legacy NULL classification when Basic Data has no explicit classification', async () => {
     const mappingQuery = queryResult({ data: { client_id: 'legacy-client', project_id: 'legacy-project' }, error: null });
     const projectQuery = queryResult({
       data: {
@@ -67,6 +69,7 @@ describe('IDENTITY-3 application project identity resolution', () => {
       error: null,
     });
     fromMock.mockReturnValueOnce(mappingQuery).mockReturnValueOnce(projectQuery);
+    rpcMock.mockResolvedValueOnce({ data: [], error: null });
 
     await expect(resolvePrimaryEngineeringProjectIdentity('legacy-client')).resolves.toEqual({
       clientId: 'legacy-client',

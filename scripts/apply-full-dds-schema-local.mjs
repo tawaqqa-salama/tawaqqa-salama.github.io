@@ -53,6 +53,7 @@ const files = [
   '062_stage6b4a_correspondence_attachment_contract.sql',
   '063_stage6b4b_attachment_broker_finalization.sql',
   '064_project_classification_foundation.sql',
+  '065_basic_data_project_classification_sync.sql',
 ];
 
 const client = new pg.Client({ connectionString: databaseUrl });
@@ -65,7 +66,7 @@ try {
     await client.query(fs.readFileSync(path.join(sqlDir, file), 'utf8'));
     console.log('OK');
   }
-  console.log(`Full DDS chain applied successfully: ${files.length} migrations (000–064 manifest).`);
+  console.log(`Full DDS chain applied successfully: ${files.length} migrations (000–065 manifest).`);
 } finally {
   await client.end();
 }

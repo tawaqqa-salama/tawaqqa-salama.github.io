@@ -70,6 +70,7 @@ export const CLIENT_BASIC_COLUMNS = [
   'floors_count',
   'floor_levels',
   'project_status',
+  'project_classification',
   'pipeline_stage',
   'financial_status',
   'engineering_status',

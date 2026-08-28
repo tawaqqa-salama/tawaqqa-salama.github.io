@@ -66,6 +66,12 @@ import {
 } from '@/components/invoices/TaxInvoiceTemplate';
 import { mergeLocalClientOverrides, updateClientSafe } from '@/lib/supabase/safe-client-write';
 import { mergeProjectEngineeringData } from '@/lib/projects/merge-engineering-data';
+import {
+  basicDataProjectClassificationOptions,
+  readBasicDataProjectClassification,
+  syncProjectClassificationFromBasicData,
+} from '@/lib/projects/basic-data-project-classification';
+import type { ProjectClassification } from '@/lib/projects/project-classification';
 import { printSavedQuotation, validateSavedQuotationForPrint } from '@/lib/invoices/quotation-print';
 import { logActivity } from '@/lib/activity/logger';
 import {
@@ -204,6 +210,7 @@ export default function ClientDetailModal({
   const [activityType, setActivityType] = useState('');
   const [landArea, setLandArea] = useState('');
   const [projectStatus, setProjectStatus] = useState('');
+  const [projectClassification, setProjectClassification] = useState<ProjectClassification | ''>('');
   const [floorLevels, setFloorLevels] = useState<FloorLevel[]>([]);
   const [buildingPermitNumber, setBuildingPermitNumber] = useState('');
   const [buildingPermitDate, setBuildingPermitDate] = useState('');
@@ -374,6 +381,12 @@ export default function ClientDetailModal({
     setBusinessName(hydrated.business_name || '');
     setLandArea(hydrated.land_area != null ? String(hydrated.land_area) : '');
     setProjectStatus(hydrated.project_status || '');
+    setProjectClassification(
+      readBasicDataProjectClassification({
+        project_classification: hydrated.project_classification,
+        project_status: hydrated.project_status,
+      }) || ''
+    );
 
     setActivityType(hydrated.activity_type || '');
     setFloorLevels(
@@ -1020,13 +1033,19 @@ export default function ClientDetailModal({
         floors_count: computedFloorsCount,
         floor_levels: floorLevels,
         project_status: projectStatus || null,
+        project_classification: projectClassification || null,
         ...(quotationDocumentsLoaded ? { quotation_documents: quotationDocuments } : {}),
         // The loaded projection is intentionally partial. updateClientSafe reloads
         // and deep-merges this patch only at save time, preserving reports/designs.
         project_engineering_patch: { building_plan, technical_report },
       },
       'تم حفظ البيانات الأساسية وتفصيل الأدوار وبيانات رخصة البناء.'
-    );
+    ).then(async (saved) => {
+      if (saved) {
+        await syncProjectClassificationFromBasicData(client.id);
+      }
+      return saved;
+    });
   };
 
   return (
@@ -1486,6 +1505,21 @@ export default function ClientDetailModal({
                     <option value="">اختر الحالة</option>
                     {PROJECT_STATUSES.map((status) => (
                       <option key={status} value={status}>{status}</option>
+                    ))}
+                  </select>
+                </div>
+                <div>
+                  <label className="block text-xs font-semibold text-gray-700 mb-1">تصنيف المشروع الهندسي</label>
+                  <select
+                    value={projectClassification}
+                    onChange={(e) =>
+                      setProjectClassification(e.target.value as ProjectClassification | '')
+                    }
+                    className="w-full p-2.5 border rounded-xl text-sm bg-white"
+                  >
+                    <option value="">اختر تصنيف المشروع الهندسي...</option>
+                    {basicDataProjectClassificationOptions().map((option) => (
+                      <option key={option.value} value={option.value}>{option.label}</option>
                     ))}
                   </select>
                 </div>
