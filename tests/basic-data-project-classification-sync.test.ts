@@ -22,7 +22,7 @@ import { resolvePrimaryEngineeringProjectIdentity } from '@/lib/projects/primary
 
 const root = resolve(__dirname, '..');
 const read = (relative: string) => readFileSync(resolve(root, relative), 'utf8');
-const migration = read('scripts/sql/065_basic_data_project_classification_sync.sql');
+const migration = read('scripts/sql/066_basic_data_project_classification_sync.sql');
 const basicModal = read('components/clients/ClientDetailModal.tsx');
 const identityReader = read('lib/projects/primary-engineering-project-identity.ts');
 
