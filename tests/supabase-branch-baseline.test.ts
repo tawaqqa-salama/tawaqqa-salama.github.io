@@ -17,6 +17,31 @@ describe('Supabase fresh branch baseline safety contract', () => {
     expect(new Set(policy.HISTORICAL_BASELINE_MANIFEST).size).toBe(policy.HISTORICAL_BASELINE_MANIFEST.length);
   });
 
+  it('propagates SUPABASE_PROJECT_ID into the bootstrap policy config', async () => {
+    const { getBootstrapConfig } = await import('../scripts/bootstrap-fresh-supabase-branch.mjs');
+    const config = getBootstrapConfig({
+      NODE_ENV: 'test',
+      SUPABASE_PROJECT_ID: VALIDATION_REF,
+      SUPABASE_BRANCH_DATABASE_URL: VALIDATION_DB_URL,
+      GITHUB_REF_NAME: 'fix/branch',
+      BRANCH_BASELINE_APPLY: '1',
+    });
+    expect(config.projectRef).toBe(VALIDATION_REF);
+    const { assertSafeTarget } = await import('../scripts/branch-baseline-policy.mjs');
+    expect(() => assertSafeTarget(config)).not.toThrow();
+  });
+
+  it('refuses a missing SUPABASE_PROJECT_ID before database connection', async () => {
+    const { runBootstrap } = await import('../scripts/bootstrap-fresh-supabase-branch.mjs');
+    await expect(runBootstrap({
+      NODE_ENV: 'test',
+      SUPABASE_BRANCH_DATABASE_URL: VALIDATION_DB_URL,
+      GITHUB_REF_NAME: 'fix/branch',
+      BRANCH_BASELINE_APPLY: '1',
+      BRANCH_BASELINE_CONFIRM: 'CREATE_FRESH_BRANCH_BASELINE',
+    })).rejects.toThrow(/non-validation Supabase project ref/);
+  });
+
   it('pins the database project and rejects protected refs explicitly', async () => {
     const { assertSafeTarget } = await import('../scripts/branch-baseline-policy.mjs');
     const base = {
@@ -55,9 +80,15 @@ describe('Supabase fresh branch baseline safety contract', () => {
     expect(() => assertNoBusinessData([{ table_name: 'clients', row_count: 0 }, { table_name: 'projects', row_count: '0' }])).not.toThrow();
   });
 
-  it('keeps PR validation secret-free and excludes Production/065 execution', () => {
+  it('keeps credential names consistent and excludes Production/065 execution', () => {
     const runner = read('scripts/bootstrap-fresh-supabase-branch.mjs');
+    const policy = read('scripts/branch-baseline-policy.mjs');
+    const docs = read('docs/supabase-fresh-branch-baseline.md');
     const workflow = read('.github/workflows/supabase-branch-baseline.yml');
+    expect(runner).toContain('SUPABASE_PROJECT_ID');
+    expect(runner).not.toContain('SUPABASE_PROJECT_REF');
+    expect(policy).not.toContain('SUPABASE_PROJECT_REF');
+    expect(docs).not.toContain('SUPABASE_PROJECT_REF');
     expect(runner).not.toMatch(/console\.log\([^)]*(PASSWORD|DATABASE_URL|TOKEN|SECRET)/i);
     expect(runner).not.toMatch(/supabase_migrations|migration repair/i);
     expect(runner).not.toContain('065_pr_a1_security_remediation.sql');
