@@ -64,7 +64,7 @@ jobs:
 
   preflight:
     name: Preflight validation (read-only)
-    if: github.event_name == 'workflow_dispatch' && inputs.mode == 'preflight-only' && github.ref != 'refs/heads/main' && github.ref != 'refs/heads/master'
+    if: github.event_name == 'workflow_dispatch' && inputs.mode == 'preflight-only' && inputs.target_git_ref != 'main' && inputs.target_git_ref != 'master'
     runs-on: ubuntu-latest
     environment:
       name: supabase-preview
@@ -105,7 +105,7 @@ jobs:
 
   baseline:
     name: Apply baseline to dedicated validation environment
-    if: github.event_name == 'workflow_dispatch' && inputs.mode == 'apply-baseline' && github.ref != 'refs/heads/main' && github.ref != 'refs/heads/master'
+    if: github.event_name == 'workflow_dispatch' && inputs.mode == 'apply-baseline' && inputs.target_git_ref != 'main' && inputs.target_git_ref != 'master'
     runs-on: ubuntu-latest
     environment:
       name: supabase-preview
