@@ -1,40 +1,43 @@
 -- ============================================================================
--- 048 — Raise design-knowledge Storage file_size_limit for large code PDFs
+-- 048 — Verify design-knowledge Storage large-upload configuration
 --
 -- CRITICAL: TUS returns HTTP 413 "Maximum size exceeded" when the object
 -- Upload-Length exceeds EITHER:
 --   1) storage.buckets.file_size_limit for design-knowledge, OR
 --   2) the project Global file size limit (Dashboard → Storage → Settings)
 --
--- 047 used COALESCE(file_size_limit, 100MiB) which does NOT raise an existing
--- smaller limit (e.g. Studio default 50MiB). This migration FORCES the bucket
--- cap to 1 GiB (must still be ≤ Global limit — raise Global first if needed).
+-- Hosted bucket administration runs through the Supabase Storage API before
+-- SQL migrations. This migration is a read-only contract check and never
+-- writes or comments on Supabase-managed storage.buckets.
 --
 -- Does NOT change NFPA numeric rules or RLS semantics.
 -- ============================================================================
 
 DO $$
+DECLARE
+  bucket_public boolean;
+  bucket_limit bigint;
 BEGIN
   IF NOT EXISTS (SELECT 1 FROM pg_namespace WHERE nspname = 'storage') THEN
-    RAISE NOTICE 'storage schema missing — 048 skipped';
-    RETURN;
+    RAISE EXCEPTION 'storage schema missing — hosted Storage administration must run before 048';
   END IF;
 
-  IF NOT EXISTS (SELECT 1 FROM storage.buckets WHERE id = 'design-knowledge') THEN
-    RAISE NOTICE 'design-knowledge bucket missing — create via 047 first';
-    RETURN;
-  END IF;
-
-  UPDATE storage.buckets
-  SET
-    public = false,
-    -- 1 GiB — force raise (do not COALESCE). Global Dashboard limit must be ≥ this.
-    file_size_limit = 1073741824
+  SELECT public, file_size_limit
+  INTO bucket_public, bucket_limit
+  FROM storage.buckets
   WHERE id = 'design-knowledge';
 
-  RAISE NOTICE 'design-knowledge file_size_limit set to 1073741824 (1 GiB)';
-  RAISE NOTICE 'Also set Dashboard → Storage → Settings → Global file size limit ≥ 1 GiB (or remove restrict)';
-END $$;
+  IF NOT FOUND THEN
+    RAISE EXCEPTION 'design-knowledge bucket missing — run hosted Storage administration before 048';
+  END IF;
 
-COMMENT ON COLUMN storage.buckets.file_size_limit IS
-  'Per-object max bytes. design-knowledge target 1 GiB after 048; TUS 413 means bucket or Global limit too low.';
+  IF bucket_public IS DISTINCT FROM false THEN
+    RAISE EXCEPTION 'design-knowledge bucket must remain private';
+  END IF;
+
+  IF bucket_limit IS DISTINCT FROM 1073741824 THEN
+    RAISE EXCEPTION 'NEEDS CONFIGURATION: design-knowledge file_size_limit must equal 1073741824 bytes';
+  END IF;
+
+  RAISE NOTICE 'design-knowledge hosted Storage contract verified: private, 1 GiB per-bucket limit';
+END $$;

@@ -1,9 +1,10 @@
 -- ============================================================================
--- 047 — Design Knowledge private Storage bucket + Code Knowledge metadata
+-- 047 — Design Knowledge Storage RLS + Code Knowledge metadata
 --
 -- Reuses the bucket name already referenced by 025_design_intelligence
 -- (di_knowledge_documents.storage_bucket DEFAULT 'design-knowledge').
--- Creates the bucket ONLY if missing. Keeps it PRIVATE (no public, no anon).
+-- Bucket creation/configuration is performed through the hosted Supabase
+-- Storage API before SQL migrations; this file never writes storage.buckets.
 --
 -- Path convention (first segment = company_id for tenant RLS):
 --   {company_id}/code-knowledge/{code}/{edition}/{document_id}/{safe_file}
@@ -13,39 +14,25 @@
 -- Prerequisites: public.current_app_company_id(), public.is_platform_admin()
 -- ============================================================================
 
--- ─── 1) Private bucket design-knowledge ─────────────────────────────────────
+-- ─── 1) Hosted bucket prerequisite (read-only verification) ─────────────────
 DO $$
 BEGIN
   IF NOT EXISTS (SELECT 1 FROM pg_namespace WHERE nspname = 'storage') THEN
-    RAISE NOTICE 'storage schema missing — bucket setup skipped';
-    RETURN;
+    RAISE EXCEPTION 'storage schema missing — hosted Storage administration must run before 047';
   END IF;
 
-  IF EXISTS (SELECT 1 FROM storage.buckets WHERE id = 'design-knowledge') THEN
-    UPDATE storage.buckets
-    SET public = false,
-        file_size_limit = COALESCE(file_size_limit, 104857600) -- 100MB
-    WHERE id = 'design-knowledge';
-    RAISE NOTICE 'design-knowledge bucket exists — ensured private';
-  ELSE
-    INSERT INTO storage.buckets (id, name, public, file_size_limit, allowed_mime_types)
-    VALUES (
-      'design-knowledge',
-      'design-knowledge',
-      false,
-      104857600,
-      ARRAY[
-        'application/pdf',
-        'application/octet-stream',
-        'text/plain',
-        'text/markdown',
-        'image/png',
-        'image/jpeg',
-        'image/webp'
-      ]::text[]
-    );
-    RAISE NOTICE 'Created private bucket design-knowledge';
+  IF NOT EXISTS (SELECT 1 FROM storage.buckets WHERE id = 'design-knowledge') THEN
+    RAISE EXCEPTION 'design-knowledge bucket missing — run hosted Storage administration before 047';
   END IF;
+
+  IF EXISTS (
+    SELECT 1 FROM storage.buckets
+    WHERE id = 'design-knowledge' AND public IS DISTINCT FROM false
+  ) THEN
+    RAISE EXCEPTION 'design-knowledge bucket must be private — configure through hosted Storage API';
+  END IF;
+
+  RAISE NOTICE 'design-knowledge bucket exists and is private; SQL owns only storage.objects policies';
 END $$;
 
 -- ─── 2) Tenant Storage RLS (company_id as first path segment) ───────────────

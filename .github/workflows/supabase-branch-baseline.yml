@@ -6,8 +6,11 @@ on:
     paths:
       - 'scripts/branch-baseline-policy.mjs'
       - 'scripts/bootstrap-fresh-supabase-branch.mjs'
+      - 'scripts/raise-design-knowledge-upload-limit.mjs'
+      - 'scripts/local-supabase-compatibility-bootstrap.sql'
       - 'scripts/sql/**'
       - 'tests/supabase-branch-baseline.test.ts'
+      - 'tests/hosted-storage-baseline.test.ts'
       - '.github/workflows/supabase-branch-baseline.yml'
   workflow_dispatch:
     inputs:
@@ -44,9 +47,9 @@ jobs:
       - name: Install dependencies
         run: npm ci
       - name: Validate baseline guards and manifest
-        run: npm exec vitest -- run tests/supabase-branch-baseline.test.ts tests/migration-bootstrap-reproducibility.test.ts
+        run: npm exec vitest -- run tests/supabase-branch-baseline.test.ts tests/migration-bootstrap-reproducibility.test.ts tests/hosted-storage-baseline.test.ts tests/nfpa-code-knowledge-migration-047.test.ts
       - name: Validate JavaScript syntax
-        run: node --check scripts/branch-baseline-policy.mjs && node --check scripts/bootstrap-fresh-supabase-branch.mjs
+        run: node --check scripts/branch-baseline-policy.mjs && node --check scripts/bootstrap-fresh-supabase-branch.mjs && node --check scripts/raise-design-knowledge-upload-limit.mjs
 
   baseline:
     name: Apply baseline to dedicated validation environment
@@ -63,6 +66,8 @@ jobs:
       SUPABASE_BRANCH_DATABASE_URL: ${{ secrets.SUPABASE_BRANCH_DATABASE_URL }}
       BRANCH_BASELINE_APPLY: '1'
       BRANCH_BASELINE_CONFIRM: ${{ inputs.confirm_fresh_branch }}
+      SUPABASE_STORAGE_ADMIN_APPLY: '1'
+      SUPABASE_STORAGE_ADMIN_CONFIRM: CONFIGURE_DESIGN_KNOWLEDGE_STORAGE
     steps:
       - name: Checkout requested validation code
         uses: actions/checkout@v4
@@ -87,5 +92,7 @@ jobs:
             *"$SUPABASE_PROJECT_ID"*) ;;
             *) echo 'Database URL does not contain the pinned validation project ref.' >&2; exit 1 ;;
           esac
+      - name: Configure hosted design-knowledge bucket through Storage API
+        run: node scripts/raise-design-knowledge-upload-limit.mjs
       - name: Apply guarded 000–064 fresh-branch baseline
         run: node scripts/bootstrap-fresh-supabase-branch.mjs

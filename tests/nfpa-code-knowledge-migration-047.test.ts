@@ -11,13 +11,14 @@ const ROOT = resolve(__dirname, '..');
 const M047 = resolve(ROOT, 'scripts/sql/047_design_knowledge_storage_bucket.sql');
 
 describe('047 design-knowledge Storage bucket migration', () => {
-  it('exists and reuses design-knowledge bucket (no duplicate bucket invent)', () => {
+  it('requires a private design-knowledge bucket without managing storage.buckets directly', () => {
     expect(existsSync(M047)).toBe(true);
     expect(CODE_KNOWLEDGE_STORAGE_BUCKET).toBe('design-knowledge');
     const sql = readFileSync(M047, 'utf8');
     expect(sql).toContain("id = 'design-knowledge'");
-    expect(sql).toContain('IF EXISTS (SELECT 1 FROM storage.buckets WHERE id = ');
-    expect(sql).toContain('public = false');
+    expect(sql).toContain('IF NOT EXISTS (SELECT 1 FROM storage.buckets WHERE id = ');
+    expect(sql).toContain('hosted Storage API');
+    expect(sql).not.toMatch(/\b(?:insert\s+into|update|delete\s+from|alter\s+table)\s+storage\.buckets\b/i);
     expect(sql).toMatch(/no anon|anon denied/i);
   });
 
