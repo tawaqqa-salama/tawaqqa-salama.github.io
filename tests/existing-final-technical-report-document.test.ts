@@ -168,10 +168,25 @@ describe('PR 7 — EXISTING final A4 technical report document', () => {
     expect(document.prepared_by).toBe('م. أحمد الحربي');
     expect(document.executive_director).toBe('م. سارة العتيبي');
     expect(document.sections.map((item) => item.number)).toEqual([1, 2, 3, 4, 5, 6, 7, 8]);
+    expect(document.sections.map((item) => item.id)).toEqual([
+      'facility_data',
+      'site_information',
+      'fire_truck_access',
+      'project_components',
+      'existing_assessment_firefighting',
+      'building_requirements',
+      'existing_recommendations',
+      'conclusion',
+    ]);
+    expect(document.location_display).toContain('الرياض');
     expect(html).toContain('م. أحمد الحربي');
     expect(html).not.toContain('........................................');
-    expect(html).toMatch(/<em>0[1-7]<\/em>/);
+    expect(html).toMatch(/<em>0[1-8]<\/em>/);
     expect(html).toContain('الاعتماد والتوقيعات');
+    expect(html).toContain('id="sec-facility_data"');
+    expect(html).toContain('id="sec-site_information"');
+    expect(html).toContain('id="sec-fire_truck_access"');
+    expect(html).toContain('id="sec-project_components"');
   });
 
   it('does not leak calculated defaults or merge-derived tank sizing into engineering rows', () => {
@@ -265,8 +280,8 @@ describe('PR 7 — EXISTING final A4 technical report document', () => {
     expect(html).toContain('border-top:.75mm solid #1b8f91');
     expect(html).not.toContain('border-top:.75mm solid #b32020');
     expect(html).toContain('class="official-approvals keep"');
-    expect(html).toContain('official-section-flow');
-    expect(html).toContain('id="sec-applicable_codes"');
+    expect(html).toContain('official-mandatory-page');
+    expect(html).toContain('id="sec-facility_data"');
     expect(html).toContain('break-before:avoid-page');
     expect(html).toContain('@bottom-center');
     expect(html).toContain('التقرير الفني لتقييم الموقع القائم');

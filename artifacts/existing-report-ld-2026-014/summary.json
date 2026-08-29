@@ -1,0 +1,31 @@
+{
+  "client_code": "LD-2026-014",
+  "report_number": "TR-LD-2026-014",
+  "pageCount": 22,
+  "blankPages": [],
+  "pageMap": {
+    "cover": 1,
+    "toc": 2,
+    "facility_data": 3,
+    "site_information": 5,
+    "fire_truck_access": 7,
+    "project_components": 9,
+    "existing_assessment_site": 11,
+    "existing_assessment_firefighting": 12,
+    "existing_assessment_alarm": 15,
+    "existing_assessment_life_safety": 17,
+    "existing_assessment_electrical": 19,
+    "building_requirements": 20,
+    "existing_recommendations": 21,
+    "conclusion": 21,
+    "approvals": 22
+  },
+  "pageMapStable": true,
+  "locationInPdf": true,
+  "facadeImageInPdf": true,
+  "aerialImageInPdf": true,
+  "civilDefenseMapInPdf": true,
+  "internalTerms": [],
+  "numericZeroPlaceholders": [],
+  "pdfPath": "artifacts/existing-report-ld-2026-014/official-technical-report.pdf"
+}

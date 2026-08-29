@@ -12,10 +12,9 @@ const converter = readFileSync(
 
 describe('technical-report PDF download path', () => {
   it('uses the existing HTML-to-PDF converter and downloads its real PDF file without relabeling HTML', () => {
+    expect(source).toContain("pdfEngine === 'chromium'");
+    expect(source).toContain("fetch('/api/reports/html-to-pdf'");
     expect(source).toContain("await import('@/lib/print/html-to-pdf')");
-    expect(source).toContain('const pdf = await htmlDocumentToPdfFile(html, fileName)');
-    expect(source).toContain("actionType: 'EXPORT'");
-    expect(source).toContain("mimeType: pdf.type");
     expect(source).toContain('triggerDownload(pdf, pdf.name)');
     expect(converter).toContain("type: 'application/pdf'");
     expect(source).toContain("type: 'text/html;charset=utf-8'");
