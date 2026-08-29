@@ -126,9 +126,11 @@ export function getExistingReportDesignSystemCss(): string {
   .${EXISTING_REPORT_TABLE_WRAP_CLASS} .official-table-caption { color:#123d4c; font-weight:800; font-size:10.5px; margin:0 0 2mm; text-align:start; letter-spacing:0.01em; }
   .${EXISTING_REPORT_TABLE_CLASS} { width:100%; max-width:100%; table-layout:fixed; border-collapse:collapse; direction:rtl; font-size:10px; line-height:1.55; }
   .${EXISTING_REPORT_TABLE_CLASS} thead { display:table-header-group; }
+  .${EXISTING_REPORT_TABLE_CLASS} tfoot { display:table-footer-group; }
   .${EXISTING_REPORT_TABLE_CLASS} tbody tr { break-inside:avoid; page-break-inside:avoid; }
+  .${EXISTING_REPORT_TABLE_WRAP_CLASS} .official-table-caption { break-after:avoid-page; page-break-after:avoid; orphans:2; widows:2; }
   .${EXISTING_REPORT_TABLE_CLASS} th, .${EXISTING_REPORT_TABLE_CLASS} td {
-    border:1px solid #9eb0b3; padding:2.2mm 2.4mm; vertical-align:top; text-align:right; direction:rtl;
+    border:1px solid #9eb0b3; padding:2.8mm 3mm; vertical-align:middle; text-align:right; direction:rtl;
     overflow-wrap:anywhere; word-break:normal; white-space:normal; min-width:0; unicode-bidi:plaintext;
   }
   .${EXISTING_REPORT_TABLE_CLASS} th { background:#e6f1f1; color:#123d4c; font-weight:800; font-size:10px; }

@@ -218,5 +218,6 @@ describe('EXISTING report rebuild — pages 1-6, location, PDF Arabic', () => {
     const css = read('lib/projects/engineering-report-engine/renderer/existing-final-technical-template.ts');
     expect(css).toContain('.official-mandatory-page { break-before:page; page-break-before:always; min-height:0; }');
     expect(css).not.toContain('break-after:page; page-break-after:always; min-height:0; }');
+    expect(css).not.toMatch(/\.official-toc-page[^}]*break-after:page/);
   });
 });

@@ -1,0 +1,14 @@
+{
+  "pageMap": {
+    "facility_data": 3,
+    "site_information": 4,
+    "fire_truck_access": 5,
+    "project_components": 6,
+    "existing_assessment_firefighting": 6,
+    "existing_recommendations": 6,
+    "conclusion": 6,
+    "approvals": 8
+  },
+  "blankPages": [],
+  "pageCount": 8
+}
