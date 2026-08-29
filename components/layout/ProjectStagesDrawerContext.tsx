@@ -9,11 +9,17 @@ import {
   type ReactNode,
 } from 'react';
 
+export type ProjectStagesRegistration = {
+  panel: ReactNode;
+  label?: string;
+};
+
 type ProjectStagesDrawerContextValue = {
   /** ملف مشروع مفتوح — زر ☰ يتحكم بمسار المراحل */
   active: boolean;
   open: boolean;
-  register: () => void;
+  registration: ProjectStagesRegistration | null;
+  register: (registration: ProjectStagesRegistration) => void;
   unregister: () => void;
   toggle: () => void;
   openDrawer: () => void;
@@ -23,16 +29,16 @@ type ProjectStagesDrawerContextValue = {
 const ProjectStagesDrawerContext = createContext<ProjectStagesDrawerContextValue | null>(null);
 
 export function ProjectStagesDrawerProvider({ children }: { children: ReactNode }) {
-  const [active, setActive] = useState(false);
+  const [registration, setRegistration] = useState<ProjectStagesRegistration | null>(null);
   const [open, setOpen] = useState(false);
 
-  const register = useCallback(() => {
-    setActive(true);
+  const register = useCallback((next: ProjectStagesRegistration) => {
+    setRegistration(next);
     setOpen(false);
   }, []);
 
   const unregister = useCallback(() => {
-    setActive(false);
+    setRegistration(null);
     setOpen(false);
   }, []);
 
@@ -45,15 +51,16 @@ export function ProjectStagesDrawerProvider({ children }: { children: ReactNode 
 
   const value = useMemo(
     () => ({
-      active,
+      active: Boolean(registration),
       open,
+      registration,
       register,
       unregister,
       toggle,
       openDrawer,
       closeDrawer,
     }),
-    [active, open, register, unregister, toggle, openDrawer, closeDrawer]
+    [registration, open, register, unregister, toggle, openDrawer, closeDrawer]
   );
 
   return (
@@ -67,6 +74,7 @@ export function useProjectStagesDrawer() {
     return {
       active: false,
       open: false,
+      registration: null as ProjectStagesRegistration | null,
       register: () => undefined,
       unregister: () => undefined,
       toggle: () => undefined,

@@ -9,6 +9,7 @@ import LanguageSwitcher from '@/components/layout/LanguageSwitcher';
 import { ModuleSubNavProvider } from '@/components/layout/ModuleSubNavContext';
 import { ClientPageNavProvider } from '@/components/layout/ClientPageNavContext';
 import ClientPageNavSlot from '@/components/layout/ClientPageNavSlot';
+import ProjectStagesNavSlot from '@/components/layout/ProjectStagesNavSlot';
 import { DateFilterProvider } from '@/components/layout/DateFilterContext';
 import GlobalDateFilterBar from '@/components/layout/GlobalDateFilterBar';
 import { ProjectStagesDrawerProvider } from '@/components/layout/ProjectStagesDrawerContext';
@@ -158,6 +159,7 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
                 <GlobalDateFilterBar />
               </Suspense>
               <ClientPageNavSlot />
+              <ProjectStagesNavSlot />
               <SupabaseConfigBanner />
               <ActivityTracker />
               <main className="flex-1 p-3 sm:p-5 md:p-6 overflow-y-auto overflow-x-hidden w-full max-w-none">
