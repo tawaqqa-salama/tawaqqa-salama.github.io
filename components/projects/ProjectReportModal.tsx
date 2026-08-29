@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState, useCallback } from 'react';
 import Link from 'next/link';
 import { seedBuildingPlanFromClient } from '@/lib/projects/building-plan';
 import { resolveStage4ProjectClassification } from '@/lib/projects/project-classification-resolution';
@@ -142,7 +142,6 @@ export default function ProjectReportModal({
   const [evidenceTargetObservationId, setEvidenceTargetObservationId] = useState<string | null>(null);
   const [supervisionLinkTarget, setSupervisionLinkTarget] = useState<{ visitNumber: number; observationId: string } | null>(null);
   const {
-    open: stagesOpen,
     register: registerStagesDrawer,
     unregister: unregisterStagesDrawer,
     closeDrawer: closeStagesDrawer,
@@ -151,15 +150,6 @@ export default function ProjectReportModal({
   useEffect(() => {
     void loadCompanyProfile().then(setCompany);
   }, []);
-
-  useEffect(() => {
-    if (!client) {
-      unregisterStagesDrawer();
-      return;
-    }
-    registerStagesDrawer();
-    return () => unregisterStagesDrawer();
-  }, [client, registerStagesDrawer, unregisterStagesDrawer]);
 
   useEffect(() => {
     if (!client) return;
@@ -240,6 +230,48 @@ export default function ProjectReportModal({
     () => (data && client ? getProjectReportProgress(data, client) : 0),
     [data, client]
   );
+
+  const handleStageNavSelect = useCallback(
+    (stageId: WorkflowStageId) => {
+      if (!client || !data) return;
+      if (!canUnlockStage(stageId, client, data)) {
+        setMessage('يجب إنهاء واكتمال المرحلة السابقة أولاً');
+        return;
+      }
+      setActiveStage(stageId);
+      setMessage(null);
+      closeStagesDrawer();
+    },
+    [client, data, closeStagesDrawer]
+  );
+
+  useEffect(() => {
+    if (!client || !data) {
+      unregisterStagesDrawer();
+      return;
+    }
+    registerStagesDrawer({
+      label: 'أقسام المشروع',
+      panel: (
+        <WorkflowStageRail
+          client={client}
+          data={data}
+          activeStage={activeStage}
+          progressPercent={progress}
+          onSelect={handleStageNavSelect}
+        />
+      ),
+    });
+    return () => unregisterStagesDrawer();
+  }, [
+    client,
+    data,
+    activeStage,
+    progress,
+    handleStageNavSelect,
+    registerStagesDrawer,
+    unregisterStagesDrawer,
+  ]);
 
   // Project classification is canonical project identity synced from Basic Data.
   const classificationGate = useMemo(
@@ -670,16 +702,8 @@ export default function ProjectReportModal({
             </div>
           </div>
 
-          <div className="flex flex-1 min-h-0 relative">
-            {stagesOpen ? (
-              <button
-                type="button"
-                aria-label="إغلاق قائمة المراحل"
-                className="absolute inset-0 z-10 bg-[#1a2420]/25 md:hidden"
-                onClick={closeStagesDrawer}
-              />
-            ) : null}
-            <div className="flex-1 min-w-0 p-5 overflow-y-auto space-y-4 order-1 rtl:order-2 relative z-0">
+          <div className="flex flex-1 min-h-0">
+            <div className="flex-1 min-w-0 p-5 overflow-y-auto space-y-4">
               {message ? (
                 <div
                   className={`p-3 rounded-xl text-sm ${
@@ -1570,23 +1594,6 @@ export default function ProjectReportModal({
                 </div>
               </div>
             </div>
-
-            {stagesOpen ? (
-              <aside
-                id="project-stages-drawer"
-                className="w-56 shrink-0 order-2 rtl:order-1 border-s rtl:border-s-0 rtl:border-e border-gray-200 bg-gray-50 overflow-y-auto p-3 relative z-20"
-                aria-label="أقسام المشروع"
-              >
-                <p className="text-sm font-bold text-gray-900 mb-3">أقسام المشروع</p>
-                <WorkflowStageRail
-                  client={client}
-                  data={data}
-                  activeStage={activeStage}
-                  progressPercent={progress}
-                  onSelect={selectStage}
-                />
-              </aside>
-            ) : null}
           </div>
         </div>
   );

@@ -4,26 +4,10 @@ import { useEffect, useState } from 'react';
 import { usePathname } from 'next/navigation';
 import { useDateFilter } from '@/components/layout/DateFilterContext';
 import { useLanguage } from '@/lib/i18n/LanguageProvider';
+import { shouldShowDateFilterBar } from '@/lib/constants/date-filter-routes';
 import type { DateRangePreset } from '@/lib/date/date-range';
 
-const DEPARTMENT_PREFIXES = [
-  '/marketing',
-  '/sales',
-  '/procurement',
-  '/finance',
-  '/hr',
-  '/projects',
-  '/design',
-  '/settings',
-];
-
 const PRESETS: DateRangePreset[] = ['today', 'yesterday', 'week', 'month', 'year'];
-
-function isDepartmentRoute(pathname: string): boolean {
-  return DEPARTMENT_PREFIXES.some(
-    (prefix) => pathname === prefix || pathname.startsWith(`${prefix}/`)
-  );
-}
 
 function formatClock(now: Date, locale: string): string {
   return now.toLocaleTimeString(locale, {
@@ -54,7 +38,7 @@ export default function GlobalDateFilterBar() {
     return () => window.clearInterval(timer);
   }, []);
 
-  if (!isDepartmentRoute(pathname)) return null;
+  if (!shouldShowDateFilterBar(pathname)) return null;
 
   const locale = lang === 'ar' ? 'ar-SA' : 'en-US';
 
