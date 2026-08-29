@@ -105,6 +105,7 @@ export type ExistingTechnicalReportModel = {
 };
 
 const INCOMPLETE_LABEL = 'لم يكتمل تقييم هذا البند.';
+export const EXISTING_REPORT_UNSPECIFIED_VALUE = 'غير محدد';
 
 const AUTHORITATIVE_VALUE_SOURCES: ReadonlySet<ValueSource> = new Set([
   'engineer_input',
@@ -255,6 +256,12 @@ function recommendations(
   return unique(actions, (item) => `${item.source}:${item.text}`);
 }
 
+export function existingFinalReportRecommendations(
+  model: ExistingTechnicalReportModel
+): ExistingTechnicalReportRecommendation[] {
+  return model.recommendations.filter((item) => Boolean(item.priority?.trim()));
+}
+
 function assessmentSourceLabel(source: string | null): string {
   const labels: Record<string, string> = {
     'fire_protection_design.fire_truck_access': 'بيانات الوصول ضمن التصميم الفني',
@@ -316,11 +323,11 @@ export function formatExistingReportSprinklerEngineeringValue(
   }
   if (kind === 'pressure') {
     if (/bar|psi|kpa|بار/i.test(raw)) return raw;
-    if (/^\d+(\.\d+)?$/.test(raw)) return `${raw} bar`;
+    if (/^\d+(\.\d+)?$/.test(raw)) return EXISTING_REPORT_UNSPECIFIED_VALUE;
     return raw;
   }
   if (/gpm|l\/min|lpm|ل\/د|لتر/i.test(raw)) return raw;
-  if (/^\d+(\.\d+)?$/.test(raw)) return `${raw} GPM`;
+  if (/^\d+(\.\d+)?$/.test(raw)) return EXISTING_REPORT_UNSPECIFIED_VALUE;
   return raw;
 }
 

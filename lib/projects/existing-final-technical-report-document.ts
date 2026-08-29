@@ -4,6 +4,7 @@ import type {
   EngineeringStudySectionId,
 } from '@/lib/projects/engineering-report-engine/types';
 import {
+  existingFinalReportRecommendations,
   existingTechnicalReportStatusLabel,
   type ExistingTechnicalReportModel,
   type ExistingTechnicalReportRecommendation,
@@ -135,13 +136,14 @@ export function buildExistingFinalTechnicalReportDocument(
     ], model.engineering_sections.map((item) => twoColumn(item.label, item.rows))));
   }
 
+  const finalRecommendations = existingFinalReportRecommendations(model);
   sections.push(section('existing_recommendations', ++sectionNumber, 'التوصيات والإجراءات المطلوبة', [
-    model.recommendations.length
+    finalRecommendations.length
       ? 'تتضمن هذه القائمة الإجراءات والتوصيات الصريحة المرتبطة بتقييم المهندس أو التوصيات المحفوظة والمعتمدة فقط.'
       : 'لا توجد إجراءات أو توصيات معتمدة مسجلة حتى الآن.',
-  ], model.recommendations.length ? [table('الإجراءات والتوصيات الصريحة', ['المنظومة', 'الأولوية', 'النص', 'المصدر'], model.recommendations.map((item) => [
+  ], finalRecommendations.length ? [table('الإجراءات والتوصيات الصريحة', ['المنظومة', 'الأولوية', 'النص', 'المصدر'], finalRecommendations.map((item) => [
     item.system_label || 'عام',
-    item.priority || UNSET_ENGINEER_PRIORITY_LABEL,
+    item.priority!,
     item.text,
     recommendationSourceLabel(item),
   ]))] : []));

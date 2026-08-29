@@ -37,8 +37,11 @@ function renderTableCell(value: string, tag: 'th' | 'td', className = ''): strin
 
 function renderBlock(block: FlowBlock, locale: 'ar' | 'en', includeDetectionMarkers = false): string {
   switch (block.kind) {
-    case 'chapter':
-      return `<section class="official-section official-section-heading ${block.id.includes('evidence') ? 'appendix-start' : ''}" id="sec-${esc(block.id)}"><h2 class="official-chapter">${includeDetectionMarkers ? `<span class="official-section-detection-marker">SECTION_PAGE_${esc(block.id)}MARKEREND</span>` : ''}${text(block.title)}</h2></section>`;
+    case 'chapter': {
+      const flowClass = block.id === 'applicable_codes' || block.id === 'summary' ? ' official-section-flow' : '';
+      const appendixClass = block.id.includes('evidence') ? ' appendix-start' : '';
+      return `<section class="official-section official-section-heading${flowClass}${appendixClass}" id="sec-${esc(block.id)}"><h2 class="official-chapter">${includeDetectionMarkers ? `<span class="official-section-detection-marker">SECTION_PAGE_${esc(block.id)}MARKEREND</span>` : ''}${text(block.title)}</h2></section>`;
+    }
     case 'subsection':
       return `<h3 class="official-subchapter keep-next">${text(block.title)}</h3>`;
     case 'paragraph':
@@ -188,6 +191,15 @@ function css(doc: EngineeringStudyDocument, company: CompanyProfile): string {
   .official-document { width:100%; }
   .official-section { margin:0; padding:0; }
   .official-section-heading { break-after:avoid-page; page-break-after:avoid; margin:0; }
+  .official-section-flow { break-before:avoid-page; page-break-before:avoid; }
+  #sec-applicable_codes + .official-paragraph,
+  #sec-applicable_codes + .official-paragraph + .official-table-wrap,
+  #sec-summary + .official-paragraph,
+  #sec-summary + .official-paragraph + .official-summary-block,
+  #sec-summary + .official-paragraph + .official-table-wrap {
+    break-before:avoid-page;
+    page-break-before:avoid;
+  }
   .official-chapter { color:#123d4c; font-size:14px; font-weight:800; padding-bottom:1mm; margin:10px 0 7px; border-bottom:1px solid #1b8f91; text-align:start; break-after:avoid-page; page-break-after:avoid; letter-spacing:0.02em; word-spacing:0.05em; } .official-section-detection-marker { display:inline; color:#123d4c; font-size:6px; line-height:1; white-space:nowrap; }
   .official-section-heading + .official-paragraph, .official-section-heading + .official-table-wrap, .official-section-heading + .official-reference { break-before:avoid-page; page-break-before:avoid; }
   .official-subchapter { color:#171717; font-size:12.5px; font-weight:800; margin:9px 0 4px; text-align:start; letter-spacing:0.015em; word-spacing:0.04em; }
