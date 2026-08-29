@@ -177,7 +177,7 @@ describe('EXISTING report visual layout finalization', () => {
     expect(html).toContain('existing-report-table--key-value');
     expect(html).toContain('existing-report-table--components');
     expect(html).toContain('اسم المكون');
-    expect(html).toContain('حدود الموقع');
+    expect(html).toContain('شمالاً');
     expect(html).toContain('خريطة مسار الوصول');
     const components = document.sections.find((section) => section.id === 'project_components');
     expect(components?.tables?.[0]?.headers_ar?.[0]).toBe('م');

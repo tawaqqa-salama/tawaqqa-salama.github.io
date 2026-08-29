@@ -158,5 +158,7 @@ export function getExistingReportDesignSystemCss(): string {
   .existing-report-image-placeholder { padding:6mm 4mm; text-align:center; font-weight:800; color:#23434a; font-size:10px; line-height:1.65; }
   .existing-report-image-caption { margin:2mm 0 0; color:#167b7f; font-size:9.5px; font-weight:700; text-align:center; }
   .official-missing-media { min-height:${frame.height}; margin:4mm auto 6mm; max-width:${frame.maxWidth}; padding:6mm 4mm; border:1.5px dashed #8aa5a8; border-radius:${frame.borderRadius}; background:#f7fafa; color:#23434a; font-weight:800; text-align:center; break-inside:avoid; page-break-inside:avoid; }
+  .existing-report-maps-link { color:#167b7f; font-weight:800; text-decoration:underline; text-underline-offset:2px; word-break:break-word; overflow-wrap:anywhere; }
+  .existing-report-maps-unregistered { color:#23434a; font-weight:700; }
   `;
 }

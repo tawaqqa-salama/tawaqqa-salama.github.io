@@ -269,6 +269,16 @@ describe('EXISTING report pagination / print layout', () => {
     }
   });
 
+  it('isolates project components on page 6 before the next technical section', () => {
+    expect(templateCss).toContain('.official-post-project-components-break { break-after:page; page-break-after:always;');
+    const { document } = buildReport(minimalPaginationFixture());
+    const { blocks } = documentToFlowBlocks(document);
+    const breakIndex = blocks.findIndex((block) => block.kind === 'page_break');
+    const nextAssessmentIndex = blocks.findIndex((block) => block.kind === 'chapter' && block.id.startsWith('existing_assessment_'));
+    expect(breakIndex).toBeGreaterThan(0);
+    expect(nextAssessmentIndex).toBeGreaterThan(breakIndex);
+  });
+
   it('validates Chromium PDF page map artifact when generated locally', () => {
     const resultPath = resolve(root, 'artifacts/existing-report-pagination/result.json');
     if (!existsSync(resultPath)) return;

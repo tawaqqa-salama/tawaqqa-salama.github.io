@@ -6,7 +6,18 @@ import {
   documentToFlowBlocks,
   type FlowBlock,
 } from '@/lib/projects/engineering-report-engine/renderer/flow-document';
-import { EXISTING_MANDATORY_PAGE_SECTIONS, EXISTING_FACADE_MISSING_LABEL, EXISTING_AERIAL_MISSING_LABEL, EXISTING_CD_ROUTE_MISSING_LABEL } from '@/lib/projects/existing-technical-report-profile';
+import {
+  EXISTING_AERIAL_MISSING_LABEL,
+  EXISTING_CD_ROUTE_MISSING_LABEL,
+  EXISTING_FACADE_MISSING_LABEL,
+  EXISTING_MANDATORY_PAGE_SECTIONS,
+} from '@/lib/projects/existing-technical-report-profile';
+import {
+  EXISTING_REPORT_MAPS_LINK_LABEL,
+  EXISTING_REPORT_MAPS_UNREGISTERED,
+  isExistingReportExternalUrl,
+  isExistingReportMapsTableLabel,
+} from '@/lib/projects/existing-report-presentation';
 import {
   EXISTING_REPORT_TABLE_WRAP_CLASS,
   buildExistingReportTableColgroup,
@@ -34,13 +45,29 @@ function renderEngineeringTokens(value: string): string {
   return escaped.replace(/((?:\d+(?:\.\d+)?\s*(?:GPM|bar|m³|L\/min|min|K80|UL)|\b(?:FDC|NFPA|Standpipe)\b)(?:\s*[•·/]\s*(?:\d+(?:\.\d+)?\s*(?:GPM|bar|m³|L\/min|min|K80|UL)|\b(?:FDC|NFPA|Standpipe)\b))*)/g, '<bdi dir="ltr" class="official-engineering-run">$1</bdi>');
 }
 
-function renderTableCell(value: string, tag: 'th' | 'td', className = ''): string {
+function renderTableCell(value: string, tag: 'th' | 'td', className = '', rowLabel = ''): string {
   const displayValue = value
     .replace(/^K(\d+(?:\.\d+)?)$/, 'K = $1')
     .replace(/\bK-Factor\s+K(?=\d)/gi, 'K-Factor = ');
-  const direction = isLtrEngineeringValue(displayValue) ? 'ltr' : 'auto';
   const classAttr = className ? ` class="${className}"` : '';
-  const content = direction === 'ltr' ? text(displayValue) : renderEngineeringTokens(displayValue);
+
+  if (
+    tag === 'td'
+    && isExistingReportMapsTableLabel(rowLabel)
+    && isExistingReportExternalUrl(displayValue)
+  ) {
+    return `<${tag}${classAttr}><a class="existing-report-maps-link" href="${esc(displayValue)}" target="_blank" rel="noopener noreferrer">${text(EXISTING_REPORT_MAPS_LINK_LABEL)}</a></${tag}>`;
+  }
+
+  if (tag === 'td' && isExistingReportMapsTableLabel(rowLabel) && displayValue.trim() === EXISTING_REPORT_MAPS_UNREGISTERED) {
+    return `<${tag}${classAttr}><span class="existing-report-maps-unregistered">${text(EXISTING_REPORT_MAPS_UNREGISTERED)}</span></${tag}>`;
+  }
+
+  const direction = isLtrEngineeringValue(displayValue) ? 'ltr' : 'auto';
+  const multiline = displayValue.includes('\n')
+    ? displayValue.split('\n').map((line) => (direction === 'ltr' ? text(line) : renderEngineeringTokens(line))).join('<br/>')
+    : null;
+  const content = multiline ?? (direction === 'ltr' ? text(displayValue) : renderEngineeringTokens(displayValue));
   return `<${tag}${classAttr}><bdi dir="${direction}" class="existing-report-cell-text">${content}</bdi></${tag}>`;
 }
 
@@ -79,7 +106,8 @@ function renderBlock(block: FlowBlock, locale: 'ar' | 'en', includeDetectionMark
       const colgroup = buildExistingReportTableColgroup(layout, block.headers.length);
       const rows = block.rows.map((row) => {
         const isStatus = row[0] === 'حالة المطابقة';
-        return `<tr class="${isStatus ? 'official-status-row' : ''}">${row.map((cell, index) => renderTableCell(cell, 'td', isStatus && index === 1 ? 'official-status-cell' : '')).join('')}</tr>`;
+        const rowLabel = block.headers.length === 2 && block.headers[0] === 'البند' ? row[0] : '';
+        return `<tr class="${isStatus ? 'official-status-row' : ''}">${row.map((cell, index) => renderTableCell(cell, 'td', isStatus && index === 1 ? 'official-status-cell' : '', index === 1 ? rowLabel : '')).join('')}</tr>`;
       }).join('');
       return `<section class="${EXISTING_REPORT_TABLE_WRAP_CLASS} official-table-wrap${tableClass}"><div class="official-table-caption">${text(locale === 'ar' ? `[ ${block.caption} ]` : `[ ${block.caption} ]`)}</div><table class="${tableLayoutClass}">${colgroup}<thead><tr>${block.headers.map((header) => renderTableCell(header, 'th')).join('')}</tr></thead><tbody>${rows}</tbody></table></section>`;
     }
@@ -101,6 +129,8 @@ function renderBlock(block: FlowBlock, locale: 'ar' | 'en', includeDetectionMark
       return `<div class="official-code-sequence">${block.figures.map((figure) => renderBlock(figure, locale)).join('')}</div>`;
     case 'unit':
       return `<div class="official-unit keep">${block.blocks.map((child) => renderBlock(child, locale)).join('')}</div>`;
+    case 'page_break':
+      return `<div class="official-page-break official-post-project-components-break" aria-hidden="true"></div>`;
     default:
       return '';
   }
@@ -178,7 +208,7 @@ function css(doc: EngineeringStudyDocument, company: CompanyProfile): string {
   @page :first { margin:12mm; @top-left { content:none; } @top-center { content:none; } @top-right { content:none; } @bottom-center { content:none; } }
   * { box-sizing:border-box; }
   html, body { margin:0; padding:0; width:210mm; background:#f7f7f7; }
-  body { color:#151515; font-family:"Noto Naskh Arabic","IBM Plex Sans Arabic",Tahoma,Arial,sans-serif; font-size:11.2px; line-height:1.85; letter-spacing:0.01em; word-spacing:0.04em; -webkit-print-color-adjust:exact; print-color-adjust:exact; font-variant-ligatures:common-ligatures; font-feature-settings:"liga" 1,"calt" 1; }
+  body { color:#151515; font-family:"Noto Naskh Arabic","IBM Plex Sans Arabic",Tahoma,Arial,sans-serif; font-size:11.2px; line-height:1.85; letter-spacing:0.01em; word-spacing:0.04em; -webkit-print-color-adjust:exact; print-color-adjust:exact; font-variant-ligatures:common-ligatures; font-feature-settings:"liga" 1,"calt" 1; font-synthesis:none; text-rendering:optimizeLegibility; }
   .official-cover { position:relative; z-index:30; isolation:isolate; min-height:273mm; overflow:hidden; padding:0; page-break-after:always; break-after:page; display:flex; color:#eff8fb; background:linear-gradient(140deg,#081d35 0%,#0b2d4d 52%,#0b5a68 100%); }
   .official-cover::before { content:""; position:absolute; z-index:-1; inset:-30mm -16mm auto auto; width:160mm; height:160mm; border:1.1mm solid rgba(57,211,190,.32); border-radius:50%; box-shadow:0 0 0 15mm rgba(57,211,190,.045),0 0 0 31mm rgba(57,211,190,.035); }
   .official-cover::after { content:""; position:absolute; z-index:-1; left:-55mm; bottom:-27mm; width:150mm; height:105mm; transform:rotate(-24deg); background:linear-gradient(90deg,rgba(239,178,65,.76),rgba(239,178,65,.1)); clip-path:polygon(0 54%,100% 0,100% 30%,0 84%); }
@@ -235,6 +265,7 @@ function css(doc: EngineeringStudyDocument, company: CompanyProfile): string {
     page-break-before:avoid;
   }
   .official-assessment-section { break-before:auto; page-break-before:auto; }
+  .official-post-project-components-break { break-after:page; page-break-after:always; height:0; margin:0; padding:0; }
   .official-assessment-section + .official-paragraph,
   .official-assessment-section + .official-table-wrap,
   .official-assessment-section + .existing-report-table-wrap {

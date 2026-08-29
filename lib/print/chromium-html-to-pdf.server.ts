@@ -3,12 +3,32 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { spawnSync } from 'node:child_process';
 import { pathToFileURL } from 'node:url';
+import {
+  NOTO_NASKH_ARABIC_BOLD_BASE64,
+  NOTO_NASKH_ARABIC_REGULAR_BASE64,
+} from '@/lib/projects/engineering-report-engine/renderer/embedded-font-data';
 
 function resolveChromeBinary(): string {
   if (process.env.CHROME_BIN?.trim()) return process.env.CHROME_BIN.trim();
   if (existsSync('/usr/bin/google-chrome')) return 'google-chrome';
   if (existsSync('/usr/local/bin/google-chrome')) return '/usr/local/bin/google-chrome';
   return 'chromium';
+}
+
+/**
+ * Chromium print-to-PDF embeds file:// TTF fonts more reliably than long data: URLs,
+ * improving Arabic ToUnicode mapping for copy/search without rasterizing text.
+ */
+function materializeEmbeddedFontsForPrint(html: string, workDir: string): string {
+  const regularPath = join(workDir, 'NotoNaskhArabic-Regular.ttf');
+  const boldPath = join(workDir, 'NotoNaskhArabic-Bold.ttf');
+  writeFileSync(regularPath, Buffer.from(NOTO_NASKH_ARABIC_REGULAR_BASE64, 'base64'));
+  writeFileSync(boldPath, Buffer.from(NOTO_NASKH_ARABIC_BOLD_BASE64, 'base64'));
+  const regularUrl = pathToFileURL(regularPath).href;
+  const boldUrl = pathToFileURL(boldPath).href;
+  return html
+    .split(`url(data:font/ttf;base64,${NOTO_NASKH_ARABIC_REGULAR_BASE64})`).join(`url("${regularUrl}")`)
+    .split(`url(data:font/ttf;base64,${NOTO_NASKH_ARABIC_BOLD_BASE64})`).join(`url("${boldUrl}")`);
 }
 
 /**
@@ -22,8 +42,9 @@ export function renderHtmlToPdfBuffer(html: string): Buffer {
   const htmlPath = join(workDir, 'report.html');
   const pdfPath = join(workDir, 'report.pdf');
   const profileDir = join(workDir, 'chrome-profile');
+  const printableHtml = materializeEmbeddedFontsForPrint(html, workDir);
 
-  writeFileSync(htmlPath, html, 'utf8');
+  writeFileSync(htmlPath, printableHtml, 'utf8');
 
   const chrome = resolveChromeBinary();
   const result = spawnSync(

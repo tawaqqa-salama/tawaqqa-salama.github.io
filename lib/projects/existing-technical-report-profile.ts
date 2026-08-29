@@ -1,4 +1,9 @@
 import { componentsFromFloors } from '@/lib/projects/sbc-classification';
+import {
+  buildExistingReportCoordinatePresentationRows,
+  EXISTING_REPORT_MAPS_LINK_LABEL,
+  formatExistingReportMapsTableRow,
+} from '@/lib/projects/existing-report-presentation';
 import { buildTechnicalReportSourceData } from '@/lib/projects/technical-report-source-data';
 import type { ClientRecord } from '@/lib/types/client';
 import type {
@@ -17,6 +22,7 @@ export type ExistingTechnicalReportSiteProfile = {
   district: string | null;
   city: string | null;
   coordinates: string | null;
+  coordinate_rows: Array<{ label: string; value: string }>;
   maps_url: string | null;
   surrounding_roads: string | null;
   surroundings: TechnicalReportSiteSurroundings | null;
@@ -142,17 +148,12 @@ export function buildExistingReportFacilityRows(
     { label: 'تصنيف الإشغال', value: source.plan.occupancy_classification.value || building.occupancy_classification },
     { label: 'درجة الخطورة', value: technical.risk_class },
     { label: 'العنوان', value: location },
-    { label: 'رابط Google Maps', value: cleanText(technical.maps_url) },
-    {
-      label: 'الإحداثيات',
-      value: cleanText(technical.gps_lat) && cleanText(technical.gps_lng)
-        ? `${technical.gps_lat} ، ${technical.gps_lng}`
-        : null,
-    },
+    formatExistingReportMapsTableRow(technical.maps_url),
+    ...buildExistingReportCoordinatePresentationRows(data, { compact: true }),
   ];
   return rows
     .map((row) => ({ label: row.label, value: cleanText(String(row.value ?? '')) || '' }))
-    .filter((row) => row.value);
+    .filter((row) => row.value || row.label === EXISTING_REPORT_MAPS_LINK_LABEL);
 }
 
 function formatSurroundings(surroundings: TechnicalReportSiteSurroundings | null | undefined): string | null {
@@ -177,6 +178,7 @@ export function buildExistingReportSiteProfile(
   const lat = cleanText(technical.gps_lat);
   const lng = cleanText(technical.gps_lng);
   const coordinates = lat && lng ? `${lat} ، ${lng}` : null;
+  const coordinate_rows = buildExistingReportCoordinatePresentationRows(data, { compact: true });
   const aerialItem = technical.evidence?.items?.find((item) => item.kind === 'satellite_image' && item.file?.dataUrl);
   const aerial_src = photoSrc(technical.earth_photo) || evidenceFileSrc(aerialItem);
   const surroundings = technical.site_surroundings || null;
@@ -188,6 +190,7 @@ export function buildExistingReportSiteProfile(
     district: cleanText(source.project.district.value) || cleanText(client.district),
     city: cleanText(source.project.city.value) || cleanText(client.city),
     coordinates,
+    coordinate_rows,
     maps_url: cleanText(technical.maps_url),
     surrounding_roads: joinLines([
       formattedSurroundings,
