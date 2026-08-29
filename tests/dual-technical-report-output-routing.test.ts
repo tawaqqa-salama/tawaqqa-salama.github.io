@@ -33,6 +33,8 @@ describe('dual technical report output routing', () => {
         kind: 'BLOCKED',
         project_classification: null,
         reason: 'CLASSIFICATION_REQUIRED',
+        status: 'NEEDS_DATA',
+        sourceField: 'clients.project_classification',
       });
     }
   });
@@ -58,7 +60,6 @@ describe('dual technical report output routing', () => {
     expect(modalSource).toContain('تحميل PDF');
     expect(modalSource).toContain("action: 'preview' | 'print' | 'download'");
     expect(modalSource).toContain("disabled={projectClassification === null}");
-    expect(modalSource).toContain('لا يمكن فتح معاينة التقرير الفني لمسار الموقع القائم قبل تصنيف هوية المشروع');
-    expect(modalSource).toContain('لا يمكن فتح معاينة التقرير الفني أو طباعته أو تنزيله قبل التصنيف');
+    expect(modalSource).toContain('classificationNeedsDataMessage');
   });
 });

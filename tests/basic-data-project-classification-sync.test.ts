@@ -61,9 +61,14 @@ describe('Basic Data project classification sync', () => {
   });
 
   it('never guesses from operational project_status values', () => {
-    expect(readBasicDataProjectClassification({ project_status: 'تحت الإنشاء' })).toBeNull();
-    expect(readBasicDataProjectClassification({ project_status: 'قائم - تحت المعاينة' })).toBeNull();
+    expect(readBasicDataProjectClassification({ project_status: 'طلب إصدار ترخيص جديدة' })).toBeNull();
+    expect(readBasicDataProjectClassification({ project_status: 'تجديد رخصة سلامة' })).toBeNull();
     expect(readBasicDataProjectClassification({ project_status: '', project_classification: null })).toBeNull();
+  });
+
+  it('maps only unambiguous legacy operational statuses', () => {
+    expect(readBasicDataProjectClassification({ project_status: 'قائم - تحت المعاينة' })).toBe('EXISTING');
+    expect(readBasicDataProjectClassification({ project_status: 'تحت الإنشاء' })).toBe('UNDER_CONSTRUCTION');
   });
 
   it('prefers clients.project_classification over legacy project_status labels', () => {
