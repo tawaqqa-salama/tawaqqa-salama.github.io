@@ -508,12 +508,29 @@ export interface TechnicalReportPhoto {
   fileName?: string | null;
 }
 
+export interface TechnicalReportSiteSurroundings {
+  north?: string;
+  south?: string;
+  east?: string;
+  west?: string;
+}
+
 export interface TechnicalReportComponentRow {
   id: string;
   part_name: string;
   structure: string;
   classification: string;
   area_m2: string;
+  /** الاستخدام */
+  use?: string;
+  /** عدد الأدوار */
+  floors_count?: string;
+  /** الارتفاع */
+  height?: string;
+  /** السعة / الحمولة */
+  capacity?: string;
+  /** وصف إضافي */
+  description?: string;
 }
 
 /** منطقة استخدام داخل دور */
@@ -694,6 +711,10 @@ export interface CivilDefenseLocationEvidence {
   map_evidence_id?: string | null;
   route_evidence_id?: string | null;
   engineer_confirmed_at?: string | null;
+  /** وصف مسار الوصول — إدخال يدوي فقط */
+  route_description?: string | null;
+  /** رابط خرائط / مصدر خارجي للمسار */
+  maps_source_url?: string | null;
 }
 
 /** Retry token created only after metadata removal has succeeded but Storage cleanup fails. */
@@ -754,6 +775,10 @@ export interface TechnicalReport extends ReportMeta {
   /** إحداثيات الموقع (اختياري) — تُطبع في صفحة بيانات الموقع */
   gps_lat?: string;
   gps_lng?: string;
+  /** رابط Google Maps للموقع */
+  maps_url?: string;
+  /** الجهات المحيطة بالموقع (شمال / جنوب / شرق / غرب) */
+  site_surroundings?: TechnicalReportSiteSurroundings;
   floors_description?: string;
   earth_photo?: TechnicalReportPhoto | null;
   facade_photo?: TechnicalReportPhoto | null;

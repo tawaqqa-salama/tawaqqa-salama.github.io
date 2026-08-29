@@ -6,7 +6,7 @@ import {
   documentToFlowBlocks,
   type FlowBlock,
 } from '@/lib/projects/engineering-report-engine/renderer/flow-document';
-import { EXISTING_MANDATORY_PAGE_SECTIONS, EXISTING_FACADE_MISSING_LABEL } from '@/lib/projects/existing-technical-report-profile';
+import { EXISTING_MANDATORY_PAGE_SECTIONS, EXISTING_FACADE_MISSING_LABEL, EXISTING_AERIAL_MISSING_LABEL, EXISTING_CD_ROUTE_MISSING_LABEL } from '@/lib/projects/existing-technical-report-profile';
 
 function text(value: string): string {
   return formatReportTextHtml(value);
@@ -49,7 +49,10 @@ function renderBlock(block: FlowBlock, locale: 'ar' | 'en', includeDetectionMark
     case 'subsection':
       return `<h3 class="official-subchapter keep-next">${text(block.title)}</h3>`;
     case 'paragraph': {
-      const missingMedia = block.text.trim() === EXISTING_FACADE_MISSING_LABEL;
+      const missingMedia =
+        block.text.trim() === EXISTING_FACADE_MISSING_LABEL ||
+        block.text.trim() === EXISTING_AERIAL_MISSING_LABEL ||
+        block.text.trim() === EXISTING_CD_ROUTE_MISSING_LABEL;
       return `<p class="official-paragraph${missingMedia ? ' official-missing-media' : ''}">${text(block.text)}</p>`;
     }
     case 'bullet_list':
@@ -198,7 +201,7 @@ function css(doc: EngineeringStudyDocument, company: CompanyProfile): string {
   .official-document { width:100%; }
   .official-section { margin:0; padding:0; }
   .official-section-heading { break-after:avoid-page; page-break-after:avoid; margin:0; }
-  .official-mandatory-page { break-before:page; page-break-before:always; break-after:page; page-break-after:always; min-height:0; }
+  .official-mandatory-page { break-before:page; page-break-before:always; min-height:0; }
   .official-mandatory-page + .official-paragraph,
   .official-mandatory-page + .official-table-wrap,
   .official-mandatory-page + .official-unit,

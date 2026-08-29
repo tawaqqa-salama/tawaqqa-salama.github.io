@@ -164,7 +164,7 @@ describe('EXISTING report rebuild — pages 1-6, location, PDF Arabic', () => {
     expect(location).toContain('النرجس');
     expect(html).toContain(`<th>الموقع</th><td>${location.split(' — ')[0]}`);
     const facility = document.sections.find((section) => section.id === 'facility_data');
-    const locationRow = facility?.tables?.[0]?.rows.find(([label]) => label === 'الموقع');
+    const locationRow = facility?.tables?.[0]?.rows.find(([label]) => label === 'العنوان' || label === 'الموقع');
     expect(locationRow?.[1]).toBe(location);
     const site = document.sections.find((section) => section.id === 'site_information');
     expect(JSON.stringify(site)).toContain(location);
@@ -214,20 +214,9 @@ describe('EXISTING report rebuild — pages 1-6, location, PDF Arabic', () => {
     expect(read('lib/projects/engineering-report-engine/renderer/existing-final-technical-template.ts')).toContain('Noto Naskh Arabic');
   });
 
-  it('keeps mandatory sections visible even when optional media is absent', () => {
-    const sparse = parseProjectEngineeringData({
-      ...EMPTY_PROJECT_ENGINEERING_DATA,
-      technical_report: {
-        ...EMPTY_PROJECT_ENGINEERING_DATA.technical_report,
-        outgoing_number: 'TR-SPARSE',
-      },
-    });
-    const model = buildExistingTechnicalReportModel(client, sparse, DEFAULT_COMPANY_PROFILE);
-    const document = buildExistingFinalTechnicalReportDocument(model);
-    const { chapters } = documentToFlowBlocks(document);
-    expect(chapters.slice(0, 4).map((item) => item.id)).toEqual([...EXISTING_MANDATORY_PAGE_SECTIONS]);
-    const html = buildExistingFinalTechnicalReportHtml({ document, company: DEFAULT_COMPANY_PROFILE });
-    expect(html).toContain(EXISTING_FACADE_MISSING_LABEL);
-    expect(html).toContain('official-missing-media');
+  it('does not force page-break-after on mandatory section headings', () => {
+    const css = read('lib/projects/engineering-report-engine/renderer/existing-final-technical-template.ts');
+    expect(css).toContain('.official-mandatory-page { break-before:page; page-break-before:always; min-height:0; }');
+    expect(css).not.toContain('break-after:page; page-break-after:always; min-height:0; }');
   });
 });

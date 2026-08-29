@@ -7,13 +7,19 @@ import type {
   TechnicalEvidenceItem,
   TechnicalReportComponentRow,
   TechnicalReportPhoto,
+  TechnicalReportSiteSurroundings,
 } from '@/lib/types/project-reports';
 
 export type ExistingTechnicalReportSiteProfile = {
   location_text: string | null;
   registered_address: string | null;
+  street: string | null;
+  district: string | null;
+  city: string | null;
   coordinates: string | null;
+  maps_url: string | null;
   surrounding_roads: string | null;
+  surroundings: TechnicalReportSiteSurroundings | null;
   aerial_src: string | null;
   aerial_caption: string | null;
 };
@@ -22,7 +28,9 @@ export type ExistingTechnicalReportCivilDefenseAccess = {
   center_name: string | null;
   distance: string | null;
   travel_time: string | null;
+  route_description: string | null;
   source_label: string | null;
+  maps_source_url: string | null;
   verified_at: string | null;
   map_src: string | null;
   map_caption: string | null;
@@ -130,13 +138,32 @@ export function buildExistingReportFacilityRows(
         : building.licensed_floor_count ?? (client.floors_count != null ? String(client.floors_count) : null),
     },
     { label: 'وصف الأدوار', value: source.plan.floors_description.value || building.floors_description || technical.floors_description },
-    { label: 'الموقع', value: location },
-    { label: 'تصنيف المبنى / الإشغال', value: source.plan.occupancy_classification.value || building.occupancy_classification || technical.building_classification },
+    { label: 'تصنيف المبنى', value: technical.building_classification || building.building_type_code },
+    { label: 'تصنيف الإشغال', value: source.plan.occupancy_classification.value || building.occupancy_classification },
     { label: 'درجة الخطورة', value: technical.risk_class },
+    { label: 'العنوان', value: location },
+    { label: 'رابط Google Maps', value: cleanText(technical.maps_url) },
+    {
+      label: 'الإحداثيات',
+      value: cleanText(technical.gps_lat) && cleanText(technical.gps_lng)
+        ? `${technical.gps_lat} ، ${technical.gps_lng}`
+        : null,
+    },
   ];
   return rows
     .map((row) => ({ label: row.label, value: cleanText(String(row.value ?? '')) || '' }))
     .filter((row) => row.value);
+}
+
+function formatSurroundings(surroundings: TechnicalReportSiteSurroundings | null | undefined): string | null {
+  if (!surroundings) return null;
+  const parts = [
+    cleanText(surroundings.north) ? `شمالاً: ${surroundings.north}` : null,
+    cleanText(surroundings.south) ? `جنوباً: ${surroundings.south}` : null,
+    cleanText(surroundings.east) ? `شرقاً: ${surroundings.east}` : null,
+    cleanText(surroundings.west) ? `غرباً: ${surroundings.west}` : null,
+  ].filter(Boolean);
+  return parts.length ? parts.join(' — ') : null;
 }
 
 export function buildExistingReportSiteProfile(
@@ -145,20 +172,29 @@ export function buildExistingReportSiteProfile(
   location: string | null
 ): ExistingTechnicalReportSiteProfile {
   const technical = data.technical_report;
+  const source = buildTechnicalReportSourceData({ client, engineeringData: data });
   const design = data.fire_protection_design;
   const lat = cleanText(technical.gps_lat);
   const lng = cleanText(technical.gps_lng);
   const coordinates = lat && lng ? `${lat} ، ${lng}` : null;
   const aerialItem = technical.evidence?.items?.find((item) => item.kind === 'satellite_image' && item.file?.dataUrl);
   const aerial_src = photoSrc(technical.earth_photo) || evidenceFileSrc(aerialItem);
+  const surroundings = technical.site_surroundings || null;
+  const formattedSurroundings = formatSurroundings(surroundings);
   return {
     location_text: cleanText(technical.location_description),
     registered_address: location,
+    street: cleanText(source.project.street.value) || cleanText(client.street),
+    district: cleanText(source.project.district.value) || cleanText(client.district),
+    city: cleanText(source.project.city.value) || cleanText(client.city),
     coordinates,
+    maps_url: cleanText(technical.maps_url),
     surrounding_roads: joinLines([
+      formattedSurroundings,
       design?.fire_truck_access?.site_entrance,
       design?.fire_truck_access?.fire_road,
     ]),
+    surroundings,
     aerial_src,
     aerial_caption: cleanText(technical.earth_photo?.caption) || cleanText(aerialItem?.title) || 'صورة جوية للموقع',
   };
@@ -170,15 +206,17 @@ export function buildExistingReportCivilDefenseAccess(data: ProjectEngineeringDa
     || data.technical_report.evidence?.items?.find((item) => item.kind === 'civil_defense_map' && item.file?.dataUrl);
   const routeItem = evidenceItem(data, cd?.route_evidence_id)
     || data.technical_report.evidence?.items?.find((item) => item.kind === 'civil_defense_route' && item.file?.dataUrl);
-  const map_src = evidenceFileSrc(mapItem) || evidenceFileSrc(routeItem);
+  const map_src = evidenceFileSrc(routeItem) || evidenceFileSrc(mapItem);
   return {
     center_name: cleanText(cd?.center_name),
     distance: formatDistance(cd),
     travel_time: formatTravelTime(cd),
+    route_description: cleanText(cd?.route_description),
     source_label: cleanText(cd?.source_label),
+    maps_source_url: cleanText(cd?.maps_source_url),
     verified_at: cleanText(cd?.engineer_confirmed_at),
     map_src,
-    map_caption: cleanText(mapItem?.title) || cleanText(routeItem?.title) || 'خريطة توضح مسار الوصول',
+    map_caption: cleanText(routeItem?.title) || cleanText(mapItem?.title) || 'صورة مسار أقرب مركز دفاع مدني',
   };
 }
 
@@ -202,12 +240,12 @@ function componentRows(data: ProjectEngineeringData): TechnicalReportComponentRo
 export function buildExistingReportComponents(data: ProjectEngineeringData): ExistingTechnicalReportComponentRow[] {
   return componentRows(data).map((row) => ({
     name: row.part_name,
-    use: null,
+    use: cleanText(row.use),
     area: cleanText(row.area_m2) ? `${row.area_m2} م²` : null,
-    height: null,
-    floors: null,
-    capacity: null,
-    description: cleanText(row.structure) ? `الهيكل: ${row.structure}` : null,
+    height: cleanText(row.height),
+    floors: cleanText(row.floors_count),
+    capacity: cleanText(row.capacity),
+    description: cleanText(row.description) || (cleanText(row.structure) ? `نوع الإنشاء: ${row.structure}` : null),
     hazard: cleanText(row.classification),
   }));
 }
@@ -216,7 +254,9 @@ export function existingReportDisplayValue(value: string | null | undefined): st
   return cleanText(value) || 'غير محدد';
 }
 
-export const EXISTING_FACADE_MISSING_LABEL = 'صورة واجهة المشروع غير مرفقة';
+export const EXISTING_FACADE_MISSING_LABEL = 'لم يتم إرفاق صورة واجهة المشروع';
+export const EXISTING_AERIAL_MISSING_LABEL = 'لم يتم إرفاق الصورة الجوية للموقع';
+export const EXISTING_CD_ROUTE_MISSING_LABEL = 'لم يتم إرفاق صورة مسار الدفاع المدني';
 
 export const EXISTING_ASSESSMENT_SECTION_IDS = {
   site: 'existing_assessment_site',
