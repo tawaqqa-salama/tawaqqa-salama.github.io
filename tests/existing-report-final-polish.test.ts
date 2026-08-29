@@ -235,6 +235,9 @@ describe('EXISTING report final polish', () => {
     if (!existsSync(resultPath)) return;
     const result = JSON.parse(readFileSync(resultPath, 'utf8')) as {
       pageMap?: Record<string, number>;
+      page6OnlyComponents?: boolean;
+      componentsSectionPage?: number;
+      firstAssessmentPage?: number;
       arabicExtraction?: { ok: boolean; engine: string; notes?: string[] };
     };
     expect(result.pageMap?.facility_data).toBe(3);
