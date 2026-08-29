@@ -21,6 +21,7 @@ const MODULES_WITH_SUBNAV = new Set([
   'procurement',
   'finance',
   'hr',
+  'design',
   'settings',
 ]);
 
@@ -31,6 +32,7 @@ export type ModuleSubNavKey =
   | 'finance'
   | 'hr'
   | 'projects'
+  | 'design'
   | 'settings'
   | null;
 
@@ -56,6 +58,7 @@ function resolveModuleKey(pathname: string): ModuleSubNavKey {
   if (pathname.startsWith('/finance')) return 'finance';
   if (pathname.startsWith('/hr')) return 'hr';
   if (pathname.startsWith('/projects')) return 'projects';
+  if (pathname.startsWith('/design')) return 'design';
   if (pathname.startsWith('/settings')) return 'settings';
   return null;
 }
@@ -75,9 +78,8 @@ function writePrefs(prefs: StoredPrefs) {
   localStorage.setItem(STORAGE_KEY, JSON.stringify(prefs));
 }
 
-function defaultOpenForViewport(isMobile: boolean): boolean {
-  // الجوال: مخفية افتراضياً — سطح المكتب: ظاهرة
-  return !isMobile;
+function defaultOpenForViewport(): boolean {
+  return false;
 }
 
 export function ModuleSubNavProvider({ children }: { children: ReactNode }) {
@@ -88,9 +90,7 @@ export function ModuleSubNavProvider({ children }: { children: ReactNode }) {
   const [isMobile, setIsMobile] = useState(() =>
     typeof window !== 'undefined' ? window.matchMedia(MOBILE_QUERY).matches : false
   );
-  const [open, setOpen] = useState(() =>
-    typeof window !== 'undefined' ? !window.matchMedia(MOBILE_QUERY).matches : true
-  );
+  const [open, setOpen] = useState(false);
 
   useEffect(() => {
     if (typeof window === 'undefined') return;
@@ -111,7 +111,7 @@ export function ModuleSubNavProvider({ children }: { children: ReactNode }) {
       setOpen(prefs[moduleKey]);
       return;
     }
-    setOpen(defaultOpenForViewport(isMobile));
+    setOpen(defaultOpenForViewport());
   }, [moduleKey, hasSubNav, isMobile]);
 
   const persist = useCallback(

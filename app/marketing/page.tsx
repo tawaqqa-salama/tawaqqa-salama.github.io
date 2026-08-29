@@ -274,7 +274,7 @@ function MarketingPageInner() {
           activeClassName="bg-purple-600 text-white shadow-sm"
           idleClassName="bg-white border border-gray-200 text-gray-800"
           items={[
-            { id: 'dashboard', label: 'Overview' },
+            { id: 'dashboard', label: t('subnav.dashboard') },
             { id: 'leads', label: t('marketing.tab.leads') },
             { id: 'campaigns', label: 'Campaigns' },
             { id: 'whatsapp', label: 'WhatsApp' },

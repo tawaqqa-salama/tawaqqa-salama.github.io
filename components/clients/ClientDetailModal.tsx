@@ -50,7 +50,7 @@ import {
 } from '@/lib/constants/quotation-services';
 import { loadCompanyPricing } from '@/lib/company-profile';
 import QuotationDocumentsUpload from '@/components/sales/QuotationDocumentsUpload';
-import ClientPageNavigation from '@/components/sales/ClientPageNavigation';
+import { useClientPageNav } from '@/components/layout/ClientPageNavContext';
 import ContractModal from '@/components/sales/ContractModal';
 import { processZatcaOnQuotationApproval } from '@/lib/zatca/submit';
 import { findExistingContractForQuote, processAutoContractOnApproval } from '@/lib/business/contract-service';
@@ -149,6 +149,8 @@ export default function ClientDetailModal({
   const [baselineRevision, setBaselineRevision] = useState(0);
   const [contractModalOpen, setContractModalOpen] = useState(false);
   const [pendingNavigation, setPendingNavigation] = useState<'basic' | 'quotation' | 'contract' | null>(null);
+  const requestClientNavigationRef = useRef<(target: 'basic' | 'quotation' | 'contract') => void>(() => undefined);
+  const { register: registerClientNav, unregister: unregisterClientNav } = useClientPageNav();
 
   useEffect(() => {
     onDirtyChange?.(isDirty);
@@ -563,10 +565,6 @@ export default function ClientDetailModal({
   const quotationIsIssued = Boolean(quotationNumber && quotationStatus !== 'مسودة');
   const quotationLocked = contractLinked || contractCheckLoading;
 
-  if (!client) return null;
-
-  const hasUnsavedChanges = () => isDirty;
-
   const completeNavigation = (target: 'basic' | 'quotation' | 'contract') => {
     setPendingNavigation(null);
     if (target === 'contract') {
@@ -578,13 +576,46 @@ export default function ClientDetailModal({
 
   const requestClientNavigation = (target: 'basic' | 'quotation' | 'contract') => {
     if (saving) return;
-    if (hasUnsavedChanges()) {
+    if (isDirty) {
       setPendingNavigation(target);
       setUnsavedWarningOpen(true);
       return;
     }
     completeNavigation(target);
   };
+
+  useEffect(() => {
+    requestClientNavigationRef.current = requestClientNavigation;
+  });
+
+  useEffect(() => {
+    if (!client || !isStandalonePresentation) {
+      unregisterClientNav();
+      return;
+    }
+    registerClientNav({
+      label: 'صفحات العميل',
+      activeId: isPagePresentation ? 'basic' : 'quotation',
+      items: [
+        { id: 'basic', label: 'البيانات الأساسية', icon: '▣' },
+        { id: 'quotation', label: 'عرض السعر', icon: '▤' },
+        { id: 'contract', label: 'العقد', icon: '✎' },
+      ],
+      onNavigate: (id) =>
+        requestClientNavigationRef.current(id as 'basic' | 'quotation' | 'contract'),
+    });
+    return () => unregisterClientNav();
+  }, [
+    client,
+    isStandalonePresentation,
+    isPagePresentation,
+    registerClientNav,
+    unregisterClientNav,
+  ]);
+
+  if (!client) return null;
+
+  const hasUnsavedChanges = () => isDirty;
 
   const requestClose = () => {
     if (saving) return;
@@ -1053,22 +1084,16 @@ export default function ClientDetailModal({
       <div className={isStandalonePresentation ? 'min-h-screen w-full bg-white' : 'bg-white rounded-t-2xl sm:rounded-2xl shadow-xl w-full max-w-4xl max-h-[94vh] overflow-hidden flex flex-col'}>
         <div className="relative p-6 border-b">
           <div className="flex justify-between items-start gap-4">
-            <div className={isStandalonePresentation ? 'pr-24 sm:pr-28' : undefined}>
+            <div>
               <h2 className="text-xl font-bold text-gray-800">{isPagePresentation ? 'البيانات الأساسية للعميل' : isQuotationPresentation ? 'عرض السعر للعميل' : 'متابعة معاملة العميل'}</h2>
               <p className="text-sm text-gray-500 mt-1">
                 {client.business_name || client.name} — {client.client_code}
               </p>
             </div>
             {isStandalonePresentation ? (
-              <div className="absolute right-6 top-6 flex items-start gap-2">
-                <ClientPageNavigation
-                  active={isPagePresentation ? 'basic' : 'quotation'}
-                  onNavigate={requestClientNavigation}
-                />
-                <button type="button" onClick={requestClose} disabled={saving} className="rounded-xl border border-slate-300 px-3 py-2 text-sm font-semibold text-slate-700 disabled:opacity-40">
-                  العودة
-                </button>
-              </div>
+              <button type="button" onClick={requestClose} disabled={saving} className="rounded-xl border border-slate-300 px-3 py-2 text-sm font-semibold text-slate-700 disabled:opacity-40">
+                العودة
+              </button>
             ) : (
               <button onClick={requestClose} disabled={saving} className="text-gray-400 hover:text-gray-600 text-2xl leading-none disabled:opacity-40">
                 ×

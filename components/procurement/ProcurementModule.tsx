@@ -33,7 +33,7 @@ import {
 import type { ClientRecord } from '@/lib/types/client';
 import { parseProjectEngineeringData } from '@/lib/business/project-reports';
 
-type TabId = 'vendors' | 'subcontractors' | 'orders' | 'boq-rfq';
+type TabId = 'dashboard' | 'vendors' | 'subcontractors' | 'orders' | 'boq-rfq';
 
 const emptyVendor = (type: VendorType): Partial<ProcurementVendor> & { name: string; vendor_type: VendorType } => ({
   name: '',
@@ -53,7 +53,7 @@ export default function ProcurementModule() {
   const searchParams = useSearchParams();
   const initialTab = (searchParams.get('tab') as TabId | null) || 'vendors';
   const [tab, setTab] = useState<TabId>(
-    ['vendors', 'subcontractors', 'orders', 'boq-rfq'].includes(initialTab) ? initialTab : 'vendors'
+    ['dashboard', 'vendors', 'subcontractors', 'orders', 'boq-rfq'].includes(initialTab) ? initialTab : 'dashboard'
   );
   const [vendors, setVendors] = useState<ProcurementVendor[]>([]);
   const [orders, setOrders] = useState<PurchaseOrder[]>([]);
@@ -79,7 +79,7 @@ export default function ProcurementModule() {
 
   useEffect(() => {
     const t = searchParams.get('tab') as TabId | null;
-    if (t && ['vendors', 'subcontractors', 'orders', 'boq-rfq'].includes(t)) {
+    if (t && ['dashboard', 'vendors', 'subcontractors', 'orders', 'boq-rfq'].includes(t)) {
       setTab(t);
       if (t === 'vendors') setVendorForm((f) => ({ ...f, vendor_type: 'supplier' }));
       if (t === 'subcontractors') setVendorForm((f) => ({ ...f, vendor_type: 'subcontractor' }));
@@ -233,6 +233,7 @@ export default function ProcurementModule() {
           activeClassName="bg-[#635bdb] text-white shadow-sm"
           idleClassName="bg-white border border-gray-200 text-gray-800"
           items={[
+            { id: 'dashboard', label: t('subnav.dashboard') },
             { id: 'vendors', label: t('procurement.tab.vendors') },
             { id: 'subcontractors', label: t('procurement.tab.subcontractors') },
             { id: 'orders', label: t('procurement.tab.orders') },
@@ -240,6 +241,23 @@ export default function ProcurementModule() {
           ]}
         />
       </ModuleSubNavSlot>
+
+      {tab === 'dashboard' && (
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+          <div className="rounded-xl border bg-white p-4">
+            <p className="text-xs text-gray-500">{t('procurement.dashboard.vendors')}</p>
+            <p className="text-2xl font-bold text-gray-900 mt-1">{vendors.length}</p>
+          </div>
+          <div className="rounded-xl border bg-white p-4">
+            <p className="text-xs text-gray-500">{t('procurement.dashboard.orders')}</p>
+            <p className="text-2xl font-bold text-gray-900 mt-1">{orders.length}</p>
+          </div>
+          <div className="rounded-xl border bg-white p-4">
+            <p className="text-xs text-gray-500">{t('procurement.dashboard.rfqs')}</p>
+            <p className="text-2xl font-bold text-gray-900 mt-1">{rfqs.length}</p>
+          </div>
+        </div>
+      )}
 
       {message && (
         <div className="rounded-xl border border-emerald-100 bg-emerald-50 px-3 py-2 text-sm text-emerald-900">

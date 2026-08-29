@@ -1,7 +1,7 @@
 'use client';
 
 import { usePathname, useSearchParams } from 'next/navigation';
-import { FINANCE_NAV } from '@/lib/constants/accounting';
+import { ENTERPRISE_FINANCE_TABS, FINANCE_NAV } from '@/lib/constants/accounting';
 import ModuleSubNavSlot from '@/components/layout/ModuleSubNavSlot';
 import ModuleTabBar from '@/components/layout/ModuleTabBar';
 import { useLanguage } from '@/lib/i18n/LanguageProvider';
@@ -23,12 +23,13 @@ function financeItemId(href: string): string {
   return path.replace('/finance/', '').replace(/\//g, '-') || 'dashboard';
 }
 
-/** تبويبات داخلية لنظام الحسابات — تُخفى/تُظهر عبر زر ☰ */
+/** تبويبات داخلية لنظام الحسابات — تُخفى/تُظهر عبر زر ☰ فقط */
 export function FinanceSubNav() {
   const pathname = usePathname();
   const searchParams = useSearchParams();
   const currentTab = searchParams.get('tab');
-  const { t, tFinance } = useLanguage();
+  const { lang, t, tFinance } = useLanguage();
+  const isAr = lang !== 'en';
 
   let activeId = 'dashboard';
   for (const item of FINANCE_NAV) {
@@ -52,11 +53,31 @@ export function FinanceSubNav() {
     }
   }
 
-  const items = FINANCE_NAV.map((item) => ({
-    id: financeItemId(item.href),
-    label: tFinance(item.href, item.label),
-    href: item.href,
-  }));
+  if (pathname.startsWith('/finance/enterprise')) {
+    const enterpriseTab = currentTab || 'dashboard';
+    activeId = `enterprise-${enterpriseTab}`;
+  }
+
+  const items = FINANCE_NAV.map((item) => {
+    const id = financeItemId(item.href);
+    if (item.href === '/finance/enterprise') {
+      return {
+        id,
+        label: tFinance(item.href, item.label),
+        href: item.href,
+        children: ENTERPRISE_FINANCE_TABS.map((tab) => ({
+          id: `enterprise-${tab.id}`,
+          label: isAr ? tab.ar : tab.en,
+          href: `/finance/enterprise?tab=${tab.id}`,
+        })),
+      };
+    }
+    return {
+      id,
+      label: tFinance(item.href, item.label),
+      href: item.href,
+    };
+  });
 
   return (
     <ModuleSubNavSlot label={t('subnav.finance')}>

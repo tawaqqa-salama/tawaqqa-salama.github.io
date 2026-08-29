@@ -72,7 +72,7 @@ function contractStatus(user: AppUser): { label: string; className: string } {
 export default function HRPage() {
   const { canManageStaff } = useAuth();
   const { t } = useLanguage();
-  const [tab, setTab] = useState<'employees' | 'assignments'>('employees');
+  const [tab, setTab] = useState<'dashboard' | 'employees' | 'assignments'>('dashboard');
   const [users, setUsers] = useState<AppUser[]>([]);
   const [roles, setRoles] = useState<AppRole[]>([]);
   const [form, setForm] = useState<HrForm>(EMPTY_FORM);
@@ -261,10 +261,11 @@ export default function HRPage() {
         <ModuleTabBar
           ariaLabel={t('subnav.hr')}
           activeId={tab}
-          onChange={(id) => setTab(id as 'employees' | 'assignments')}
+          onChange={(id) => setTab(id as 'dashboard' | 'employees' | 'assignments')}
           activeClassName="bg-[#635bdb] text-white shadow-sm"
           idleClassName="bg-white border border-gray-200 text-gray-700"
           items={[
+            { id: 'dashboard', label: t('subnav.dashboard') },
             { id: 'employees', label: t('hr.tab.employees') },
             { id: 'assignments', label: t('hr.tab.assignments') },
             ...(canManageStaff
@@ -273,6 +274,23 @@ export default function HRPage() {
           ]}
         />
       </ModuleSubNavSlot>
+
+      {tab === 'dashboard' && (
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+          <div className="rounded-xl border bg-white p-4">
+            <p className="text-xs text-gray-500">{t('hr.dashboard.employees')}</p>
+            <p className="text-2xl font-bold text-gray-900 mt-1">{users.length}</p>
+          </div>
+          <div className="rounded-xl border bg-white p-4">
+            <p className="text-xs text-gray-500">{t('hr.dashboard.active')}</p>
+            <p className="text-2xl font-bold text-gray-900 mt-1">{users.filter((user) => user.is_active).length}</p>
+          </div>
+          <div className="rounded-xl border bg-white p-4">
+            <p className="text-xs text-gray-500">{t('hr.dashboard.assignments')}</p>
+            <p className="text-2xl font-bold text-gray-900 mt-1">{clients.length}</p>
+          </div>
+        </div>
+      )}
 
       {tab === 'employees' ? (
         <div className="grid grid-cols-1 xl:grid-cols-5 gap-6">

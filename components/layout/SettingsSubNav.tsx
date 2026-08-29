@@ -45,7 +45,7 @@ export default function SettingsSubNav() {
       <ModuleTabBar
         items={links.map((item) => ({
           id: item.id,
-          label: t(item.key),
+          label: item.id === 'overview' ? t('subnav.dashboard') : t(item.key),
           href: item.href,
         }))}
         activeId={activeId}
