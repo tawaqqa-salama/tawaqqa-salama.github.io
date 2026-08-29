@@ -94,6 +94,25 @@ function imageBlock(
   };
 }
 
+function placeholderImageBlock(
+  sectionId: EngineeringStudySectionId,
+  caption: string,
+  placeholder: string,
+  imageType: EngineeringStudyImage['image_type'] = 'site'
+): EngineeringStudyImage {
+  return {
+    src: '',
+    caption_ar: caption,
+    caption_en: caption,
+    section_id: sectionId,
+    image_type: imageType,
+    layout_type: 'single',
+    placeholder_ar: placeholder,
+    placeholder_en: placeholder,
+    presentation_state: 'unavailable',
+  };
+}
+
 function assessmentTables(group: ExistingTechnicalReportAssessmentSection): EngineeringStudySection['tables'] {
   return group.systems.map((item) => table(
     `${group.label} — ${item.system_label}`,
@@ -123,67 +142,67 @@ export function buildExistingFinalTechnicalReportDocument(
   const location = text(model.project_information.location);
 
   const facilityImages = model.media.facade_src
-    ? [imageBlock('facility_data', model.media.facade_src, model.media.facade_caption || 'صورة واجهة المشروع', 'facade')]
-    : [];
+    ? [imageBlock('facility_data', model.media.facade_src, 'صورة واجهة المشروع', 'facade')]
+    : [placeholderImageBlock('facility_data', 'صورة واجهة المشروع', EXISTING_FACADE_MISSING_LABEL, 'facade')];
 
   sections.push(section(
     'facility_data',
     ++sectionNumber,
     'بيانات المنشأة',
-    model.media.facade_src ? [] : [EXISTING_FACADE_MISSING_LABEL],
+    [],
     model.facility_rows.length ? [twoColumn('بيانات المنشأة', model.facility_rows)] : [],
     facilityImages
   ));
 
   const site = model.site_profile;
-  const siteParagraphs = [
-    site.location_text
-      ? `تعريف الموقع: ${site.location_text}`
-      : 'يُعرض في هذه الصفحة العنوان المسجل وبيانات الموقع كما وردت في ملف المشروع دون استنتاج موقع جديد.',
-    site.street ? `الشارع: ${site.street}` : '',
-    site.district ? `الحي: ${site.district}` : '',
-    site.city ? `المدينة: ${site.city}` : '',
-    `العنوان المسجل: ${existingReportDisplayValue(site.registered_address)}`,
-    `الإحداثيات: ${existingReportDisplayValue(site.coordinates)}`,
-    site.maps_url ? `رابط الخريطة: ${site.maps_url}` : '',
-    site.surrounding_roads ? `الحدود المحيطة / مداخل الموقع: ${site.surrounding_roads}` : '',
-  ].filter(Boolean);
+  const siteIntro = site.location_text
+    ? [`تعريف الموقع: ${site.location_text}`]
+    : ['يُعرض في هذه الصفحة العنوان المسجل وبيانات الموقع كما وردت في ملف المشروع دون استنتاج موقع جديد.'];
+  const siteTables = [
+    twoColumn('بيانات الموقع', [
+      { label: 'الشارع', value: existingReportDisplayValue(site.street) },
+      { label: 'الحي', value: existingReportDisplayValue(site.district) },
+      { label: 'المدينة', value: existingReportDisplayValue(site.city) },
+      { label: 'الموقع', value: existingReportDisplayValue(location) },
+      { label: 'الإحداثيات', value: existingReportDisplayValue(site.coordinates) },
+      ...(site.maps_url ? [{ label: 'رابط الخريطة', value: site.maps_url }] : []),
+    ]),
+  ];
+  const boundaryRows = [
+    site.surroundings?.north ? { label: 'شمالاً', value: site.surroundings.north } : null,
+    site.surroundings?.south ? { label: 'جنوباً', value: site.surroundings.south } : null,
+    site.surroundings?.east ? { label: 'شرقاً', value: site.surroundings.east } : null,
+    site.surroundings?.west ? { label: 'غرباً', value: site.surroundings.west } : null,
+  ].filter((row): row is { label: string; value: string } => Boolean(row));
+  if (boundaryRows.length) {
+    siteTables.push(twoColumn('حدود الموقع', boundaryRows));
+  } else if (site.surrounding_roads) {
+    siteTables.push(twoColumn('حدود الموقع', [{ label: 'الحدود / المحيط', value: site.surrounding_roads }]));
+  }
   const siteImages = site.aerial_src
-    ? [imageBlock('site_information', site.aerial_src, site.aerial_caption || 'صورة جوية للموقع', 'site_map')]
-    : [];
+    ? [imageBlock('site_information', site.aerial_src, 'الصورة الجوية للموقع', 'site_map')]
+    : [placeholderImageBlock('site_information', 'الصورة الجوية للموقع', EXISTING_AERIAL_MISSING_LABEL, 'site_map')];
   sections.push(section(
     'site_information',
     ++sectionNumber,
     'الموقع',
-    site.aerial_src ? siteParagraphs : [...siteParagraphs, EXISTING_AERIAL_MISSING_LABEL],
-    [
-      twoColumn('بيانات الموقع', [
-        { label: 'الشارع', value: existingReportDisplayValue(site.street) },
-        { label: 'الحي', value: existingReportDisplayValue(site.district) },
-        { label: 'المدينة', value: existingReportDisplayValue(site.city) },
-        { label: 'الموقع', value: existingReportDisplayValue(location) },
-      ]),
-    ],
+    siteIntro,
+    siteTables,
     siteImages
   ));
 
   const cd = model.civil_defense_access;
   const cdImages = cd.map_src
-    ? [imageBlock('fire_truck_access', cd.map_src, cd.map_caption || 'صورة مسار أقرب مركز دفاع مدني', 'site_map')]
-    : [];
+    ? [imageBlock('fire_truck_access', cd.map_src, 'خريطة مسار الوصول', 'site_map')]
+    : [placeholderImageBlock('fire_truck_access', 'خريطة مسار الوصول', EXISTING_CD_ROUTE_MISSING_LABEL, 'site_map')];
   sections.push(section(
     'fire_truck_access',
     ++sectionNumber,
     'إمكانية وصول آليات الدفاع المدني',
-    cd.map_src
-      ? [
-          'تُعرض بيانات الوصول كما سجلها المهندس أو كما وردت في الأدلة المرفقة. لا يحسب التقرير مسافة أو زمن وصول تلقائيًا.',
-          cd.route_description ? `وصف مسار الوصول: ${cd.route_description}` : '',
-        ].filter(Boolean)
-      : [
-          'تُعرض بيانات الوصول كما سجلها المهندس أو كما وردت في الأدلة المرفقة. لا يحسب التقرير مسافة أو زمن وصول تلقائيًا.',
-          EXISTING_CD_ROUTE_MISSING_LABEL,
-        ],
+    [
+      'تُعرض بيانات الوصول كما سجلها المهندس أو كما وردت في الأدلة المرفقة. لا يحسب التقرير مسافة أو زمن وصول تلقائيًا.',
+      cd.route_description ? `وصف مسار الوصول: ${cd.route_description}` : '',
+    ].filter(Boolean),
     [twoColumn('بيانات الوصول', [
       { label: 'أقرب مركز دفاع مدني', value: existingReportDisplayValue(cd.center_name) },
       { label: 'المسافة', value: existingReportDisplayValue(cd.distance) },
@@ -196,12 +215,13 @@ export function buildExistingFinalTechnicalReportDocument(
     cdImages
   ));
 
-  const componentRows = model.project_components.map((item) => [
+  const componentRows = model.project_components.map((item, index) => [
+    String(index + 1),
     item.name,
     existingReportDisplayValue(item.use),
     existingReportDisplayValue(item.area),
-    existingReportDisplayValue(item.height),
     existingReportDisplayValue(item.floors),
+    existingReportDisplayValue(item.height),
     existingReportDisplayValue(item.capacity),
     existingReportDisplayValue(item.description),
     existingReportDisplayValue(item.hazard),
@@ -214,7 +234,11 @@ export function buildExistingFinalTechnicalReportDocument(
       ? ['تُعرض مكونات المشروع كما سجلت في ملف المشروع دون افتراض تفاصيل غير موجودة.']
       : ['لم تُسجل مكونات مشروع تفصيلية في الملف الحالي.'],
     componentRows.length
-      ? [table('مكونات المشروع', ['المكوّن', 'الاستخدام', 'المساحة', 'الارتفاع', 'عدد الأدوار', 'السعة/الحمولة', 'الوصف', 'تصنيف الخطورة'], componentRows)]
+      ? [table(
+          'مكونات المشروع',
+          ['م', 'اسم المكون', 'الاستخدام', 'المساحة', 'عدد الأدوار', 'الارتفاع', 'السعة/الحمولة', 'نوع الإنشاء', 'تصنيف الخطورة'],
+          componentRows
+        )]
       : []
   ));
 

@@ -10,6 +10,7 @@ import type {
   EngineeringStudySectionId,
 } from '@/lib/projects/engineering-report-engine/types';
 import { EXISTING_MANDATORY_PAGE_SECTIONS } from '@/lib/projects/existing-technical-report-profile';
+import { isExistingReportMissingMediaLabel } from '@/lib/projects/engineering-report-engine/renderer/existing-report-design-system';
 import { placeSectionImages, sanitizeCaption } from '@/lib/projects/engineering-report-engine/renderer/image-placement';
 import { getItemProse } from '@/lib/projects/engineering-report-engine/renderer/subsection-prose';
 
@@ -25,6 +26,11 @@ export type FlowFigure = {
   aspectRatio?: number | null;
   note?: string;
   imageId?: string;
+  /** Unified image frame title (e.g. صورة واجهة المشروع). */
+  displayTitle?: string;
+  /** Missing-media message rendered inside the fixed frame. */
+  placeholder?: string;
+  objectPosition?: 'center' | 'top' | 'bottom' | 'left' | 'right';
 };
 
 export type FlowBlock =
@@ -296,13 +302,14 @@ function buildFigureBlock(
   subsectionTitle: string,
   note?: string
 ): FlowFigure {
+  const title = locale === 'ar' ? img.caption_ar : img.caption_en;
   return {
     kind: 'figure',
     src: img.src,
     caption: figureCaption(
       locale,
       figureNo,
-      locale === 'ar' ? img.caption_ar : img.caption_en,
+      title,
       subsectionTitle
     ),
     figureNo,
@@ -313,7 +320,14 @@ function buildFigureBlock(
     aspectRatio: img.aspect_ratio,
     note: note || undefined,
     imageId: img.image_id,
+    displayTitle: title,
+    placeholder: locale === 'ar' ? img.placeholder_ar : img.placeholder_en,
+    objectPosition: figureVariant(img) === 'map' ? 'center' : 'center',
   };
+}
+
+function isExistingMandatoryLayoutSection(sectionId: string): boolean {
+  return (EXISTING_MANDATORY_PAGE_SECTIONS as readonly string[]).includes(sectionId) || sectionId === 'project_components';
 }
 
 type SubGroup = {
@@ -586,6 +600,41 @@ export function sectionToFlowBlocks(
   }
 
   // Chapter intro — one engineering overview paragraph (not per-image filler)
+  if (isExistingMandatoryLayoutSection(section.id)) {
+    for (const t of tables) {
+      blocks.push({
+        kind: 'table',
+        tableNo: ++counters.tables,
+        caption: locale === 'ar' ? t.caption_ar : t.caption_en,
+        headers: locale === 'ar' ? t.headers_ar : t.headers_en,
+        rows: t.rows,
+      });
+    }
+    for (const p of paras) {
+      if (isExistingReportMissingMediaLabel(p.text)) continue;
+      blocks.push({
+        kind: 'paragraph',
+        text: sanitizeClientFacingText(p.text, locale),
+        incomplete: p.incomplete,
+      });
+    }
+    const groups = groupImagesBySubsection(images, locale);
+    for (const group of groups) {
+      for (const img of group.images) {
+        counters.figures += 1;
+        blocks.push({
+          kind: 'unit',
+          blocks: [buildFigureBlock(locale, img, counters.figures, group.title)],
+        });
+      }
+    }
+    if (refs.length) {
+      counters.references += 1;
+      blocks.push({ kind: 'reference_note', refs, referenceNo: counters.references });
+    }
+    return blocks;
+  }
+
   if (paras.length) {
     blocks.push({
       kind: 'paragraph',

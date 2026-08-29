@@ -272,9 +272,9 @@ describe('PR 7 — EXISTING final A4 technical report document', () => {
     expect(html).toContain('@page { size:A4 portrait');
     expect(html).toContain('class="official-cover"');
     expect(html).toContain('class="official-toc-page"');
-    expect(html).toContain('class="official-table-wrap"');
+    expect(html).toContain('existing-report-table-wrap');
     expect(html).toContain('official-summary-metrics');
-    expect(html).toContain('official-cell-text');
+    expect(html).toContain('existing-report-cell-text');
     expect(html).toContain('official-engineering-run');
     expect(read('lib/projects/engineering-report-engine/renderer/existing-final-technical-template.ts')).toContain('dir="ltr" class="official-engineering-run"');
     expect(html).toContain('border-top:.75mm solid #1b8f91');

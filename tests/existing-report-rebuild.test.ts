@@ -172,8 +172,8 @@ describe('EXISTING report rebuild — pages 1-6, location, PDF Arabic', () => {
 
   it('renders facade, aerial, and civil defense map when present and placeholder when facade missing', () => {
     const withMedia = buildHtml();
-    expect(withMedia.html).toContain('official-figure');
-    expect(withMedia.html).toContain('صورة جوية');
+    expect(withMedia.html).toContain('existing-report-image-block');
+    expect(withMedia.html).toContain('الصورة الجوية للموقع');
 
     const withoutFacade = buildHtml(parseProjectEngineeringData({
       ...baseData(),
@@ -183,7 +183,7 @@ describe('EXISTING report rebuild — pages 1-6, location, PDF Arabic', () => {
       },
     }));
     expect(withoutFacade.html).toContain(EXISTING_FACADE_MISSING_LABEL);
-    expect(withoutFacade.html).toContain('official-missing-media');
+    expect(withoutFacade.html).toContain('existing-report-image-slot is-missing');
   });
 
   it('does not leak calculated defaults into engineering rows', () => {
