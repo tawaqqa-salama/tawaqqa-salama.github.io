@@ -13,8 +13,12 @@ import {
 } from '@/lib/projects/existing-project-assessment';
 import type { ClientRecord } from '@/lib/types/client';
 import type { ProjectEngineeringData, TechnicalProjectRecommendation } from '@/lib/types/project-reports';
-import { EMPTY_FIRE_PROTECTION_DESIGN, formatMeasured, type FireProtectionDesign } from '@/lib/types/fire-protection-design';
-import { mergeFireProtectionDesign } from '@/lib/projects/admin-uc-report/design';
+import {
+  formatMeasured,
+  type FireProtectionDesign,
+  type MeasuredValue,
+  type ValueSource,
+} from '@/lib/types/fire-protection-design';
 import { buildTechnicalReportSourceData } from '@/lib/projects/technical-report-source-data';
 import { humanizeEngineeringDisplayValue } from '@/lib/projects/preview-display';
 
@@ -64,11 +68,17 @@ export type ExistingTechnicalReportEngineeringSection = {
   rows: Array<{ label: string; value: string }>;
 };
 
+export type ExistingTechnicalReportApproval = {
+  prepared_by: string | null;
+  executive_director: string | null;
+};
+
 export type ExistingTechnicalReportModel = {
   project_identity: {
     project_code: string | null;
     project_classification: 'EXISTING';
   };
+  approval: ExistingTechnicalReportApproval;
   project_information: {
     project_name: string;
     owner: string | null;
@@ -95,6 +105,13 @@ export type ExistingTechnicalReportModel = {
 };
 
 const INCOMPLETE_LABEL = 'لم يكتمل تقييم هذا البند.';
+
+const AUTHORITATIVE_VALUE_SOURCES: ReadonlySet<ValueSource> = new Set([
+  'engineer_input',
+  'hydraulic_calc',
+  'approved_value',
+  'project_drawings',
+]);
 
 function cleanText(value: string | null | undefined): string | null {
   const result = value?.trim();
@@ -222,7 +239,7 @@ function recommendations(
       });
     }
     const approvedItem = system.recommendation_id ? approvedById.get(system.recommendation_id) : undefined;
-    if (approvedItem?.effective_text_ar) {
+    if (approvedItem?.effective_text_ar && system.priority) {
       result.push({
         id: `approved:${approvedItem.id}`,
         text: approvedItem.effective_text_ar,
@@ -235,16 +252,7 @@ function recommendations(
     return result;
   }));
 
-  const unlinkedApproved = approved
-    .filter((item) => !sections.some((section) => section.systems.some((system) => system.recommendation_id === item.id)))
-    .map((item) => ({
-      id: `approved:${item.id}`,
-      text: item.effective_text_ar,
-      priority: null,
-      source: 'APPROVED_RECOMMENDATION' as const,
-    }));
-
-  return unique([...actions, ...unlinkedApproved], (item) => `${item.source}:${item.text}`);
+  return unique(actions, (item) => `${item.source}:${item.text}`);
 }
 
 function assessmentSourceLabel(source: string | null): string {
@@ -279,63 +287,200 @@ function displayValue(value: unknown): string {
   return humanizeEngineeringDisplayValue(String(value).trim()) || String(value).trim();
 }
 
-function measuredValue(value: { value: number | null; unit: string }): string {
-  if (value.value === null || value.value === 0) return '';
-  return formatMeasured(value as never, { empty: '' });
+export function isAuthoritativeExistingReportMeasuredValue(
+  value: MeasuredValue<string> | null | undefined
+): value is MeasuredValue<string> {
+  if (!value || value.value == null || value.value === 0 || Number.isNaN(value.value)) return false;
+  return AUTHORITATIVE_VALUE_SOURCES.has(value.source);
+}
+
+export function formatAuthoritativeExistingReportMeasured(
+  value: MeasuredValue<string> | null | undefined
+): string {
+  return isAuthoritativeExistingReportMeasuredValue(value)
+    ? formatMeasured(value, { empty: '' })
+    : '';
+}
+
+export function formatExistingReportSprinklerEngineeringValue(
+  value: string | null | undefined,
+  kind: 'k_factor' | 'pressure' | 'flow'
+): string {
+  const raw = cleanText(value);
+  if (!raw) return '';
+  if (kind === 'k_factor') {
+    if (/^k\s*[=:]/i.test(raw)) return raw.replace(/^k/i, 'K');
+    if (/^k\d/i.test(raw)) return raw;
+    if (/^\d+(\.\d+)?$/.test(raw)) return `K = ${raw}`;
+    return raw;
+  }
+  if (kind === 'pressure') {
+    if (/bar|psi|kpa|بار/i.test(raw)) return raw;
+    if (/^\d+(\.\d+)?$/.test(raw)) return `${raw} bar`;
+    return raw;
+  }
+  if (/gpm|l\/min|lpm|ل\/د|لتر/i.test(raw)) return raw;
+  if (/^\d+(\.\d+)?$/.test(raw)) return `${raw} GPM`;
+  return raw;
+}
+
+function authoritativeProjectText(value: string | null | undefined): string {
+  return cleanText(value) || '';
+}
+
+function approvedAggregateCount(value: number | null | undefined, status: string): number | null {
+  if (status === 'missing' || value == null || value <= 0) return null;
+  return value;
+}
+
+function storedCalculatedTankVolume(
+  tank: Partial<FireProtectionDesign['water_tank']> | null | undefined
+): string {
+  const volume = tank?.calculated_required_volume_m3;
+  if (volume == null || volume === 0) return '';
+  if (
+    !isAuthoritativeExistingReportMeasuredValue(tank?.water_demand_lpm) &&
+    !isAuthoritativeExistingReportMeasuredValue(tank?.capacity_m3)
+  ) {
+    return '';
+  }
+  return `${volume} m³`;
+}
+
+function engineeringRows(items: Array<{ label: string; value: unknown }>) {
+  return items
+    .map(({ label, value }) => ({ label, value: displayValue(value) }))
+    .filter((item): item is { label: string; value: string } => Boolean(item.value) && item.value !== '0');
 }
 
 function engineeringSections(client: ClientRecord, data: ProjectEngineeringData): ExistingTechnicalReportEngineeringSection[] {
   const source = buildTechnicalReportSourceData({ client, engineeringData: data });
-  const design: FireProtectionDesign = mergeFireProtectionDesign(data.fire_protection_design || EMPTY_FIRE_PROTECTION_DESIGN);
-  const positiveCount = (value: number | null | undefined) => value && value > 0 ? value : null;
-  const rows = (items: Array<{ label: string; value: unknown }>) => items
-    .map(({ label, value }) => ({ label, value: displayValue(value) }))
-    .filter((item): item is { label: string; value: string } => Boolean(item.value) && item.value !== '0');
+  const raw = data.fire_protection_design;
+  const waterSupply = raw?.water_supply;
+  const tank = raw?.water_tank;
+  const pump = raw?.pump;
+  const dieselPump = raw?.diesel_pump;
+  const jockeyPump = raw?.jockey_pump;
+  const sprinkler = raw?.sprinkler;
+  const fireAlarm = raw?.fire_alarm;
   const sections = [
-    { id: 'egress', label: 'مقاييس الإخلاء', rows: rows([
-      { label: 'إجمالي الشاغلين', value: positiveCount(source.aggregates.total_occupants.value) },
-      { label: 'إجمالي المخارج', value: positiveCount(source.aggregates.total_exits.value) },
-      { label: 'أقصى مسافة سفر', value: source.aggregates.maximum_travel_distance_m.value ? `${source.aggregates.maximum_travel_distance_m.value} م` : '' },
-    ]) },
-    { id: 'water', label: 'إمداد مياه الإطفاء والخزان', rows: rows([
-      { label: 'مصدر مياه الإطفاء', value: design.water_supply.water_source },
-      { label: 'نوع الخزان', value: design.water_supply.tank_type },
-      { label: 'السعة المركبة', value: measuredValue(design.water_tank.capacity_m3) },
-      { label: 'معدل الطلب المائي', value: measuredValue(design.water_tank.water_demand_lpm) },
-      { label: 'مدة التخزين', value: measuredValue(design.water_tank.duration_min) },
-      { label: 'الحجم المطلوب المحسوب', value: design.water_tank.calculated_required_volume_m3 === null ? '' : `${design.water_tank.calculated_required_volume_m3} م³` },
-    ]) },
-    { id: 'pumps', label: 'مضخات الحريق', rows: rows([
-      { label: 'نوع مجموعة المضخات', value: design.pump.type },
-      { label: 'تدفق المضخة المقنن', value: measuredValue(design.pump.rated_flow) },
-      { label: 'ضغط المضخة المقنن', value: measuredValue(design.pump.rated_pressure) },
-      { label: 'تدفق المضخة الكهربائية', value: measuredValue(design.pump.capacity) },
-      { label: 'ضغط المضخة الكهربائية', value: measuredValue(design.pump.pressure) },
-      { label: 'تدفق مضخة الديزل', value: measuredValue(design.diesel_pump.capacity) },
-      { label: 'ضغط مضخة الديزل', value: measuredValue(design.diesel_pump.pressure) },
-      { label: 'تدفق مضخة الجوكي', value: measuredValue(design.jockey_pump.capacity) },
-      { label: 'ضغط مضخة الجوكي', value: measuredValue(design.jockey_pump.pressure) },
-    ]) },
-    { id: 'sprinkler', label: 'نظام الرش الآلي', rows: rows([
-      { label: 'عدد المرشات', value: positiveCount(source.aggregates.total_sprinklers.value) },
-      { label: 'نوع النظام', value: design.sprinkler.system_type },
-      { label: 'نوع المرشات', value: design.sprinkler.sprinkler_type },
-      { label: 'معامل K', value: design.sprinkler.k_factor },
-      { label: 'ضغط التصميم', value: design.sprinkler.design_pressure },
-      { label: 'تصرف التصميم', value: design.sprinkler.design_flow },
-    ]) },
-    { id: 'alarm', label: 'نظام إنذار وكشف الحريق', rows: rows([
-      { label: 'عدد لوحات الإنذار', value: positiveCount(source.aggregates.total_fire_alarm_panels.value) },
-      { label: 'كواشف الدخان', value: positiveCount(source.aggregates.total_smoke_detectors.value) },
-      { label: 'كواشف الحرارة', value: positiveCount(source.aggregates.total_heat_detectors.value) },
-      { label: 'أجهزة التنبيه', value: positiveCount(source.aggregates.total_alarm_bells.value) },
-      { label: 'لوحات التحكم', value: design.fire_alarm.control_panel },
-      { label: 'نقاط النداء اليدوية', value: design.fire_alarm.manual_call_points },
-      { label: 'الإخلاء الصوتي', value: design.fire_alarm.voice_alarm },
-    ]) },
+    {
+      id: 'egress',
+      label: 'مقاييس الإخلاء',
+      rows: engineeringRows([
+        {
+          label: 'إجمالي الشاغلين',
+          value: approvedAggregateCount(
+            source.aggregates.total_occupants.value,
+            source.aggregates.total_occupants.status
+          ),
+        },
+        {
+          label: 'إجمالي المخارج',
+          value: approvedAggregateCount(
+            source.aggregates.total_exits.value,
+            source.aggregates.total_exits.status
+          ),
+        },
+        {
+          label: 'أقصى مسافة سفر',
+          value:
+            source.aggregates.maximum_travel_distance_m.status !== 'missing' &&
+            source.aggregates.maximum_travel_distance_m.value
+              ? `${source.aggregates.maximum_travel_distance_m.value} م`
+              : '',
+        },
+      ]),
+    },
+    {
+      id: 'water',
+      label: 'إمداد مياه الإطفاء والخزان',
+      rows: engineeringRows([
+        { label: 'مصدر مياه الإطفاء', value: authoritativeProjectText(waterSupply?.water_source) },
+        { label: 'نوع الخزان', value: authoritativeProjectText(waterSupply?.tank_type) },
+        { label: 'السعة المركبة', value: formatAuthoritativeExistingReportMeasured(tank?.capacity_m3) },
+        { label: 'معدل الطلب المائي', value: formatAuthoritativeExistingReportMeasured(tank?.water_demand_lpm) },
+        { label: 'مدة التخزين', value: formatAuthoritativeExistingReportMeasured(tank?.duration_min) },
+        { label: 'الحجم المطلوب المحسوب', value: storedCalculatedTankVolume(tank) },
+      ]),
+    },
+    {
+      id: 'pumps',
+      label: 'مضخات الحريق',
+      rows: engineeringRows([
+        { label: 'نوع مجموعة المضخات', value: authoritativeProjectText(pump?.type) },
+        { label: 'تدفق المضخة المقنن', value: formatAuthoritativeExistingReportMeasured(pump?.rated_flow) },
+        { label: 'ضغط المضخة المقنن', value: formatAuthoritativeExistingReportMeasured(pump?.rated_pressure) },
+        { label: 'تدفق المضخة الكهربائية', value: formatAuthoritativeExistingReportMeasured(pump?.capacity) },
+        { label: 'ضغط المضخة الكهربائية', value: formatAuthoritativeExistingReportMeasured(pump?.pressure) },
+        { label: 'تدفق مضخة الديزل', value: formatAuthoritativeExistingReportMeasured(dieselPump?.capacity) },
+        { label: 'ضغط مضخة الديزل', value: formatAuthoritativeExistingReportMeasured(dieselPump?.pressure) },
+        { label: 'تدفق مضخة الجوكي', value: formatAuthoritativeExistingReportMeasured(jockeyPump?.capacity) },
+        { label: 'ضغط مضخة الجوكي', value: formatAuthoritativeExistingReportMeasured(jockeyPump?.pressure) },
+      ]),
+    },
+    {
+      id: 'sprinkler',
+      label: 'نظام الرش الآلي',
+      rows: engineeringRows([
+        {
+          label: 'عدد المرشات',
+          value: approvedAggregateCount(
+            source.aggregates.total_sprinklers.value,
+            source.aggregates.total_sprinklers.status
+          ),
+        },
+        { label: 'نوع النظام', value: authoritativeProjectText(sprinkler?.system_type) },
+        { label: 'نوع المرشات', value: authoritativeProjectText(sprinkler?.sprinkler_type) },
+        { label: 'معامل K', value: formatExistingReportSprinklerEngineeringValue(sprinkler?.k_factor, 'k_factor') },
+        {
+          label: 'ضغط التصميم',
+          value: formatExistingReportSprinklerEngineeringValue(sprinkler?.design_pressure, 'pressure'),
+        },
+        { label: 'تصرف التصميم', value: formatExistingReportSprinklerEngineeringValue(sprinkler?.design_flow, 'flow') },
+      ]),
+    },
+    {
+      id: 'alarm',
+      label: 'نظام إنذار وكشف الحريق',
+      rows: engineeringRows([
+        {
+          label: 'عدد لوحات الإنذار',
+          value: approvedAggregateCount(
+            source.aggregates.total_fire_alarm_panels.value,
+            source.aggregates.total_fire_alarm_panels.status
+          ),
+        },
+        {
+          label: 'كواشف الدخان',
+          value: approvedAggregateCount(
+            source.aggregates.total_smoke_detectors.value,
+            source.aggregates.total_smoke_detectors.status
+          ),
+        },
+        {
+          label: 'كواشف الحرارة',
+          value: approvedAggregateCount(
+            source.aggregates.total_heat_detectors.value,
+            source.aggregates.total_heat_detectors.status
+          ),
+        },
+        {
+          label: 'أجهزة التنبيه',
+          value: approvedAggregateCount(
+            source.aggregates.total_alarm_bells.value,
+            source.aggregates.total_alarm_bells.status
+          ),
+        },
+        { label: 'لوحات التحكم', value: authoritativeProjectText(fireAlarm?.control_panel) },
+        { label: 'نقاط النداء اليدوية', value: authoritativeProjectText(fireAlarm?.manual_call_points) },
+        { label: 'الإخلاء الصوتي', value: authoritativeProjectText(fireAlarm?.voice_alarm) },
+      ]),
+    },
   ];
   return sections.filter((section) => section.rows.length > 0);
 }
+
 
 /**
  * Pure read-only view for the EXISTING-project preview. It never persists a report
@@ -356,6 +501,10 @@ export function buildExistingTechnicalReportModel(
     project_identity: {
       project_code: client.primary_engineering_project_identity?.projectCode || null,
       project_classification: 'EXISTING',
+    },
+    approval: {
+      prepared_by: cleanText(technical.safety_engineer_name) || cleanText(client.assigned_engineer),
+      executive_director: cleanText(technical.executive_director_name),
     },
     project_information: {
       project_name: projectName,
