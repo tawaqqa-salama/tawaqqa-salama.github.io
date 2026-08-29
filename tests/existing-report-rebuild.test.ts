@@ -167,7 +167,10 @@ describe('EXISTING report rebuild — pages 1-6, location, PDF Arabic', () => {
     const locationRow = facility?.tables?.[0]?.rows.find(([label]) => label === 'العنوان' || label === 'الموقع');
     expect(locationRow?.[1]).toBe(location);
     const site = document.sections.find((section) => section.id === 'site_information');
-    expect(JSON.stringify(site)).toContain(location);
+    const intro = site?.presentation_blocks?.find((block) => block.type === 'paragraph');
+    expect(intro && intro.type === 'paragraph' ? intro.text : '').toContain('الرياض');
+    expect(intro && intro.type === 'paragraph' ? intro.text : '').toContain('النرجس');
+    expect(site?.presentation_blocks?.some((block) => block.type === 'paragraph')).toBe(true);
   });
 
   it('renders facade, aerial, and civil defense map when present and placeholder when facade missing', () => {

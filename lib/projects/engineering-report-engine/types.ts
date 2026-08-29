@@ -1,5 +1,7 @@
 /** Engineering Report Generation Engine — domain types */
 
+import type { ExistingReportPresentationBlock } from '@/lib/projects/existing-report-presentation';
+
 export type ReportLocale = 'ar' | 'en';
 
 export type EngineeringStudySectionId =
@@ -131,6 +133,8 @@ export type EngineeringStudySection = {
     headers_en: string[];
     rows: string[][];
   }[];
+  /** EXISTING report presentation-only blocks (narrative layout; no data changes). */
+  presentation_blocks?: ExistingReportPresentationBlock[];
 };
 
 export type EngineeringStudyDocument = {

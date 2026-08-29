@@ -10,6 +10,7 @@ import type {
   EngineeringStudySectionId,
 } from '@/lib/projects/engineering-report-engine/types';
 import { EXISTING_MANDATORY_PAGE_SECTIONS } from '@/lib/projects/existing-technical-report-profile';
+import type { ExistingReportPresentationBlock } from '@/lib/projects/existing-report-presentation';
 import { isExistingReportMissingMediaLabel } from '@/lib/projects/engineering-report-engine/renderer/existing-report-design-system';
 import { placeSectionImages, sanitizeCaption } from '@/lib/projects/engineering-report-engine/renderer/image-placement';
 import { getItemProse } from '@/lib/projects/engineering-report-engine/renderer/subsection-prose';
@@ -53,7 +54,23 @@ export type FlowBlock =
   | { kind: 'code_sequence'; figures: FlowFigure[] }
   /** Atomic keep-together group (subsection + first para, or image+caption) */
   | { kind: 'unit'; blocks: FlowBlock[] }
-  | { kind: 'page_break'; id: 'after_project_components' };
+  | { kind: 'page_break'; id: 'after_project_components' }
+  | { kind: 'existing_maps_link'; href: string | null; label: string }
+  | { kind: 'existing_coordinates'; text: string }
+  | { kind: 'existing_narrative_field'; label: string; text: string }
+  | { kind: 'existing_status_badge'; status: string; label: string }
+  | { kind: 'existing_numbered_list'; items: string[] }
+  | { kind: 'existing_reference_list'; items: string[] }
+  | {
+      kind: 'existing_assessment_unit';
+      title: string;
+      existing: string;
+      required: string;
+      gap: string;
+      action: string;
+      reference: string;
+      status: string;
+    };
 
 const SYSTEM_JARGON_RE =
   /محرك\s*(?:القواعد|القرار)(?:\s*الهندسي(?:ة)?)?|قاعدة\s*المعرفة|Decision\s*Engine|Knowledge\s*Base|Rules?\s*Engine|Rule\s*Engine|قابل\s*للتعديل|القيم\s*المقفلة|الخيارات\s*غير\s*المسموحة|بوابة\s*(?:محرك\s*)?القرار|حالة\s*البوابة|بوابة\s*مغلقة|موقوف\s*:|حقل\s*إلزامي(?:\s*ناقص)?|عدد\s*مخالفات(?:\s*القواعد)?|مخالفات\s*القواعد|Incomplete|Company\s*Standards|Base\s*Code|CODE-BASE|مقفل\s*بقاعدة[^.]*|مقفَل\s*بقاعدة[^.]*|rules?\s*engine|UUID|Database\s*ID|Internal\s*ID|Internal\s*URL|Pipeline\s*Status|pipeline\s*status|draft\s*status/gi;
@@ -327,8 +344,158 @@ function buildFigureBlock(
   };
 }
 
+function isExistingAssessmentSection(sectionId: string): boolean {
+  return sectionId.startsWith('existing_assessment_');
+}
+
+function presentationBlockToFlow(
+  block: ExistingReportPresentationBlock,
+  counters: { figures: number; tables: number; references: number },
+  assessmentIndex?: { chapterNo: number; unitNo: number }
+): FlowBlock[] {
+  switch (block.type) {
+    case 'paragraph':
+      return [{ kind: 'paragraph', text: block.text }];
+    case 'subsection':
+      return [{ kind: 'subsection', title: block.title }];
+    case 'maps_link':
+      return [{ kind: 'existing_maps_link', href: block.href, label: block.label }];
+    case 'coordinates':
+      return [{ kind: 'existing_coordinates', text: block.text }];
+    case 'narrative_field':
+      return [{ kind: 'existing_narrative_field', label: block.label, text: block.text }];
+    case 'status_badge':
+      return [{ kind: 'existing_status_badge', status: block.status, label: block.label }];
+    case 'numbered_list':
+      return [{ kind: 'existing_numbered_list', items: block.items }];
+    case 'reference_list':
+      return [{ kind: 'existing_reference_list', items: block.items }];
+    case 'assessment_unit': {
+      const title = assessmentIndex
+        ? `${assessmentIndex.chapterNo}.${assessmentIndex.unitNo} ${block.title}`
+        : block.title;
+      return [{
+        kind: 'existing_assessment_unit',
+        title,
+        existing: block.existing,
+        required: block.required,
+        gap: block.gap,
+        action: block.action,
+        reference: block.reference,
+        status: block.status,
+      }];
+    }
+    case 'table':
+      return [{
+        kind: 'table',
+        tableNo: ++counters.tables,
+        caption: block.caption,
+        headers: block.headers,
+        rows: block.rows,
+      }];
+    default:
+      return [];
+  }
+}
+
+function appendPresentationBlocks(
+  blocks: FlowBlock[],
+  presentationBlocks: ExistingReportPresentationBlock[] | undefined,
+  counters: { figures: number; tables: number; references: number },
+  chapterNo?: number
+): void {
+  if (!presentationBlocks?.length) return;
+  let unitNo = 0;
+  for (const block of presentationBlocks) {
+    if (block.type === 'assessment_unit') unitNo += 1;
+    blocks.push(...presentationBlockToFlow(
+      block,
+      counters,
+      block.type === 'assessment_unit' && chapterNo ? { chapterNo, unitNo } : undefined
+    ));
+  }
+}
+
 function isExistingMandatoryLayoutSection(sectionId: string): boolean {
   return (EXISTING_MANDATORY_PAGE_SECTIONS as readonly string[]).includes(sectionId) || sectionId === 'project_components';
+}
+
+function appendMandatorySectionContent(
+  blocks: FlowBlock[],
+  section: EngineeringStudySection,
+  locale: 'ar' | 'en',
+  counters: { figures: number; tables: number; references: number },
+  images: EngineeringStudyImage[],
+  paras: EngineeringStudySection['paragraphs'],
+  tables: NonNullable<EngineeringStudySection['tables']>,
+  displayNo: number
+): void {
+  const usesPresentationOnly = section.id === 'site_information' || section.id === 'fire_truck_access';
+  const usesTableAndPresentation = section.id === 'project_components';
+
+  if (usesPresentationOnly) {
+    appendPresentationBlocks(blocks, section.presentation_blocks, counters);
+  } else if (section.id === 'facility_data') {
+    for (const t of tables) {
+      blocks.push({
+        kind: 'table',
+        tableNo: ++counters.tables,
+        caption: locale === 'ar' ? t.caption_ar : t.caption_en,
+        headers: locale === 'ar' ? t.headers_ar : t.headers_en,
+        rows: t.rows,
+      });
+    }
+  } else if (usesTableAndPresentation) {
+    for (const p of paras) {
+      if (isExistingReportMissingMediaLabel(p.text)) continue;
+      blocks.push({
+        kind: 'paragraph',
+        text: sanitizeClientFacingText(p.text, locale),
+        incomplete: p.incomplete,
+      });
+    }
+    for (const t of tables) {
+      blocks.push({
+        kind: 'table',
+        tableNo: ++counters.tables,
+        caption: locale === 'ar' ? t.caption_ar : t.caption_en,
+        headers: locale === 'ar' ? t.headers_ar : t.headers_en,
+        rows: t.rows,
+      });
+    }
+    appendPresentationBlocks(blocks, section.presentation_blocks, counters);
+  }
+
+  if (!usesPresentationOnly && !usesTableAndPresentation) {
+    for (const p of paras) {
+      if (isExistingReportMissingMediaLabel(p.text)) continue;
+      blocks.push({
+        kind: 'paragraph',
+        text: sanitizeClientFacingText(p.text, locale),
+        incomplete: p.incomplete,
+      });
+    }
+  } else if (section.id === 'facility_data') {
+    for (const p of paras) {
+      if (isExistingReportMissingMediaLabel(p.text)) continue;
+      blocks.push({
+        kind: 'paragraph',
+        text: sanitizeClientFacingText(p.text, locale),
+        incomplete: p.incomplete,
+      });
+    }
+  }
+
+  const groups = groupImagesBySubsection(images, locale);
+  for (const group of groups) {
+    for (const img of group.images) {
+      counters.figures += 1;
+      blocks.push({
+        kind: 'unit',
+        blocks: [buildFigureBlock(locale, img, counters.figures, group.title)],
+      });
+    }
+  }
 }
 
 type SubGroup = {
@@ -593,6 +760,35 @@ export function sectionToFlowBlocks(
         incomplete: p.incomplete,
       });
     }
+    appendPresentationBlocks(blocks, section.presentation_blocks, counters, displayNo);
+    if (refs.length) {
+      counters.references += 1;
+      blocks.push({ kind: 'reference_note', refs, referenceNo: counters.references });
+    }
+    return blocks;
+  }
+
+  if (section.id === 'existing_recommendations' || section.id === 'building_requirements') {
+    for (const p of paras) {
+      const textValue = sanitizeClientFacingText(p.text, locale);
+      if (textValue) {
+        blocks.push({ kind: 'paragraph', text: textValue, incomplete: p.incomplete });
+      }
+    }
+    appendPresentationBlocks(blocks, section.presentation_blocks, counters, displayNo);
+    if (refs.length) {
+      counters.references += 1;
+      blocks.push({ kind: 'reference_note', refs, referenceNo: counters.references });
+    }
+    return blocks;
+  }
+
+  if (isExistingAssessmentSection(section.id)) {
+    for (const p of paras) {
+      const textValue = sanitizeClientFacingText(p.text, locale);
+      if (textValue) blocks.push({ kind: 'paragraph', text: textValue, incomplete: p.incomplete });
+    }
+    appendPresentationBlocks(blocks, section.presentation_blocks, counters, displayNo);
     if (refs.length) {
       counters.references += 1;
       blocks.push({ kind: 'reference_note', refs, referenceNo: counters.references });
@@ -602,33 +798,7 @@ export function sectionToFlowBlocks(
 
   // Chapter intro — one engineering overview paragraph (not per-image filler)
   if (isExistingMandatoryLayoutSection(section.id)) {
-    for (const t of tables) {
-      blocks.push({
-        kind: 'table',
-        tableNo: ++counters.tables,
-        caption: locale === 'ar' ? t.caption_ar : t.caption_en,
-        headers: locale === 'ar' ? t.headers_ar : t.headers_en,
-        rows: t.rows,
-      });
-    }
-    for (const p of paras) {
-      if (isExistingReportMissingMediaLabel(p.text)) continue;
-      blocks.push({
-        kind: 'paragraph',
-        text: sanitizeClientFacingText(p.text, locale),
-        incomplete: p.incomplete,
-      });
-    }
-    const groups = groupImagesBySubsection(images, locale);
-    for (const group of groups) {
-      for (const img of group.images) {
-        counters.figures += 1;
-        blocks.push({
-          kind: 'unit',
-          blocks: [buildFigureBlock(locale, img, counters.figures, group.title)],
-        });
-      }
-    }
+    appendMandatorySectionContent(blocks, section, locale, counters, images, paras, tables, displayNo);
     if (refs.length) {
       counters.references += 1;
       blocks.push({ kind: 'reference_note', refs, referenceNo: counters.references });
@@ -765,6 +935,19 @@ export function estimateBlockHeightMm(block: FlowBlock): number {
       return (block.blocks || []).reduce((n, b) => n + estimateBlockHeightMm(b), 1);
     case 'page_break':
       return 0;
+    case 'existing_maps_link':
+    case 'existing_coordinates':
+      return 6;
+    case 'existing_narrative_field':
+      return 8;
+    case 'existing_status_badge':
+      return 6;
+    case 'existing_numbered_list':
+      return 5 + (block.items?.length || 0) * 4.5;
+    case 'existing_reference_list':
+      return 5 + (block.items?.length || 0) * 4;
+    case 'existing_assessment_unit':
+      return 28;
     default:
       return 5;
   }

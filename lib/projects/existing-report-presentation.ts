@@ -4,15 +4,26 @@
  * table display values and renderer hints only.
  */
 
+import {
+  EXISTING_ASSESSMENT_STATUS_LABELS,
+  type ExistingAssessmentComplianceStatus,
+} from '@/lib/projects/existing-project-assessment';
+import type {
+  ExistingTechnicalReportCivilDefenseAccess,
+  ExistingTechnicalReportComponentRow,
+  ExistingTechnicalReportSiteProfile,
+} from '@/lib/projects/existing-technical-report-profile';
 import type { ProjectEngineeringData } from '@/lib/types/project-reports';
 
 export const EXISTING_REPORT_MAPS_LINK_LABEL = 'رابط الموقع على Google Maps';
+export const EXISTING_REPORT_SITE_MAPS_LINK_LABEL = 'عرض الموقع على Google Maps';
 export const EXISTING_REPORT_MAPS_UNREGISTERED = 'غير مسجل';
 
 export const EXISTING_REPORT_MAPS_ROW_LABELS = new Set([
   'رابط Google Maps',
   'رابط الخريطة',
   'رابط الموقع على Google Maps',
+  'عرض الموقع على Google Maps',
 ]);
 
 function cleanText(value: string | null | undefined): string | null {
@@ -123,4 +134,350 @@ export function foldArabicPdfText(value: string): string {
     .replace(/[\u200E\u200F\u202A-\u202E\u2066-\u2069]/g, '')
     .replace(/[\s\u00A0،,:.;]+/g, '')
     .replace(/[يى]/g, 'ي');
+}
+
+export type ExistingReportPresentationStatus =
+  | ExistingAssessmentComplianceStatus
+  | 'INCOMPLETE';
+
+export type ExistingReportAssessmentInput = {
+  system_label: string;
+  existing_condition: string | null;
+  notes: string | null;
+  required_condition: string | null;
+  gap: string | null;
+  required_action: string | null;
+  requirement_reference: string | null;
+  evidence: Array<{ id: string }>;
+  compliance_status: ExistingReportPresentationStatus;
+};
+
+export type ExistingReportPresentationBlock =
+  | { type: 'paragraph'; text: string }
+  | { type: 'subsection'; title: string }
+  | { type: 'maps_link'; href: string | null; label: string }
+  | { type: 'coordinates'; text: string }
+  | { type: 'narrative_field'; label: string; text: string }
+  | { type: 'status_badge'; status: ExistingReportPresentationStatus; label: string }
+  | { type: 'numbered_list'; items: string[] }
+  | { type: 'reference_list'; items: string[] }
+  | {
+      type: 'assessment_unit';
+      title: string;
+      existing: string;
+      required: string;
+      gap: string;
+      action: string;
+      reference: string;
+      status: ExistingReportPresentationStatus;
+    }
+  | { type: 'table'; caption: string; headers: string[]; rows: string[][] };
+
+const INCOMPLETE_STATUS_LABEL = 'لم يكتمل تقييم هذا البند.';
+
+function displayOrEmpty(value: string | null | undefined, fallback: string): string {
+  return cleanText(value) || fallback;
+}
+
+function joinArabicList(items: string[]): string {
+  if (items.length === 0) return '';
+  if (items.length === 1) return items[0];
+  if (items.length === 2) return `${items[0]} و${items[1]}`;
+  return `${items.slice(0, -1).join('، ')}، و${items[items.length - 1]}`;
+}
+
+export function buildSiteIntroNarrative(
+  site: Pick<ExistingTechnicalReportSiteProfile, 'location_text' | 'district' | 'city' | 'street' | 'registered_address'>,
+  location: string | null
+): string {
+  if (cleanText(site.location_text)) return site.location_text!.trim();
+  const district = cleanText(site.district);
+  const city = cleanText(site.city);
+  const street = cleanText(site.street);
+  const address = cleanText(location) || cleanText(site.registered_address);
+  const localityParts = [district ? `حي ${district}` : null, city ? `مدينة ${city}` : null].filter((item): item is string => Boolean(item));
+  if (localityParts.length && street) {
+    return `يقع المشروع في ${joinArabicList(localityParts)} على ${street}.`;
+  }
+  if (localityParts.length) {
+    return `يقع المشروع في ${joinArabicList(localityParts)}.`;
+  }
+  if (street) return `يقع المشروع على ${street}.`;
+  if (address) return `يقع المشروع في ${address}.`;
+  return 'يُعرض في هذه الصفحة العنوان المسجل وبيانات الموقع كما وردت في ملف المشروع دون استنتاج موقع جديد.';
+}
+
+export function buildSiteBoundariesNarrative(
+  site: Pick<ExistingTechnicalReportSiteProfile, 'surroundings' | 'surrounding_roads'>
+): string | null {
+  const surroundings = site.surroundings;
+  const boundaryParts = [
+    cleanText(surroundings?.north) ? `من جهة الشمال ${surroundings!.north!.trim()}` : null,
+    cleanText(surroundings?.south) ? `من جهة الجنوب ${surroundings!.south!.trim()}` : null,
+    cleanText(surroundings?.east) ? `من جهة الشرق ${surroundings!.east!.trim()}` : null,
+    cleanText(surroundings?.west) ? `من جهة الغرب ${surroundings!.west!.trim()}` : null,
+  ].filter((item): item is string => Boolean(item));
+  if (boundaryParts.length) {
+    return `يحد الموقع ${joinArabicList(boundaryParts)}.`;
+  }
+  const roads = cleanText(site.surrounding_roads);
+  if (roads) return roads.endsWith('.') ? roads : `${roads}.`;
+  return null;
+}
+
+export function buildSiteCoordinatesLine(
+  coordinateRows: ExistingReportCoordinatePresentationRow[]
+): string | null {
+  if (!coordinateRows.length) return null;
+  const compact = coordinateRows.length === 1 ? coordinateRows[0] : null;
+  if (compact?.label === 'الإحداثيات المسجلة' || compact?.label === 'إحداثيات UTM') {
+    return compact.label === 'إحداثيات UTM'
+      ? compact.value.replace(/\n/g, ' | ')
+      : `الإحداثيات المسجلة: ${compact.value}`;
+  }
+  const easting = coordinateRows.find((row) => row.label === 'Easting');
+  const northing = coordinateRows.find((row) => row.label === 'Northing');
+  const zone = coordinateRows.find((row) => row.label === 'UTM Zone');
+  const lat = coordinateRows.find((row) => row.label === 'Latitude');
+  const lng = coordinateRows.find((row) => row.label === 'Longitude');
+  if (easting && northing) {
+    const parts = [
+      zone ? `UTM Zone: ${zone.value}` : null,
+      `Easting: ${easting.value}`,
+      `Northing: ${northing.value}`,
+    ].filter(Boolean);
+    return `الإحداثيات المسجلة: ${parts.join(' | ')}`;
+  }
+  if (lat && lng) {
+    return `الإحداثيات المسجلة: Latitude: ${lat.value} | Longitude: ${lng.value}`;
+  }
+  if (compact) return `${compact.label}: ${compact.value}`;
+  return null;
+}
+
+export function buildSitePresentationBlocks(
+  site: ExistingTechnicalReportSiteProfile,
+  location: string | null
+): ExistingReportPresentationBlock[] {
+  const blocks: ExistingReportPresentationBlock[] = [
+    { type: 'paragraph', text: buildSiteIntroNarrative(site, location) },
+  ];
+  const boundaries = buildSiteBoundariesNarrative(site);
+  if (boundaries) {
+    blocks.push({ type: 'subsection', title: 'حدود الموقع' });
+    blocks.push({ type: 'paragraph', text: boundaries });
+  }
+  const coordinatesLine = buildSiteCoordinatesLine(site.coordinate_rows);
+  if (coordinatesLine) blocks.push({ type: 'coordinates', text: coordinatesLine });
+  blocks.push({
+    type: 'maps_link',
+    href: cleanText(site.maps_url),
+    label: EXISTING_REPORT_SITE_MAPS_LINK_LABEL,
+  });
+  return blocks;
+}
+
+export function buildCivilDefenseAccessNarrative(
+  cd: ExistingTechnicalReportCivilDefenseAccess
+): ExistingReportPresentationBlock[] {
+  const blocks: ExistingReportPresentationBlock[] = [];
+  const distance = cleanText(cd.distance);
+  const travelTime = cleanText(cd.travel_time);
+  const center = cleanText(cd.center_name);
+  const intro = 'تمت دراسة إمكانية وصول آليات الدفاع المدني إلى الموقع وفق البيانات المسجلة بالمشروع.';
+  if (center || distance || travelTime) {
+    const detailParts = [
+      center ? `يقع أقرب مركز دفاع مدني${center.startsWith('مركز') ? '' : ''} ${center}` : null,
+      distance ? `على مسافة تقريبية قدرها ${distance}` : null,
+      travelTime ? `ويستغرق الوصول إلى الموقع حوالي ${travelTime} وفق مسار الوصول المرفق` : null,
+    ].filter(Boolean);
+    blocks.push({
+      type: 'paragraph',
+      text: `${intro} ${detailParts.join('، ')}.`,
+    });
+  } else {
+    blocks.push({
+      type: 'paragraph',
+      text: 'تُعرض بيانات الوصول كما سجلها المهندس أو كما وردت في الأدلة المرفقة. لا يحسب التقرير مسافة أو زمن وصول تلقائيًا.',
+    });
+  }
+  const route = cleanText(cd.route_description);
+  if (route) {
+    blocks.push({ type: 'subsection', title: 'مسار الوصول' });
+    blocks.push({ type: 'paragraph', text: route });
+  }
+  const source = cleanText(cd.source_label);
+  const verified = cleanText(cd.verified_at);
+  const meta = [source ? `مصدر البيانات: ${source}` : null, verified ? `تاريخ التحقق: ${verified}` : null]
+    .filter(Boolean)
+    .join(' — ');
+  if (meta) blocks.push({ type: 'paragraph', text: meta });
+  return blocks;
+}
+
+export function buildProjectComponentsNarrative(
+  components: ExistingTechnicalReportComponentRow[]
+): string | null {
+  if (!components.length) return null;
+  const parts = components.map((item) => {
+    const use = cleanText(item.use);
+    return use ? `${item.name} يستخدم ك${use}` : item.name;
+  });
+  return `يتكون المشروع من ${joinArabicList(parts)}، وذلك وفق بيانات المشروع المسجلة أعلاه.`;
+}
+
+function assessmentExistingText(item: ExistingReportAssessmentInput): string {
+  return [cleanText(item.existing_condition), cleanText(item.notes)].filter(Boolean).join(' — ')
+    || INCOMPLETE_STATUS_LABEL;
+}
+
+export function buildAssessmentNarrative(
+  item: ExistingReportAssessmentInput
+): Extract<ExistingReportPresentationBlock, { type: 'assessment_unit' }> {
+  return {
+    type: 'assessment_unit',
+    title: item.system_label,
+    existing: assessmentExistingText(item),
+    required: displayOrEmpty(item.required_condition, 'لم تُسجل قيمة.'),
+    gap: displayOrEmpty(item.gap, 'لم تُسجل فجوة.'),
+    action: displayOrEmpty(item.required_action, 'لم يُسجل إجراء مطلوب.'),
+    reference: [cleanText(item.requirement_reference), item.evidence.length ? `أدلة مرتبطة: ${item.evidence.length}` : '']
+      .filter(Boolean)
+      .join(' — ') || 'لم يُسجل مرجع أو دليل.',
+    status: item.compliance_status,
+  };
+}
+
+export function buildAssessmentPresentationBlocks(
+  systems: ExistingReportAssessmentInput[]
+): ExistingReportPresentationBlock[] {
+  return systems.map((item) => buildAssessmentNarrative(item));
+}
+
+export function buildRecommendationsPresentationBlocks(
+  items: Array<{ text: string }>
+): ExistingReportPresentationBlock[] {
+  if (!items.length) return [];
+  return [
+    {
+      type: 'paragraph',
+      text: 'تتضمن هذه القائمة الإجراءات والتوصيات الصريحة المرتبطة بتقييم المهندس أو التوصيات المحفوظة والمعتمدة فقط.',
+    },
+    { type: 'numbered_list', items: items.map((item) => item.text) },
+  ];
+}
+
+export function buildReferencesPresentationBlocks(
+  references: string[]
+): ExistingReportPresentationBlock[] {
+  const unique = [...new Set(references.map((item) => item.trim()).filter(Boolean))];
+  if (!unique.length) return [];
+  return [
+    { type: 'subsection', title: 'المراجع' },
+    { type: 'reference_list', items: unique },
+  ];
+}
+
+type EngineeringRow = { label: string; value: string };
+
+function pumpSummaryTable(rows: EngineeringRow[]): ExistingReportPresentationBlock | null {
+  const pumpMap: Record<string, { flow?: string; pressure?: string }> = {};
+  for (const row of rows) {
+    const label = row.label;
+    const value = row.value;
+    if (label.includes('كهربائية') && label.includes('تدفق')) pumpMap.electric = { ...pumpMap.electric, flow: value };
+    if (label.includes('كهربائية') && label.includes('ضغط')) pumpMap.electric = { ...pumpMap.electric, pressure: value };
+    if (label.includes('ديزل') && label.includes('تدفق')) pumpMap.diesel = { ...pumpMap.diesel, flow: value };
+    if (label.includes('ديزل') && label.includes('ضغط')) pumpMap.diesel = { ...pumpMap.diesel, pressure: value };
+    if (label.includes('جوكي') && label.includes('تدفق')) pumpMap.jockey = { ...pumpMap.jockey, flow: value };
+    if (label.includes('جوكي') && label.includes('ضغط')) pumpMap.jockey = { ...pumpMap.jockey, pressure: value };
+  }
+  const tableRows = [
+    pumpMap.electric?.flow || pumpMap.electric?.pressure ? ['كهربائية', pumpMap.electric?.flow || '—', pumpMap.electric?.pressure || '—'] : null,
+    pumpMap.diesel?.flow || pumpMap.diesel?.pressure ? ['ديزل', pumpMap.diesel?.flow || '—', pumpMap.diesel?.pressure || '—'] : null,
+    pumpMap.jockey?.flow || pumpMap.jockey?.pressure ? ['جوكي', pumpMap.jockey?.flow || '—', pumpMap.jockey?.pressure || '—'] : null,
+  ].filter((row): row is string[] => Boolean(row));
+  if (tableRows.length < 2) return null;
+  return {
+    type: 'table',
+    caption: 'مضخات الحريق',
+    headers: ['نوع المضخة', 'التدفق', 'الضغط'],
+    rows: tableRows,
+  };
+}
+
+function alarmSummaryTable(rows: EngineeringRow[]): ExistingReportPresentationBlock | null {
+  const countLabels: Record<string, string> = {
+    'عدد لوحات الإنذار': 'لوحات إنذار الحريق',
+    'كواشف الدخان': 'كواشف الدخان',
+    'كواشف الحرارة': 'كواشف الحرارة',
+    'أجهزة التنبيه': 'أجهزة التنبيه',
+  };
+  const summaryRows = rows
+    .map((row) => {
+      const mapped = countLabels[row.label];
+      if (!mapped || !/^\d+$/.test(row.value.trim())) return null;
+      return [mapped, row.value];
+    })
+    .filter((row): row is string[] => Boolean(row));
+  if (summaryRows.length < 2) return null;
+  return {
+    type: 'table',
+    caption: 'ملخص نظام الإنذار',
+    headers: ['العنصر', 'العدد'],
+    rows: summaryRows,
+  };
+}
+
+export function buildEngineeringPresentationBlocks(
+  sections: Array<{ label: string; rows: EngineeringRow[] }>
+): ExistingReportPresentationBlock[] {
+  const blocks: ExistingReportPresentationBlock[] = [];
+  for (const section of sections) {
+    if (section.label.includes('مضخات')) {
+      const summary = pumpSummaryTable(section.rows);
+      if (summary) {
+        blocks.push(summary);
+        continue;
+      }
+    }
+    if (section.label.includes('إنذار')) {
+      const summary = alarmSummaryTable(section.rows);
+      if (summary) {
+        blocks.push(summary);
+        const remainder = section.rows.filter((row) => !['عدد لوحات الإنذار', 'كواشف الدخان', 'كواشف الحرارة', 'أجهزة التنبيه'].includes(row.label));
+        if (remainder.length) {
+          blocks.push({
+            type: 'table',
+            caption: section.label,
+            headers: ['البند', 'البيان'],
+            rows: remainder.map((row) => [row.label, row.value]),
+          });
+        }
+        continue;
+      }
+    }
+    blocks.push({
+      type: 'table',
+      caption: section.label,
+      headers: ['البند', 'البيان'],
+      rows: section.rows.map((row) => [row.label, row.value]),
+    });
+  }
+  return blocks;
+}
+
+export function existingReportStatusBadgeClass(status: ExistingReportPresentationStatus): string {
+  return {
+    COMPLIANT: 'existing-report-status-badge--compliant',
+    NON_COMPLIANT: 'existing-report-status-badge--non-compliant',
+    NEEDS_COMPLETION: 'existing-report-status-badge--needs-completion',
+    NOT_APPLICABLE: 'existing-report-status-badge--not-applicable',
+    INCOMPLETE: 'existing-report-status-badge--incomplete',
+  }[status];
+}
+
+export function existingReportStatusBadgeLabel(status: ExistingReportPresentationStatus): string {
+  if (status === 'INCOMPLETE') return 'غير مقيم';
+  return EXISTING_ASSESSMENT_STATUS_LABELS[status];
 }
