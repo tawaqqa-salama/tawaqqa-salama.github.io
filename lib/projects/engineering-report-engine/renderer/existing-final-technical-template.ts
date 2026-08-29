@@ -206,7 +206,7 @@ function css(doc: EngineeringStudyDocument, company: CompanyProfile): string {
   .official-cover-metadata > div { min-height:18mm; padding:3mm 4mm; border:1px solid rgba(231,247,249,.35); background:rgba(3,19,35,.28); display:flex; flex-direction:column; gap:1mm; }
   .official-cover-metadata span { color:#9ec6d1; font-size:8.5px; font-weight:700; }
   .official-cover-metadata strong { color:#fff; font-size:10px; font-weight:800; }
-  .official-toc-page { min-height:0; padding:0; page-break-after:always; break-after:page; }
+  .official-toc-page { min-height:0; padding:0; }
   .official-page-brand { display:grid; grid-template-columns:1fr 1.5fr 1fr; align-items:center; min-height:20mm; font-size:8.5px; font-weight:800; }
   .official-page-brand span:first-child { text-align:start; }
   .official-page-brand strong { text-align:center; font-size:10px; }
@@ -234,9 +234,10 @@ function css(doc: EngineeringStudyDocument, company: CompanyProfile): string {
     break-before:avoid-page;
     page-break-before:avoid;
   }
-  .official-assessment-section { break-before:page; page-break-before:always; }
+  .official-assessment-section { break-before:auto; page-break-before:auto; }
   .official-assessment-section + .official-paragraph,
-  .official-assessment-section + .official-table-wrap {
+  .official-assessment-section + .official-table-wrap,
+  .official-assessment-section + .existing-report-table-wrap {
     break-before:avoid-page;
     page-break-before:avoid;
   }
@@ -256,10 +257,6 @@ function css(doc: EngineeringStudyDocument, company: CompanyProfile): string {
   .official-list { margin:2px 0 8px; padding-inline-start:22px; }
   .official-list li { margin:0 0 4px; page-break-inside:avoid; break-inside:avoid; }
   .official-table-wrap { margin:5px 0 9px; break-inside:auto; page-break-inside:auto; }
-  .official-assessment-section + .official-table-wrap,
-  .official-assessment-section + .existing-report-table-wrap,
-  .official-mandatory-page + .official-table-wrap,
-  .official-mandatory-page + .existing-report-table-wrap { break-inside:avoid; page-break-inside:avoid; }
   .official-engineering-run { direction:ltr; unicode-bidi:isolate; white-space:nowrap; display:inline-block; }
   .official-summary-block { margin:5px 0 10px; break-inside:avoid; page-break-inside:avoid; }
   .official-summary-metrics { width:155mm; max-width:100%; margin-inline:auto; table-layout:fixed; border-collapse:collapse; direction:rtl; }
