@@ -7,6 +7,14 @@ import {
   type FlowBlock,
 } from '@/lib/projects/engineering-report-engine/renderer/flow-document';
 import { EXISTING_MANDATORY_PAGE_SECTIONS, EXISTING_FACADE_MISSING_LABEL, EXISTING_AERIAL_MISSING_LABEL, EXISTING_CD_ROUTE_MISSING_LABEL } from '@/lib/projects/existing-technical-report-profile';
+import {
+  EXISTING_REPORT_TABLE_WRAP_CLASS,
+  buildExistingReportTableColgroup,
+  existingReportTableLayoutClass,
+  getExistingReportDesignSystemCss,
+  renderExistingReportImageSlotHtml,
+  resolveExistingReportTableLayout,
+} from '@/lib/projects/engineering-report-engine/renderer/existing-report-design-system';
 
 function text(value: string): string {
   return formatReportTextHtml(value);
@@ -33,7 +41,7 @@ function renderTableCell(value: string, tag: 'th' | 'td', className = ''): strin
   const direction = isLtrEngineeringValue(displayValue) ? 'ltr' : 'auto';
   const classAttr = className ? ` class="${className}"` : '';
   const content = direction === 'ltr' ? text(displayValue) : renderEngineeringTokens(displayValue);
-  return `<${tag}${classAttr}><bdi dir="${direction}" class="official-cell-text">${content}</bdi></${tag}>`;
+  return `<${tag}${classAttr}><bdi dir="${direction}" class="existing-report-cell-text">${content}</bdi></${tag}>`;
 }
 
 function renderBlock(block: FlowBlock, locale: 'ar' | 'en', includeDetectionMarkers = false): string {
@@ -66,14 +74,27 @@ function renderBlock(block: FlowBlock, locale: 'ar' | 'en', includeDetectionMark
       }
       const isEngineering = ['مقاييس الإخلاء', 'إمداد مياه الإطفاء والخزان', 'مضخات الحريق', 'نظام الرش الآلي', 'نظام إنذار وكشف الحريق'].some((label) => block.caption.includes(label));
       const tableClass = isEngineering ? ' official-engineering-sheet' : '';
+      const layout = resolveExistingReportTableLayout(block.caption, block.headers);
+      const tableLayoutClass = existingReportTableLayoutClass(layout);
+      const colgroup = buildExistingReportTableColgroup(layout, block.headers.length);
       const rows = block.rows.map((row) => {
         const isStatus = row[0] === 'حالة المطابقة';
         return `<tr class="${isStatus ? 'official-status-row' : ''}">${row.map((cell, index) => renderTableCell(cell, 'td', isStatus && index === 1 ? 'official-status-cell' : '')).join('')}</tr>`;
       }).join('');
-      return `<section class="official-table-wrap${tableClass}"><div class="official-table-caption">${text(locale === 'ar' ? `[ ${block.caption} ]` : `[ ${block.caption} ]`)}</div><table class="official-table"><thead><tr>${block.headers.map((header) => renderTableCell(header, 'th')).join('')}</tr></thead><tbody>${rows}</tbody></table></section>`;
+      return `<section class="${EXISTING_REPORT_TABLE_WRAP_CLASS} official-table-wrap${tableClass}"><div class="official-table-caption">${text(locale === 'ar' ? `[ ${block.caption} ]` : `[ ${block.caption} ]`)}</div><table class="${tableLayoutClass}">${colgroup}<thead><tr>${block.headers.map((header) => renderTableCell(header, 'th')).join('')}</tr></thead><tbody>${rows}</tbody></table></section>`;
     }
     case 'figure':
-      return `<figure class="official-figure official-figure-${esc(block.layout)} official-figure-${esc(block.variant)} keep"><div class="official-figure-media"><img src="${esc(block.src)}" alt="" /></div><figcaption>${text(block.caption)}</figcaption>${block.note ? `<p class="official-figure-note">${text(block.note)}</p>` : ''}</figure>`;
+      if (block.variant === 'code') {
+        return `<figure class="official-figure official-figure-${esc(block.layout)} official-figure-code keep"><div class="official-figure-media official-code-media"><img src="${esc(block.src)}" alt="" /></div><figcaption>${text(block.caption)}</figcaption>${block.note ? `<p class="official-figure-note">${text(block.note)}</p>` : ''}</figure>`;
+      }
+      return renderExistingReportImageSlotHtml({
+        title: block.displayTitle || block.caption,
+        caption: block.caption,
+        src: block.src,
+        placeholder: block.placeholder,
+        variant: block.variant,
+        objectPosition: block.objectPosition,
+      }) + (block.note ? `<p class="official-figure-note">${text(block.note)}</p>` : '');
     case 'figure_row':
       return `<div class="official-figure-row">${block.figures.map((figure) => renderBlock(figure, locale)).join('')}</div>`;
     case 'code_sequence':
@@ -89,7 +110,7 @@ function coverLocation(doc: EngineeringStudyDocument): string {
   if (doc.location_display?.trim()) return doc.location_display.trim();
   const facility = doc.sections.find((section) => section.id === 'facility_data');
   const rows = facility?.tables?.flatMap((table) => table.rows) || [];
-  const location = rows.find(([label]) => label === 'الموقع')?.[1]?.trim();
+  const location = rows.find(([label]) => label === 'الموقع' || label === 'العنوان')?.[1]?.trim();
   return location || '—';
 }
 
@@ -152,6 +173,7 @@ function css(doc: EngineeringStudyDocument, company: CompanyProfile): string {
   const projectName = escapeMarginText(doc.project_name);
   const ownerName = escapeMarginText(reportValue(doc.owner_name, doc.project_name));
   return `${getEmbeddedArabicFontCss()}
+  ${getExistingReportDesignSystemCss()}
   @page { size:A4 portrait; margin:35mm 15mm 25mm 15mm; @top-left { content:"${companyName}"; border-bottom:.75pt solid #1b8f91; padding-bottom:4mm; font-family:"Noto Naskh Arabic",Tahoma,sans-serif; font-size:8pt; font-weight:700; color:#171717; } @top-center { content:"${reportTitle} — ${projectName}"; border-bottom:.75pt solid #1b8f91; padding-bottom:4mm; font-family:"Noto Naskh Arabic",Tahoma,sans-serif; font-size:8.5pt; font-weight:700; color:#171717; } @top-right { content:"المالك: ${ownerName}"; border-bottom:.75pt solid #1b8f91; padding-bottom:4mm; font-family:"Noto Naskh Arabic",Tahoma,sans-serif; font-size:8pt; font-weight:700; color:#171717; } @bottom-center { content:"رقم الصفحة: " counter(page) " من " counter(pages) "  |  تاريخ التقرير: ${reportDate}  |  النسخة: 01  |  رقم التقرير: ${reportNo}"; border-top:.5pt solid #555; padding-top:2mm; font-family:"Noto Naskh Arabic",Tahoma,sans-serif; font-size:8pt; color:#171717; } }
   @page :first { margin:12mm; @top-left { content:none; } @top-center { content:none; } @top-right { content:none; } @bottom-center { content:none; } }
   * { box-sizing:border-box; }
@@ -203,8 +225,10 @@ function css(doc: EngineeringStudyDocument, company: CompanyProfile): string {
   .official-section-heading { break-after:avoid-page; page-break-after:avoid; margin:0; }
   .official-mandatory-page { break-before:page; page-break-before:always; min-height:0; }
   .official-mandatory-page + .official-paragraph,
+  .official-mandatory-page + .existing-report-table-wrap,
   .official-mandatory-page + .official-table-wrap,
   .official-mandatory-page + .official-unit,
+  .official-mandatory-page + .existing-report-image-block,
   .official-mandatory-page + .official-figure,
   .official-mandatory-page + .official-summary-block {
     break-before:avoid-page;
@@ -233,15 +257,9 @@ function css(doc: EngineeringStudyDocument, company: CompanyProfile): string {
   .official-list li { margin:0 0 4px; page-break-inside:avoid; break-inside:avoid; }
   .official-table-wrap { margin:5px 0 9px; break-inside:auto; page-break-inside:auto; }
   .official-assessment-section + .official-table-wrap,
-  .official-mandatory-page + .official-table-wrap { break-inside:avoid; page-break-inside:avoid; }
-  .official-missing-media { min-height:42mm; margin:6px 0 10px; padding:8mm 6mm; border:1.5px dashed #8aa5a8; background:#f7fafa; color:#23434a; font-weight:800; text-align:center; break-inside:avoid; page-break-inside:avoid; }
-  .official-table-caption { color:#123d4c; font-weight:800; font-size:10px; margin-bottom:3px; text-align:start; }
-  .official-engineering-sheet { margin-top:5px; }
-  .official-engineering-sheet .official-table-caption { color:#167b7f; font-size:10.5px; border-inline-start:2px solid #d2a33b; padding-inline-start:5px; }
-  .official-engineering-sheet .official-table th { background:#f0f4f4; }
-  .official-status-row td { background:#fcfdfd; }
-  .official-status-cell { display:inline-block !important; width:auto; min-width:23mm; padding:.55mm 2mm; border:1px solid #8aa5a8; border-radius:999px; background:#f1f7f6; color:#123d4c; font-weight:900; text-align:center; }
-  .official-status-row td:first-child { color:#123d4c; font-weight:800; }
+  .official-assessment-section + .existing-report-table-wrap,
+  .official-mandatory-page + .official-table-wrap,
+  .official-mandatory-page + .existing-report-table-wrap { break-inside:avoid; page-break-inside:avoid; }
   .official-engineering-run { direction:ltr; unicode-bidi:isolate; white-space:nowrap; display:inline-block; }
   .official-summary-block { margin:5px 0 10px; break-inside:avoid; page-break-inside:avoid; }
   .official-summary-metrics { width:155mm; max-width:100%; margin-inline:auto; table-layout:fixed; border-collapse:collapse; direction:rtl; }
@@ -250,14 +268,6 @@ function css(doc: EngineeringStudyDocument, company: CompanyProfile): string {
   .official-summary-metric { width:31mm; box-sizing:border-box !important; direction:rtl; min-width:0; min-height:20mm; padding:2.5mm 1.2mm; border:1px solid #b8c8ca; border-top:1.5mm solid #1b8f91; background:#f4f8f8; text-align:center; vertical-align:middle; }
   .official-summary-metric span { color:#23434a; font-size:8.5px; font-weight:800; line-height:1.35; }
   .official-summary-metric strong { color:#123d4c; font-size:17px; line-height:1; margin-top:2mm; font-variant-numeric:tabular-nums; }
-  .official-table { width:100%; table-layout:fixed; border-collapse:collapse; font-size:9.7px; direction:rtl; }
-  .official-table thead { display:table-header-group; }
-  .official-table tr { page-break-inside:avoid; break-inside:avoid; }
-  .official-table th, .official-table td { border:1px solid #a8b4b7; padding:6px 6px; overflow-wrap:anywhere; word-break:normal; white-space:normal; min-width:0; vertical-align:top; text-align:right; direction:rtl; unicode-bidi:plaintext; line-height:1.55; word-spacing:0.04em; }
-  .official-table th:first-child, .official-table td:first-child { width:29%; }
-  .official-cell-text { display:block; max-width:100%; overflow-wrap:anywhere; word-break:normal; white-space:normal; unicode-bidi:isolate; }
-  .official-table th bdi, .official-table td bdi { display:block; max-width:100%; overflow-wrap:anywhere; word-break:normal; white-space:normal; unicode-bidi:isolate; }
-  .official-table th { background:#e6f1f1; color:#123d4c; font-weight:800; }
   .official-reference { margin:5px 0 8px; padding:5px 8px; border-inline-start:2px solid #1b8f91; background:#f1f7f6; font-size:9.5px; }
   .official-reference strong { display:block; color:#171717; margin-bottom:2px; }
   .official-figure, .official-figure-row { page-break-inside:avoid; break-inside:avoid; }
@@ -267,6 +277,8 @@ function css(doc: EngineeringStudyDocument, company: CompanyProfile): string {
   .official-figure-row .official-figure:last-child { border-inline-start:0; }
   .official-figure-media { width:fit-content; max-width:100%; margin-inline:auto; border:1px solid #444; background:#fff; display:flex; justify-content:center; }
   .official-figure-media img { display:block; max-width:100%; width:auto; height:auto; object-fit:contain; }
+  .official-code-media { width:100%; max-width:168mm; margin-inline:auto; border:1px solid #444; background:#fff; min-height:40mm; display:flex; justify-content:center; align-items:center; }
+  .official-code-media img { display:block; max-width:100%; width:auto; height:auto; max-height:128mm; object-fit:contain; }
   .official-figure-double .official-figure-media img { max-height:72mm; }
   .official-figure-single .official-figure-media img { max-height:105mm; }
   .official-figure-full_width .official-figure-media, .official-figure-map .official-figure-media, .official-figure-code .official-figure-media { width:100%; }

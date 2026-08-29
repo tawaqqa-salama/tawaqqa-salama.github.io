@@ -110,6 +110,9 @@ export type EngineeringStudyImage = {
   selected_options?: string[];
   /** Free-text engineer notes for the item */
   item_notes?: string;
+  /** When src is empty — show unified image frame with this placeholder (layout only). */
+  placeholder_ar?: string;
+  placeholder_en?: string;
 };
 
 export type EngineeringStudySection = {
