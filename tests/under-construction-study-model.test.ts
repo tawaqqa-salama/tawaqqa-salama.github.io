@@ -177,7 +177,8 @@ describe('PR 3 — UNDER_CONSTRUCTION engineering study model', () => {
     expect(modal).toContain("projectClassification === 'UNDER_CONSTRUCTION'");
     expect(modal).toContain("projectClassification === 'EXISTING'");
     expect(modal).toContain("projectClassification === null");
-    expect(modal).toContain('لا يمكن فتح أي من مساري الدراسة قبل تصنيف هوية المشروع');
+    expect(modal).toContain('resolveStage4ProjectClassification');
+    expect(modal).toContain('classificationNeedsDataMessage');
     expect(modal).not.toContain("client.project_status === 'UNDER_CONSTRUCTION'");
     expect(section).toContain('دراسة المشروع قيد الإنشاء');
     expect(section).toContain('grid-cols-1');
@@ -192,7 +193,7 @@ describe('PR 3 — UNDER_CONSTRUCTION engineering study model', () => {
     expect(model).not.toContain('technical_report.building_status');
     expect(model).not.toContain('lifecycle_mode');
     expect(model).not.toContain('calcRequiredTankVolumeM3');
-    expect(modal).toContain('projectClassification = client.primary_engineering_project_identity?.projectClassification ?? null');
+    expect(modal).toContain('resolveStage4ProjectClassification');
   });
 
   it('keeps the new model outside Technical Report/PDF/routing and does not alter existing_assessment semantics', () => {

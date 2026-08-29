@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import Link from 'next/link';
 import { seedBuildingPlanFromClient } from '@/lib/projects/building-plan';
+import { resolveStage4ProjectClassification } from '@/lib/projects/project-classification-resolution';
 import { seedSpaceSafetyFromClient } from '@/lib/projects/design-center/space-safety';
 import {
   parseProjectEngineeringData,
@@ -243,9 +244,12 @@ export default function ProjectReportModal({
 
   if (!client || !data) return null;
 
-  // Project classification is canonical project identity, never client status,
-  // report wording, fire-protection lifecycle, or workflow state.
-  const projectClassification = client.primary_engineering_project_identity?.projectClassification ?? null;
+  // Project classification is canonical project identity synced from Basic Data.
+  const classificationGate = useMemo(() => resolveStage4ProjectClassification(client), [client]);
+  const projectClassification =
+    classificationGate.status === 'RESOLVED' ? classificationGate.classification : null;
+  const classificationNeedsDataMessage =
+    classificationGate.status === 'NEEDS_DATA' ? classificationGate.message : null;
 
   const save = async (
     nextData: ProjectEngineeringData,
@@ -716,9 +720,8 @@ export default function ProjectReportModal({
                       }
                     />
                   ) : projectClassification === null ? (
-                    <div className="rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm leading-6 text-slate-700">
-                      لا يمكن فتح أي من مساري الدراسة قبل تصنيف هوية المشروع. المشروع القديم غير المصنف
-                      يبقى محايدًا ولا يُستنتج تصنيفه من حالة العميل أو بيانات التقرير أو دورة حياة التصميم.
+                    <div className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm leading-6 text-amber-950">
+                      {classificationNeedsDataMessage}
                     </div>
                   ) : null}
                   <DesignCenterSection
@@ -909,7 +912,7 @@ export default function ProjectReportModal({
                     <UnderConstructionTechnicalReportPreview client={client} data={data} company={company} />
                   ) : projectClassification === null ? (
                     <div className="border border-amber-200 bg-amber-50 px-4 py-4 text-sm leading-7 text-amber-950">
-                      لا يمكن فتح معاينة التقرير الفني لمسار الموقع القائم قبل تصنيف هوية المشروع؛ لا يمكن فتح معاينة التقرير الفني أو طباعته أو تنزيله قبل التصنيف. يبقى المشروع القديم غير المصنف محايدًا ولا يُعامل كموقع قائم أو مشروع قيد الإنشاء.
+                      {classificationNeedsDataMessage}
                     </div>
                   ) : null}
                 </>

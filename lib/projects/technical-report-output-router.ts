@@ -5,8 +5,10 @@ import type { UnderConstructionTechnicalReportModel } from '@/lib/projects/under
 
 export type TechnicalReportOutputBlocked = {
   kind: 'BLOCKED';
+  status: 'NEEDS_DATA';
   project_classification: null;
   reason: 'CLASSIFICATION_REQUIRED';
+  sourceField: 'clients.project_classification';
   message: string;
 };
 
@@ -50,9 +52,12 @@ export function resolveTechnicalReportOutput(
   }
   return {
     kind: 'BLOCKED',
+    status: 'NEEDS_DATA',
     project_classification: null,
     reason: 'CLASSIFICATION_REQUIRED',
-    message: 'لا يمكن معاينة أو طباعة أو تنزيل التقرير الفني قبل تصنيف هوية المشروع.',
+    sourceField: 'clients.project_classification',
+    message:
+      'لا يمكن معاينة أو طباعة أو تنزيل التقرير الفني قبل اختيار تصنيف المشروع الهندسي في البيانات الأساسية.',
   };
 }
 

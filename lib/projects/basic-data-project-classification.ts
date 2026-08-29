@@ -1,4 +1,5 @@
 import { supabase } from '@/lib/supabase';
+import { resolveLegacyProjectStatusClassification } from '@/lib/projects/legacy-project-status-classification';
 import {
   isProjectClassification,
   normalizeProjectClassification,
@@ -39,10 +40,8 @@ export function readBasicDataProjectClassification(
   if (direct) return direct;
 
   const status = asNonEmptyString(input.project_status);
-  if (status === BASIC_DATA_PROJECT_CLASSIFICATION_LABELS.EXISTING) return 'EXISTING';
-  if (status === BASIC_DATA_PROJECT_CLASSIFICATION_LABELS.UNDER_CONSTRUCTION) {
-    return 'UNDER_CONSTRUCTION';
-  }
+  const legacy = resolveLegacyProjectStatusClassification(status);
+  if (legacy) return legacy;
 
   return null;
 }
@@ -96,4 +95,53 @@ export async function syncProjectClassificationFromBasicData(clientId: string): 
     synced: row.synced === true,
     error: null,
   };
+}
+
+type BackfillSummaryRpcRow = {
+  total_candidates?: unknown;
+  synced_count?: unknown;
+  already_classified_count?: unknown;
+  unresolved_count?: unknown;
+};
+
+/**
+ * One-shot tenant-scoped backfill for legacy Production projects whose Basic
+ * Data already contains an explicit or unambiguous legacy classification.
+ */
+export async function backfillAllProjectClassificationsFromBasicData(): Promise<{
+  totalCandidates: number;
+  syncedCount: number;
+  alreadyClassifiedCount: number;
+  unresolvedCount: number;
+  error: string | null;
+}> {
+  const { data, error } = await supabase.rpc('backfill_project_classifications_from_basic_data');
+
+  if (error) {
+    return {
+      totalCandidates: 0,
+      syncedCount: 0,
+      alreadyClassifiedCount: 0,
+      unresolvedCount: 0,
+      error: error.message,
+    };
+  }
+
+  const row = (Array.isArray(data) ? data[0] : data) as BackfillSummaryRpcRow | null;
+  return {
+    totalCandidates: Number(row?.total_candidates ?? 0),
+    syncedCount: Number(row?.synced_count ?? 0),
+    alreadyClassifiedCount: Number(row?.already_classified_count ?? 0),
+    unresolvedCount: Number(row?.unresolved_count ?? 0),
+    error: null,
+  };
+}
+
+export async function countUnresolvedProjectClassifications(): Promise<{
+  count: number;
+  error: string | null;
+}> {
+  const { data, error } = await supabase.rpc('count_unresolved_project_classifications');
+  if (error) return { count: 0, error: error.message };
+  return { count: Number(data ?? 0), error: null };
 }

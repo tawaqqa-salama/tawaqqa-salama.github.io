@@ -248,7 +248,7 @@ describe('PR 4 — EXISTING technical report derived model and preview', () => {
     expect(route).toContain("projectClassification === 'EXISTING'");
     expect(route).toContain("projectClassification === null");
     expect(route).toContain('ExistingTechnicalReportPreview');
-    expect(route).toContain('لا يمكن فتح معاينة التقرير الفني لمسار الموقع القائم قبل تصنيف هوية المشروع');
+    expect(route).toContain('classificationNeedsDataMessage');
     expect(route).not.toContain('project_status');
     expect(route).not.toContain('building_status');
     expect(route).not.toContain('lifecycle_mode');
