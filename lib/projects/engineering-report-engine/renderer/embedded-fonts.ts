@@ -5,8 +5,8 @@ import {
 
 /**
  * Embed Noto Naskh Arabic so browser print-to-PDF embeds a shaping-capable
- * Arabic font with usable ToUnicode (fixes ا5/اZ isolate corruption and
- * improves copy/paste vs legacy system fonts).
+ * Arabic font with usable ToUnicode (fixes isolated-glyph copy/paste corruption).
+ * EXISTING report PDF generation materializes these TTFs to file:// URLs before print.
  */
 export function getEmbeddedArabicFontCss(): string {
   return `

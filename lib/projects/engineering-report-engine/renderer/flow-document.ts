@@ -52,7 +52,8 @@ export type FlowBlock =
   /** Breakable sequence: each code figure remains cohesive but the full series never locks a page. */
   | { kind: 'code_sequence'; figures: FlowFigure[] }
   /** Atomic keep-together group (subsection + first para, or image+caption) */
-  | { kind: 'unit'; blocks: FlowBlock[] };
+  | { kind: 'unit'; blocks: FlowBlock[] }
+  | { kind: 'page_break'; id: 'after_project_components' };
 
 const SYSTEM_JARGON_RE =
   /محرك\s*(?:القواعد|القرار)(?:\s*الهندسي(?:ة)?)?|قاعدة\s*المعرفة|Decision\s*Engine|Knowledge\s*Base|Rules?\s*Engine|Rule\s*Engine|قابل\s*للتعديل|القيم\s*المقفلة|الخيارات\s*غير\s*المسموحة|بوابة\s*(?:محرك\s*)?القرار|حالة\s*البوابة|بوابة\s*مغلقة|موقوف\s*:|حقل\s*إلزامي(?:\s*ناقص)?|عدد\s*مخالفات(?:\s*القواعد)?|مخالفات\s*القواعد|Incomplete|Company\s*Standards|Base\s*Code|CODE-BASE|مقفل\s*بقاعدة[^.]*|مقفَل\s*بقاعدة[^.]*|rules?\s*engine|UUID|Database\s*ID|Internal\s*ID|Internal\s*URL|Pipeline\s*Status|pipeline\s*status|draft\s*status/gi;
@@ -632,6 +633,9 @@ export function sectionToFlowBlocks(
       counters.references += 1;
       blocks.push({ kind: 'reference_note', refs, referenceNo: counters.references });
     }
+    if (section.id === 'project_components') {
+      blocks.push({ kind: 'page_break', id: 'after_project_components' });
+    }
     return blocks;
   }
 
@@ -759,6 +763,8 @@ export function estimateBlockHeightMm(block: FlowBlock): number {
       return Math.max(...block.figures.map((figure) => estimateBlockHeightMm(figure)), 0) + 4;
     case 'unit':
       return (block.blocks || []).reduce((n, b) => n + estimateBlockHeightMm(b), 1);
+    case 'page_break':
+      return 0;
     default:
       return 5;
   }

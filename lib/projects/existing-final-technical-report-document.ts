@@ -12,6 +12,7 @@ import {
   EXISTING_FACADE_MISSING_LABEL,
   existingReportDisplayValue,
 } from '@/lib/projects/existing-technical-report-profile';
+import { formatExistingReportMapsTableRow } from '@/lib/projects/existing-report-presentation';
 import {
   existingFinalReportRecommendations,
   existingTechnicalReportStatusLabel,
@@ -158,27 +159,26 @@ export function buildExistingFinalTechnicalReportDocument(
   const siteIntro = site.location_text
     ? [`تعريف الموقع: ${site.location_text}`]
     : ['يُعرض في هذه الصفحة العنوان المسجل وبيانات الموقع كما وردت في ملف المشروع دون استنتاج موقع جديد.'];
-  const siteTables = [
-    twoColumn('بيانات الموقع', [
-      { label: 'الشارع', value: existingReportDisplayValue(site.street) },
-      { label: 'الحي', value: existingReportDisplayValue(site.district) },
-      { label: 'المدينة', value: existingReportDisplayValue(site.city) },
-      { label: 'الموقع', value: existingReportDisplayValue(location) },
-      { label: 'الإحداثيات', value: existingReportDisplayValue(site.coordinates) },
-      ...(site.maps_url ? [{ label: 'رابط الخريطة', value: site.maps_url }] : []),
-    ]),
-  ];
   const boundaryRows = [
     site.surroundings?.north ? { label: 'شمالاً', value: site.surroundings.north } : null,
     site.surroundings?.south ? { label: 'جنوباً', value: site.surroundings.south } : null,
     site.surroundings?.east ? { label: 'شرقاً', value: site.surroundings.east } : null,
     site.surroundings?.west ? { label: 'غرباً', value: site.surroundings.west } : null,
   ].filter((row): row is { label: string; value: string } => Boolean(row));
-  if (boundaryRows.length) {
-    siteTables.push(twoColumn('حدود الموقع', boundaryRows));
-  } else if (site.surrounding_roads) {
-    siteTables.push(twoColumn('حدود الموقع', [{ label: 'الحدود / المحيط', value: site.surrounding_roads }]));
+  const mapsRow = formatExistingReportMapsTableRow(site.maps_url);
+  const siteRows = [
+    { label: 'الشارع', value: existingReportDisplayValue(site.street) },
+    { label: 'الحي', value: existingReportDisplayValue(site.district) },
+    { label: 'المدينة', value: existingReportDisplayValue(site.city) },
+    { label: 'الموقع', value: existingReportDisplayValue(location) },
+    ...site.coordinate_rows.map((row) => ({ label: row.label, value: existingReportDisplayValue(row.value) })),
+    { label: mapsRow.label, value: mapsRow.value },
+    ...boundaryRows,
+  ];
+  if (!boundaryRows.length && site.surrounding_roads) {
+    siteRows.push({ label: 'الحدود / المحيط', value: site.surrounding_roads });
   }
+  const siteTables = [twoColumn('بيانات الموقع', siteRows)];
   const siteImages = site.aerial_src
     ? [imageBlock('site_information', site.aerial_src, 'الصورة الجوية للموقع', 'site_map')]
     : [placeholderImageBlock('site_information', 'الصورة الجوية للموقع', EXISTING_AERIAL_MISSING_LABEL, 'site_map')];

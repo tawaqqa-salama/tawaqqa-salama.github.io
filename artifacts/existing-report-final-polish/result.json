@@ -1,0 +1,38 @@
+{
+  "pageMap": {
+    "facility_data": 3,
+    "site_information": 4,
+    "fire_truck_access": 5,
+    "project_components": 6,
+    "existing_assessment_site": 7,
+    "existing_assessment_firefighting": 7,
+    "existing_recommendations": 7,
+    "conclusion": 7,
+    "approvals": 9
+  },
+  "pageCount": 9,
+  "blankPages": [],
+  "longMapsUrlPrintedInHtml": false,
+  "page6OnlyComponents": true,
+  "componentsSectionPage": 6,
+  "firstAssessmentPage": 7,
+  "arabicExtraction": {
+    "ok": true,
+    "found": [],
+    "missing": [
+      "بيانات المنشأة",
+      "مكونات المشروع",
+      "أنظمة مكافحة الحريق"
+    ],
+    "notes": [
+      "pdfjs extraction may split Arabic glyphs; pdftotext unavailable in this environment."
+    ],
+    "engine": "pdfjs",
+    "arabicCharCount": 1088,
+    "pdftotextAvailable": false,
+    "sampleExtract": "ﻊ \u0000 \u0000 ﻮ \u0000 \u0000  \u0000 \u0000 \u0000   \u0000 ﺮ ﺤ ﻟ ا   \u0000   ں ﻣ   \u0000   ﻪ \u0000 \u0000 ﺎ \u0000   \u0000 ﻮ ﻟ وا   \u0000   ﻪ ﻣ لا ﺴ ﻟ ا   \u0000   ٮ را ﺎ   \u0000   ﺴ \u0000   \u0000 ﺳ لا   \u0000   ﻪ ﻣ لا ﺳ   ﻊ \u0000   \u0000 ﻮ \u0000   \u0000   \u0000   ﻪ ﺼ \u0000   \u0000 ﻣ  Design - supervision -   /   ﻊ \u0000   \u0000 ر ﺎ   \u0000   ﺴ ﻣ   \u0000   ە دار ٕ   ا   -   \u0000   ڡ ا ﺮ   \u0000   ﺳ ٕ   ا   -   ﻢ \u0000   \u0000 ﻤ ﺼ \u0000   \u0000  project management  TECHNICAL REPORT · FIRE & LIFE SAFETY  ﻢ ٔ   \u0000 ﺎ \u0000   \u0000 ﻟ ا   ﻊ \u0000   \u0000 ﻮ ﻤ ﻟ ا   ﻢ \u0000   \u0000 \u0000   \u0000 \u0000   \u0000 \u0000   \u0000 ﻟ   \u0000   ی \u0000   \u0000   \u0000   \u0000 ﻟ ا   ﺮ \u0000   \u0000 ﺮ \u0000   \u0000 \u0000 \u0000 ﻟ ا  \u0000 \u0000 \u0000   \u0000 ﺮ ﺤ ﻟ ا   \u0000   ں",
+    "foldedSample": "ﻊ\u0000\u0000ﻮ\u0000\u0000\u0000\u0000\u0000\u0000ﺮﺤﻟا\u0000ںﻣ\u0000ﻪ\u0000\u0000ﺎ\u0000\u0000ﻮﻟوا\u0000ﻪﻣلاﺴﻟا\u0000ٮراﺎ\u0000ﺴ\u0000\u0000ﺳلا\u0000ﻪﻣلاﺳﻊ\u0000\u0000ﻮ\u0000\u0000\u0000ﻪﺼ\u0000\u0000ﻣDesign-supervision-/ﻊ\u0000\u0000رﺎ\u0000ﺴﻣ\u0000ەدارٕا-\u0000ڡاﺮ\u0000ﺳٕا-ﻢ\u0000\u0000ﻤﺼ\u0000\u0000projectmanagementTECHNICALREPORT·FIRE&LIFESAFETYﻢٔ\u0000ﺎ\u0000\u0000ﻟاﻊ\u0000\u0000ﻮﻤﻟاﻢ\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000ﻟ\u0000ی\u0000\u0000\u0000\u0000ﻟاﺮ",
+    "diagnosis": "Chromium embeds Noto Naskh as vector text; pdf.js may still split Arabic glyphs during extraction even when copy/search in a viewer is correct."
+  },
+  "bytes": 268505
+}
