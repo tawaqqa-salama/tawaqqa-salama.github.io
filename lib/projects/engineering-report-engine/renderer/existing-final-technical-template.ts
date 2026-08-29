@@ -6,6 +6,7 @@ import {
   documentToFlowBlocks,
   type FlowBlock,
 } from '@/lib/projects/engineering-report-engine/renderer/flow-document';
+import { EXISTING_MANDATORY_PAGE_SECTIONS, EXISTING_FACADE_MISSING_LABEL } from '@/lib/projects/existing-technical-report-profile';
 
 function text(value: string): string {
   return formatReportTextHtml(value);
@@ -37,12 +38,20 @@ function renderTableCell(value: string, tag: 'th' | 'td', className = ''): strin
 
 function renderBlock(block: FlowBlock, locale: 'ar' | 'en', includeDetectionMarkers = false): string {
   switch (block.kind) {
-    case 'chapter':
-      return `<section class="official-section official-section-heading ${block.id.includes('evidence') ? 'appendix-start' : ''}" id="sec-${esc(block.id)}"><h2 class="official-chapter">${includeDetectionMarkers ? `<span class="official-section-detection-marker">SECTION_PAGE_${esc(block.id)}MARKEREND</span>` : ''}${text(block.title)}</h2></section>`;
+    case 'chapter': {
+      const mandatory = (EXISTING_MANDATORY_PAGE_SECTIONS as readonly string[]).includes(block.id);
+      const flowClass = block.id === 'applicable_codes' || block.id === 'summary' ? ' official-section-flow' : '';
+      const mandatoryClass = mandatory ? ' official-mandatory-page' : '';
+      const appendixClass = block.id.includes('evidence') ? ' appendix-start' : '';
+      const assessmentClass = block.id.startsWith('existing_assessment_') ? ' official-assessment-section' : '';
+      return `<section class="official-section official-section-heading${flowClass}${mandatoryClass}${appendixClass}${assessmentClass}" id="sec-${esc(block.id)}"><h2 class="official-chapter keep-next">${includeDetectionMarkers ? `<span class="official-section-detection-marker">SECTION_PAGE_${esc(block.id)}MARKEREND</span>` : ''}${text(block.title)}</h2></section>`;
+    }
     case 'subsection':
       return `<h3 class="official-subchapter keep-next">${text(block.title)}</h3>`;
-    case 'paragraph':
-      return `<p class="official-paragraph">${text(block.text)}</p>`;
+    case 'paragraph': {
+      const missingMedia = block.text.trim() === EXISTING_FACADE_MISSING_LABEL;
+      return `<p class="official-paragraph${missingMedia ? ' official-missing-media' : ''}">${text(block.text)}</p>`;
+    }
     case 'bullet_list':
       return `<ol class="official-list">${block.items.map((item) => `<li>${text(item)}</li>`).join('')}</ol>`;
     case 'reference_note':
@@ -74,10 +83,11 @@ function renderBlock(block: FlowBlock, locale: 'ar' | 'en', includeDetectionMark
 }
 
 function coverLocation(doc: EngineeringStudyDocument): string {
-  const projectDescription = doc.sections.find((section) => section.id === 'project_description');
-  const rows = projectDescription?.tables?.flatMap((table) => table.rows) || [];
-  const lookup = (label: string) => rows.find(([key]) => key === label)?.[1]?.trim() || '';
-  return [lookup('المدينة'), lookup('الحي'), lookup('الشارع')].filter(Boolean).join(' — ') || '—';
+  if (doc.location_display?.trim()) return doc.location_display.trim();
+  const facility = doc.sections.find((section) => section.id === 'facility_data');
+  const rows = facility?.tables?.flatMap((table) => table.rows) || [];
+  const location = rows.find(([label]) => label === 'الموقع')?.[1]?.trim();
+  return location || '—';
 }
 
 function cover(doc: EngineeringStudyDocument, company: CompanyProfile): string {
@@ -188,6 +198,30 @@ function css(doc: EngineeringStudyDocument, company: CompanyProfile): string {
   .official-document { width:100%; }
   .official-section { margin:0; padding:0; }
   .official-section-heading { break-after:avoid-page; page-break-after:avoid; margin:0; }
+  .official-mandatory-page { break-before:page; page-break-before:always; break-after:page; page-break-after:always; min-height:0; }
+  .official-mandatory-page + .official-paragraph,
+  .official-mandatory-page + .official-table-wrap,
+  .official-mandatory-page + .official-unit,
+  .official-mandatory-page + .official-figure,
+  .official-mandatory-page + .official-summary-block {
+    break-before:avoid-page;
+    page-break-before:avoid;
+  }
+  .official-assessment-section { break-before:page; page-break-before:always; }
+  .official-assessment-section + .official-paragraph,
+  .official-assessment-section + .official-table-wrap {
+    break-before:avoid-page;
+    page-break-before:avoid;
+  }
+  .official-section-flow { break-before:avoid-page; page-break-before:avoid; }
+  #sec-applicable_codes + .official-paragraph,
+  #sec-applicable_codes + .official-paragraph + .official-table-wrap,
+  #sec-summary + .official-paragraph,
+  #sec-summary + .official-paragraph + .official-summary-block,
+  #sec-summary + .official-paragraph + .official-table-wrap {
+    break-before:avoid-page;
+    page-break-before:avoid;
+  }
   .official-chapter { color:#123d4c; font-size:14px; font-weight:800; padding-bottom:1mm; margin:10px 0 7px; border-bottom:1px solid #1b8f91; text-align:start; break-after:avoid-page; page-break-after:avoid; letter-spacing:0.02em; word-spacing:0.05em; } .official-section-detection-marker { display:inline; color:#123d4c; font-size:6px; line-height:1; white-space:nowrap; }
   .official-section-heading + .official-paragraph, .official-section-heading + .official-table-wrap, .official-section-heading + .official-reference { break-before:avoid-page; page-break-before:avoid; }
   .official-subchapter { color:#171717; font-size:12.5px; font-weight:800; margin:9px 0 4px; text-align:start; letter-spacing:0.015em; word-spacing:0.04em; }
@@ -195,6 +229,9 @@ function css(doc: EngineeringStudyDocument, company: CompanyProfile): string {
   .official-list { margin:2px 0 8px; padding-inline-start:22px; }
   .official-list li { margin:0 0 4px; page-break-inside:avoid; break-inside:avoid; }
   .official-table-wrap { margin:5px 0 9px; break-inside:auto; page-break-inside:auto; }
+  .official-assessment-section + .official-table-wrap,
+  .official-mandatory-page + .official-table-wrap { break-inside:avoid; page-break-inside:avoid; }
+  .official-missing-media { min-height:42mm; margin:6px 0 10px; padding:8mm 6mm; border:1.5px dashed #8aa5a8; background:#f7fafa; color:#23434a; font-weight:800; text-align:center; break-inside:avoid; page-break-inside:avoid; }
   .official-table-caption { color:#123d4c; font-weight:800; font-size:10px; margin-bottom:3px; text-align:start; }
   .official-engineering-sheet { margin-top:5px; }
   .official-engineering-sheet .official-table-caption { color:#167b7f; font-size:10.5px; border-inline-start:2px solid #d2a33b; padding-inline-start:5px; }

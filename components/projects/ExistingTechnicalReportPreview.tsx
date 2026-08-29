@@ -179,7 +179,7 @@ export default function ExistingTechnicalReportPreview({ client, data, company }
         <h3 className="text-lg font-bold text-slate-950">التوصيات والإجراءات المسجلة</h3>
         {report.recommendations.length ? (
           <ol className="mt-3 space-y-2 text-sm">
-            {report.recommendations.map((recommendation) => <li key={recommendation.id} className="border border-slate-200 p-3"><div className="flex flex-col gap-1 sm:flex-row sm:items-start sm:justify-between"><p className="whitespace-pre-wrap break-words leading-7 text-slate-900">{recommendation.text}</p>{recommendation.priority ? <span className="w-fit border border-slate-300 bg-slate-50 px-2 py-0.5 text-xs font-semibold text-slate-700">أولوية صريحة: {recommendation.priority}</span> : null}</div>{recommendation.system_label ? <p className="mt-2 text-xs text-slate-600">البند: {recommendation.system_label}</p> : null}</li>)}
+            {report.recommendations.map((recommendation) => <li key={recommendation.id} className="border border-slate-200 p-3"><div className="flex flex-col gap-1 sm:flex-row sm:items-start sm:justify-between"><p className="whitespace-pre-wrap break-words leading-7 text-slate-900">{recommendation.text}</p><span className="w-fit border border-slate-300 bg-slate-50 px-2 py-0.5 text-xs font-semibold text-slate-700">{recommendation.priority ? `أولوية صريحة: ${recommendation.priority}` : 'غير محددة من المهندس'}</span></div>{recommendation.system_label ? <p className="mt-2 text-xs text-slate-600">البند: {recommendation.system_label}</p> : null}</li>)}
           </ol>
         ) : <p className="mt-3 text-sm leading-7 text-slate-600">لا توجد إجراءات أو توصيات صريحة مسجلة ضمن التقييم الحالي.</p>}
       </section>

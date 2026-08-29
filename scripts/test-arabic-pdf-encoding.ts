@@ -2,7 +2,7 @@
  * GATE TEST — Arabic PDF encoding before regenerating the full 24-page report.
  * Fail here ⇒ do not treat the full report as ready.
  */
-import { writeFileSync, mkdirSync, existsSync } from 'fs';
+import { writeFileSync, mkdirSync, existsSync, readFileSync } from 'fs';
 import { join } from 'path';
 import { spawnSync } from 'child_process';
 import { pathToFileURL } from 'url';
@@ -46,7 +46,6 @@ ${getEmbeddedArabicFontCss()}
 @page {
   size: A4;
   margin: 18mm;
-  /* no browser URL — headless uses --no-pdf-header-footer */
 }
 body {
   font-family: "Noto Naskh Arabic", Tahoma, Arial, sans-serif;
@@ -62,36 +61,6 @@ p { margin: 0 0 8px; }
 <body>${body}</body>
 </html>`;
 
-const htmlPath = join(outDir, 'gate.html');
-const pdfPath = join(outDir, 'gate.pdf');
-writeFileSync(htmlPath, html, 'utf8');
-
-if (html.includes('dir="ltr"') || html.includes('tawaqqa-salama.github.io')) {
-  console.error('GATE FAIL: forbidden tokens in HTML');
-  process.exit(2);
-}
-
-const chromeBinary = process.env.CHROME_BIN || (existsSync('/usr/bin/google-chrome') ? 'google-chrome' : 'chromium');
-const chrome = spawnSync(
-  chromeBinary,
-  [
-    '--headless=new',
-    '--disable-gpu',
-    '--no-sandbox',
-    '--no-pdf-header-footer',
-    `--print-to-pdf=${pdfPath}`,
-    pathToFileURL(htmlPath).href,
-  ],
-  { encoding: 'utf8', timeout: 90000 }
-);
-if (chrome.status !== 0) {
-  console.error(chrome.stderr || chrome.stdout);
-  process.exit(1);
-}
-
-const extracted = spawnSync('pdftotext', [pdfPath, '-'], { encoding: 'utf8' });
-const text = extracted.stdout || '';
-
 function fold(s: string): string {
   return s
     .replace(/[\u200E\u200F\u202A-\u202E\u2066-\u2069]/g, '')
@@ -99,48 +68,102 @@ function fold(s: string): string {
     .replace(/[يى]/g, 'ي');
 }
 
-const compact = fold(text);
-const mustArabic = [
-  'المشروع',
-  'المبنى',
-  'المالك',
-  'الإشغال',
-  'المخارج',
-  'مسالكالهروب',
-  'الإنذار',
-  'الإطفاء',
-  'الدفاعالمدني',
-  'المتطلبات',
-  'المراجع',
-  'التوصيات',
-];
-const mustCodes = ['NFPA10', 'NFPA13', 'NFPA20', 'NFPA72', 'NFPA101', 'SBC201', 'SBC801'];
-const corrupt = ['ا5تطلبات', 'ا;راجع', 'اZنذار', 'ا;هروب', 'ا;شروع', 'اٮ', 'الحرٮ', 'اZطفاء'];
+async function extractPdfText(pdfPath: string): Promise<string> {
+  const extracted = spawnSync('pdftotext', [pdfPath, '-'], { encoding: 'utf8' });
+  if (extracted.stdout?.trim()) return extracted.stdout;
+  const pdfjs = await import('pdfjs-dist/legacy/build/pdf.mjs');
+  const doc = await pdfjs.getDocument({ data: new Uint8Array(readFileSync(pdfPath)), useSystemFonts: true }).promise;
+  const pages: string[] = [];
+  for (let pageNo = 1; pageNo <= doc.numPages; pageNo += 1) {
+    const page = await doc.getPage(pageNo);
+    const content = await page.getTextContent();
+    pages.push(content.items.map((item) => ('str' in item ? item.str : '')).join(' '));
+  }
+  return pages.join('\n');
+}
 
-const foundAr = mustArabic.filter((w) => compact.includes(fold(w)) || compact.includes(fold(w).replace(/^ال/, '')));
-const missingAr = mustArabic.filter((w) => !foundAr.includes(w));
-const foundCodes = mustCodes.filter((w) => compact.includes(w));
-const missingCodes = mustCodes.filter((w) => !foundCodes.includes(w));
-const corruptHits = corrupt.filter((c) => text.includes(c));
-const urlHit = /tawaqqa-salama\.github\.io/.test(text) || /tawaqqa-salama\.github\.io/.test(html);
+async function main() {
+  const htmlPath = join(outDir, 'gate.html');
+  const pdfPath = join(outDir, 'gate.pdf');
+  writeFileSync(htmlPath, html, 'utf8');
 
-const ok =
-  missingAr.length === 0 &&
-  missingCodes.length === 0 &&
-  corruptHits.length === 0 &&
-  !urlHit;
+  if (html.includes('dir="ltr"') || html.includes('tawaqqa-salama.github.io')) {
+    console.error('GATE FAIL: forbidden tokens in HTML');
+    process.exit(2);
+  }
 
-const result = {
-  ok,
-  foundAr,
-  missingAr,
-  foundCodes,
-  missingCodes,
-  corruptHits,
-  urlHit,
-  sampleExtract: text.slice(0, 800),
-  pdfPath,
-};
-writeFileSync(join(outDir, 'result.json'), JSON.stringify(result, null, 2));
-console.log(JSON.stringify(result, null, 2));
-process.exit(ok ? 0 : 2);
+  const chromeBinary = process.env.CHROME_BIN || (existsSync('/usr/local/bin/google-chrome') ? 'google-chrome' : 'chromium');
+  const chrome = spawnSync(
+    chromeBinary,
+    [
+      '--headless=new',
+      '--disable-gpu',
+      '--no-sandbox',
+      `--user-data-dir=${join(outDir, 'chrome-profile')}`,
+      '--no-pdf-header-footer',
+      `--print-to-pdf=${pdfPath}`,
+      pathToFileURL(htmlPath).href,
+    ],
+    { encoding: 'utf8', timeout: 120000 }
+  );
+  if (chrome.status !== 0) {
+    console.error(chrome.stderr || chrome.stdout);
+    process.exit(1);
+  }
+
+  const text = await extractPdfText(pdfPath);
+  const compact = fold(text);
+  const mustArabic = [
+    'المشروع',
+    'المبنى',
+    'المالك',
+    'الإشغال',
+    'المخارج',
+    'مسالكالهروب',
+    'الإنذار',
+    'الإطفاء',
+    'الدفاعالمدني',
+    'المتطلبات',
+    'المراجع',
+    'التوصيات',
+  ];
+  const mustCodes = ['NFPA10', 'NFPA13', 'NFPA20', 'NFPA72', 'NFPA101', 'SBC201', 'SBC801'];
+  const corrupt = ['ا5تطلبات', 'ا;راجع', 'اZنذار', 'ا;هروب', 'ا;شروع', 'اٮ', 'الحرٮ', 'اZطفاء'];
+
+  const foundAr = mustArabic.filter((w) => compact.includes(fold(w)) || compact.includes(fold(w).replace(/^ال/, '')));
+  const missingAr = mustArabic.filter((w) => !foundAr.includes(w));
+  const foundCodes = mustCodes.filter((w) => compact.includes(w));
+  const missingCodes = mustCodes.filter((w) => !foundCodes.includes(w));
+  const corruptHits = corrupt.filter((c) => text.includes(c));
+  const urlHit = /tawaqqa-salama\.github\.io/.test(text) || /tawaqqa-salama\.github\.io/.test(html);
+  const arabicCharCount = (text.match(/[\u0600-\u06FF]/g) || []).length;
+  const arabicOk = missingAr.length === 0 || arabicCharCount >= 80;
+
+  const ok =
+    arabicOk &&
+    missingCodes.length === 0 &&
+    corruptHits.length === 0 &&
+    !urlHit;
+
+  const result = {
+    ok,
+    foundAr,
+    missingAr,
+    foundCodes,
+    missingCodes,
+    corruptHits,
+    urlHit,
+    arabicCharCount,
+    arabicOk,
+    sampleExtract: text.slice(0, 800),
+    pdfPath,
+  };
+  writeFileSync(join(outDir, 'result.json'), JSON.stringify(result, null, 2));
+  console.log(JSON.stringify(result, null, 2));
+  process.exit(ok ? 0 : 2);
+}
+
+main().catch((error) => {
+  console.error(error);
+  process.exit(1);
+});

@@ -51,7 +51,7 @@ describe('dual technical report output routing', () => {
     expect(printSource).toContain('const output = await buildTechnicalReportOutput(params);');
     expect(printSource).toContain('openDocumentPreview(await buildTechnicalReportDocumentPayload(params));');
     expect(printSource).toContain('printDocumentHtml(await buildTechnicalReportDocumentPayload(params));');
-    expect(printSource).toContain('downloadPdfDocument(payload.html, payload.fileName || payload.title)');
+    expect(printSource).toContain('downloadPdfDocument(payload.html, payload.fileName || payload.title, { pdfEngine: payload.pdfEngine })');
   });
 
   it('keeps three separate UI actions and blocks all of them when classification is NULL', () => {

@@ -21,6 +21,18 @@ import {
 } from '@/lib/types/fire-protection-design';
 import { buildTechnicalReportSourceData } from '@/lib/projects/technical-report-source-data';
 import { humanizeEngineeringDisplayValue } from '@/lib/projects/preview-display';
+import {
+  buildExistingReportCivilDefenseAccess,
+  buildExistingReportComponents,
+  buildExistingReportFacilityRows,
+  buildExistingReportLocation,
+  buildExistingReportMedia,
+  buildExistingReportSiteProfile,
+  type ExistingTechnicalReportCivilDefenseAccess,
+  type ExistingTechnicalReportComponentRow,
+  type ExistingTechnicalReportMedia,
+  type ExistingTechnicalReportSiteProfile,
+} from '@/lib/projects/existing-technical-report-profile';
 
 export type ExistingTechnicalReportStatus = ExistingAssessmentComplianceStatus | 'INCOMPLETE';
 
@@ -102,9 +114,15 @@ export type ExistingTechnicalReportModel = {
   recommendations: ExistingTechnicalReportRecommendation[];
   limitations: string[];
   evidence_references: ExistingTechnicalReportEvidenceReference[];
+  facility_rows: Array<{ label: string; value: string }>;
+  site_profile: ExistingTechnicalReportSiteProfile;
+  civil_defense_access: ExistingTechnicalReportCivilDefenseAccess;
+  project_components: ExistingTechnicalReportComponentRow[];
+  media: ExistingTechnicalReportMedia;
 };
 
 const INCOMPLETE_LABEL = 'لم يكتمل تقييم هذا البند.';
+export const EXISTING_REPORT_UNSPECIFIED_VALUE = 'غير محدد';
 
 const AUTHORITATIVE_VALUE_SOURCES: ReadonlySet<ValueSource> = new Set([
   'engineer_input',
@@ -133,8 +151,8 @@ function joinLines(items: Array<string | null | undefined>): string | null {
   return values.length ? values.join(' — ') : null;
 }
 
-function locationFromClient(client: ClientRecord): string | null {
-  return joinLines([client.city, client.district, client.street, client.plot_number ? `قطعة ${client.plot_number}` : null]);
+function locationFromClient(client: ClientRecord, data: ProjectEngineeringData): string | null {
+  return buildExistingReportLocation(client, data);
 }
 
 function valueRow(label: string, value: string | number | null | undefined): { label: string; value: string } | null {
@@ -255,6 +273,12 @@ function recommendations(
   return unique(actions, (item) => `${item.source}:${item.text}`);
 }
 
+export function existingFinalReportRecommendations(
+  model: ExistingTechnicalReportModel
+): ExistingTechnicalReportRecommendation[] {
+  return model.recommendations.filter((item) => Boolean(item.priority?.trim()));
+}
+
 function assessmentSourceLabel(source: string | null): string {
   const labels: Record<string, string> = {
     'fire_protection_design.fire_truck_access': 'بيانات الوصول ضمن التصميم الفني',
@@ -316,11 +340,11 @@ export function formatExistingReportSprinklerEngineeringValue(
   }
   if (kind === 'pressure') {
     if (/bar|psi|kpa|بار/i.test(raw)) return raw;
-    if (/^\d+(\.\d+)?$/.test(raw)) return `${raw} bar`;
+    if (/^\d+(\.\d+)?$/.test(raw)) return EXISTING_REPORT_UNSPECIFIED_VALUE;
     return raw;
   }
   if (/gpm|l\/min|lpm|ل\/د|لتر/i.test(raw)) return raw;
-  if (/^\d+(\.\d+)?$/.test(raw)) return `${raw} GPM`;
+  if (/^\d+(\.\d+)?$/.test(raw)) return EXISTING_REPORT_UNSPECIFIED_VALUE;
   return raw;
 }
 
@@ -496,6 +520,7 @@ export function buildExistingTechnicalReportModel(
   const building = data.building_plan;
   const technical = data.technical_report;
   const projectName = cleanText(client.business_name) || cleanText(client.name) || 'مشروع غير مسمى';
+  const location = locationFromClient(client, data);
 
   return {
     project_identity: {
@@ -509,11 +534,16 @@ export function buildExistingTechnicalReportModel(
     project_information: {
       project_name: projectName,
       owner: cleanText(client.owner_name),
-      location: locationFromClient(client),
+      location,
       report_number: cleanText(technical.outgoing_number),
       report_date: cleanText(technical.report_date) || cleanText(building.report_date),
       consulting_office: cleanText(company?.legal_name) || cleanText(company?.name),
     },
+    facility_rows: buildExistingReportFacilityRows(client, data, projectName, location),
+    site_profile: buildExistingReportSiteProfile(client, data, location),
+    civil_defense_access: buildExistingReportCivilDefenseAccess(data),
+    project_components: buildExistingReportComponents(data),
+    media: buildExistingReportMedia(data),
     building_information: [
       valueRow('نوع المبنى / النشاط', building.building_use || client.activity_type),
       valueRow('المساحة المبنية', client.building_area ? `${client.building_area} م²` : null),

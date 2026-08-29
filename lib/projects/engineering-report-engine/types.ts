@@ -52,7 +52,14 @@ export type EngineeringStudySectionId =
   | 'summary'
   | 'engineering_recommendations'
   | 'existing_recommendations'
-  | 'conclusion';
+  | 'conclusion'
+  | 'facility_data'
+  | 'project_components'
+  | 'existing_assessment_site'
+  | 'existing_assessment_firefighting'
+  | 'existing_assessment_alarm'
+  | 'existing_assessment_life_safety'
+  | 'existing_assessment_electrical';
 
 export type EngineeringStudyParagraph = {
   text: string;
@@ -140,6 +147,8 @@ export type EngineeringStudyDocument = {
   executive_director?: string;
   /** Cover / page-1 project facade */
   cover_image?: EngineeringStudyImage | null;
+  /** Unified location string for cover, facility table, and site pages. */
+  location_display?: string;
   sections: EngineeringStudySection[];
   rules_gate_ok: boolean;
   rules_summary_ar: string;

@@ -30,6 +30,7 @@ describe('technical report print router', () => {
     expect(source).toContain('openDocumentPreview(await buildTechnicalReportDocumentPayload(params))');
     expect(source).toContain('printDocumentHtml(await buildTechnicalReportDocumentPayload(params))');
     expect(source).toContain("downloadFormat: 'pdf'");
-    expect(source).toContain('downloadPdfDocument(payload.html, payload.fileName || payload.title)');
+    expect(source).toContain('downloadPdfDocument(payload.html, payload.fileName || payload.title, { pdfEngine: payload.pdfEngine })');
+    expect(source).toContain("pdfEngine: 'chromium'");
   });
 });
