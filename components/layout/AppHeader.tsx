@@ -10,6 +10,7 @@ import AppSwitcher from '@/components/layout/AppSwitcher';
 import LanguageSwitcher from '@/components/layout/LanguageSwitcher';
 import TenantSwitcher from '@/components/tenant/TenantSwitcher';
 import { useModuleSubNav } from '@/components/layout/ModuleSubNavContext';
+import { useClientPageNav } from '@/components/layout/ClientPageNavContext';
 import { useProjectStagesDrawer } from '@/components/layout/ProjectStagesDrawerContext';
 import { useLanguage } from '@/lib/i18n/LanguageProvider';
 import { isSuperAdminRole } from '@/lib/tenant/rbac';
@@ -113,19 +114,36 @@ export default function AppHeader() {
     tSettingsSub
   );
   const { session, logout } = useAuth();
-  const { hasSubNav, open: subNavOpen, toggleSubNav, isMobile } = useModuleSubNav();
+  const { hasSubNav, open: subNavOpen, toggleSubNav, closeSubNav, isMobile } = useModuleSubNav();
   const {
     active: stagesActive,
     open: stagesOpen,
     toggle: toggleStages,
+    closeDrawer: closeStages,
   } = useProjectStagesDrawer();
-  const showHamburger = hasSubNav || stagesActive;
-  const menuOpen = stagesActive ? stagesOpen : subNavOpen;
-  const onMenuToggle = stagesActive ? toggleStages : toggleSubNav;
+  const {
+    active: clientNavActive,
+    open: clientNavOpen,
+    toggle: toggleClientNav,
+    close: closeClientNav,
+  } = useClientPageNav();
+  const showHamburger = stagesActive || clientNavActive || hasSubNav;
+  const menuOpen = stagesActive ? stagesOpen : clientNavActive ? clientNavOpen : subNavOpen;
+  const onMenuToggle = stagesActive ? toggleStages : clientNavActive ? toggleClientNav : toggleSubNav;
   const [switcherOpen, setSwitcherOpen] = useState(false);
   const [logoutConfirmOpen, setLogoutConfirmOpen] = useState(false);
   const [loggingOut, setLoggingOut] = useState(false);
   const closeSwitcher = useCallback(() => setSwitcherOpen(false), []);
+  const openSwitcher = useCallback(() => {
+    closeSubNav();
+    closeStages();
+    closeClientNav();
+    setSwitcherOpen(true);
+  }, [closeSubNav, closeStages, closeClientNav]);
+  const handleMenuToggle = useCallback(() => {
+    setSwitcherOpen(false);
+    onMenuToggle();
+  }, [onMenuToggle]);
   const closeLogoutConfirm = useCallback(() => {
     if (loggingOut) return;
     setLogoutConfirmOpen(false);
@@ -183,7 +201,7 @@ export default function AppHeader() {
             {showHamburger ? (
               <button
                 type="button"
-                onClick={onMenuToggle}
+                onClick={handleMenuToggle}
                 className={`${navBtnBase} ${menuOpen ? navBtnActive : navBtnIdle}`}
                 style={{ order: 1 }}
                 title={
@@ -191,6 +209,10 @@ export default function AppHeader() {
                     ? menuOpen
                       ? t('shell.toggleStagesHide')
                       : t('shell.toggleStagesShow')
+                    : clientNavActive
+                      ? menuOpen
+                        ? t('shell.toggleClientNavHide')
+                        : t('shell.toggleClientNavShow')
                     : menuOpen
                       ? t('shell.toggleSubnavHide')
                       : t('shell.toggleSubnavShow')
@@ -200,12 +222,22 @@ export default function AppHeader() {
                     ? menuOpen
                       ? t('shell.toggleStagesHideAria')
                       : t('shell.toggleStagesShowAria')
+                    : clientNavActive
+                      ? menuOpen
+                        ? t('shell.toggleClientNavHideAria')
+                        : t('shell.toggleClientNavShowAria')
                     : menuOpen
                       ? t('shell.toggleSubnavHideAria')
                       : t('shell.toggleSubnavShowAria')
                 }
                 aria-expanded={menuOpen}
-                aria-controls={stagesActive ? 'project-stages-drawer' : 'module-subnav'}
+                aria-controls={
+                  stagesActive
+                    ? 'project-stages-drawer'
+                    : clientNavActive
+                      ? 'client-page-nav'
+                      : 'module-subnav'
+                }
               >
                 <HamburgerIcon />
               </button>
@@ -213,7 +245,7 @@ export default function AppHeader() {
 
             <button
               type="button"
-              onClick={() => setSwitcherOpen(true)}
+              onClick={openSwitcher}
               className={`${navBtnBase} ${switcherOpen ? navBtnActive : navBtnIdle}`}
               style={{ order: 2 }}
               title={t('shell.appsTitle')}
@@ -246,6 +278,10 @@ export default function AppHeader() {
             ) : stagesActive ? (
               <p className="text-[11px] sm:text-xs text-[var(--erp-muted)] truncate mt-0.5 hidden sm:block">
                 {stagesOpen ? t('shell.stagesVisible') : t('shell.stagesHidden')}
+              </p>
+            ) : clientNavActive ? (
+              <p className="text-[11px] sm:text-xs text-[var(--erp-muted)] truncate mt-0.5 hidden sm:block">
+                {clientNavOpen ? t('shell.clientNavOpen') : t('shell.clientNavHidden')}
               </p>
             ) : hasSubNav ? (
               <p className="text-[11px] sm:text-xs text-[var(--erp-muted)] truncate mt-0.5 hidden sm:block">

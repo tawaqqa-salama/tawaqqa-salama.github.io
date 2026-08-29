@@ -7,6 +7,10 @@ import AppHeader from '@/components/layout/AppHeader';
 import ActivityTracker from '@/components/layout/ActivityTracker';
 import LanguageSwitcher from '@/components/layout/LanguageSwitcher';
 import { ModuleSubNavProvider } from '@/components/layout/ModuleSubNavContext';
+import { ClientPageNavProvider } from '@/components/layout/ClientPageNavContext';
+import ClientPageNavSlot from '@/components/layout/ClientPageNavSlot';
+import { DateFilterProvider } from '@/components/layout/DateFilterContext';
+import GlobalDateFilterBar from '@/components/layout/GlobalDateFilterBar';
 import { ProjectStagesDrawerProvider } from '@/components/layout/ProjectStagesDrawerContext';
 import SupabaseConfigBanner from '@/components/ui/SupabaseConfigBanner';
 import { onDocumentPreviewMountRequest } from '@/lib/print/document-preview';
@@ -142,20 +146,28 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
   }
 
   return (
-    <ModuleSubNavProvider>
-      <ProjectStagesDrawerProvider>
-        <div className="flex-1 flex flex-col min-w-0 w-full h-full overflow-hidden">
-          <Suspense fallback={<div className="h-[57px] border-b bg-white shrink-0" />}>
-            <AppHeader />
-          </Suspense>
-          <SupabaseConfigBanner />
-          <ActivityTracker />
-          <main className="flex-1 p-3 sm:p-5 md:p-6 overflow-y-auto overflow-x-hidden w-full max-w-none">
-            {children}
-          </main>
-          {previewMounted ? <DocumentPreviewSheet /> : null}
-        </div>
-      </ProjectStagesDrawerProvider>
-    </ModuleSubNavProvider>
+    <DateFilterProvider>
+      <ModuleSubNavProvider>
+        <ClientPageNavProvider>
+          <ProjectStagesDrawerProvider>
+            <div className="flex-1 flex flex-col min-w-0 w-full h-full overflow-hidden">
+              <Suspense fallback={<div className="h-[57px] border-b bg-white shrink-0" />}>
+                <AppHeader />
+              </Suspense>
+              <Suspense fallback={null}>
+                <GlobalDateFilterBar />
+              </Suspense>
+              <ClientPageNavSlot />
+              <SupabaseConfigBanner />
+              <ActivityTracker />
+              <main className="flex-1 p-3 sm:p-5 md:p-6 overflow-y-auto overflow-x-hidden w-full max-w-none">
+                {children}
+              </main>
+              {previewMounted ? <DocumentPreviewSheet /> : null}
+            </div>
+          </ProjectStagesDrawerProvider>
+        </ClientPageNavProvider>
+      </ModuleSubNavProvider>
+    </DateFilterProvider>
   );
 }

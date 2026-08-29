@@ -145,6 +145,7 @@ export default function ProjectReportModal({
     open: stagesOpen,
     register: registerStagesDrawer,
     unregister: unregisterStagesDrawer,
+    closeDrawer: closeStagesDrawer,
   } = useProjectStagesDrawer();
 
   useEffect(() => {
@@ -669,8 +670,16 @@ export default function ProjectReportModal({
             </div>
           </div>
 
-          <div className="flex flex-1 min-h-0">
-            <div className="flex-1 min-w-0 p-5 overflow-y-auto space-y-4 order-1 rtl:order-2">
+          <div className="flex flex-1 min-h-0 relative">
+            {stagesOpen ? (
+              <button
+                type="button"
+                aria-label="إغلاق قائمة المراحل"
+                className="absolute inset-0 z-10 bg-[#1a2420]/25 md:hidden"
+                onClick={closeStagesDrawer}
+              />
+            ) : null}
+            <div className="flex-1 min-w-0 p-5 overflow-y-auto space-y-4 order-1 rtl:order-2 relative z-0">
               {message ? (
                 <div
                   className={`p-3 rounded-xl text-sm ${
@@ -1565,7 +1574,7 @@ export default function ProjectReportModal({
             {stagesOpen ? (
               <aside
                 id="project-stages-drawer"
-                className="w-56 shrink-0 order-2 rtl:order-1 border-s rtl:border-s-0 rtl:border-e border-gray-200 bg-gray-50 overflow-y-auto p-3"
+                className="w-56 shrink-0 order-2 rtl:order-1 border-s rtl:border-s-0 rtl:border-e border-gray-200 bg-gray-50 overflow-y-auto p-3 relative z-20"
                 aria-label="أقسام المشروع"
               >
                 <p className="text-sm font-bold text-gray-900 mb-3">أقسام المشروع</p>

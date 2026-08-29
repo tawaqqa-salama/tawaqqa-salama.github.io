@@ -41,6 +41,26 @@ export const FINANCE_NAV = [
   { href: '/finance/client-accounts', label: 'حسابات العملاء', icon: '👥' },
 ] as const;
 
+/** Internal tabs for enterprise accounting module */
+export const ENTERPRISE_FINANCE_TABS = [
+  { id: 'dashboard', ar: 'لوحة المؤشرات', en: 'Dashboard' },
+  { id: 'coa', ar: 'دليل الحسابات', en: 'Chart of Accounts' },
+  { id: 'gl', ar: 'دفتر الأستاذ', en: 'General Ledger' },
+  { id: 'ar', ar: 'الذمم المدينة', en: 'Receivables' },
+  { id: 'ap', ar: 'الذمم الدائنة', en: 'Payables' },
+  { id: 'banking', ar: 'البنوك', en: 'Banking' },
+  { id: 'assets', ar: 'الأصول الثابتة', en: 'Fixed Assets' },
+  { id: 'projects', ar: 'محاسبة المشاريع', en: 'Project Accounting' },
+  { id: 'vat', ar: 'ضريبة القيمة المضافة', en: 'VAT' },
+  { id: 'zatca', ar: 'زاتكا / فوترة', en: 'ZATCA' },
+  { id: 'statements', ar: 'القوائم المالية', en: 'Statements' },
+  { id: 'budgeting', ar: 'الموازنات', en: 'Budgeting' },
+  { id: 'rules', ar: 'محرك القواعد', en: 'Rules Engine' },
+  { id: 'copilot', ar: 'مساعد المحاسبة', en: 'AI Copilot' },
+  { id: 'audit', ar: 'التدقيق الداخلي', en: 'Internal Audit' },
+  { id: 'security', ar: 'الأمان والصلاحيات', en: 'Security' },
+] as const;
+
 export function getJournalEntryTypeLabel(referenceType: string | null | undefined): string {
   const map: Record<string, string> = {
     quotation: 'قيد آلي — عرض سعر',

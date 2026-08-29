@@ -1,7 +1,9 @@
 'use client';
 
 import { useEffect, useMemo, useState } from 'react';
+import { useSearchParams } from 'next/navigation';
 import { useLanguage } from '@/lib/i18n/LanguageProvider';
+import { ENTERPRISE_FINANCE_TABS } from '@/lib/constants/accounting';
 import { formatCurrency } from '@/lib/format/currency';
 import {
   deriveAging,
@@ -31,24 +33,7 @@ import { auditReportSummary } from '@/lib/enterprise-accounting/audit';
 import { exportVatReturnCsv } from '@/lib/finance/vat-export';
 import BankReconciliationPanel from '@/components/finance/BankReconciliationPanel';
 
-const TABS: { id: EnterpriseFinanceTab; ar: string; en: string }[] = [
-  { id: 'dashboard', ar: 'لوحة المؤشرات', en: 'Dashboard' },
-  { id: 'coa', ar: 'دليل الحسابات', en: 'Chart of Accounts' },
-  { id: 'gl', ar: 'دفتر الأستاذ', en: 'General Ledger' },
-  { id: 'ar', ar: 'الذمم المدينة', en: 'Receivables' },
-  { id: 'ap', ar: 'الذمم الدائنة', en: 'Payables' },
-  { id: 'banking', ar: 'البنوك', en: 'Banking' },
-  { id: 'assets', ar: 'الأصول الثابتة', en: 'Fixed Assets' },
-  { id: 'projects', ar: 'محاسبة المشاريع', en: 'Project Accounting' },
-  { id: 'vat', ar: 'ضريبة القيمة المضافة', en: 'VAT' },
-  { id: 'zatca', ar: 'زاتكا / فوترة', en: 'ZATCA' },
-  { id: 'statements', ar: 'القوائم المالية', en: 'Statements' },
-  { id: 'budgeting', ar: 'الموازنات', en: 'Budgeting' },
-  { id: 'rules', ar: 'محرك القواعد', en: 'Rules Engine' },
-  { id: 'copilot', ar: 'مساعد المحاسبة', en: 'AI Copilot' },
-  { id: 'audit', ar: 'التدقيق الداخلي', en: 'Internal Audit' },
-  { id: 'security', ar: 'الأمان والصلاحيات', en: 'Security' },
-];
+const TABS = ENTERPRISE_FINANCE_TABS;
 
 function Kpi({
   label,
@@ -67,14 +52,25 @@ function Kpi({
 
 export default function EnterpriseAccountingModule() {
   const { lang, t } = useLanguage();
+  const searchParams = useSearchParams();
   const isAr = lang !== 'en';
-  const [tab, setTab] = useState<EnterpriseFinanceTab>('dashboard');
+  const tabParam = searchParams.get('tab');
+  const initialTab = TABS.some((item) => item.id === tabParam)
+    ? (tabParam as EnterpriseFinanceTab)
+    : 'dashboard';
+  const [tab, setTab] = useState<EnterpriseFinanceTab>(initialTab);
   const [state, setState] = useState<EnterpriseAccountingState | null>(null);
   const [dataSource, setDataSource] = useState<EnterpriseDataSource>('demo');
   const [loadWarnings, setLoadWarnings] = useState<string[]>([]);
   const [copilot, setCopilot] = useState<CopilotSuggestion | null>(null);
   const [txAmount, setTxAmount] = useState('100000');
   const [txDirection, setTxDirection] = useState<'sale' | 'purchase' | 'expense' | 'receipt' | 'payment'>('sale');
+
+  useEffect(() => {
+    if (tabParam && TABS.some((item) => item.id === tabParam)) {
+      setTab(tabParam as EnterpriseFinanceTab);
+    }
+  }, [tabParam]);
 
   useEffect(() => {
     void loadEnterpriseStateLive().then((res) => {
@@ -176,23 +172,6 @@ export default function EnterpriseAccountingModule() {
             </ul>
           ) : null}
         </div>
-      </div>
-
-      <div className="flex flex-wrap gap-1.5">
-        {TABS.map((item) => (
-          <button
-            key={item.id}
-            type="button"
-            onClick={() => setTab(item.id)}
-            className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition ${
-              tab === item.id
-                ? 'bg-[#635bdb] text-white'
-                : 'bg-white border text-gray-600 hover:bg-emerald-50'
-            }`}
-          >
-            {isAr ? item.ar : item.en}
-          </button>
-        ))}
       </div>
 
       {tab === 'dashboard' && (

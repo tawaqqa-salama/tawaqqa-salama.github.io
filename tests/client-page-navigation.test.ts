@@ -4,27 +4,28 @@ import { describe, expect, it } from 'vitest';
 
 const read = (file: string) => readFileSync(resolve(__dirname, '..', file), 'utf8');
 const modal = read('components/clients/ClientDetailModal.tsx');
-const navigation = read('components/sales/ClientPageNavigation.tsx');
+const clientNavContext = read('components/layout/ClientPageNavContext.tsx');
+const clientNavSlot = read('components/layout/ClientPageNavSlot.tsx');
 const basicPage = read('app/sales/client-basic-data/page.tsx');
 const quotationPage = read('app/sales/client-quotation/page.tsx');
 
 describe('client page navigation', () => {
-  it('renders a three-item menu with open/close, outside-click, and Escape behavior', () => {
-    expect(navigation).toContain('فتح قائمة صفحات العميل');
-    expect(navigation).toContain('aria-expanded={open}');
-    expect(navigation).toContain('setOpen((value) => !value)');
-    expect(navigation).toContain("event.key === 'Escape'");
-    expect(navigation).toContain('!rootRef.current?.contains');
-    expect(navigation).toContain("{ id: 'basic'");
-    expect(navigation).toContain("{ id: 'quotation'");
-    expect(navigation).toContain("{ id: 'contract'");
+  it('registers client pages with the header hamburger instead of a duplicate menu button', () => {
+    expect(modal).toContain('useClientPageNav');
+    expect(modal).toContain('registerClientNav');
+    expect(modal).toContain('البيانات الأساسية');
+    expect(modal).toContain('عرض السعر');
+    expect(modal).toContain('العقد');
+    expect(modal).not.toContain('ClientPageNavigation');
+    expect(clientNavSlot).toContain('fixed inset-0');
+    expect(clientNavSlot).toContain("event.key === 'Escape'");
+    expect(clientNavContext).toContain('register: (registration: ClientPageNavRegistration) => void');
   });
 
-  it('highlights the active page and closes before selecting an item', () => {
-    expect(navigation).toContain("aria-current={isActive ? 'page' : undefined}");
-    expect(navigation).toContain('setOpen(false);');
-    expect(navigation).toContain('onNavigate(item.id);');
-    expect(modal).toContain("active={isPagePresentation ? 'basic' : 'quotation'}");
+  it('highlights the active page through the shared client nav registration', () => {
+    expect(modal).toContain("activeId: isPagePresentation ? 'basic' : 'quotation'");
+    expect(modal).toContain('requestClientNavigationRef');
+    expect(clientNavSlot).toContain("aria-current={isActive ? 'page' : undefined}");
   });
 
   it('preserves the same clientId for both static routes', () => {
@@ -45,9 +46,10 @@ describe('client page navigation', () => {
     expect(modal).toContain('if (pendingNavigation) completeNavigation(pendingNavigation)');
   });
 
-  it('places the menu trigger explicitly at the right side of standalone client pages', () => {
-    expect(modal).toContain('absolute right-6 top-6 flex items-start gap-2');
-    expect(modal).toContain("isStandalonePresentation ? 'pr-24 sm:pr-28' : undefined");
+  it('keeps a single back action in standalone client pages without a second hamburger', () => {
+    expect(modal).toContain('العودة');
+    expect(modal).not.toContain('absolute right-6 top-6 flex items-start gap-2');
+    expect(modal).not.toContain('pr-24 sm:pr-28');
   });
 
   it('keeps one basic-data save action beside Save and Continue at the end of the form', () => {

@@ -11,6 +11,8 @@ import { generateReturnNumber, generateSalesDocNumber } from '@/lib/constants/mo
 import { nextClientCode } from '@/lib/business/document-numbers';
 import ModuleSubNavSlot from '@/components/layout/ModuleSubNavSlot';
 import ModuleTabBar from '@/components/layout/ModuleTabBar';
+import { useDateFilter } from '@/components/layout/DateFilterContext';
+import { inDateRange } from '@/lib/date/date-range';
 import ResponsiveTable from '@/components/ui/ResponsiveTable';
 import RowActionsMenu from '@/components/ui/RowActionsMenu';
 import { insertClientSafe, mergeLocalClientOverrides } from '@/lib/supabase/safe-client-write';
@@ -40,16 +42,7 @@ const TaxInvoicesPanel = dynamic(() => import('@/components/invoices/TaxInvoices
   ),
 });
 
-type TabId = 'sales' | 'quotations' | 'documents' | 'credit' | 'contracts' | 'tax-invoices' | 'accounts';
-
-function inDateRange(iso: string | undefined | null, from: string, to: string): boolean {
-  if (!from && !to) return true;
-  if (!iso) return false;
-  const day = iso.slice(0, 10);
-  if (from && day < from) return false;
-  if (to && day > to) return false;
-  return true;
-}
+type TabId = 'dashboard' | 'sales' | 'quotations' | 'documents' | 'credit' | 'contracts' | 'tax-invoices' | 'accounts';
 
 async function printFinancialDocLazy(doc: FinancialDocument) {
   const { printFinancialDocument } = await import('@/components/invoices/FinancialDocumentPrint');
@@ -100,7 +93,8 @@ export default function SalesPage() {
     markPageLoad('page-data-start');
   }, []);
   const router = useRouter();
-  const [tab, setTab] = useState<TabId>('sales');
+  const [tab, setTab] = useState<TabId>('dashboard');
+  const { dateFrom, dateTo } = useDateFilter();
   const [limit, setLimit] = useState(LIST_PAGE_SIZE);
   const includeRelatedData = tab === 'documents' || tab === 'contracts' || tab === 'credit';
   const { clients: allClients, documents, contracts, returns, loading, refresh, mutate: mutateSalesBundle } =
@@ -110,8 +104,6 @@ export default function SalesPage() {
   const [contractClient, setContractClient] = useState<ClientRecord | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
-  const [dateFrom, setDateFrom] = useState('');
-  const [dateTo, setDateTo] = useState('');
   const [printError, setPrintError] = useState<string | null>(null);
 
   const handlePrintQuotation = useCallback(async (client: ClientRecord) => {
@@ -304,31 +296,6 @@ export default function SalesPage() {
         </button>
       </div>
 
-      <div className="bg-white border border-[#e5e7eb] rounded-xl p-3">
-        <div className="date-range-bar">
-          <label className="date-field">
-            <span>من تاريخ</span>
-            <input type="date" value={dateFrom} onChange={(e) => setDateFrom(e.target.value)} />
-          </label>
-          <label className="date-field">
-            <span>إلى تاريخ</span>
-            <input type="date" value={dateTo} onChange={(e) => setDateTo(e.target.value)} />
-          </label>
-          {(dateFrom || dateTo) && (
-            <button
-              type="button"
-              onClick={() => {
-                setDateFrom('');
-                setDateTo('');
-              }}
-              className="date-clear"
-            >
-              مسح الفترة
-            </button>
-          )}
-        </div>
-      </div>
-
       <ModuleSubNavSlot label={t('subnav.sales')}>
         <ModuleTabBar
           ariaLabel={t('subnav.sales')}
@@ -337,6 +304,7 @@ export default function SalesPage() {
           activeClassName="bg-blue-600 text-white shadow-sm"
           idleClassName="bg-white border border-gray-200 text-gray-800"
           items={[
+            { id: 'dashboard', label: t('subnav.dashboard') },
             { id: 'sales', label: t('sales.tab.sales') },
             { id: 'quotations', label: t('sales.tab.quotations') },
             { id: 'documents', label: t('sales.tab.documents') },
@@ -347,6 +315,25 @@ export default function SalesPage() {
           ]}
         />
       </ModuleSubNavSlot>
+
+      {tab === 'dashboard' && (
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+          <div className="rounded-xl border bg-white p-4">
+            <p className="text-xs text-gray-500">{t('sales.dashboard.clients')}</p>
+            <p className="text-2xl font-bold text-gray-900 mt-1">{clients.length}</p>
+          </div>
+          <div className="rounded-xl border bg-white p-4">
+            <p className="text-xs text-gray-500">{t('sales.dashboard.documents')}</p>
+            <p className="text-2xl font-bold text-gray-900 mt-1">{filteredDocuments.length}</p>
+          </div>
+          <div className="rounded-xl border bg-white p-4">
+            <p className="text-xs text-gray-500">{t('sales.dashboard.quotations')}</p>
+            <p className="text-2xl font-bold text-gray-900 mt-1">
+              {clients.filter((client) => client.quotation_status && client.quotation_status !== 'مسودة').length}
+            </p>
+          </div>
+        </div>
+      )}
 
       {tab === 'sales' && (
         <ResponsiveTable className="bg-white rounded-xl border">
