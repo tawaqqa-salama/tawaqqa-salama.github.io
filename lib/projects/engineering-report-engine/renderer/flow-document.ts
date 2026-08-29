@@ -430,7 +430,9 @@ function appendMandatorySectionContent(
   tables: NonNullable<EngineeringStudySection['tables']>,
   displayNo: number
 ): void {
-  const usesPresentationOnly = section.id === 'site_information' || section.id === 'fire_truck_access';
+  const usesPresentationOnly =
+    (section.id === 'site_information' || section.id === 'fire_truck_access')
+    && Boolean(section.presentation_blocks?.length);
   const usesTableAndPresentation = section.id === 'project_components';
 
   if (usesPresentationOnly) {
@@ -464,6 +466,16 @@ function appendMandatorySectionContent(
       });
     }
     appendPresentationBlocks(blocks, section.presentation_blocks, counters);
+  } else {
+    for (const t of tables) {
+      blocks.push({
+        kind: 'table',
+        tableNo: ++counters.tables,
+        caption: locale === 'ar' ? t.caption_ar : t.caption_en,
+        headers: locale === 'ar' ? t.headers_ar : t.headers_en,
+        rows: t.rows,
+      });
+    }
   }
 
   if (!usesPresentationOnly && !usesTableAndPresentation) {
