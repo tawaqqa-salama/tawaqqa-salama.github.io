@@ -24,6 +24,7 @@ import SupervisionReportSection from '@/components/projects/SupervisionReportSec
 import DesignCenterSection from '@/components/projects/DesignCenterSection';
 import ExistingProjectAssessmentSection from '@/components/projects/ExistingProjectAssessmentSection';
 import ExistingTechnicalReportPreview from '@/components/projects/ExistingTechnicalReportPreview';
+import ExistingTechnicalReportInputsSection from '@/components/projects/ExistingTechnicalReportInputsSection';
 import UnderConstructionTechnicalReportPreview from '@/components/projects/UnderConstructionTechnicalReportPreview';
 import {
   downloadTechnicalReportPdf,
@@ -910,7 +911,16 @@ export default function ProjectReportModal({
                     </button>
                   </div>
                   {projectClassification === 'EXISTING' ? (
-                    <ExistingTechnicalReportPreview client={client} data={data} company={company} />
+                    <>
+                      <ExistingTechnicalReportInputsSection
+                        client={client}
+                        data={data}
+                        report={data.technical_report}
+                        saving={saving}
+                        onChange={(technical_report) => patch({ technical_report })}
+                      />
+                      <ExistingTechnicalReportPreview client={client} data={data} company={company} />
+                    </>
                   ) : projectClassification === 'UNDER_CONSTRUCTION' ? (
                     <UnderConstructionTechnicalReportPreview client={client} data={data} company={company} />
                   ) : projectClassification === null ? (

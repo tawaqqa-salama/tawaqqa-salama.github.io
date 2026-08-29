@@ -7,6 +7,8 @@ import type {
 import { EXISTING_ASSESSMENT_GROUPS } from '@/lib/projects/existing-project-assessment';
 import {
   EXISTING_ASSESSMENT_SECTION_IDS,
+  EXISTING_AERIAL_MISSING_LABEL,
+  EXISTING_CD_ROUTE_MISSING_LABEL,
   EXISTING_FACADE_MISSING_LABEL,
   existingReportDisplayValue,
 } from '@/lib/projects/existing-technical-report-profile';
@@ -134,6 +136,18 @@ export function buildExistingFinalTechnicalReportDocument(
   ));
 
   const site = model.site_profile;
+  const siteParagraphs = [
+    site.location_text
+      ? `تعريف الموقع: ${site.location_text}`
+      : 'يُعرض في هذه الصفحة العنوان المسجل وبيانات الموقع كما وردت في ملف المشروع دون استنتاج موقع جديد.',
+    site.street ? `الشارع: ${site.street}` : '',
+    site.district ? `الحي: ${site.district}` : '',
+    site.city ? `المدينة: ${site.city}` : '',
+    `العنوان المسجل: ${existingReportDisplayValue(site.registered_address)}`,
+    `الإحداثيات: ${existingReportDisplayValue(site.coordinates)}`,
+    site.maps_url ? `رابط الخريطة: ${site.maps_url}` : '',
+    site.surrounding_roads ? `الحدود المحيطة / مداخل الموقع: ${site.surrounding_roads}` : '',
+  ].filter(Boolean);
   const siteImages = site.aerial_src
     ? [imageBlock('site_information', site.aerial_src, site.aerial_caption || 'صورة جوية للموقع', 'site_map')]
     : [];
@@ -141,32 +155,42 @@ export function buildExistingFinalTechnicalReportDocument(
     'site_information',
     ++sectionNumber,
     'الموقع',
+    site.aerial_src ? siteParagraphs : [...siteParagraphs, EXISTING_AERIAL_MISSING_LABEL],
     [
-      site.location_text
-        ? `تعريف الموقع: ${site.location_text}`
-        : 'يُعرض في هذه الصفحة العنوان المسجل وبيانات الموقع كما وردت في ملف المشروع دون استنتاج موقع جديد.',
-      `العنوان المسجل: ${existingReportDisplayValue(site.registered_address)}`,
-      `الإحداثيات: ${existingReportDisplayValue(site.coordinates)}`,
-      site.surrounding_roads ? `الطرق المحيطة / مدخل الموقع: ${site.surrounding_roads}` : '',
-    ].filter(Boolean),
-    location ? [twoColumn('بيانات الموقع', [{ label: 'الموقع', value: location }])] : [],
+      twoColumn('بيانات الموقع', [
+        { label: 'الشارع', value: existingReportDisplayValue(site.street) },
+        { label: 'الحي', value: existingReportDisplayValue(site.district) },
+        { label: 'المدينة', value: existingReportDisplayValue(site.city) },
+        { label: 'الموقع', value: existingReportDisplayValue(location) },
+      ]),
+    ],
     siteImages
   ));
 
   const cd = model.civil_defense_access;
   const cdImages = cd.map_src
-    ? [imageBlock('fire_truck_access', cd.map_src, cd.map_caption || 'خريطة مسار الوصول', 'site_map')]
+    ? [imageBlock('fire_truck_access', cd.map_src, cd.map_caption || 'صورة مسار أقرب مركز دفاع مدني', 'site_map')]
     : [];
   sections.push(section(
     'fire_truck_access',
     ++sectionNumber,
     'إمكانية وصول آليات الدفاع المدني',
-    ['تُعرض بيانات الوصول كما سجلها المهندس أو كما وردت في الأدلة المرفقة. لا يحسب التقرير مسافة أو زمن وصول تلقائيًا.'],
+    cd.map_src
+      ? [
+          'تُعرض بيانات الوصول كما سجلها المهندس أو كما وردت في الأدلة المرفقة. لا يحسب التقرير مسافة أو زمن وصول تلقائيًا.',
+          cd.route_description ? `وصف مسار الوصول: ${cd.route_description}` : '',
+        ].filter(Boolean)
+      : [
+          'تُعرض بيانات الوصول كما سجلها المهندس أو كما وردت في الأدلة المرفقة. لا يحسب التقرير مسافة أو زمن وصول تلقائيًا.',
+          EXISTING_CD_ROUTE_MISSING_LABEL,
+        ],
     [twoColumn('بيانات الوصول', [
       { label: 'أقرب مركز دفاع مدني', value: existingReportDisplayValue(cd.center_name) },
       { label: 'المسافة', value: existingReportDisplayValue(cd.distance) },
       { label: 'زمن الوصول', value: existingReportDisplayValue(cd.travel_time) },
+      { label: 'وصف مسار الوصول', value: existingReportDisplayValue(cd.route_description) },
       { label: 'مصدر البيانات', value: existingReportDisplayValue(cd.source_label) },
+      { label: 'رابط الخرائط', value: existingReportDisplayValue(cd.maps_source_url) },
       { label: 'تاريخ التحقق', value: existingReportDisplayValue(cd.verified_at) },
     ])],
     cdImages
