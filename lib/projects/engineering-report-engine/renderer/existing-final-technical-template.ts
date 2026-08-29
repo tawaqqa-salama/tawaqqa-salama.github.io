@@ -115,7 +115,8 @@ function toc(
   pageMap: Record<string, number> = {}
 ): string {
   const companyName = company.legal_name || company.name || 'توقع سلامة للاستشارات';
-  const tocChapters = [...chapters, { id: 'approvals', title: '9. الاعتماد والتوقيعات', displayNo: 9 }];
+  const approvalsNo = chapters.length + 1;
+  const tocChapters = [...chapters, { id: 'approvals', title: `${approvalsNo}. الاعتماد والتوقيعات`, displayNo: approvalsNo }];
   const rows = tocChapters.map((chapter) => {
     const label = chapter.title.replace(/^\d+(?:\.\d+)?\.\s*/, '');
     return `<div class="official-toc-row"><em>${String(chapter.displayNo).padStart(2, '0')}</em><span>${text(label)}</span><i></i><b class="official-toc-page-no" data-toc-target="sec-${esc(chapter.id)}">${pageMap[chapter.id] ?? '—'}</b></div>`;
@@ -124,8 +125,8 @@ function toc(
 }
 
 function approvals(doc: EngineeringStudyDocument, company: CompanyProfile, includeDetectionMarkers = false): string {
-  const office = doc.executive_director || company.legal_name || company.name || '—';
-  const preparedBy = doc.prepared_by || '........................................';
+  const office = doc.executive_director || company.legal_name || company.name || 'غير محدد';
+  const preparedBy = doc.prepared_by?.trim() || 'غير محدد';
   return `<section id="sec-approvals" class="official-approvals keep"><h2 class="official-chapter">${includeDetectionMarkers ? '<span class="official-section-detection-marker">SECTION_PAGE_approvalsMARKEREND</span>' : ''}الاعتماد والتوقيعات</h2><div class="official-approval-meta"><span>رقم التقرير: <bdi dir="ltr">${text(reportValue(doc.report_number))}</bdi></span><span>التاريخ: <bdi dir="auto">${text(reportValue(doc.report_date))}</bdi></span><span>الجهة: ${text(office)}</span></div><p class="official-paragraph">يُستكمل اعتماد التقرير وفق الصلاحيات المعتمدة للمكتب والاستشاري المسؤول.</p><div class="official-signature-grid"><div class="official-signature-box"><strong>المهندس المُعد</strong><span>الاسم: ${text(preparedBy)}</span><span>التوقيع: .....................................</span><span>التاريخ: ......................................</span></div><div class="official-stamp">${company.stamp_url ? `<img src="${esc(company.stamp_url)}" alt="" />` : `<span>${esc(company.stamp_text || 'ختم المكتب')}</span>`}</div><div class="official-signature-box"><strong>اعتماد المكتب</strong><span>الجهة: ${text(office)}</span><span>التوقيع / الختم: ............................</span><span>التاريخ: ......................................</span></div><div class="official-approval-notes"><strong>ملاحظات الاعتماد</strong><span></span><span></span><span></span></div></div></section>`;
 }
 
@@ -142,7 +143,7 @@ function css(doc: EngineeringStudyDocument, company: CompanyProfile): string {
   @page :first { margin:12mm; @top-left { content:none; } @top-center { content:none; } @top-right { content:none; } @bottom-center { content:none; } }
   * { box-sizing:border-box; }
   html, body { margin:0; padding:0; width:210mm; background:#f7f7f7; }
-  body { color:#151515; font-family:"Noto Naskh Arabic","IBM Plex Sans Arabic",Tahoma,Arial,sans-serif; font-size:11.2px; line-height:1.85; letter-spacing:normal; -webkit-print-color-adjust:exact; print-color-adjust:exact; font-variant-ligatures:common-ligatures; font-feature-settings:"liga" 1,"calt" 1; }
+  body { color:#151515; font-family:"Noto Naskh Arabic","IBM Plex Sans Arabic",Tahoma,Arial,sans-serif; font-size:11.2px; line-height:1.85; letter-spacing:0.01em; word-spacing:0.04em; -webkit-print-color-adjust:exact; print-color-adjust:exact; font-variant-ligatures:common-ligatures; font-feature-settings:"liga" 1,"calt" 1; }
   .official-cover { position:relative; z-index:30; isolation:isolate; min-height:273mm; overflow:hidden; padding:0; page-break-after:always; break-after:page; display:flex; color:#eff8fb; background:linear-gradient(140deg,#081d35 0%,#0b2d4d 52%,#0b5a68 100%); }
   .official-cover::before { content:""; position:absolute; z-index:-1; inset:-30mm -16mm auto auto; width:160mm; height:160mm; border:1.1mm solid rgba(57,211,190,.32); border-radius:50%; box-shadow:0 0 0 15mm rgba(57,211,190,.045),0 0 0 31mm rgba(57,211,190,.035); }
   .official-cover::after { content:""; position:absolute; z-index:-1; left:-55mm; bottom:-27mm; width:150mm; height:105mm; transform:rotate(-24deg); background:linear-gradient(90deg,rgba(239,178,65,.76),rgba(239,178,65,.1)); clip-path:polygon(0 54%,100% 0,100% 30%,0 84%); }
@@ -187,10 +188,10 @@ function css(doc: EngineeringStudyDocument, company: CompanyProfile): string {
   .official-document { width:100%; }
   .official-section { margin:0; padding:0; }
   .official-section-heading { break-after:avoid-page; page-break-after:avoid; margin:0; }
-  .official-chapter { color:#123d4c; font-size:14px; font-weight:800; padding-bottom:1mm; margin:10px 0 7px; border-bottom:1px solid #1b8f91; text-align:start; break-after:avoid-page; page-break-after:avoid; } .official-section-detection-marker { display:inline; color:#123d4c; font-size:6px; line-height:1; white-space:nowrap; }
+  .official-chapter { color:#123d4c; font-size:14px; font-weight:800; padding-bottom:1mm; margin:10px 0 7px; border-bottom:1px solid #1b8f91; text-align:start; break-after:avoid-page; page-break-after:avoid; letter-spacing:0.02em; word-spacing:0.05em; } .official-section-detection-marker { display:inline; color:#123d4c; font-size:6px; line-height:1; white-space:nowrap; }
   .official-section-heading + .official-paragraph, .official-section-heading + .official-table-wrap, .official-section-heading + .official-reference { break-before:avoid-page; page-break-before:avoid; }
-  .official-subchapter { color:#171717; font-size:12.5px; font-weight:800; margin:9px 0 4px; text-align:start; }
-  .official-paragraph { margin:0 0 7px; text-align:justify; }
+  .official-subchapter { color:#171717; font-size:12.5px; font-weight:800; margin:9px 0 4px; text-align:start; letter-spacing:0.015em; word-spacing:0.04em; }
+  .official-paragraph { margin:0 0 7px; text-align:justify; word-spacing:0.05em; hyphens:none; }
   .official-list { margin:2px 0 8px; padding-inline-start:22px; }
   .official-list li { margin:0 0 4px; page-break-inside:avoid; break-inside:avoid; }
   .official-table-wrap { margin:5px 0 9px; break-inside:auto; page-break-inside:auto; }
@@ -212,7 +213,7 @@ function css(doc: EngineeringStudyDocument, company: CompanyProfile): string {
   .official-table { width:100%; table-layout:fixed; border-collapse:collapse; font-size:9.7px; direction:rtl; }
   .official-table thead { display:table-header-group; }
   .official-table tr { page-break-inside:avoid; break-inside:avoid; }
-  .official-table th, .official-table td { border:1px solid #a8b4b7; padding:5px 5px; overflow-wrap:anywhere; word-break:normal; white-space:normal; min-width:0; vertical-align:top; text-align:right; direction:rtl; unicode-bidi:plaintext; line-height:1.5; }
+  .official-table th, .official-table td { border:1px solid #a8b4b7; padding:6px 6px; overflow-wrap:anywhere; word-break:normal; white-space:normal; min-width:0; vertical-align:top; text-align:right; direction:rtl; unicode-bidi:plaintext; line-height:1.55; word-spacing:0.04em; }
   .official-table th:first-child, .official-table td:first-child { width:29%; }
   .official-cell-text { display:block; max-width:100%; overflow-wrap:anywhere; word-break:normal; white-space:normal; unicode-bidi:isolate; }
   .official-table th bdi, .official-table td bdi { display:block; max-width:100%; overflow-wrap:anywhere; word-break:normal; white-space:normal; unicode-bidi:isolate; }

@@ -220,8 +220,25 @@ describe('PR 4 — EXISTING technical report derived model and preview', () => {
 
     expect(model.recommendations).toEqual(expect.arrayContaining([
       expect.objectContaining({ source: 'ASSESSMENT_ACTION', system_key: 'sprinkler_system', text: expect.stringContaining('توثيق المنطقة') }),
-      expect.objectContaining({ source: 'APPROVED_RECOMMENDATION', system_key: 'sprinkler_system', text: 'توصية معتمدة مرتبطة بنظام الرش.' }),
+      expect.objectContaining({ source: 'APPROVED_RECOMMENDATION', system_key: 'sprinkler_system', text: 'توصية معتمدة مرتبطة بنظام الرش.', priority: 'عالية' }),
     ]));
+
+    const withoutPriority = reportFixture();
+    withoutPriority.existing_assessment = {
+      version: 1,
+      systems: {
+        ...(withoutPriority.existing_assessment?.systems || {}),
+        sprinkler_system: {
+          ...(withoutPriority.existing_assessment?.systems?.sprinkler_system || {}),
+          priority: undefined,
+          recommendation_id: 'rec-01',
+        },
+      },
+    };
+    const noApprovedWithoutPriority = buildExistingTechnicalReportModel(client, withoutPriority).recommendations.filter(
+      (item) => item.source === 'APPROVED_RECOMMENDATION'
+    );
+    expect(noApprovedWithoutPriority).toEqual([]);
 
     const noActions = canonical({
       existing_assessment: { version: 1, systems: { fire_pumps: { compliance_status: 'NON_COMPLIANT' } } },

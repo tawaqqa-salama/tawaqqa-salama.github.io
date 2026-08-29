@@ -6,10 +6,12 @@ import type {
 import {
   existingTechnicalReportStatusLabel,
   type ExistingTechnicalReportModel,
+  type ExistingTechnicalReportRecommendation,
   type ExistingTechnicalReportStatus,
 } from '@/lib/projects/existing-technical-report-model';
 
 const TITLE = 'التقرير الفني لتقييم الموقع القائم';
+const UNSET_ENGINEER_PRIORITY_LABEL = 'غير محددة من المهندس';
 
 function text(value: string | null | undefined): string {
   return value?.trim() || '';
@@ -50,6 +52,11 @@ function status(status: ExistingTechnicalReportStatus): string {
   return existingTechnicalReportStatusLabel(status);
 }
 
+function recommendationSourceLabel(item: ExistingTechnicalReportRecommendation): string {
+  if (item.source === 'ASSESSMENT_ACTION') return 'إجراء التقييم';
+  return item.priority ? 'توصية معتمدة' : UNSET_ENGINEER_PRIORITY_LABEL;
+}
+
 function assessmentTables(model: ExistingTechnicalReportModel): EngineeringStudySection['tables'] {
   return model.assessment_sections.flatMap((group) => group.systems.map((item) => table(
     `${group.label} — ${item.system_label}`,
@@ -84,44 +91,62 @@ function conclusion(model: ExistingTechnicalReportModel): string {
 export function buildExistingFinalTechnicalReportDocument(
   model: ExistingTechnicalReportModel
 ): EngineeringStudyDocument {
-  const sections: EngineeringStudySection[] = [
-    section('introduction', 1, 'مقدمة ونطاق الدراسة', [
-      'يقيّم هذا التقرير حالة السلامة والوقاية من الحريق في الموقع القائم بناءً على الوضع الراهن المسجل، والمتطلبات أو المراجع المتاحة، والفجوات والإجراءات التي أدخلها أو اعتمدها المهندس. لا يثبت التقرير إجراء معاينة ميدانية ما لم تدعم ذلك ملاحظات أو أدلة صريحة في التقييم.',
-    ]),
-    section('project_description', 2, 'بيانات المشروع والمبنى', [], [
-      twoColumn('بيانات المشروع', [
-        { label: 'اسم المشروع', value: model.project_information.project_name },
-        { label: 'المالك', value: text(model.project_information.owner) || 'لم تُسجل قيمة.' },
-        { label: 'الموقع', value: text(model.project_information.location) || 'لم تُسجل قيمة.' },
-        { label: 'رقم التقرير', value: text(model.project_information.report_number) || 'لم تُسجل قيمة.' },
-        { label: 'تاريخ التقرير', value: text(model.project_information.report_date) || 'لم تُسجل قيمة.' },
-        { label: 'المكتب الاستشاري', value: text(model.project_information.consulting_office) || 'لم تُسجل قيمة.' },
-      ]),
-      ...(model.building_information.length ? [twoColumn('معلومات المبنى', model.building_information)] : []),
-      ...(model.occupancy_and_classification.length ? [twoColumn('الإشغال والتصنيف', model.occupancy_and_classification)] : []),
-    ]),
-    ...(model.assessment_basis.length ? [section('applicable_codes', 3, 'أساس التقييم والمراجع', [
-      'تُعرض المراجع التالية كما ارتبطت ببنود التقييم، دون إضافة مراجع أو استنتاجات كودية جديدة داخل طبقة التقرير.',
-    ], [table('المراجع المرتبطة بالتقييم', ['المرجع', 'المصدر'], model.assessment_basis.map((item) => [item.reference, item.source]))])] : []),
-    section('summary', 4, 'الملخص التنفيذي للتقييم', [
-      model.summary.total_assessed_systems
-        ? 'يعرض الملخص أعداد الحالات الصريحة المسجلة في تقييم المهندس فقط. لا يحول التقرير هذه الأعداد إلى نتيجة مطابقة عامة للمبنى.'
-        : 'لم يكتمل تقييم بنود الموقع القائم بعد. لا تُستنتج حالة مطابقة عامة للمبنى من غياب التقييم.',
-    ], model.summary.total_assessed_systems ? [table('ملخص حالات التقييم', ['البند', 'العدد'], summaryRows(model))] : []),
-    ...(model.assessment_sections.length ? [section('engineering_compliance_review', 5, 'التقييم التفصيلي للأنظمة', [
-      'تُعرض كل منظومة في بطاقة مستقلة وفق التسلسل: الوضع الراهن، المطلوب حسب الكود أو التصميم، الفجوة، حالة المطابقة، الإجراء المطلوب، المرجع أو الدليل، والملاحظات. لا تُنشأ بطاقات للأنظمة التي لا تتوفر لها بيانات تقييم قابلة للعرض.',
-    ], assessmentTables(model))] : []),
-    ...(model.engineering_sections.length ? [section('building_requirements', 6, 'البيانات الهندسية المرجعية', [
-      'تُعرض هذه القيم كبيانات مرجعية داعمة للتقييم فقط، كما يوردها نموذج التقرير للقراءة فقط. لا يعيد هذا التقرير حساب التدفقات أو الضغوط أو الكميات.',
-    ], model.engineering_sections.map((item) => twoColumn(item.label, item.rows)))] : []),
-    section('existing_recommendations', 7, 'التوصيات والإجراءات المطلوبة', [
-      model.recommendations.length
-        ? 'تتضمن هذه القائمة الإجراءات والتوصيات الصريحة المرتبطة بتقييم المهندس أو التوصيات المحفوظة والمعتمدة فقط.'
-        : 'لا توجد إجراءات أو توصيات معتمدة مسجلة حتى الآن.',
-    ], model.recommendations.length ? [table('الإجراءات والتوصيات الصريحة', ['المنظومة', 'الأولوية', 'النص', 'المصدر'], model.recommendations.map((item) => [item.system_label || 'عام', item.priority || 'غير محددة من المهندس', item.text, item.source === 'ASSESSMENT_ACTION' ? 'إجراء التقييم' : 'توصية معتمدة']))] : []),
+  const sections: EngineeringStudySection[] = [];
+  let sectionNumber = 0;
 
-    section('conclusion', 8, 'الملخص والخلاصة وحدود الدراسة', [conclusion(model), ...model.limitations]),
-  ];
+  sections.push(section('introduction', ++sectionNumber, 'مقدمة ونطاق الدراسة', [
+    'يقيّم هذا التقرير حالة السلامة والوقاية من الحريق في الموقع القائم بناءً على الوضع الراهن المسجل، والمتطلبات أو المراجع المتاحة، والفجوات والإجراءات التي أدخلها أو اعتمدها المهندس. لا يثبت التقرير إجراء معاينة ميدانية ما لم تدعم ذلك ملاحظات أو أدلة صريحة في التقييم.',
+  ]));
+
+  sections.push(section('project_description', ++sectionNumber, 'بيانات المشروع والمبنى', [], [
+    twoColumn('بيانات المشروع', [
+      { label: 'اسم المشروع', value: model.project_information.project_name },
+      { label: 'المالك', value: text(model.project_information.owner) || 'لم تُسجل قيمة.' },
+      { label: 'الموقع', value: text(model.project_information.location) || 'لم تُسجل قيمة.' },
+      { label: 'رقم التقرير', value: text(model.project_information.report_number) || 'لم تُسجل قيمة.' },
+      { label: 'تاريخ التقرير', value: text(model.project_information.report_date) || 'لم تُسجل قيمة.' },
+      { label: 'المكتب الاستشاري', value: text(model.project_information.consulting_office) || 'لم تُسجل قيمة.' },
+    ]),
+    ...(model.building_information.length ? [twoColumn('معلومات المبنى', model.building_information)] : []),
+    ...(model.occupancy_and_classification.length ? [twoColumn('الإشغال والتصنيف', model.occupancy_and_classification)] : []),
+  ]));
+
+  if (model.assessment_basis.length) {
+    sections.push(section('applicable_codes', ++sectionNumber, 'أساس التقييم والمراجع', [
+      'تُعرض المراجع التالية كما ارتبطت ببنود التقييم، دون إضافة مراجع أو استنتاجات كودية جديدة داخل طبقة التقرير.',
+    ], [table('المراجع المرتبطة بالتقييم', ['المرجع', 'المصدر'], model.assessment_basis.map((item) => [item.reference, item.source]))]));
+  }
+
+  sections.push(section('summary', ++sectionNumber, 'الملخص التنفيذي للتقييم', [
+    model.summary.total_assessed_systems
+      ? 'يعرض الملخص أعداد الحالات الصريحة المسجلة في تقييم المهندس فقط. لا يحول التقرير هذه الأعداد إلى نتيجة مطابقة عامة للمبنى.'
+      : 'لم يكتمل تقييم بنود الموقع القائم بعد. لا تُستنتج حالة مطابقة عامة للمبنى من غياب التقييم.',
+  ], model.summary.total_assessed_systems ? [table('ملخص حالات التقييم', ['البند', 'العدد'], summaryRows(model))] : []));
+
+  if (model.assessment_sections.length) {
+    sections.push(section('engineering_compliance_review', ++sectionNumber, 'التقييم التفصيلي للأنظمة', [
+      'تُعرض كل منظومة في بطاقة مستقلة وفق التسلسل: الوضع الراهن، المطلوب حسب الكود أو التصميم، الفجوة، حالة المطابقة، الإجراء المطلوب، المرجع أو الدليل، والملاحظات. لا تُنشأ بطاقات للأنظمة التي لا تتوفر لها بيانات تقييم قابلة للعرض.',
+    ], assessmentTables(model)));
+  }
+
+  if (model.engineering_sections.length) {
+    sections.push(section('building_requirements', ++sectionNumber, 'البيانات الهندسية المرجعية', [
+      'تُعرض هذه القيم كبيانات مرجعية داعمة للتقييم فقط، كما يوردها نموذج التقرير للقراءة فقط. لا يعيد هذا التقرير حساب التدفقات أو الضغوط أو الكميات.',
+    ], model.engineering_sections.map((item) => twoColumn(item.label, item.rows))));
+  }
+
+  sections.push(section('existing_recommendations', ++sectionNumber, 'التوصيات والإجراءات المطلوبة', [
+    model.recommendations.length
+      ? 'تتضمن هذه القائمة الإجراءات والتوصيات الصريحة المرتبطة بتقييم المهندس أو التوصيات المحفوظة والمعتمدة فقط.'
+      : 'لا توجد إجراءات أو توصيات معتمدة مسجلة حتى الآن.',
+  ], model.recommendations.length ? [table('الإجراءات والتوصيات الصريحة', ['المنظومة', 'الأولوية', 'النص', 'المصدر'], model.recommendations.map((item) => [
+    item.system_label || 'عام',
+    item.priority || UNSET_ENGINEER_PRIORITY_LABEL,
+    item.text,
+    recommendationSourceLabel(item),
+  ]))] : []));
+
+  sections.push(section('conclusion', ++sectionNumber, 'الملخص والخلاصة وحدود الدراسة', [conclusion(model), ...model.limitations]));
 
   return {
     locale: 'ar',
@@ -133,8 +158,8 @@ export function buildExistingFinalTechnicalReportDocument(
     project_name: model.project_information.project_name,
     client_code: model.project_identity.project_code || '',
     owner_name: model.project_information.owner || undefined,
-    prepared_by: undefined,
-    executive_director: undefined,
+    prepared_by: model.approval.prepared_by || undefined,
+    executive_director: model.approval.executive_director || undefined,
     cover_image: null,
     sections,
     rules_gate_ok: true,

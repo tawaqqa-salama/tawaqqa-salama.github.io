@@ -3,7 +3,7 @@ import { DEFAULT_COMPANY_PROFILE } from '@/lib/company-profile';
 import { resolve } from 'node:path';
 import { describe, expect, it } from 'vitest';
 import { parseProjectEngineeringData } from '@/lib/business/project-reports';
-import { buildExistingTechnicalReportModel } from '@/lib/projects/existing-technical-report-model';
+import { buildExistingTechnicalReportModel, formatAuthoritativeExistingReportMeasured, formatExistingReportSprinklerEngineeringValue, isAuthoritativeExistingReportMeasuredValue } from '@/lib/projects/existing-technical-report-model';
 import { buildExistingFinalTechnicalReportDocument } from '@/lib/projects/existing-final-technical-report-document';
 import { buildExistingFinalTechnicalReportHtml } from '@/lib/projects/engineering-report-engine/renderer/existing-final-technical-template';
 import { EMPTY_FIRE_PROTECTION_DESIGN } from '@/lib/types/fire-protection-design';
@@ -142,6 +142,67 @@ describe('PR 7 — EXISTING final A4 technical report document', () => {
     expect(content).toContain('غير محددة من المهندس');
     expect(content).not.toContain('fire_protection_design.');
     expect(model.assessment_basis.every((item) => !item.source.includes('fire_protection_design.'))).toBe(true);
+    expect(document.prepared_by).toBeUndefined();
+  });
+
+  it('uses sequential section numbers that match visible sections and approval metadata from project data', () => {
+    const data = fixture();
+    data.technical_report.safety_engineer_name = 'م. أحمد الحربي';
+    data.technical_report.executive_director_name = 'م. سارة العتيبي';
+    const model = buildExistingTechnicalReportModel(client, data, { name: 'توقع سلامة', legal_name: 'توقع سلامة للاستشارات' });
+    const document = buildExistingFinalTechnicalReportDocument(model);
+    const html = buildExistingFinalTechnicalReportHtml({
+      document,
+      company: { ...DEFAULT_COMPANY_PROFILE, name: 'توقع سلامة', legal_name: 'توقع سلامة للاستشارات', tagline: 'استشارات السلامة' },
+    });
+
+    expect(document.prepared_by).toBe('م. أحمد الحربي');
+    expect(document.executive_director).toBe('م. سارة العتيبي');
+    expect(document.sections.map((item) => item.number)).toEqual([1, 2, 3, 4, 5, 6, 7, 8]);
+    expect(html).toContain('م. أحمد الحربي');
+    expect(html).not.toContain('........................................');
+    expect(html).toMatch(/<em>0[1-7]<\/em>/);
+    expect(html).toContain('الاعتماد والتوقيعات');
+  });
+
+  it('does not leak calculated defaults or merge-derived tank sizing into engineering rows', () => {
+    const data = parseProjectEngineeringData({
+      ...EMPTY_PROJECT_ENGINEERING_DATA,
+      fire_protection_design: {
+        ...EMPTY_FIRE_PROTECTION_DESIGN,
+        water_tank: {
+          ...EMPTY_FIRE_PROTECTION_DESIGN.water_tank,
+          water_demand_lpm: { value: 1324.89, unit: 'L/min', source: 'calculated' },
+          duration_min: { value: 60, unit: 'min', source: 'rule_requirement' },
+          calculated_required_volume_m3: 79.493,
+        },
+        pump: {
+          ...EMPTY_FIRE_PROTECTION_DESIGN.pump,
+          rated_flow: { value: 1403, unit: 'GPM', source: 'hydraulic_calc' },
+          rated_pressure: { value: 14, unit: 'bar', source: 'hydraulic_calc' },
+        },
+        sprinkler: {
+          ...EMPTY_FIRE_PROTECTION_DESIGN.sprinkler,
+          k_factor: '5.6',
+          design_pressure: '14',
+          design_flow: '1403',
+        },
+      },
+    });
+    const model = buildExistingTechnicalReportModel(client, data);
+    const values = model.engineering_sections.flatMap((section) => section.rows.map((row) => `${row.label}:${row.value}`));
+
+    expect(values).toContain('تدفق المضخة المقنن:1403 GPM');
+    expect(values).toContain('ضغط المضخة المقنن:14 bar');
+    expect(values).toContain('معامل K:K = 5.6');
+    expect(values).toContain('ضغط التصميم:14 bar');
+    expect(values).toContain('تصرف التصميم:1403 GPM');
+    expect(values.some((row) => row.includes('معدل الطلب المائي'))).toBe(false);
+    expect(values.some((row) => row.includes('مدة التخزين'))).toBe(false);
+    expect(values.some((row) => row.includes('الحجم المطلوب المحسوب'))).toBe(false);
+    expect(isAuthoritativeExistingReportMeasuredValue({ value: 60, unit: 'min', source: 'rule_requirement' })).toBe(false);
+    expect(formatAuthoritativeExistingReportMeasured({ value: 1403, unit: 'GPM', source: 'hydraulic_calc' })).toBe('1403 GPM');
+    expect(formatExistingReportSprinklerEngineeringValue('14', 'pressure')).toBe('14 bar');
   });
 
   it('renders an A4 cover, TOC, semantic sections, running header/footer, and approval page', () => {
