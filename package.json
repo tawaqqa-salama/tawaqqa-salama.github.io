@@ -14,7 +14,6 @@
     "test:watch": "vitest",
     "test:live-rls": "node scripts/live-rls-jwt-security-tests.mjs",
     "db:apply-dds": "node scripts/apply-dds-schema.mjs",
-    "db:rebuild-local": "LOCAL_DDS_REBUILD=1 node scripts/apply-full-dds-schema-local.mjs",
     "reingest:nfpa13-canonical": "npx tsx scripts/reingest-nfpa13-canonical-from-storage.ts",
     "resume:nfpa13-chunks": "npx tsx scripts/resume-nfpa13-chunk-persist.ts",
     "storage:raise-design-knowledge-limit": "node scripts/raise-design-knowledge-upload-limit.mjs"
