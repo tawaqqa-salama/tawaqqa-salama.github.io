@@ -127,10 +127,28 @@ function narrativeFixture() {
     },
     fire_protection_design: {
       ...EMPTY_FIRE_PROTECTION_DESIGN,
-      pump: { type: 'Electric + Diesel + Jockey', capacity: { value: 350, unit: 'GPM', source: 'engineer_input' }, pressure: { value: 7, unit: 'bar', source: 'engineer_input' } },
-      diesel_pump: { capacity: { value: 350, unit: 'GPM', source: 'engineer_input' }, pressure: { value: 7, unit: 'bar', source: 'engineer_input' } },
-      jockey_pump: { capacity: { value: 35, unit: 'GPM', source: 'engineer_input' }, pressure: { value: 12, unit: 'bar', source: 'engineer_input' } },
-      fire_alarm: { control_panel: '4 لوحات', manual_call_points: '12', voice_alarm: 'متوفر' },
+      pump: {
+        ...EMPTY_FIRE_PROTECTION_DESIGN.pump,
+        type: 'UL',
+        capacity: { value: 350, unit: 'GPM', source: 'engineer_input' },
+        pressure: { value: 7, unit: 'bar', source: 'engineer_input' },
+      },
+      diesel_pump: {
+        ...EMPTY_FIRE_PROTECTION_DESIGN.diesel_pump,
+        capacity: { value: 350, unit: 'GPM', source: 'engineer_input' },
+        pressure: { value: 7, unit: 'bar', source: 'engineer_input' },
+      },
+      jockey_pump: {
+        ...EMPTY_FIRE_PROTECTION_DESIGN.jockey_pump,
+        capacity: { value: 35, unit: 'GPM', source: 'engineer_input' },
+        pressure: { value: 12, unit: 'bar', source: 'engineer_input' },
+      },
+      fire_alarm: {
+        ...EMPTY_FIRE_PROTECTION_DESIGN.fire_alarm,
+        control_panel: '4 لوحات',
+        manual_call_points: '12',
+        voice_alarm: 'متوفر',
+      },
     },
     existing_assessment: {
       version: 1,
