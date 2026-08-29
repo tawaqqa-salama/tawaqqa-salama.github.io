@@ -3,7 +3,14 @@ import { DEFAULT_COMPANY_PROFILE } from '@/lib/company-profile';
 import { resolve } from 'node:path';
 import { describe, expect, it } from 'vitest';
 import { parseProjectEngineeringData } from '@/lib/business/project-reports';
-import { buildExistingTechnicalReportModel, formatAuthoritativeExistingReportMeasured, formatExistingReportSprinklerEngineeringValue, isAuthoritativeExistingReportMeasuredValue } from '@/lib/projects/existing-technical-report-model';
+import {
+  buildExistingTechnicalReportModel,
+  EXISTING_REPORT_UNSPECIFIED_VALUE,
+  existingFinalReportRecommendations,
+  formatAuthoritativeExistingReportMeasured,
+  formatExistingReportSprinklerEngineeringValue,
+  isAuthoritativeExistingReportMeasuredValue,
+} from '@/lib/projects/existing-technical-report-model';
 import { buildExistingFinalTechnicalReportDocument } from '@/lib/projects/existing-final-technical-report-document';
 import { buildExistingFinalTechnicalReportHtml } from '@/lib/projects/engineering-report-engine/renderer/existing-final-technical-template';
 import { EMPTY_FIRE_PROTECTION_DESIGN } from '@/lib/types/fire-protection-design';
@@ -139,7 +146,9 @@ describe('PR 7 — EXISTING final A4 technical report document', () => {
     expect(content).not.toContain('NEEDS_DATA');
     expect(content).not.toContain('RULE_NOT_CONFIGURED');
     expect(content).not.toContain('إدخال المهندس');
-    expect(content).toContain('غير محددة من المهندس');
+    expect(content).not.toContain('غير محددة من المهندس');
+    expect(content).toContain('لا توجد إجراءات أو توصيات معتمدة مسجلة حتى الآن.');
+    expect(existingFinalReportRecommendations(model)).toEqual([]);
     expect(content).not.toContain('fire_protection_design.');
     expect(model.assessment_basis.every((item) => !item.source.includes('fire_protection_design.'))).toBe(true);
     expect(document.prepared_by).toBeUndefined();
@@ -159,10 +168,25 @@ describe('PR 7 — EXISTING final A4 technical report document', () => {
     expect(document.prepared_by).toBe('م. أحمد الحربي');
     expect(document.executive_director).toBe('م. سارة العتيبي');
     expect(document.sections.map((item) => item.number)).toEqual([1, 2, 3, 4, 5, 6, 7, 8]);
+    expect(document.sections.map((item) => item.id)).toEqual([
+      'facility_data',
+      'site_information',
+      'fire_truck_access',
+      'project_components',
+      'existing_assessment_firefighting',
+      'building_requirements',
+      'existing_recommendations',
+      'conclusion',
+    ]);
+    expect(document.location_display).toContain('الرياض');
     expect(html).toContain('م. أحمد الحربي');
     expect(html).not.toContain('........................................');
-    expect(html).toMatch(/<em>0[1-7]<\/em>/);
+    expect(html).toMatch(/<em>0[1-8]<\/em>/);
     expect(html).toContain('الاعتماد والتوقيعات');
+    expect(html).toContain('id="sec-facility_data"');
+    expect(html).toContain('id="sec-site_information"');
+    expect(html).toContain('id="sec-fire_truck_access"');
+    expect(html).toContain('id="sec-project_components"');
   });
 
   it('does not leak calculated defaults or merge-derived tank sizing into engineering rows', () => {
@@ -195,14 +219,47 @@ describe('PR 7 — EXISTING final A4 technical report document', () => {
     expect(values).toContain('تدفق المضخة المقنن:1403 GPM');
     expect(values).toContain('ضغط المضخة المقنن:14 bar');
     expect(values).toContain('معامل K:K = 5.6');
-    expect(values).toContain('ضغط التصميم:14 bar');
-    expect(values).toContain('تصرف التصميم:1403 GPM');
+    expect(values).toContain(`ضغط التصميم:${EXISTING_REPORT_UNSPECIFIED_VALUE}`);
+    expect(values).toContain(`تصرف التصميم:${EXISTING_REPORT_UNSPECIFIED_VALUE}`);
     expect(values.some((row) => row.includes('معدل الطلب المائي'))).toBe(false);
     expect(values.some((row) => row.includes('مدة التخزين'))).toBe(false);
     expect(values.some((row) => row.includes('الحجم المطلوب المحسوب'))).toBe(false);
     expect(isAuthoritativeExistingReportMeasuredValue({ value: 60, unit: 'min', source: 'rule_requirement' })).toBe(false);
     expect(formatAuthoritativeExistingReportMeasured({ value: 1403, unit: 'GPM', source: 'hydraulic_calc' })).toBe('1403 GPM');
-    expect(formatExistingReportSprinklerEngineeringValue('14', 'pressure')).toBe('14 bar');
+    expect(formatExistingReportSprinklerEngineeringValue('14', 'pressure')).toBe(EXISTING_REPORT_UNSPECIFIED_VALUE);
+    expect(formatExistingReportSprinklerEngineeringValue('1403', 'flow')).toBe(EXISTING_REPORT_UNSPECIFIED_VALUE);
+    expect(formatExistingReportSprinklerEngineeringValue('14 bar', 'pressure')).toBe('14 bar');
+    expect(formatExistingReportSprinklerEngineeringValue('1403 GPM', 'flow')).toBe('1403 GPM');
+  });
+
+  it('includes only engineer-prioritized recommendations in the final document', () => {
+    const data = fixture();
+    data.existing_assessment = {
+      version: 1,
+      systems: {
+        sprinkler_system: {
+          existing_presence: 'PRESENT',
+          compliance_status: 'NON_COMPLIANT',
+          action_text: 'إجراء بدون أولوية لا يجب أن يظهر في PDF النهائي.',
+        },
+        fire_pumps: {
+          existing_presence: 'PRESENT',
+          compliance_status: 'NON_COMPLIANT',
+          action_text: 'إجراء بأولوية يظهر في PDF النهائي.',
+          priority: 'HIGH',
+        },
+      },
+    };
+    const model = buildExistingTechnicalReportModel(client, data);
+    const document = buildExistingFinalTechnicalReportDocument(model);
+    const recommendationsSection = document.sections.find((section) => section.id === 'existing_recommendations');
+    const recommendationsContent = JSON.stringify(recommendationsSection);
+
+    expect(model.recommendations).toHaveLength(2);
+    expect(existingFinalReportRecommendations(model)).toHaveLength(1);
+    expect(recommendationsContent).toContain('إجراء بأولوية يظهر في PDF النهائي.');
+    expect(recommendationsContent).not.toContain('إجراء بدون أولوية لا يجب أن يظهر في PDF النهائي.');
+    expect(recommendationsContent).not.toContain('غير محددة من المهندس');
   });
 
   it('renders an A4 cover, TOC, semantic sections, running header/footer, and approval page', () => {
@@ -223,6 +280,9 @@ describe('PR 7 — EXISTING final A4 technical report document', () => {
     expect(html).toContain('border-top:.75mm solid #1b8f91');
     expect(html).not.toContain('border-top:.75mm solid #b32020');
     expect(html).toContain('class="official-approvals keep"');
+    expect(html).toContain('official-mandatory-page');
+    expect(html).toContain('id="sec-facility_data"');
+    expect(html).toContain('break-before:avoid-page');
     expect(html).toContain('@bottom-center');
     expect(html).toContain('التقرير الفني لتقييم الموقع القائم');
     expect(html).not.toContain('http://localhost');

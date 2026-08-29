@@ -4,6 +4,8 @@ export type DocumentPreviewPayload = {
   fileName?: string;
   /** PDF is the default for generated documents; HTML remains an explicit legacy-compatibility opt-out. */
   downloadFormat?: 'html' | 'pdf';
+  /** Vector Chromium print-to-PDF preserves Arabic shaping; canvas rasterization is legacy fallback. */
+  pdfEngine?: 'chromium' | 'canvas';
 };
 
 type Listener = (payload: DocumentPreviewPayload | null) => void;
@@ -224,15 +226,38 @@ export function downloadHtmlDocument(html: string, fileName: string) {
   triggerDownload(new Blob([html], { type: 'text/html;charset=utf-8' }), safeName);
 }
 
+async function downloadPdfViaChromium(html: string, fileName: string): Promise<File> {
+  const response = await fetch('/api/reports/html-to-pdf', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ html, fileName }),
+  });
+  if (!response.ok) {
+    const payload = await response.json().catch(() => null) as { error?: string } | null;
+    throw new Error(payload?.error || 'تعذر إنشاء PDF عبر مسار Chromium.');
+  }
+  const blob = await response.blob();
+  const safeName = fileName.toLowerCase().endsWith('.pdf') ? fileName : `${fileName}.pdf`;
+  return new File([blob], safeName, { type: 'application/pdf' });
+}
+
 /** يحوّل HTML التقرير إلى ملف PDF حقيقي ثم ينزله من المتصفح. */
-export async function downloadPdfDocument(html: string, fileName: string) {
-  const { htmlDocumentToPdfFile } = await import('@/lib/print/html-to-pdf');
-  const pdf = await htmlDocumentToPdfFile(html, fileName);
+export async function downloadPdfDocument(
+  html: string,
+  fileName: string,
+  options?: Pick<DocumentPreviewPayload, 'pdfEngine'>
+) {
+  const pdf = options?.pdfEngine === 'chromium'
+    ? await downloadPdfViaChromium(html, fileName)
+    : await (async () => {
+      const { htmlDocumentToPdfFile } = await import('@/lib/print/html-to-pdf');
+      return htmlDocumentToPdfFile(html, fileName);
+    })();
   void import('@/lib/activity/logger').then(({ logActivity }) =>
     logActivity({
       actionType: 'EXPORT',
       details: `تصدير مستند PDF: ${pdf.name}`,
-      metadata: { fileName: pdf.name, mimeType: pdf.type },
+      metadata: { fileName: pdf.name, mimeType: pdf.type, pdfEngine: options?.pdfEngine || 'canvas' },
     })
   );
   triggerDownload(pdf, pdf.name);

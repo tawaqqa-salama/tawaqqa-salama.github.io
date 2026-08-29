@@ -77,6 +77,7 @@ export async function buildTechnicalReportOutput(
       html,
       fileName: `existing-technical-report-${params.client.client_code || document.client_code || 'report'}`,
       downloadFormat: 'pdf',
+      pdfEngine: 'chromium',
     };
     const output: ExistingTechnicalReportOutput = {
       kind: 'EXISTING',
@@ -124,5 +125,5 @@ export async function printTechnicalReport(params: TechnicalReportPrintParams) {
 /** ينزل ملف PDF فعليًا، من دون فتح المعاينة أو نافذة الطباعة. */
 export async function downloadTechnicalReportPdf(params: TechnicalReportPrintParams) {
   const payload = await buildTechnicalReportDocumentPayload(params);
-  await downloadPdfDocument(payload.html, payload.fileName || payload.title);
+  await downloadPdfDocument(payload.html, payload.fileName || payload.title, { pdfEngine: payload.pdfEngine });
 }

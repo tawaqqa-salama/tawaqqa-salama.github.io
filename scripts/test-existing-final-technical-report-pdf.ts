@@ -1,8 +1,7 @@
 import { mkdirSync, readFileSync, writeFileSync } from 'fs';
 import { join } from 'path';
-import { spawnSync } from 'child_process';
-import { pathToFileURL } from 'url';
 import type { CompanyProfile } from '../lib/company-profile';
+import { renderHtmlToPdfBuffer } from '../lib/print/chromium-html-to-pdf.server';
 import { buildExistingFinalTechnicalReportHtml } from '../lib/projects/engineering-report-engine/renderer/existing-final-technical-template';
 import { documentToFlowBlocks } from '../lib/projects/engineering-report-engine/renderer/flow-document';
 import { buildExistingTechnicalReportModel } from '../lib/projects/existing-technical-report-model';
@@ -12,13 +11,13 @@ import { EMPTY_PROJECT_ENGINEERING_DATA, EMPTY_TECHNICAL_REPORT } from '../lib/t
 import { EMPTY_FIRE_PROTECTION_DESIGN } from '../lib/types/fire-protection-design';
 import { emptySafetyQuantities } from '../lib/projects/design-center/space-safety';
 
-const outDir = '/tmp/existing-final-technical-report-pdf';
+const outDir = join(process.cwd(), 'artifacts/existing-report-ld-2026-014');
 mkdirSync(outDir, { recursive: true });
 
 const client: ClientRecord = {
-    id: 'existing-final-report-fixture',
-    primary_engineering_project_identity: { clientId: 'existing-final-report-fixture', projectId: 'existing-final-report-fixture', projectCode: 'PRJ-2026-EXISTING', projectClassification: 'EXISTING' },
-  client_code: 'EX-FINAL-01',
+  id: 'existing-final-report-fixture',
+  primary_engineering_project_identity: { clientId: 'existing-final-report-fixture', projectId: 'existing-final-report-fixture', projectCode: 'PRJ-LD-2026-014', projectClassification: 'EXISTING' },
+  client_code: 'LD-2026-014',
   name: 'منشأة الموقع القائم — التقرير الرسمي',
   business_name: 'منشأة الموقع القائم — التقرير الرسمي',
   owner_name: 'مالك المنشأة',
@@ -38,8 +37,48 @@ const company = {
 
 const report = {
   ...EMPTY_TECHNICAL_REPORT,
-  outgoing_number: 'TR-EX-FINAL-01',
-  report_date: '2026-08-23',
+  outgoing_number: 'TR-LD-2026-014',
+  report_date: '2026-08-29',
+  location_description: 'موقع المشروع ضمن حي العليا بالرياض.',
+  gps_lat: '24.6877',
+  gps_lng: '46.7219',
+  facade_photo: {
+    id: 'facade-01',
+    caption: 'واجهة المشروع',
+    dataUrl: 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==',
+  },
+  earth_photo: {
+    id: 'earth-01',
+    caption: 'صورة جوية للموقع',
+    dataUrl: 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==',
+  },
+  evidence: {
+    version: 1,
+    civil_defense: {
+      center_name: 'مركز الدفاع المدني — العليا',
+      distance_value: 1.8,
+      distance_unit: 'km',
+      travel_time_minutes: 6,
+      source_label: 'سجل المهندس',
+      engineer_confirmed_at: '2026-08-20',
+      map_evidence_id: 'cd-map-01',
+    },
+    items: [{
+      id: 'cd-map-01',
+      kind: 'civil_defense_map',
+      title: 'خريطة مسار الوصول',
+      category: 'civil_defense',
+      display_order: 1,
+      include_in_report: true,
+      created_at: '2026-08-20T00:00:00.000Z',
+      file: {
+        id: 'cd-map-file-01',
+        dataUrl: 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==',
+        mimeType: 'image/png',
+        fileName: 'cd-map.png',
+      },
+    }],
+  },
   floor_uses: [
     {
       id: 'ground',
@@ -161,12 +200,8 @@ const fireDesign = {
   summary_text: 'تُعرض أنظمة السلامة والوقاية من الحريق وفق البيانات الفنية المتاحة والمخططات والمستندات المرتبطة بالمشروع.',
 };
 
-async function renderPdf(htmlPath: string, pdfPath: string): Promise<void> {
-  const chrome = spawnSync('chromium', [
-    '--headless=new', '--disable-gpu', '--no-sandbox', '--allow-file-access-from-files',
-    `--print-to-pdf=${pdfPath}`, '--no-pdf-header-footer', '--print-to-pdf-no-header', pathToFileURL(htmlPath).href,
-  ], { encoding: 'utf8', timeout: 120000 });
-  if (chrome.status !== 0) throw new Error(chrome.stderr || chrome.stdout || 'تعذر إنشاء PDF الرسمي.');
+async function renderPdf(html: string, pdfPath: string): Promise<void> {
+  writeFileSync(pdfPath, renderHtmlToPdfBuffer(html));
 }
 
 async function extractPdfPages(pdfPath: string): Promise<{ pdf: any; pages: string[] }> {
@@ -178,11 +213,7 @@ async function extractPdfPages(pdfPath: string): Promise<{ pdf: any; pages: stri
     const content = await page.getTextContent();
     pages.push(content.items.map((item) => ('str' in item ? item.str : '')).join(' ').trim());
   }
-  const extracted = spawnSync('pdftotext', ['-layout', pdfPath, '-'], { encoding: 'utf8', timeout: 30000 });
-  const cliPages = extracted.status === 0
-    ? extracted.stdout.split('\f').slice(0, pdf.numPages).map((page) => page.trim())
-    : [];
-  return { pdf, pages: cliPages.length > 0 ? cliPages : pages };
+  return { pdf, pages };
 }
 
 function normalizePdfText(value: string): string {
@@ -300,20 +331,20 @@ async function main() {
   // Pass 1: render without page numbers, then detect physical section pages from the PDF.
   const htmlPass1 = buildExistingFinalTechnicalReportHtml({ document, company, includeDetectionMarkers: true });
   writeFileSync(htmlPath, htmlPass1, 'utf8');
-  await renderPdf(htmlPath, pass1PdfPath);
+  await renderPdf(htmlPass1, pass1PdfPath);
   const pass1 = await extractPdfPages(pass1PdfPath);
   const pageMap = detectSectionPageMap(pass1.pages, chapters);
 
   // Pass 2: inject the detected physical page map and verify stability with markers.
   const htmlPass2Verification = buildExistingFinalTechnicalReportHtml({ document, company, pageMap, includeDetectionMarkers: true });
   writeFileSync(htmlPath, htmlPass2Verification, 'utf8');
-  await renderPdf(htmlPath, verificationPdfPath);
+  await renderPdf(htmlPass2Verification, verificationPdfPath);
   const verificationPdf = await extractPdfPages(verificationPdfPath);
   const verifiedPageMap = detectSectionPageMap(verificationPdf.pages, chapters);
   // Final render: same page map, but no detection markers in the delivered PDF.
   const htmlPass2 = buildExistingFinalTechnicalReportHtml({ document, company, pageMap });
   writeFileSync(htmlPath, htmlPass2, 'utf8');
-  await renderPdf(htmlPath, pdfPath);
+  await renderPdf(htmlPass2, pdfPath);
   const finalPdf = await extractPdfPages(pdfPath);
   const pageMapStable = JSON.stringify(pageMap) === JSON.stringify(verifiedPageMap);
   if (!pageMapStable) throw new Error(`TOC page map was not stable: ${JSON.stringify({ pageMap, verifiedPageMap })}`);

@@ -9,6 +9,7 @@ import type {
   EngineeringStudySection,
   EngineeringStudySectionId,
 } from '@/lib/projects/engineering-report-engine/types';
+import { EXISTING_MANDATORY_PAGE_SECTIONS } from '@/lib/projects/existing-technical-report-profile';
 import { placeSectionImages, sanitizeCaption } from '@/lib/projects/engineering-report-engine/renderer/image-placement';
 import { getItemProse } from '@/lib/projects/engineering-report-engine/renderer/subsection-prose';
 
@@ -650,6 +651,11 @@ export function documentToFlowBlocks(doc: EngineeringStudyDocument): {
   blocks: FlowBlock[];
   chapters: { id: string; title: string; displayNo: number }[];
 } {
+  const mandatoryExistingSections = new Set<string>([
+    ...EXISTING_MANDATORY_PAGE_SECTIONS,
+    'existing_recommendations',
+    'conclusion',
+  ]);
   const content = doc.sections.filter((s) => s.id !== 'cover' && s.id !== 'toc');
   const visible = content.filter((s) => {
     const paras = uniqueParagraphs(s.paragraphs);
@@ -658,11 +664,11 @@ export function documentToFlowBlocks(doc: EngineeringStudyDocument): {
       (s.images && s.images.length > 0) ||
       (s.tables && s.tables.length > 0);
     const always =
+      mandatoryExistingSections.has(s.id) ||
       s.id === 'summary' ||
       s.id === 'engineering_recommendations' ||
-      s.id === 'conclusion' ||
       s.id === 'engineering_compliance_review';
-    return hasReal || (always && paras.length > 0);
+    return hasReal || always;
   });
 
   const counters = { figures: 0, tables: 0, references: 0 };

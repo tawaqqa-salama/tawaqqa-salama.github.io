@@ -136,7 +136,7 @@ describe('technical report final visual and print fidelity', () => {
     expect(source).toContain('buildTechnicalReportDocumentPayload');
     expect(source).toContain('openDocumentPreview(await buildTechnicalReportDocumentPayload(params))');
     expect(source).toContain('printDocumentHtml(await buildTechnicalReportDocumentPayload(params))');
-    expect(source).toContain('downloadPdfDocument(payload.html, payload.fileName || payload.title)');
+    expect(source).toContain('downloadPdfDocument(payload.html, payload.fileName || payload.title, { pdfEngine: payload.pdfEngine })');
   });
 
   it('uses administrative semantic boundaries for cover, TOC, chapters, and tables in PDF pagination', () => {
