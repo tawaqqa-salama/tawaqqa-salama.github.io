@@ -240,16 +240,19 @@ export default function ProjectReportModal({
     [data, client]
   );
 
+  // Project classification is canonical project identity synced from Basic Data.
+  const classificationGate = useMemo(
+    () => (client ? resolveStage4ProjectClassification(client) : null),
+    [client]
+  );
+  const projectClassification =
+    classificationGate?.status === 'RESOLVED' ? classificationGate.classification : null;
+  const classificationNeedsDataMessage =
+    classificationGate?.status === 'NEEDS_DATA' ? classificationGate.message : null;
+
   const stageMeta = WORKFLOW_STAGES.find((s) => s.id === activeStage);
 
   if (!client || !data) return null;
-
-  // Project classification is canonical project identity synced from Basic Data.
-  const classificationGate = useMemo(() => resolveStage4ProjectClassification(client), [client]);
-  const projectClassification =
-    classificationGate.status === 'RESOLVED' ? classificationGate.classification : null;
-  const classificationNeedsDataMessage =
-    classificationGate.status === 'NEEDS_DATA' ? classificationGate.message : null;
 
   const save = async (
     nextData: ProjectEngineeringData,
