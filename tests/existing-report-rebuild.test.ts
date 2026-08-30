@@ -197,14 +197,14 @@ describe('EXISTING report rebuild — pages 1-6, location, PDF Arabic', () => {
     expect(values.some((row) => row.includes('معدل الطلب المائي'))).toBe(false);
   });
 
-  it('keeps final recommendations without explicit engineer priority out of the document table', () => {
+  it('consolidates all non-compliant assessment actions in the actions section', () => {
     const { model, document } = buildHtml();
     expect(model.recommendations.length).toBeGreaterThan(1);
     expect(existingFinalReportRecommendations(model)).toHaveLength(1);
     const section = document.sections.find((item) => item.id === 'existing_recommendations');
     const content = JSON.stringify(section);
     expect(content).toContain('إجراء بأولوية.');
-    expect(content).not.toContain('إجراء بدون أولوية.');
+    expect(content).toContain('إجراء بدون أولوية.');
   });
 
   it('wires the Chromium PDF download path instead of canvas rasterization for EXISTING reports', () => {

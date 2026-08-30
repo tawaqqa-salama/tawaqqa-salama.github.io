@@ -137,18 +137,14 @@ describe('PR 7 — EXISTING final A4 technical report document', () => {
 
     expect(document.title_ar).toContain('الموقع القائم');
     expect(model.engineering_sections.flatMap((item) => item.rows).map((row) => `${row.label}:${row.value}`).join('|')).toContain('تدفق المضخة المقنن:1403 GPM');
-    expect(content).toContain('الوضع الراهن');
-    expect(content).toContain('assessment_unit');
-    expect(content).toContain('required');
-    expect(content).toContain('gap');
+    expect(content).toContain('engineering_narrative_item');
     expect(content).toContain('COMPLIANT');
-    expect(content).toContain('الإجراء المطلوب');
     expect(content).toContain('بيانات الرش ضمن التصميم الفني ومركز التصاميم');
     expect(content).not.toContain('NEEDS_DATA');
     expect(content).not.toContain('RULE_NOT_CONFIGURED');
     expect(content).not.toContain('إدخال المهندس');
     expect(content).not.toContain('غير محددة من المهندس');
-    expect(content).toContain('لا توجد إجراءات أو توصيات معتمدة مسجلة حتى الآن.');
+    expect(content).toContain('استكمال التحقق واعتماد المعالجة');
     expect(existingFinalReportRecommendations(model)).toEqual([]);
     expect(content).not.toContain('fire_protection_design.');
     expect(model.assessment_basis.every((item) => !item.source.includes('fire_protection_design.'))).toBe(true);
@@ -168,7 +164,7 @@ describe('PR 7 — EXISTING final A4 technical report document', () => {
 
     expect(document.prepared_by).toBe('م. أحمد الحربي');
     expect(document.executive_director).toBe('م. سارة العتيبي');
-    expect(document.sections.map((item) => item.number)).toEqual([1, 2, 3, 4, 5, 6, 7, 8]);
+    expect(document.sections.map((item) => item.number)).toEqual([1, 2, 3, 4, 5, 6, 7, 8, 9]);
     expect(document.sections.map((item) => item.id)).toEqual([
       'facility_data',
       'site_information',
@@ -177,12 +173,13 @@ describe('PR 7 — EXISTING final A4 technical report document', () => {
       'existing_assessment_firefighting',
       'building_requirements',
       'existing_recommendations',
+      'code_evidence_references',
       'conclusion',
     ]);
     expect(document.location_display).toContain('الرياض');
     expect(html).toContain('م. أحمد الحربي');
     expect(html).not.toContain('........................................');
-    expect(html).toMatch(/<em>0[1-8]<\/em>/);
+    expect(html).toMatch(/<em>0[1-9]<\/em>/);
     expect(html).toContain('الاعتماد والتوقيعات');
     expect(html).toContain('id="sec-facility_data"');
     expect(html).toContain('id="sec-site_information"');
@@ -259,7 +256,7 @@ describe('PR 7 — EXISTING final A4 technical report document', () => {
     expect(model.recommendations).toHaveLength(2);
     expect(existingFinalReportRecommendations(model)).toHaveLength(1);
     expect(recommendationsContent).toContain('إجراء بأولوية يظهر في PDF النهائي.');
-    expect(recommendationsContent).not.toContain('إجراء بدون أولوية لا يجب أن يظهر في PDF النهائي.');
+    expect(recommendationsContent).toContain('إجراء بدون أولوية لا يجب أن يظهر في PDF النهائي.');
     expect(recommendationsContent).not.toContain('غير محددة من المهندس');
   });
 
@@ -310,7 +307,7 @@ describe('PR 7 — EXISTING final A4 technical report document', () => {
     expect(model.summary).toEqual({ total_assessed_systems: 0, compliant: 0, non_compliant: 0, needs_completion: 0, not_applicable: 0 });
     expect(content).toContain('لا يتضمن الملف الحالي بنود تقييم مكتملة');
     expect(content).not.toContain('المبنى مطابق');
-    expect(content).toContain('لا توجد إجراءات أو توصيات معتمدة مسجلة حتى الآن.');
+    expect(content).toContain('لم تُسجل إجراءات تصحيحية إضافية ضمن بيانات التقييم الحالية.');
   });
 
   it('keeps all four explicit assessment statuses and long Arabic text in the final document', () => {

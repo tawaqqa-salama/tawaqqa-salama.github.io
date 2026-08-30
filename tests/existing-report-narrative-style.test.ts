@@ -274,7 +274,7 @@ describe('EXISTING report narrative style', () => {
       block.kind === 'table' && block.caption.includes(' — ')
     );
     expect(renderedAssessmentTables.length).toBe(0);
-    expect(blocks.some((block) => block.kind === 'existing_assessment_unit')).toBe(true);
+    expect(blocks.some((block) => block.kind === 'existing_engineering_narrative_item')).toBe(true);
   });
 
   it('ENGINEERING_VALUES_PRESERVED = PASS', () => {
@@ -337,7 +337,7 @@ describe('EXISTING report narrative style', () => {
     const outDir = resolve(root, 'artifacts/existing-report-narrative-style');
     mkdirSync(outDir, { recursive: true });
     writeFileSync(resolve(outDir, 'official-technical-report.html'), html, 'utf8');
-    expect(html).toContain('existing-report-assessment-unit');
+    expect(html).toContain('existing-report-engineering-item');
     expect(html).toContain('official-post-project-components-break');
   });
 

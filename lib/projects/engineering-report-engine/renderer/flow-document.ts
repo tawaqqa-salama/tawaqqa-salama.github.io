@@ -62,14 +62,10 @@ export type FlowBlock =
   | { kind: 'existing_numbered_list'; items: string[] }
   | { kind: 'existing_reference_list'; items: string[] }
   | {
-      kind: 'existing_assessment_unit';
+      kind: 'existing_engineering_narrative_item';
       title: string;
-      existing: string;
-      required: string;
-      gap: string;
-      action: string;
-      reference: string;
-      status: string;
+      status?: string;
+      paragraphs: string[];
     };
 
 const SYSTEM_JARGON_RE =
@@ -370,19 +366,15 @@ function presentationBlockToFlow(
       return [{ kind: 'existing_numbered_list', items: block.items }];
     case 'reference_list':
       return [{ kind: 'existing_reference_list', items: block.items }];
-    case 'assessment_unit': {
+    case 'engineering_narrative_item': {
       const title = assessmentIndex
         ? `${assessmentIndex.chapterNo}.${assessmentIndex.unitNo} ${block.title}`
         : block.title;
       return [{
-        kind: 'existing_assessment_unit',
+        kind: 'existing_engineering_narrative_item',
         title,
-        existing: block.existing,
-        required: block.required,
-        gap: block.gap,
-        action: block.action,
-        reference: block.reference,
         status: block.status,
+        paragraphs: block.paragraphs,
       }];
     }
     case 'table':
@@ -407,11 +399,11 @@ function appendPresentationBlocks(
   if (!presentationBlocks?.length) return;
   let unitNo = 0;
   for (const block of presentationBlocks) {
-    if (block.type === 'assessment_unit') unitNo += 1;
+    if (block.type === 'engineering_narrative_item') unitNo += 1;
     blocks.push(...presentationBlockToFlow(
       block,
       counters,
-      block.type === 'assessment_unit' && chapterNo ? { chapterNo, unitNo } : undefined
+      block.type === 'engineering_narrative_item' && chapterNo ? { chapterNo, unitNo } : undefined
     ));
   }
 }
@@ -662,7 +654,7 @@ export function sectionToFlowBlocks(
     section.id === 'site_access_evidence' ||
     section.id === 'existing_condition_evidence' ||
     section.id === 'safety_system_evidence' ||
-    section.id === 'code_evidence_references'
+    (section.id === 'code_evidence_references' && !section.presentation_blocks?.length)
   ) {
     for (const p of paras) {
       const text = sanitizeClientFacingText(p.text, locale);
@@ -780,7 +772,7 @@ export function sectionToFlowBlocks(
     return blocks;
   }
 
-  if (section.id === 'existing_recommendations' || section.id === 'building_requirements') {
+  if (section.id === 'existing_recommendations' || section.id === 'building_requirements' || section.id === 'code_evidence_references') {
     for (const p of paras) {
       const textValue = sanitizeClientFacingText(p.text, locale);
       if (textValue) {
@@ -889,6 +881,7 @@ export function documentToFlowBlocks(doc: EngineeringStudyDocument): {
   const mandatoryExistingSections = new Set<string>([
     ...EXISTING_MANDATORY_PAGE_SECTIONS,
     'existing_recommendations',
+    'code_evidence_references',
     'conclusion',
   ]);
   const content = doc.sections.filter((s) => s.id !== 'cover' && s.id !== 'toc');
@@ -897,7 +890,8 @@ export function documentToFlowBlocks(doc: EngineeringStudyDocument): {
     const hasReal =
       paras.some((p) => !p.incomplete) ||
       (s.images && s.images.length > 0) ||
-      (s.tables && s.tables.length > 0);
+      (s.tables && s.tables.length > 0) ||
+      (s.presentation_blocks && s.presentation_blocks.length > 0);
     const always =
       mandatoryExistingSections.has(s.id) ||
       s.id === 'summary' ||
@@ -958,8 +952,8 @@ export function estimateBlockHeightMm(block: FlowBlock): number {
       return 5 + (block.items?.length || 0) * 4.5;
     case 'existing_reference_list':
       return 5 + (block.items?.length || 0) * 4;
-    case 'existing_assessment_unit':
-      return 28;
+    case 'existing_engineering_narrative_item':
+      return 12 + (block.paragraphs?.length || 0) * 5;
     default:
       return 5;
   }

@@ -6,6 +6,11 @@ import type {
 } from '@/lib/projects/engineering-report-engine/types';
 import { EXISTING_ASSESSMENT_GROUPS } from '@/lib/projects/existing-project-assessment';
 import {
+  buildEngineeringActionsNarrative,
+  buildEngineeringGroupNarrativeBlocks,
+  buildEngineeringReferences,
+} from '@/lib/projects/existing-report-engineering-narrative';
+import {
   EXISTING_ASSESSMENT_SECTION_IDS,
   EXISTING_AERIAL_MISSING_LABEL,
   EXISTING_CD_ROUTE_MISSING_LABEL,
@@ -13,18 +18,12 @@ import {
   existingReportDisplayValue,
 } from '@/lib/projects/existing-technical-report-profile';
 import {
-  buildAssessmentPresentationBlocks,
   buildCivilDefenseAccessNarrative,
   buildEngineeringPresentationBlocks,
   buildProjectComponentsNarrative,
-  buildRecommendationsPresentationBlocks,
-  buildReferencesPresentationBlocks,
   buildSitePresentationBlocks,
 } from '@/lib/projects/existing-report-presentation';
-import {
-  existingFinalReportRecommendations,
-  type ExistingTechnicalReportModel,
-} from '@/lib/projects/existing-technical-report-model';
+import type { ExistingTechnicalReportModel } from '@/lib/projects/existing-technical-report-model';
 
 const TITLE = 'التقرير الفني لتقييم الموقع القائم';
 
@@ -116,15 +115,6 @@ function conclusion(model: ExistingTechnicalReportModel): string {
   return `يعرض هذا التقرير نتائج ${total_assessed_systems} بندًا مقيمًا كما سجلها المهندس: ${compliant} مطابق، ${non_compliant} غير مطابق، ${needs_completion} يحتاج استكمال، و${not_applicable} لا ينطبق. لا تمثل هذه الأرقام اعتمادًا عامًا للمبنى أو شهادة مطابقة.`;
 }
 
-function collectReferenceItems(model: ExistingTechnicalReportModel): string[] {
-  return [
-    ...model.assessment_basis.map((item) => item.reference),
-    ...model.assessment_sections.flatMap((group) =>
-      group.systems.flatMap((system) => [text(system.requirement_reference)])
-    ),
-  ].filter(Boolean);
-}
-
 export function buildExistingFinalTechnicalReportDocument(
   model: ExistingTechnicalReportModel
 ): EngineeringStudyDocument {
@@ -211,10 +201,10 @@ export function buildExistingFinalTechnicalReportDocument(
       sectionId,
       ++sectionNumber,
       group.label,
-      ['تُعرض كل منظومة بصيغة سردية: الوضع الراهن، المتطلب، التقييم، الإجراء المطلوب، والمرجع.'],
       [],
       [],
-      buildAssessmentPresentationBlocks(group.systems)
+      [],
+      buildEngineeringGroupNarrativeBlocks(groupDef.id, group.systems, model.engineering_sections)
     ));
   }
 
@@ -230,29 +220,34 @@ export function buildExistingFinalTechnicalReportDocument(
     ));
   }
 
-  const finalRecommendations = existingFinalReportRecommendations(model);
-  const referenceItems = collectReferenceItems(model);
   sections.push(section(
     'existing_recommendations',
     ++sectionNumber,
-    'التوصيات والإجراءات المطلوبة',
-    finalRecommendations.length ? [] : ['لا توجد إجراءات أو توصيات معتمدة مسجلة حتى الآن.'],
+    'الملاحظات والإجراءات المطلوبة',
     [],
     [],
-    finalRecommendations.length
-      ? buildRecommendationsPresentationBlocks(finalRecommendations)
-      : []
+    [],
+    buildEngineeringActionsNarrative(model)
   ));
 
-  const conclusionReferences = buildReferencesPresentationBlocks(referenceItems);
+  const referenceBlocks = buildEngineeringReferences(model);
+  if (referenceBlocks.length) {
+    sections.push(section(
+      'code_evidence_references',
+      ++sectionNumber,
+      'المراجع وأساس التقييم',
+      [],
+      [],
+      [],
+      referenceBlocks
+    ));
+  }
+
   sections.push(section(
     'conclusion',
     ++sectionNumber,
     'الملخص والخلاصة وحدود الدراسة',
-    [conclusion(model), ...model.limitations],
-    [],
-    [],
-    conclusionReferences
+    [conclusion(model), ...model.limitations]
   ));
 
   const coverImage = model.media.facade_src

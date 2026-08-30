@@ -1,0 +1,43 @@
+{
+  "pageMap": {
+    "facility_data": 3,
+    "site_information": 4,
+    "fire_truck_access": 5,
+    "project_components": 6,
+    "existing_assessment_site": 7,
+    "existing_assessment_firefighting": 7,
+    "existing_assessment_alarm": 7,
+    "building_requirements": 8,
+    "existing_recommendations": 9,
+    "code_evidence_references": 10,
+    "conclusion": 10,
+    "approvals": 11
+  },
+  "pageCount": 11,
+  "blankPages": [],
+  "siteBoundariesNotTable": true,
+  "assessmentTableCount": 0,
+  "narrativeItemCount": 4,
+  "checklistLabelsRemoved": true,
+  "page6OnlyComponents": true,
+  "componentsSectionPage": 6,
+  "firstAssessmentPage": 7,
+  "referencesSectionPage": 10,
+  "actionsSectionTitle": "الملاحظات والإجراءات المطلوبة",
+  "arabicExtraction": {
+    "ok": true,
+    "found": [],
+    "missing": [
+      "بيانات المنشأة",
+      "مكونات المشروع",
+      "أنظمة مكافحة الحريق"
+    ],
+    "notes": [
+      "pdfjs extraction may split Arabic glyphs; pdftotext unavailable in this environment."
+    ],
+    "engine": "pdfjs",
+    "arabicCharCount": 1387,
+    "pdftotextAvailable": false
+  },
+  "bytes": 326378
+}
