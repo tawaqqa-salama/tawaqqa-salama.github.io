@@ -162,14 +162,10 @@ export type ExistingReportPresentationBlock =
   | { type: 'numbered_list'; items: string[] }
   | { type: 'reference_list'; items: string[] }
   | {
-      type: 'assessment_unit';
+      type: 'engineering_narrative_item';
       title: string;
-      existing: string;
-      required: string;
-      gap: string;
-      action: string;
-      reference: string;
-      status: ExistingReportPresentationStatus;
+      status?: ExistingReportPresentationStatus;
+      paragraphs: string[];
     }
   | { type: 'table'; caption: string; headers: string[]; rows: string[][] };
 
@@ -326,57 +322,6 @@ export function buildProjectComponentsNarrative(
   return `يتكون المشروع من ${joinArabicList(parts)}، وذلك وفق بيانات المشروع المسجلة أعلاه.`;
 }
 
-function assessmentExistingText(item: ExistingReportAssessmentInput): string {
-  return [cleanText(item.existing_condition), cleanText(item.notes)].filter(Boolean).join(' — ')
-    || INCOMPLETE_STATUS_LABEL;
-}
-
-export function buildAssessmentNarrative(
-  item: ExistingReportAssessmentInput
-): Extract<ExistingReportPresentationBlock, { type: 'assessment_unit' }> {
-  return {
-    type: 'assessment_unit',
-    title: item.system_label,
-    existing: assessmentExistingText(item),
-    required: displayOrEmpty(item.required_condition, 'لم تُسجل قيمة.'),
-    gap: displayOrEmpty(item.gap, 'لم تُسجل فجوة.'),
-    action: displayOrEmpty(item.required_action, 'لم يُسجل إجراء مطلوب.'),
-    reference: [cleanText(item.requirement_reference), item.evidence.length ? `أدلة مرتبطة: ${item.evidence.length}` : '']
-      .filter(Boolean)
-      .join(' — ') || 'لم يُسجل مرجع أو دليل.',
-    status: item.compliance_status,
-  };
-}
-
-export function buildAssessmentPresentationBlocks(
-  systems: ExistingReportAssessmentInput[]
-): ExistingReportPresentationBlock[] {
-  return systems.map((item) => buildAssessmentNarrative(item));
-}
-
-export function buildRecommendationsPresentationBlocks(
-  items: Array<{ text: string }>
-): ExistingReportPresentationBlock[] {
-  if (!items.length) return [];
-  return [
-    {
-      type: 'paragraph',
-      text: 'تتضمن هذه القائمة الإجراءات والتوصيات الصريحة المرتبطة بتقييم المهندس أو التوصيات المحفوظة والمعتمدة فقط.',
-    },
-    { type: 'numbered_list', items: items.map((item) => item.text) },
-  ];
-}
-
-export function buildReferencesPresentationBlocks(
-  references: string[]
-): ExistingReportPresentationBlock[] {
-  const unique = [...new Set(references.map((item) => item.trim()).filter(Boolean))];
-  if (!unique.length) return [];
-  return [
-    { type: 'subsection', title: 'المراجع' },
-    { type: 'reference_list', items: unique },
-  ];
-}
 
 type EngineeringRow = { label: string; value: string };
 

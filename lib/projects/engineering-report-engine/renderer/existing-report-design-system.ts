@@ -169,8 +169,11 @@ export function getExistingReportDesignSystemCss(): string {
   .existing-report-status-badge--needs-completion { background:#fffbeb; color:#92400e; border-color:#fcd34d; }
   .existing-report-status-badge--not-applicable,
   .existing-report-status-badge--incomplete { background:#f8fafc; color:#334155; border-color:#cbd5e1; }
-  .existing-report-assessment-unit { margin:0 0 8px; break-inside:avoid; page-break-inside:avoid; }
-  .existing-report-assessment-unit .official-subchapter { margin-top:6px; }
+  .existing-report-engineering-item { margin:0 0 6px; break-inside:avoid; page-break-inside:avoid; }
+  .existing-report-engineering-item__heading { display:flex; flex-wrap:wrap; align-items:center; gap:3mm; margin-bottom:2mm; }
+  .existing-report-engineering-item__heading .official-subchapter { margin:0; }
+  .existing-report-engineering-paragraph { margin:0 0 5px; }
+  .existing-report-engineering-action { margin:0 0 4px; color:#23434a; }
   .existing-report-numbered-list,
   .existing-report-reference-list { margin-top:2px; }
   `;

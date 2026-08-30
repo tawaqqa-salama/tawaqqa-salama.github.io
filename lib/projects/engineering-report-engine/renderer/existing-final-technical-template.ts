@@ -151,15 +151,20 @@ function renderBlock(block: FlowBlock, locale: 'ar' | 'en', includeDetectionMark
       return `<ol class="official-list existing-report-numbered-list">${block.items.map((item) => `<li>${text(item)}</li>`).join('')}</ol>`;
     case 'existing_reference_list':
       return `<ol class="official-list existing-report-reference-list">${block.items.map((item) => `<li>${text(item)}</li>`).join('')}</ol>`;
-    case 'existing_assessment_unit':
-      return `<section class="existing-report-assessment-unit keep">
-        <h3 class="official-subchapter keep-next">${text(block.title)}</h3>
-        <p class="official-paragraph existing-report-narrative-field"><strong>الوضع الراهن:</strong> ${renderEngineeringTokens(block.existing)}</p>
-        <p class="official-paragraph existing-report-narrative-field"><strong>المتطلب:</strong> ${renderEngineeringTokens(block.required)}</p>
-        <p class="official-paragraph existing-report-narrative-field"><strong>التقييم:</strong> <span class="existing-report-status-badge ${existingReportStatusBadgeClass(block.status as never)}">${text(existingReportStatusBadgeLabel(block.status as never))}</span></p>
-        <p class="official-paragraph existing-report-narrative-field"><strong>الإجراء المطلوب:</strong> ${renderEngineeringTokens(block.action)}</p>
-        <p class="official-paragraph existing-report-narrative-field"><strong>المرجع:</strong> ${renderEngineeringTokens(block.reference)}</p>
+    case 'existing_engineering_narrative_item': {
+      const badge = block.status
+        ? `<span class="existing-report-status-badge ${existingReportStatusBadgeClass(block.status as never)}">${text(existingReportStatusBadgeLabel(block.status as never))}</span>`
+        : '';
+      const paragraphs = block.paragraphs.map((paragraph) =>
+        `<p class="official-paragraph existing-report-engineering-paragraph">${renderEngineeringTokens(paragraph)}</p>`
+      ).join('');
+      return `<section class="existing-report-engineering-item keep">
+        <div class="existing-report-engineering-item__heading keep-next">
+          <h3 class="official-subchapter">${text(block.title)}</h3>${badge}
+        </div>
+        ${paragraphs}
       </section>`;
+    }
     default:
       return '';
   }
@@ -298,10 +303,15 @@ function css(doc: EngineeringStudyDocument, company: CompanyProfile): string {
   .official-assessment-section + .official-paragraph,
   .official-assessment-section + .official-table-wrap,
   .official-assessment-section + .existing-report-table-wrap,
-  .official-assessment-section + .existing-report-assessment-unit {
+  .existing-report-assessment-section + .existing-report-engineering-item {
     break-before:avoid-page;
     page-break-before:avoid;
   }
+  .existing-report-engineering-item { margin:0 0 6px; break-inside:avoid; page-break-inside:avoid; }
+  .existing-report-engineering-item__heading { display:flex; flex-wrap:wrap; align-items:center; gap:3mm; margin-bottom:2mm; }
+  .existing-report-engineering-item__heading .official-subchapter { margin:0; }
+  .existing-report-engineering-paragraph { margin:0 0 5px; }
+  .existing-report-engineering-action { margin:0 0 4px; color:#23434a; }
   .official-section-flow { break-before:avoid-page; page-break-before:avoid; }
   #sec-applicable_codes + .official-paragraph,
   #sec-applicable_codes + .official-paragraph + .official-table-wrap,
