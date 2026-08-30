@@ -102,7 +102,7 @@ function renderBlock(block: FlowBlock, locale: 'ar' | 'en', includeDetectionMark
       if (isSummary) {
         return `<section class="official-summary-block"><div class="official-table-caption">${text(`[ ${block.caption} ]`)}</div><table class="official-summary-metrics" aria-label="${text(block.caption)}"><colgroup>${block.rows.map(() => '<col style="width:31mm" />').join('')}</colgroup><tbody><tr>${block.rows.map(([label, value]) => `<td class="official-summary-metric" style="width:31mm !important"><span>${text(label)}</span><strong dir="ltr">${text(value)}</strong></td>`).join('')}</tr></tbody></table></section>`;
       }
-      const isEngineering = ['مقاييس الإخلاء', 'إمداد مياه الإطفاء والخزان', 'مضخات الحريق', 'نظام الرش الآلي', 'نظام إنذار وكشف الحريق'].some((label) => block.caption.includes(label));
+      const isEngineering = ['مقاييس الإخلاء', 'إمداد مياه الإطفاء والخزان', 'مضخات الحريق', 'نظام الرش الآلي', 'ملخص نظام الإنذار', 'نظام إنذار وكشف الحريق'].some((label) => block.caption.includes(label));
       const tableClass = isEngineering ? ' official-engineering-sheet' : '';
       const layout = resolveExistingReportTableLayout(block.caption, block.headers);
       const tableLayoutClass = existingReportTableLayoutClass(layout);
@@ -213,11 +213,11 @@ function toc(
   pageMap: Record<string, number> = {}
 ): string {
   const companyName = company.legal_name || company.name || 'توقع سلامة للاستشارات';
-  const approvalsNo = chapters.length + 1;
-  const tocChapters = [...chapters, { id: 'approvals', title: `${approvalsNo}. الاعتماد والتوقيعات`, displayNo: approvalsNo }];
+  const tocChapters = [...chapters, { id: 'approvals', title: 'الاعتماد والتوقيعات', displayNo: chapters.length + 1 }];
   const rows = tocChapters.map((chapter) => {
     const label = chapter.title.replace(/^\d+(?:\.\d+)?\.\s*/, '');
-    return `<div class="official-toc-row"><em>${String(chapter.displayNo).padStart(2, '0')}</em><span>${text(label)}</span><i></i><b class="official-toc-page-no" data-toc-target="sec-${esc(chapter.id)}">${pageMap[chapter.id] ?? '—'}</b></div>`;
+    const pageNo = pageMap[chapter.id];
+    return `<div class="official-toc-row"><span>${text(label)}</span><i></i><b class="official-toc-page-no" data-toc-target="sec-${esc(chapter.id)}">${pageNo ?? '—'}</b></div>`;
   }).join('');
   return `<section class="official-toc-page"><div class="official-page-brand"><span>${esc(companyName)}</span><strong>${text(doc.title_ar)}</strong><span>${text(doc.project_name)}</span></div><div class="official-page-rules"></div><h1>المحتويات</h1><div class="official-toc">${rows}</div></section>`;
 }
@@ -280,8 +280,7 @@ function css(doc: EngineeringStudyDocument, company: CompanyProfile): string {
   .official-toc { max-width:178mm; margin:4mm auto 0; padding:4mm 7mm; border-top:1px solid #b8c8ca; border-bottom:1px solid #b8c8ca; background:#fbfcfc; }
   .official-toc { font-size:10.2px; line-height:1.38; }
   .official-toc-row { display:flex; align-items:baseline; gap:4px; margin:3.5px 0; padding:1.2mm 0; break-inside:avoid; page-break-inside:avoid; }
-  .official-toc-row em { min-width:12mm; color:#167b7f; font-weight:900; font-style:normal; text-align:end; letter-spacing:.6px; }
-  .official-toc-row span { font-weight:700; }
+  .official-toc-row span { flex:1; font-weight:700; }
   .official-toc-row i { flex:1; border-bottom:1px dotted #414141; transform:translateY(-3px); }
   .official-toc-row b { min-width:10mm; text-align:start; color:#123d4c; font-weight:800; }
   .official-document { width:100%; }

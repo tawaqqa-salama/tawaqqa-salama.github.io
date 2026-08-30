@@ -179,7 +179,8 @@ describe('PR 7 — EXISTING final A4 technical report document', () => {
     expect(document.location_display).toContain('الرياض');
     expect(html).toContain('م. أحمد الحربي');
     expect(html).not.toContain('........................................');
-    expect(html).toMatch(/<em>0[1-9]<\/em>/);
+    expect(html).toContain('official-toc-page-no');
+    expect(html).toContain('class="official-chapter"');
     expect(html).toContain('الاعتماد والتوقيعات');
     expect(html).toContain('id="sec-facility_data"');
     expect(html).toContain('id="sec-site_information"');

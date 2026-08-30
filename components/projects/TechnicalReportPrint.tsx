@@ -23,6 +23,7 @@ import { hydrateTechnicalReportPhotosForDisplay } from '@/lib/projects/technical
 import { hydrateTechnicalEvidenceForDisplay } from '@/lib/projects/technical-report-evidence';
 import { probeEvidenceMediaPresentation } from '@/lib/projects/technical-report-media-presentation';
 import { buildExistingFinalTechnicalReportHtml } from '@/lib/projects/engineering-report-engine/renderer/existing-final-technical-template';
+import { estimateExistingReportPageMap } from '@/lib/print/existing-report-page-map';
 import {
   downloadPdfDocument,
   openDocumentPreview,
@@ -71,7 +72,8 @@ export async function buildTechnicalReportOutput(
   if (route.kind === 'EXISTING') {
     const model = buildExistingOutputModel(params.client, engineeringData, params.company);
     const document = buildExistingFinalTechnicalReportDocument(model);
-    const html = buildExistingFinalTechnicalReportHtml({ document, company: params.company });
+    const pageMap = estimateExistingReportPageMap(document);
+    const html = buildExistingFinalTechnicalReportHtml({ document, company: params.company, pageMap });
     const payload: DocumentPreviewPayload = {
       title: document.locale === 'ar' ? `التقرير الفني — ${document.project_name}` : `Engineering Study — ${document.project_name}`,
       html,

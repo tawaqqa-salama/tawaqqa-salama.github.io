@@ -3,6 +3,11 @@
  * Deterministic Arabic prose from canonical assessment/engineering data only.
  */
 
+import {
+  alarmSummaryTable,
+  pumpSummaryTable,
+  sprinklerSummaryTable,
+} from '@/lib/projects/existing-report-engineering-tables';
 import type { ExistingReportAssessmentInput, ExistingReportPresentationBlock, ExistingReportPresentationStatus } from '@/lib/projects/existing-report-presentation';
 import { existingReportStatusBadgeLabel } from '@/lib/projects/existing-report-presentation';
 import type { ExistingTechnicalReportModel } from '@/lib/projects/existing-technical-report-model';
@@ -14,13 +19,13 @@ const PLACEHOLDER_GAP = 'لم تُسجل فجوة.';
 const PLACEHOLDER_REQUIRED = 'لم تُسجل قيمة.';
 
 type EngineeringRow = { label: string; value: string };
+type EngineeringSection = { label: string; rows: EngineeringRow[] };
 
 export type ExistingReportEngineeringNarrativeItemBlock = {
   type: 'engineering_narrative_item';
   title: string;
   status?: ExistingReportPresentationStatus;
   paragraphs: string[];
-  action?: string;
 };
 
 function cleanText(value: string | null | undefined): string | null {
@@ -47,10 +52,7 @@ function isPlaceholder(value: string | null | undefined, placeholders: string[])
   return placeholders.includes(text);
 }
 
-function findEngineeringSection(
-  sections: Array<{ label: string; rows: EngineeringRow[] }>,
-  labelPart: string
-) {
+function findEngineeringSection(sections: EngineeringSection[], labelPart: string) {
   return sections.find((section) => section.label.includes(labelPart));
 }
 
@@ -58,6 +60,12 @@ function rowValue(rows: EngineeringRow[], label: string): string | null {
   return cleanText(rows.find((row) => row.label === label)?.value);
 }
 
+function joinArabicList(items: string[]): string {
+  if (items.length === 0) return '';
+  if (items.length === 1) return items[0];
+  if (items.length === 2) return `${items[0]} و${items[1]}`;
+  return `${items.slice(0, -1).join('، ')}، و${items[items.length - 1]}`;
+}
 
 function buildItemParagraphs(item: ExistingReportAssessmentInput): string[] {
   const paragraphs: string[] = [];
@@ -89,35 +97,36 @@ function buildNarrativeItem(item: ExistingReportAssessmentInput): ExistingReport
   };
 }
 
-function pumpNarrativeParagraph(rows: EngineeringRow[]): string | null {
-  const parts = [
-    rowValue(rows, 'تدفق المضخة الكهربائية') || rowValue(rows, 'ضغط المضخة الكهربائية') ? 'المضخة الكهربائية' : null,
-    rowValue(rows, 'تدفق مضخة الديزل') || rowValue(rows, 'ضغط مضخة الديزل') ? 'المضخة الاحتياطية' : null,
-    rowValue(rows, 'تدفق مضخة الجوكي') || rowValue(rows, 'ضغط مضخة الجوكي') ? 'مضخة الجوكي' : null,
-  ].filter(Boolean) as string[];
-  if (parts.length < 2) return null;
-  const joinTwo = (items: string[]) => (items.length === 2 ? `${items[0]} و${items[1]}` : `${items.slice(0, -1).join('، ')}، و${items[items.length - 1]}`);
-  return ensurePeriod(`تتكون مجموعة مضخات الحريق من ${joinTwo(parts)} وفق القيم المسجلة في بيانات التصميم`);
+function fireProtectionIntro(sections: EngineeringSection[], systems: ExistingReportAssessmentInput[]): string {
+  const components: string[] = [];
+  if (findEngineeringSection(sections, 'خزان') || systems.some((item) => /خزان|مياه/.test(item.system_label))) {
+    components.push('منظومة مياه الحريق');
+  }
+  if (findEngineeringSection(sections, 'مضخات') || systems.some((item) => /مضخ/.test(item.system_label))) {
+    components.push('مضخات الحريق');
+  }
+  if (findEngineeringSection(sections, 'الرش') || systems.some((item) => /رش/.test(item.system_label))) {
+    components.push('أنظمة الرش الآلي');
+  }
+  if (systems.some((item) => /خرطوم|صنبور|standpipe|وصل/i.test(item.system_label))) {
+    components.push('شبكة المواسير والتجهيزات المرتبطة');
+  }
+  const suffix = components.length
+    ? `، وتشمل ${joinArabicList(components)}`
+    : '';
+  return ensurePeriod(`تمت مراجعة أنظمة الإطفاء ومكافحة الحريق بالمشروع استنادًا إلى البيانات والمخططات المسجلة في ملف المشروع${suffix}`);
 }
 
-function sprinklerNarrativeParagraph(rows: EngineeringRow[]): string | null {
-  const count = rowValue(rows, 'عدد المرشات');
-  const kFactor = rowValue(rows, 'معامل K');
-  const systemType = rowValue(rows, 'نوع النظام');
-  if (!count && !kFactor && !systemType) return null;
-  const details = [
-    count ? `${count} رشاشًا` : null,
-    kFactor ? `بمعامل ${kFactor}` : null,
-    systemType ? `من نوع ${systemType}` : null,
-  ].filter(Boolean);
-  return ensurePeriod(`تم تسجيل نظام رش آلي ضمن المشروع${details.length ? ` بعدد ${details.join('، ')}` : ''}، وفق بيانات التصميم المسجلة للمشروع`);
-}
-
-function alarmIntroParagraph(rows: EngineeringRow[]): string {
-  const panels = rowValue(rows, 'عدد لوحات الإنذار');
-  const smoke = rowValue(rows, 'كواشف الدخان');
-  const heat = rowValue(rows, 'كواشف الحرارة');
-  const bells = rowValue(rows, 'أجهزة التنبيه');
+function fireAlarmIntro(sections: EngineeringSection[]): string {
+  const alarm = findEngineeringSection(sections, 'إنذار');
+  const table = alarm ? alarmSummaryTable(alarm.rows) : null;
+  if (table) {
+    return 'تشير بيانات المشروع المسجلة إلى وجود منظومة إنذار حريق وفق المخططات والبيانات المتاحة في ملف المشروع.';
+  }
+  const panels = alarm ? rowValue(alarm.rows, 'عدد لوحات الإنذار') : null;
+  const smoke = alarm ? rowValue(alarm.rows, 'كواشف الدخان') : null;
+  const heat = alarm ? rowValue(alarm.rows, 'كواشف الحرارة') : null;
+  const bells = alarm ? rowValue(alarm.rows, 'أجهزة التنبيه') : null;
   const details = [
     panels ? `${panels} لوحة/لوحات إنذار` : null,
     smoke ? `${smoke} كاشف دخان` : null,
@@ -127,84 +136,58 @@ function alarmIntroParagraph(rows: EngineeringRow[]): string {
   if (!details.length) {
     return 'يتضمن نظام إنذار الحريق لوحة/لوحات التحكم وأجهزة الكشف والإنذار المسجلة في بيانات المشروع.';
   }
-  return ensurePeriod(`يتضمن نظام إنذار الحريق ${details.join('، ')} وفق البيانات المسجلة في المشروع`);
+  return ensurePeriod(`تشير بيانات المشروع المسجلة إلى وجود منظومة إنذار حريق تتكون من ${details.join('، ')}`);
 }
 
-function alarmSummaryTable(rows: EngineeringRow[]): ExistingReportPresentationBlock | null {
-  const countLabels: Record<string, string> = {
-    'عدد لوحات الإنذار': 'لوحات إنذار الحريق',
-    'كواشف الدخان': 'كواشف الدخان',
-    'كواشف الحرارة': 'كواشف الحرارة',
-    'أجهزة التنبيه': 'أجهزة التنبيه',
-  };
-  const summaryRows = rows
-    .map((row) => {
-      const mapped = countLabels[row.label];
-      if (!mapped || !/^\d+$/.test(row.value.trim())) return null;
-      return [mapped, row.value];
-    })
-    .filter((row): row is string[] => Boolean(row));
-  if (summaryRows.length < 2) return null;
-  return {
-    type: 'table',
-    caption: 'ملخص نظام الإنذار',
-    headers: ['العنصر', 'العدد'],
-    rows: summaryRows,
-  };
-}
-
-function pumpSummaryTable(rows: EngineeringRow[]): ExistingReportPresentationBlock | null {
-  const pumpMap: Record<string, { flow?: string; pressure?: string }> = {};
-  for (const row of rows) {
-    const { label, value } = row;
-    if (label.includes('كهربائية') && label.includes('تدفق')) pumpMap.electric = { ...pumpMap.electric, flow: value };
-    if (label.includes('كهربائية') && label.includes('ضغط')) pumpMap.electric = { ...pumpMap.electric, pressure: value };
-    if (label.includes('ديزل') && label.includes('تدفق')) pumpMap.diesel = { ...pumpMap.diesel, flow: value };
-    if (label.includes('ديزل') && label.includes('ضغط')) pumpMap.diesel = { ...pumpMap.diesel, pressure: value };
-    if (label.includes('جوكي') && label.includes('تدفق')) pumpMap.jockey = { ...pumpMap.jockey, flow: value };
-    if (label.includes('جوكي') && label.includes('ضغط')) pumpMap.jockey = { ...pumpMap.jockey, pressure: value };
+function lifeSafetyIntro(systems: ExistingReportAssessmentInput[], sections: EngineeringSection[]): string {
+  const topics = systems.map((item) => item.system_label);
+  const egress = findEngineeringSection(sections, 'مقاييس');
+  const exitCount = egress ? rowValue(egress.rows, 'إجمالي المخارج') : null;
+  const base = 'تمت مراجعة متطلبات سلامة الحياة والإخلاء وفق البيانات والمخططات المسجلة للمشروع';
+  if (topics.length) {
+    return ensurePeriod(`${base}، وتشمل ${joinArabicList(topics)}`);
   }
-  const tableRows = [
-    pumpMap.electric?.flow || pumpMap.electric?.pressure ? ['كهربائية', pumpMap.electric?.flow || '—', pumpMap.electric?.pressure || '—'] : null,
-    pumpMap.diesel?.flow || pumpMap.diesel?.pressure ? ['ديزل', pumpMap.diesel?.flow || '—', pumpMap.diesel?.pressure || '—'] : null,
-    pumpMap.jockey?.flow || pumpMap.jockey?.pressure ? ['جوكي', pumpMap.jockey?.flow || '—', pumpMap.jockey?.pressure || '—'] : null,
-  ].filter((row): row is string[] => Boolean(row));
-  if (tableRows.length < 2) return null;
-  return {
-    type: 'table',
-    caption: 'مضخات الحريق',
-    headers: ['نوع المضخة', 'التدفق', 'الضغط'],
-    rows: tableRows,
-  };
+  if (exitCount) {
+    return ensurePeriod(`${base}، ويبلغ عدد مخارج الهروب المسجل ${exitCount} وفق البيانات المتاحة`);
+  }
+  return ensurePeriod(`${base}، وتشمل إنارة الطوارئ ولوحات مخارج الطوارئ ومسارات الهروب والأنظمة المرتبطة بالتحكم بالدخان عند انطباقها`);
+}
+
+function electricalIntro(systems: ExistingReportAssessmentInput[]): string {
+  if (!systems.length) return '';
+  const topics = systems.map((item) => item.system_label);
+  return ensurePeriod(`تمت مراجعة متطلبات ${joinArabicList(topics)} وفق البيانات المسجلة في ملف المشروع`);
 }
 
 export function buildFireProtectionNarrative(
   systems: ExistingReportAssessmentInput[],
-  engineeringSections: Array<{ label: string; rows: EngineeringRow[] }> = []
+  engineeringSections: EngineeringSection[] = []
 ): ExistingReportPresentationBlock[] {
-  const blocks: ExistingReportPresentationBlock[] = [];
+  const blocks: ExistingReportPresentationBlock[] = [
+    { type: 'paragraph', text: fireProtectionIntro(engineeringSections, systems) },
+  ];
   const pumps = findEngineeringSection(engineeringSections, 'مضخات');
-  const sprinkler = findEngineeringSection(engineeringSections, 'الرش');
-  const pumpParagraph = pumps ? pumpNarrativeParagraph(pumps.rows) : null;
-  if (pumpParagraph) blocks.push({ type: 'paragraph', text: pumpParagraph });
   if (pumps) {
     const table = pumpSummaryTable(pumps.rows);
     if (table) blocks.push(table);
   }
-  const sprinklerParagraph = sprinkler ? sprinklerNarrativeParagraph(sprinkler.rows) : null;
-  if (sprinklerParagraph) blocks.push({ type: 'paragraph', text: sprinklerParagraph });
+  const sprinkler = findEngineeringSection(engineeringSections, 'الرش');
+  if (sprinkler) {
+    const table = sprinklerSummaryTable(sprinkler.rows);
+    if (table) blocks.push(table);
+  }
   for (const item of systems) blocks.push(buildNarrativeItem(item));
   return blocks;
 }
 
 export function buildFireAlarmNarrative(
   systems: ExistingReportAssessmentInput[],
-  engineeringSections: Array<{ label: string; rows: EngineeringRow[] }> = []
+  engineeringSections: EngineeringSection[] = []
 ): ExistingReportPresentationBlock[] {
   const blocks: ExistingReportPresentationBlock[] = [];
   const alarm = findEngineeringSection(engineeringSections, 'إنذار');
+  blocks.push({ type: 'paragraph', text: fireAlarmIntro(engineeringSections) });
   if (alarm) {
-    blocks.push({ type: 'paragraph', text: alarmIntroParagraph(alarm.rows) });
     const table = alarmSummaryTable(alarm.rows);
     if (table) blocks.push(table);
   }
@@ -212,24 +195,20 @@ export function buildFireAlarmNarrative(
   return blocks;
 }
 
-export function buildLifeSafetyNarrative(systems: ExistingReportAssessmentInput[]): ExistingReportPresentationBlock[] {
+export function buildLifeSafetyNarrative(
+  systems: ExistingReportAssessmentInput[],
+  engineeringSections: EngineeringSection[] = []
+): ExistingReportPresentationBlock[] {
   return [
-    {
-      type: 'paragraph',
-      text: 'تمت مراجعة متطلبات سلامة الحياة والإخلاء وفق البيانات والمخططات المسجلة للمشروع، وتشمل إنارة الطوارئ ولوحات مخارج الطوارئ ومسارات الهروب والأنظمة المرتبطة بالتحكم بالدخان عند انطباقها.',
-    },
+    { type: 'paragraph', text: lifeSafetyIntro(systems, engineeringSections) },
     ...systems.map((item) => buildNarrativeItem(item)),
   ];
 }
 
 export function buildElectricalSafetyNarrative(systems: ExistingReportAssessmentInput[]): ExistingReportPresentationBlock[] {
   const blocks: ExistingReportPresentationBlock[] = [];
-  if (systems.length) {
-    blocks.push({
-      type: 'paragraph',
-      text: 'تمت مراجعة متطلبات السلامة الكهربائية والقدرة الاحتياطية وفق البيانات المسجلة في ملف المشروع.',
-    });
-  }
+  const intro = electricalIntro(systems);
+  if (intro) blocks.push({ type: 'paragraph', text: intro });
   for (const item of systems) blocks.push(buildNarrativeItem(item));
   return blocks;
 }
@@ -241,7 +220,7 @@ export function buildSiteAssessmentNarrative(systems: ExistingReportAssessmentIn
 export function buildEngineeringGroupNarrativeBlocks(
   groupId: string,
   systems: ExistingReportAssessmentInput[],
-  engineeringSections: Array<{ label: string; rows: EngineeringRow[] }> = []
+  engineeringSections: EngineeringSection[] = []
 ): ExistingReportPresentationBlock[] {
   switch (groupId) {
     case 'firefighting':
@@ -249,13 +228,24 @@ export function buildEngineeringGroupNarrativeBlocks(
     case 'alarm':
       return buildFireAlarmNarrative(systems, engineeringSections);
     case 'life_safety':
-      return buildLifeSafetyNarrative(systems);
+      return buildLifeSafetyNarrative(systems, engineeringSections);
     case 'electrical':
       return buildElectricalSafetyNarrative(systems);
     case 'site':
     default:
       return buildSiteAssessmentNarrative(systems);
   }
+}
+
+export function collectPresentedEngineeringCaptions(model: ExistingTechnicalReportModel): Set<string> {
+  const captions = new Set<string>();
+  for (const group of model.assessment_sections) {
+    const blocks = buildEngineeringGroupNarrativeBlocks(group.id, group.systems, model.engineering_sections);
+    for (const block of blocks) {
+      if (block.type === 'table') captions.add(block.caption);
+    }
+  }
+  return captions;
 }
 
 export function buildEngineeringActionsNarrative(model: ExistingTechnicalReportModel): ExistingReportPresentationBlock[] {

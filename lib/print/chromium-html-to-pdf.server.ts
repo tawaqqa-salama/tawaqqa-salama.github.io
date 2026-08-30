@@ -69,6 +69,10 @@ export function renderHtmlToPdfBuffer(html: string): Buffer {
     }
     return readFileSync(pdfPath);
   } finally {
-    rmSync(workDir, { recursive: true, force: true });
+    try {
+      rmSync(workDir, { recursive: true, force: true, maxRetries: 5, retryDelay: 200 });
+    } catch {
+      // Best-effort cleanup — do not fail PDF generation after a successful render.
+    }
   }
 }
