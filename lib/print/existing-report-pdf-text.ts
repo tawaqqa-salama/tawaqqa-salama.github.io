@@ -1,4 +1,4 @@
-import { existsSync, readFileSync } from 'node:fs';
+import { existsSync } from 'node:fs';
 import { spawnSync } from 'node:child_process';
 import { foldArabicPdfText } from '@/lib/projects/existing-report-presentation';
 
@@ -9,8 +9,29 @@ export type ExistingReportPdfTextExtraction = {
   folded: string;
 };
 
+export const EXISTING_REPORT_ARABIC_EXACT_PHRASES = [
+  'التقرير الفني لتقييم الموقع القائم',
+  'بيانات المنشأة',
+  'أنظمة مكافحة الحريق',
+  'الاعتماد والتوقيعات',
+] as const;
+
+function normalizeArabicSearchText(value: string): string {
+  return foldArabicPdfText(value)
+    .normalize('NFKC')
+    .replace(/[آأإ]/g, 'ا')
+    .replace(/ة/g, 'ه')
+    .replace(/[يى]/g, 'ي');
+}
+
+export function existingReportPhrasePresent(extraction: ExistingReportPdfTextExtraction, phrase: string): boolean {
+  const normalizedPhrase = normalizeArabicSearchText(phrase);
+  const haystacks = [extraction.text, extraction.folded].map(normalizeArabicSearchText);
+  return haystacks.some((haystack) => haystack.includes(normalizedPhrase));
+}
+
 export async function extractExistingReportPdfText(pdfBuffer: Buffer): Promise<ExistingReportPdfTextExtraction> {
-  const pdftotext = spawnSync('pdftotext', ['-', '-'], { input: pdfBuffer, encoding: 'utf8' });
+  const pdftotext = spawnSync('pdftotext', ['-layout', '-enc', 'UTF-8', '-', '-'], { input: pdfBuffer, encoding: 'utf8' });
   if (pdftotext.status === 0 && pdftotext.stdout?.trim()) {
     const text = pdftotext.stdout;
     return {
@@ -38,29 +59,44 @@ export async function extractExistingReportPdfText(pdfBuffer: Buffer): Promise<E
   };
 }
 
+export function assertExistingReportArabicExactPhrases(extraction: ExistingReportPdfTextExtraction): {
+  ok: boolean;
+  exactPhrases: Record<string, boolean>;
+  missing: string[];
+  notes: string[];
+} {
+  const exactPhrases = Object.fromEntries(
+    EXISTING_REPORT_ARABIC_EXACT_PHRASES.map((phrase) => [phrase, existingReportPhrasePresent(extraction, phrase)])
+  ) as Record<string, boolean>;
+  const missing = EXISTING_REPORT_ARABIC_EXACT_PHRASES.filter((phrase) => !exactPhrases[phrase]);
+  const notes: string[] = [];
+
+  if (extraction.engine === 'pdfjs') {
+    notes.push('pdfjs extraction may split Arabic glyphs; install poppler-utils/pdftotext for strict phrase verification.');
+  }
+  if (extraction.arabicCharCount < 40) {
+    notes.push(`Low Arabic character count (${extraction.arabicCharCount}).`);
+  }
+
+  const ok = missing.length === 0 && extraction.engine === 'pdftotext';
+  return { ok, exactPhrases, missing, notes };
+}
+
+/** @deprecated Prefer assertExistingReportArabicExactPhrases for strict verification. */
 export function assertExistingReportArabicPhrases(extraction: ExistingReportPdfTextExtraction): {
   ok: boolean;
   found: string[];
   missing: string[];
   notes: string[];
 } {
-  const phrases = ['بيانات المنشأة', 'مكونات المشروع', 'أنظمة مكافحة الحريق'];
-  const found = phrases.filter((phrase) => extraction.folded.includes(foldArabicPdfText(phrase)));
-  const missing = phrases.filter((phrase) => !found.includes(phrase));
-  const notes: string[] = [];
-
-  if (extraction.engine === 'pdfjs' && missing.length > 0) {
-    notes.push('pdfjs extraction may split Arabic glyphs; pdftotext unavailable in this environment.');
-  }
-  if (extraction.arabicCharCount < 40) {
-    notes.push(`Low Arabic character count (${extraction.arabicCharCount}).`);
-  }
-
-  const ok =
-    found.length === phrases.length
-    || (extraction.arabicCharCount >= 80 && found.length >= 2)
-    || (extraction.engine === 'pdfjs' && extraction.arabicCharCount >= 200);
-  return { ok, found, missing, notes };
+  const strict = assertExistingReportArabicExactPhrases(extraction);
+  const found = EXISTING_REPORT_ARABIC_EXACT_PHRASES.filter((phrase) => strict.exactPhrases[phrase]);
+  return {
+    ok: strict.ok,
+    found,
+    missing: strict.missing,
+    notes: strict.notes,
+  };
 }
 
 export function pdftotextAvailable(): boolean {

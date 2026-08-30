@@ -9,6 +9,7 @@ import {
   buildEngineeringActionsNarrative,
   buildEngineeringGroupNarrativeBlocks,
   buildEngineeringReferences,
+  collectPresentedEngineeringCaptions,
 } from '@/lib/projects/existing-report-engineering-narrative';
 import {
   EXISTING_ASSESSMENT_SECTION_IDS,
@@ -19,7 +20,7 @@ import {
 } from '@/lib/projects/existing-technical-report-profile';
 import {
   buildCivilDefenseAccessNarrative,
-  buildEngineeringPresentationBlocks,
+  buildEngineeringReferencePresentationBlocks,
   buildProjectComponentsNarrative,
   buildSitePresentationBlocks,
 } from '@/lib/projects/existing-report-presentation';
@@ -111,8 +112,10 @@ function placeholderImageBlock(
 
 function conclusion(model: ExistingTechnicalReportModel): string {
   const { total_assessed_systems, compliant, non_compliant, needs_completion, not_applicable } = model.summary;
-  if (!total_assessed_systems) return 'لا يتضمن الملف الحالي بنود تقييم مكتملة يمكن تلخيصها. لا تُستنتج حالة مطابقة عامة للمبنى من غياب التقييم.';
-  return `يعرض هذا التقرير نتائج ${total_assessed_systems} بندًا مقيمًا كما سجلها المهندس: ${compliant} مطابق، ${non_compliant} غير مطابق، ${needs_completion} يحتاج استكمال، و${not_applicable} لا ينطبق. لا تمثل هذه الأرقام اعتمادًا عامًا للمبنى أو شهادة مطابقة.`;
+  if (!total_assessed_systems) {
+    return 'لا يتضمن الملف الحالي بنود تقييم مكتملة يمكن تلخيصها ضمن هذا التقرير. لا تُستنتج حالة مطابقة عامة للمبنى من غياب التقييم، ولا يُعد هذا القسم اعتمادًا أو شهادة مطابقة.';
+  }
+  return `يلخص هذا القسم نتائج التقييم الفني للموقع القائم كما سجلها المهندس المسؤول، حيث شملت المراجعة ${total_assessed_systems} بندًا (${compliant} مطابق، ${non_compliant} غير مطابق، ${needs_completion} يحتاج استكمال، ${not_applicable} لا ينطبق). لا يُعد هذا التقرير اعتمادًا من الدفاع المدني أو شهادة مطابقة نهائية للمبنى.`;
 }
 
 export function buildExistingFinalTechnicalReportDocument(
@@ -209,14 +212,15 @@ export function buildExistingFinalTechnicalReportDocument(
   }
 
   if (model.engineering_sections.length) {
+    const presentedCaptions = collectPresentedEngineeringCaptions(model);
     sections.push(section(
       'building_requirements',
       ++sectionNumber,
       'البيانات الهندسية المرجعية',
-      ['تُعرض هذه القيم كبيانات مرجعية داعمة للتقييم فقط. لا يعيد هذا التقرير حساب التدفقات أو الضغوط أو الكميات.'],
+      ['تُعرض هنا فقط القيم المرجعية الإضافية التي لم تُعرض سابقًا ضمن أقسام الأنظمة ذات الصلة.'],
       [],
       [],
-      buildEngineeringPresentationBlocks(model.engineering_sections)
+      buildEngineeringReferencePresentationBlocks(model.engineering_sections, presentedCaptions)
     ));
   }
 

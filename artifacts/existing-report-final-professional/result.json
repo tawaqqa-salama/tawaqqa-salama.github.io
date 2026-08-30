@@ -1,0 +1,43 @@
+{
+  "pageCount": 11,
+  "pageMap": {
+    "facility_data": 3,
+    "site_information": 4,
+    "fire_truck_access": 5,
+    "project_components": 6,
+    "existing_assessment_site": 7,
+    "existing_assessment_firefighting": 7,
+    "existing_assessment_alarm": 8,
+    "existing_assessment_life_safety": 8,
+    "existing_assessment_electrical": 8,
+    "building_requirements": 8,
+    "existing_recommendations": 9,
+    "code_evidence_references": 10,
+    "conclusion": 10,
+    "approvals": 11
+  },
+  "tocPageNumbersMatch": true,
+  "pages1To6Structure": true,
+  "page6OnlyComponents": true,
+  "duplicateEngineeringBlocks": [],
+  "blankPages": [],
+  "imageFrame": {
+    "height": "68mm",
+    "objectFit": "cover"
+  },
+  "arabicExtraction": {
+    "ok": true,
+    "exactPhrases": {
+      "التقرير الفني لتقييم الموقع القائم": true,
+      "بيانات المنشأة": true,
+      "أنظمة مكافحة الحريق": true,
+      "الاعتماد والتوقيعات": true
+    },
+    "missing": [],
+    "notes": [],
+    "engine": "pdftotext",
+    "arabicCharCount": 4870,
+    "pdftotextAvailable": true
+  },
+  "bytes": 296826
+}

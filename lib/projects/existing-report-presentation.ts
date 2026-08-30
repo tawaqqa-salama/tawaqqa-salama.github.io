@@ -8,6 +8,11 @@ import {
   EXISTING_ASSESSMENT_STATUS_LABELS,
   type ExistingAssessmentComplianceStatus,
 } from '@/lib/projects/existing-project-assessment';
+import {
+  alarmSummaryTable,
+  pumpSummaryTable,
+  sprinklerSummaryTable,
+} from '@/lib/projects/existing-report-engineering-tables';
 import type {
   ExistingTechnicalReportCivilDefenseAccess,
   ExistingTechnicalReportComponentRow,
@@ -325,68 +330,41 @@ export function buildProjectComponentsNarrative(
 
 type EngineeringRow = { label: string; value: string };
 
-function pumpSummaryTable(rows: EngineeringRow[]): ExistingReportPresentationBlock | null {
-  const pumpMap: Record<string, { flow?: string; pressure?: string }> = {};
-  for (const row of rows) {
-    const label = row.label;
-    const value = row.value;
-    if (label.includes('كهربائية') && label.includes('تدفق')) pumpMap.electric = { ...pumpMap.electric, flow: value };
-    if (label.includes('كهربائية') && label.includes('ضغط')) pumpMap.electric = { ...pumpMap.electric, pressure: value };
-    if (label.includes('ديزل') && label.includes('تدفق')) pumpMap.diesel = { ...pumpMap.diesel, flow: value };
-    if (label.includes('ديزل') && label.includes('ضغط')) pumpMap.diesel = { ...pumpMap.diesel, pressure: value };
-    if (label.includes('جوكي') && label.includes('تدفق')) pumpMap.jockey = { ...pumpMap.jockey, flow: value };
-    if (label.includes('جوكي') && label.includes('ضغط')) pumpMap.jockey = { ...pumpMap.jockey, pressure: value };
-  }
-  const tableRows = [
-    pumpMap.electric?.flow || pumpMap.electric?.pressure ? ['كهربائية', pumpMap.electric?.flow || '—', pumpMap.electric?.pressure || '—'] : null,
-    pumpMap.diesel?.flow || pumpMap.diesel?.pressure ? ['ديزل', pumpMap.diesel?.flow || '—', pumpMap.diesel?.pressure || '—'] : null,
-    pumpMap.jockey?.flow || pumpMap.jockey?.pressure ? ['جوكي', pumpMap.jockey?.flow || '—', pumpMap.jockey?.pressure || '—'] : null,
-  ].filter((row): row is string[] => Boolean(row));
-  if (tableRows.length < 2) return null;
-  return {
-    type: 'table',
-    caption: 'مضخات الحريق',
-    headers: ['نوع المضخة', 'التدفق', 'الضغط'],
-    rows: tableRows,
-  };
-}
-
-function alarmSummaryTable(rows: EngineeringRow[]): ExistingReportPresentationBlock | null {
-  const countLabels: Record<string, string> = {
-    'عدد لوحات الإنذار': 'لوحات إنذار الحريق',
-    'كواشف الدخان': 'كواشف الدخان',
-    'كواشف الحرارة': 'كواشف الحرارة',
-    'أجهزة التنبيه': 'أجهزة التنبيه',
-  };
-  const summaryRows = rows
-    .map((row) => {
-      const mapped = countLabels[row.label];
-      if (!mapped || !/^\d+$/.test(row.value.trim())) return null;
-      return [mapped, row.value];
-    })
-    .filter((row): row is string[] => Boolean(row));
-  if (summaryRows.length < 2) return null;
-  return {
-    type: 'table',
-    caption: 'ملخص نظام الإنذار',
-    headers: ['العنصر', 'العدد'],
-    rows: summaryRows,
-  };
-}
-
-export function buildEngineeringPresentationBlocks(
-  sections: Array<{ label: string; rows: EngineeringRow[] }>
+export function buildEngineeringReferencePresentationBlocks(
+  sections: Array<{ label: string; rows: EngineeringRow[] }>,
+  excludeCaptions: ReadonlySet<string> = new Set()
 ): ExistingReportPresentationBlock[] {
   const blocks: ExistingReportPresentationBlock[] = [];
   for (const section of sections) {
     if (section.label.includes('مضخات')) {
+      if (excludeCaptions.has('مضخات الحريق')) continue;
       const summary = pumpSummaryTable(section.rows);
       if (summary) {
         blocks.push(summary);
         continue;
       }
     }
+    if (section.label.includes('الرش')) {
+      if (excludeCaptions.has('نظام الرش الآلي')) continue;
+      const summary = sprinklerSummaryTable(section.rows);
+      if (summary) {
+        blocks.push(summary);
+        continue;
+      }
+    }
     if (section.label.includes('إنذار')) {
+      if (excludeCaptions.has('ملخص نظام الإنذار')) {
+        const remainder = section.rows.filter((row) => !['عدد لوحات الإنذار', 'كواشف الدخان', 'كواشف الحرارة', 'أجهزة التنبيه'].includes(row.label));
+        if (remainder.length) {
+          blocks.push({
+            type: 'table',
+            caption: section.label,
+            headers: ['البند', 'البيان'],
+            rows: remainder.map((row) => [row.label, row.value]),
+          });
+        }
+        continue;
+      }
       const summary = alarmSummaryTable(section.rows);
       if (summary) {
         blocks.push(summary);
@@ -402,6 +380,8 @@ export function buildEngineeringPresentationBlocks(
         continue;
       }
     }
+    if (section.label.includes('إخلاء') && excludeCaptions.has('مقاييس الإخلاء')) continue;
+    if (section.label.includes('خزان') && excludeCaptions.has('إمداد مياه الإطفاء والخزان')) continue;
     blocks.push({
       type: 'table',
       caption: section.label,
@@ -409,7 +389,19 @@ export function buildEngineeringPresentationBlocks(
       rows: section.rows.map((row) => [row.label, row.value]),
     });
   }
+  if (!blocks.length) {
+    return [{
+      type: 'paragraph',
+      text: 'تم عرض القيم الهندسية المرجعية المتاحة ضمن أقسام الأنظمة ذات الصلة أعلاه، ولا توجد بيانات إضافية غير مكررة لعرضها هنا.',
+    }];
+  }
   return blocks;
+}
+
+export function buildEngineeringPresentationBlocks(
+  sections: Array<{ label: string; rows: EngineeringRow[] }>
+): ExistingReportPresentationBlock[] {
+  return buildEngineeringReferencePresentationBlocks(sections);
 }
 
 export function existingReportStatusBadgeClass(status: ExistingReportPresentationStatus): string {
