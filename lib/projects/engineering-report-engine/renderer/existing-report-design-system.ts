@@ -160,5 +160,18 @@ export function getExistingReportDesignSystemCss(): string {
   .official-missing-media { min-height:${frame.height}; margin:4mm auto 6mm; max-width:${frame.maxWidth}; padding:6mm 4mm; border:1.5px dashed #8aa5a8; border-radius:${frame.borderRadius}; background:#f7fafa; color:#23434a; font-weight:800; text-align:center; break-inside:avoid; page-break-inside:avoid; }
   .existing-report-maps-link { color:#167b7f; font-weight:800; text-decoration:underline; text-underline-offset:2px; word-break:break-word; overflow-wrap:anywhere; }
   .existing-report-maps-unregistered { color:#23434a; font-weight:700; }
+  .existing-report-coordinates-line { color:#23434a; font-size:9.5px; margin-top:-2px; }
+  .existing-report-narrative-field strong { color:#123d4c; }
+  .existing-report-status-row { display:flex; flex-wrap:wrap; align-items:center; gap:3mm; }
+  .existing-report-status-badge { display:inline-block; padding:.55mm 2.4mm; border-radius:999px; border:1px solid transparent; font-size:9.5px; font-weight:900; line-height:1.5; white-space:nowrap; }
+  .existing-report-status-badge--compliant { background:#ecfdf5; color:#065f46; border-color:#6ee7b7; }
+  .existing-report-status-badge--non-compliant { background:#fff1f2; color:#9f1239; border-color:#fda4af; }
+  .existing-report-status-badge--needs-completion { background:#fffbeb; color:#92400e; border-color:#fcd34d; }
+  .existing-report-status-badge--not-applicable,
+  .existing-report-status-badge--incomplete { background:#f8fafc; color:#334155; border-color:#cbd5e1; }
+  .existing-report-assessment-unit { margin:0 0 8px; break-inside:avoid; page-break-inside:avoid; }
+  .existing-report-assessment-unit .official-subchapter { margin-top:6px; }
+  .existing-report-numbered-list,
+  .existing-report-reference-list { margin-top:2px; }
   `;
 }

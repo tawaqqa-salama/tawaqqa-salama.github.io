@@ -12,18 +12,21 @@ import {
   EXISTING_FACADE_MISSING_LABEL,
   existingReportDisplayValue,
 } from '@/lib/projects/existing-technical-report-profile';
-import { formatExistingReportMapsTableRow } from '@/lib/projects/existing-report-presentation';
+import {
+  buildAssessmentPresentationBlocks,
+  buildCivilDefenseAccessNarrative,
+  buildEngineeringPresentationBlocks,
+  buildProjectComponentsNarrative,
+  buildRecommendationsPresentationBlocks,
+  buildReferencesPresentationBlocks,
+  buildSitePresentationBlocks,
+} from '@/lib/projects/existing-report-presentation';
 import {
   existingFinalReportRecommendations,
-  existingTechnicalReportStatusLabel,
-  type ExistingTechnicalReportAssessmentSection,
   type ExistingTechnicalReportModel,
-  type ExistingTechnicalReportRecommendation,
-  type ExistingTechnicalReportStatus,
 } from '@/lib/projects/existing-technical-report-model';
 
 const TITLE = 'التقرير الفني لتقييم الموقع القائم';
-const UNSET_ENGINEER_PRIORITY_LABEL = 'غير محددة من المهندس';
 
 const GROUP_SECTION_IDS: Record<string, EngineeringStudySectionId> = {
   site: EXISTING_ASSESSMENT_SECTION_IDS.site,
@@ -43,7 +46,8 @@ function section(
   title: string,
   paragraphs: string[] = [],
   tables: EngineeringStudySection['tables'] = [],
-  images: EngineeringStudySection['images'] = []
+  images: EngineeringStudySection['images'] = [],
+  presentation_blocks: EngineeringStudySection['presentation_blocks'] = []
 ): EngineeringStudySection {
   return {
     id,
@@ -53,6 +57,7 @@ function section(
     paragraphs: paragraphs.filter(Boolean).map((item) => ({ text: item, citations: [] })),
     ...(tables.length ? { tables } : {}),
     ...(images.length ? { images } : {}),
+    ...(presentation_blocks.length ? { presentation_blocks } : {}),
   };
 }
 
@@ -68,15 +73,6 @@ function table(caption: string, headers: string[], rows: string[][]) {
 
 function twoColumn(caption: string, rows: Array<{ label: string; value: string }>) {
   return table(caption, ['البند', 'البيان'], rows.map((item) => [item.label, item.value]));
-}
-
-function status(status: ExistingTechnicalReportStatus): string {
-  return existingTechnicalReportStatusLabel(status);
-}
-
-function recommendationSourceLabel(item: ExistingTechnicalReportRecommendation): string {
-  if (item.source === 'ASSESSMENT_ACTION') return 'إجراء التقييم';
-  return item.priority ? 'توصية معتمدة' : UNSET_ENGINEER_PRIORITY_LABEL;
 }
 
 function imageBlock(
@@ -114,25 +110,19 @@ function placeholderImageBlock(
   };
 }
 
-function assessmentTables(group: ExistingTechnicalReportAssessmentSection): EngineeringStudySection['tables'] {
-  return group.systems.map((item) => table(
-    `${group.label} — ${item.system_label}`,
-    ['البند', 'البيان'],
-    [
-      ['الوضع الراهن', [text(item.existing_condition), text(item.notes)].filter(Boolean).join(' — ') || 'لم يكتمل تقييم هذا البند.'],
-      ['المطلوب حسب الكود / التصميم', text(item.required_condition) || 'لم تُسجل قيمة.'],
-      ['الفجوة', text(item.gap) || 'لم تُسجل فجوة.'],
-      ['حالة المطابقة', status(item.compliance_status)],
-      ['الإجراء المطلوب', text(item.required_action) || 'لم يُسجل إجراء مطلوب.'],
-      ['المرجع / الدليل', [text(item.requirement_reference), item.evidence.length ? `أدلة مرتبطة: ${item.evidence.length}` : ''].filter(Boolean).join(' — ') || 'لم يُسجل مرجع أو دليل.'],
-    ]
-  ));
-}
-
 function conclusion(model: ExistingTechnicalReportModel): string {
   const { total_assessed_systems, compliant, non_compliant, needs_completion, not_applicable } = model.summary;
   if (!total_assessed_systems) return 'لا يتضمن الملف الحالي بنود تقييم مكتملة يمكن تلخيصها. لا تُستنتج حالة مطابقة عامة للمبنى من غياب التقييم.';
   return `يعرض هذا التقرير نتائج ${total_assessed_systems} بندًا مقيمًا كما سجلها المهندس: ${compliant} مطابق، ${non_compliant} غير مطابق، ${needs_completion} يحتاج استكمال، و${not_applicable} لا ينطبق. لا تمثل هذه الأرقام اعتمادًا عامًا للمبنى أو شهادة مطابقة.`;
+}
+
+function collectReferenceItems(model: ExistingTechnicalReportModel): string[] {
+  return [
+    ...model.assessment_basis.map((item) => item.reference),
+    ...model.assessment_sections.flatMap((group) =>
+      group.systems.flatMap((system) => [text(system.requirement_reference)])
+    ),
+  ].filter(Boolean);
 }
 
 export function buildExistingFinalTechnicalReportDocument(
@@ -156,29 +146,6 @@ export function buildExistingFinalTechnicalReportDocument(
   ));
 
   const site = model.site_profile;
-  const siteIntro = site.location_text
-    ? [`تعريف الموقع: ${site.location_text}`]
-    : ['يُعرض في هذه الصفحة العنوان المسجل وبيانات الموقع كما وردت في ملف المشروع دون استنتاج موقع جديد.'];
-  const boundaryRows = [
-    site.surroundings?.north ? { label: 'شمالاً', value: site.surroundings.north } : null,
-    site.surroundings?.south ? { label: 'جنوباً', value: site.surroundings.south } : null,
-    site.surroundings?.east ? { label: 'شرقاً', value: site.surroundings.east } : null,
-    site.surroundings?.west ? { label: 'غرباً', value: site.surroundings.west } : null,
-  ].filter((row): row is { label: string; value: string } => Boolean(row));
-  const mapsRow = formatExistingReportMapsTableRow(site.maps_url);
-  const siteRows = [
-    { label: 'الشارع', value: existingReportDisplayValue(site.street) },
-    { label: 'الحي', value: existingReportDisplayValue(site.district) },
-    { label: 'المدينة', value: existingReportDisplayValue(site.city) },
-    { label: 'الموقع', value: existingReportDisplayValue(location) },
-    ...site.coordinate_rows.map((row) => ({ label: row.label, value: existingReportDisplayValue(row.value) })),
-    { label: mapsRow.label, value: mapsRow.value },
-    ...boundaryRows,
-  ];
-  if (!boundaryRows.length && site.surrounding_roads) {
-    siteRows.push({ label: 'الحدود / المحيط', value: site.surrounding_roads });
-  }
-  const siteTables = [twoColumn('بيانات الموقع', siteRows)];
   const siteImages = site.aerial_src
     ? [imageBlock('site_information', site.aerial_src, 'الصورة الجوية للموقع', 'site_map')]
     : [placeholderImageBlock('site_information', 'الصورة الجوية للموقع', EXISTING_AERIAL_MISSING_LABEL, 'site_map')];
@@ -186,9 +153,10 @@ export function buildExistingFinalTechnicalReportDocument(
     'site_information',
     ++sectionNumber,
     'الموقع',
-    siteIntro,
-    siteTables,
-    siteImages
+    [],
+    [],
+    siteImages,
+    buildSitePresentationBlocks(site, location)
   ));
 
   const cd = model.civil_defense_access;
@@ -199,20 +167,10 @@ export function buildExistingFinalTechnicalReportDocument(
     'fire_truck_access',
     ++sectionNumber,
     'إمكانية وصول آليات الدفاع المدني',
-    [
-      'تُعرض بيانات الوصول كما سجلها المهندس أو كما وردت في الأدلة المرفقة. لا يحسب التقرير مسافة أو زمن وصول تلقائيًا.',
-      cd.route_description ? `وصف مسار الوصول: ${cd.route_description}` : '',
-    ].filter(Boolean),
-    [twoColumn('بيانات الوصول', [
-      { label: 'أقرب مركز دفاع مدني', value: existingReportDisplayValue(cd.center_name) },
-      { label: 'المسافة', value: existingReportDisplayValue(cd.distance) },
-      { label: 'زمن الوصول', value: existingReportDisplayValue(cd.travel_time) },
-      { label: 'وصف مسار الوصول', value: existingReportDisplayValue(cd.route_description) },
-      { label: 'مصدر البيانات', value: existingReportDisplayValue(cd.source_label) },
-      { label: 'رابط الخرائط', value: existingReportDisplayValue(cd.maps_source_url) },
-      { label: 'تاريخ التحقق', value: existingReportDisplayValue(cd.verified_at) },
-    ])],
-    cdImages
+    [],
+    [],
+    cdImages,
+    buildCivilDefenseAccessNarrative(cd)
   ));
 
   const componentRows = model.project_components.map((item, index) => [
@@ -226,6 +184,7 @@ export function buildExistingFinalTechnicalReportDocument(
     existingReportDisplayValue(item.description),
     existingReportDisplayValue(item.hazard),
   ]);
+  const componentsNarrative = buildProjectComponentsNarrative(model.project_components);
   sections.push(section(
     'project_components',
     ++sectionNumber,
@@ -239,7 +198,9 @@ export function buildExistingFinalTechnicalReportDocument(
           ['م', 'اسم المكون', 'الاستخدام', 'المساحة', 'عدد الأدوار', 'الارتفاع', 'السعة/الحمولة', 'نوع الإنشاء', 'تصنيف الخطورة'],
           componentRows
         )]
-      : []
+      : [],
+    [],
+    componentsNarrative ? [{ type: 'paragraph', text: componentsNarrative }] : []
   ));
 
   for (const groupDef of EXISTING_ASSESSMENT_GROUPS) {
@@ -250,30 +211,49 @@ export function buildExistingFinalTechnicalReportDocument(
       sectionId,
       ++sectionNumber,
       group.label,
-      ['تُعرض كل منظومة في بطاقة مستقلة: الوضع الراهن، المطلوب، الفجوة، حالة المطابقة، الإجراء المطلوب، والمرجع.'],
-      assessmentTables(group)
+      ['تُعرض كل منظومة بصيغة سردية: الوضع الراهن، المتطلب، التقييم، الإجراء المطلوب، والمرجع.'],
+      [],
+      [],
+      buildAssessmentPresentationBlocks(group.systems)
     ));
   }
 
   if (model.engineering_sections.length) {
-    sections.push(section('building_requirements', ++sectionNumber, 'البيانات الهندسية المرجعية', [
-      'تُعرض هذه القيم كبيانات مرجعية داعمة للتقييم فقط. لا يعيد هذا التقرير حساب التدفقات أو الضغوط أو الكميات.',
-    ], model.engineering_sections.map((item) => twoColumn(item.label, item.rows))));
+    sections.push(section(
+      'building_requirements',
+      ++sectionNumber,
+      'البيانات الهندسية المرجعية',
+      ['تُعرض هذه القيم كبيانات مرجعية داعمة للتقييم فقط. لا يعيد هذا التقرير حساب التدفقات أو الضغوط أو الكميات.'],
+      [],
+      [],
+      buildEngineeringPresentationBlocks(model.engineering_sections)
+    ));
   }
 
   const finalRecommendations = existingFinalReportRecommendations(model);
-  sections.push(section('existing_recommendations', ++sectionNumber, 'التوصيات والإجراءات المطلوبة', [
+  const referenceItems = collectReferenceItems(model);
+  sections.push(section(
+    'existing_recommendations',
+    ++sectionNumber,
+    'التوصيات والإجراءات المطلوبة',
+    finalRecommendations.length ? [] : ['لا توجد إجراءات أو توصيات معتمدة مسجلة حتى الآن.'],
+    [],
+    [],
     finalRecommendations.length
-      ? 'تتضمن هذه القائمة الإجراءات والتوصيات الصريحة المرتبطة بتقييم المهندس أو التوصيات المحفوظة والمعتمدة فقط.'
-      : 'لا توجد إجراءات أو توصيات معتمدة مسجلة حتى الآن.',
-  ], finalRecommendations.length ? [table('الإجراءات والتوصيات الصريحة', ['المنظومة', 'الأولوية', 'النص', 'المصدر'], finalRecommendations.map((item) => [
-    item.system_label || 'عام',
-    item.priority!,
-    item.text,
-    recommendationSourceLabel(item),
-  ]))] : []));
+      ? buildRecommendationsPresentationBlocks(finalRecommendations)
+      : []
+  ));
 
-  sections.push(section('conclusion', ++sectionNumber, 'الملخص والخلاصة وحدود الدراسة', [conclusion(model), ...model.limitations]));
+  const conclusionReferences = buildReferencesPresentationBlocks(referenceItems);
+  sections.push(section(
+    'conclusion',
+    ++sectionNumber,
+    'الملخص والخلاصة وحدود الدراسة',
+    [conclusion(model), ...model.limitations],
+    [],
+    [],
+    conclusionReferences
+  ));
 
   const coverImage = model.media.facade_src
     ? imageBlock('cover', model.media.facade_src, model.media.facade_caption || 'صورة واجهة المشروع', 'facade')

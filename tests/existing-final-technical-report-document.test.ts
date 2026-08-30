@@ -138,9 +138,10 @@ describe('PR 7 — EXISTING final A4 technical report document', () => {
     expect(document.title_ar).toContain('الموقع القائم');
     expect(model.engineering_sections.flatMap((item) => item.rows).map((row) => `${row.label}:${row.value}`).join('|')).toContain('تدفق المضخة المقنن:1403 GPM');
     expect(content).toContain('الوضع الراهن');
-    expect(content).toContain('المطلوب حسب الكود / التصميم');
-    expect(content).toContain('الفجوة');
-    expect(content).toContain('حالة المطابقة');
+    expect(content).toContain('assessment_unit');
+    expect(content).toContain('required');
+    expect(content).toContain('gap');
+    expect(content).toContain('COMPLIANT');
     expect(content).toContain('الإجراء المطلوب');
     expect(content).toContain('بيانات الرش ضمن التصميم الفني ومركز التصاميم');
     expect(content).not.toContain('NEEDS_DATA');

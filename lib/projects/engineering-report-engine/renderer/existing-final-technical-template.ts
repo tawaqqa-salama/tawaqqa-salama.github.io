@@ -15,6 +15,9 @@ import {
 import {
   EXISTING_REPORT_MAPS_LINK_LABEL,
   EXISTING_REPORT_MAPS_UNREGISTERED,
+  EXISTING_REPORT_SITE_MAPS_LINK_LABEL,
+  existingReportStatusBadgeClass,
+  existingReportStatusBadgeLabel,
   isExistingReportExternalUrl,
   isExistingReportMapsTableLabel,
 } from '@/lib/projects/existing-report-presentation';
@@ -131,6 +134,32 @@ function renderBlock(block: FlowBlock, locale: 'ar' | 'en', includeDetectionMark
       return `<div class="official-unit keep">${block.blocks.map((child) => renderBlock(child, locale)).join('')}</div>`;
     case 'page_break':
       return `<div class="official-page-break official-post-project-components-break" aria-hidden="true"></div>`;
+    case 'existing_maps_link': {
+      const href = block.href?.trim();
+      if (href && isExistingReportExternalUrl(href)) {
+        return `<p class="official-paragraph existing-report-maps-row keep"><a class="existing-report-maps-link" href="${esc(href)}" target="_blank" rel="noopener noreferrer">${text(block.label || EXISTING_REPORT_SITE_MAPS_LINK_LABEL)}</a></p>`;
+      }
+      return `<p class="official-paragraph existing-report-maps-row keep"><span class="existing-report-maps-unregistered">${text(EXISTING_REPORT_MAPS_UNREGISTERED)}</span></p>`;
+    }
+    case 'existing_coordinates':
+      return `<p class="official-paragraph existing-report-coordinates-line keep"><bdi dir="ltr" class="existing-report-cell-text">${text(block.text)}</bdi></p>`;
+    case 'existing_narrative_field':
+      return `<p class="official-paragraph existing-report-narrative-field keep"><strong>${text(block.label)}</strong> ${renderEngineeringTokens(block.text)}</p>`;
+    case 'existing_status_badge':
+      return `<p class="official-paragraph existing-report-status-row keep"><strong>${text(block.label)}</strong> <span class="existing-report-status-badge ${existingReportStatusBadgeClass(block.status as never)}">${text(existingReportStatusBadgeLabel(block.status as never))}</span></p>`;
+    case 'existing_numbered_list':
+      return `<ol class="official-list existing-report-numbered-list">${block.items.map((item) => `<li>${text(item)}</li>`).join('')}</ol>`;
+    case 'existing_reference_list':
+      return `<ol class="official-list existing-report-reference-list">${block.items.map((item) => `<li>${text(item)}</li>`).join('')}</ol>`;
+    case 'existing_assessment_unit':
+      return `<section class="existing-report-assessment-unit keep">
+        <h3 class="official-subchapter keep-next">${text(block.title)}</h3>
+        <p class="official-paragraph existing-report-narrative-field"><strong>الوضع الراهن:</strong> ${renderEngineeringTokens(block.existing)}</p>
+        <p class="official-paragraph existing-report-narrative-field"><strong>المتطلب:</strong> ${renderEngineeringTokens(block.required)}</p>
+        <p class="official-paragraph existing-report-narrative-field"><strong>التقييم:</strong> <span class="existing-report-status-badge ${existingReportStatusBadgeClass(block.status as never)}">${text(existingReportStatusBadgeLabel(block.status as never))}</span></p>
+        <p class="official-paragraph existing-report-narrative-field"><strong>الإجراء المطلوب:</strong> ${renderEngineeringTokens(block.action)}</p>
+        <p class="official-paragraph existing-report-narrative-field"><strong>المرجع:</strong> ${renderEngineeringTokens(block.reference)}</p>
+      </section>`;
     default:
       return '';
   }
@@ -268,7 +297,8 @@ function css(doc: EngineeringStudyDocument, company: CompanyProfile): string {
   .official-post-project-components-break { break-after:page; page-break-after:always; height:0; margin:0; padding:0; }
   .official-assessment-section + .official-paragraph,
   .official-assessment-section + .official-table-wrap,
-  .official-assessment-section + .existing-report-table-wrap {
+  .official-assessment-section + .existing-report-table-wrap,
+  .official-assessment-section + .existing-report-assessment-unit {
     break-before:avoid-page;
     page-break-before:avoid;
   }

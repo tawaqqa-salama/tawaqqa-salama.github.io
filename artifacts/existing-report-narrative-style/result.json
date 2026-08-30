@@ -1,0 +1,36 @@
+{
+  "pageMap": {
+    "facility_data": 3,
+    "site_information": 4,
+    "fire_truck_access": 5,
+    "project_components": 6,
+    "existing_assessment_site": 7,
+    "existing_assessment_firefighting": 7,
+    "existing_recommendations": 7,
+    "conclusion": 7,
+    "approvals": 9
+  },
+  "pageCount": 9,
+  "blankPages": [],
+  "siteBoundariesNotTable": true,
+  "assessmentTableCount": 0,
+  "page6OnlyComponents": true,
+  "componentsSectionPage": 6,
+  "firstAssessmentPage": 7,
+  "arabicExtraction": {
+    "ok": true,
+    "found": [],
+    "missing": [
+      "بيانات المنشأة",
+      "مكونات المشروع",
+      "أنظمة مكافحة الحريق"
+    ],
+    "notes": [
+      "pdfjs extraction may split Arabic glyphs; pdftotext unavailable in this environment."
+    ],
+    "engine": "pdfjs",
+    "arabicCharCount": 1119,
+    "pdftotextAvailable": false
+  },
+  "bytes": 264125
+}
