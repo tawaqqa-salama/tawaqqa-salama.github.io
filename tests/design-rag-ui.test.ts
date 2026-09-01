@@ -17,6 +17,13 @@ describe('design RAG UI integration', () => {
     expect(moduleSource).not.toContain('const answer = await ragQuery(question)');
   });
 
+  it('shows indexed-document readiness and query suggestions in the design center', () => {
+    expect(moduleSource).toContain('indexedKnowledgeDocs');
+    expect(moduleSource).toContain('No indexed company document is ready yet');
+    expect(moduleSource).toContain('ragPromptSuggestions');
+    expect(moduleSource).toContain('setQuestion(prompt)');
+  });
+
   it('keeps company identity server-controlled', () => {
     expect(routeSource).toContain("withTenantApi(req, { module: 'design' })");
     expect(routeSource).toContain('gated.ctx.tenantId');

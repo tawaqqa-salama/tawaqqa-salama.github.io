@@ -176,6 +176,16 @@ export default function DesignIntelligenceModule() {
 
   const health = useMemo(() => timelineHealth(tasks), [tasks]);
   const stats = useMemo(() => analyticsSnapshot(), [workspaces, tasks, tab]);
+  const indexedKnowledgeDocs = useMemo(
+    () => docs.filter((d) => d.index_status === 'indexed' && (d.chunk_count || 0) > 0),
+    [docs]
+  );
+  const ragReady = Boolean(tenantCompanyId && indexedKnowledgeDocs.length);
+  const ragPromptSuggestions = [
+    lang === 'en' ? 'What NFPA requirements apply to this project?' : 'ما متطلبات NFPA المنطبقة على هذا المشروع؟',
+    lang === 'en' ? 'What fire pump requirements are cited in the indexed files?' : 'ما متطلبات مضخة الحريق المذكورة في الملفات المفهرسة؟',
+    lang === 'en' ? 'Show the cited sprinkler spacing and coverage references.' : 'اعرض مراجع تباعد وتغطية الرشاشات المذكورة.',
+  ];
 
   const onUpload = async () => {
     if (!file || !title.trim()) {
@@ -784,6 +794,27 @@ export default function DesignIntelligenceModule() {
           <p className="text-xs text-gray-500">
             Answers only from indexed company files — no internet. Citations include file, page, paragraph, code, confidence.
           </p>
+          <div className={`rounded-xl border px-3 py-2 text-xs ${
+            ragReady ? 'border-emerald-200 bg-emerald-50 text-emerald-900' : 'border-amber-200 bg-amber-50 text-amber-900'
+          }`}>
+            {ragReady
+              ? `${indexedKnowledgeDocs.length} indexed document${indexedKnowledgeDocs.length === 1 ? '' : 's'} available for this company.`
+              : tenantCompanyId
+                ? 'No indexed company document is ready yet. Upload and index a source document first.'
+                : 'Company context is unavailable. Sign in with a company account before querying RAG.'}
+          </div>
+          <div className="flex flex-wrap gap-2">
+            {ragPromptSuggestions.map((prompt) => (
+              <button
+                key={prompt}
+                type="button"
+                className="rounded-full border border-slate-200 bg-slate-50 px-3 py-1.5 text-xs text-slate-700 hover:border-[#635bdb] hover:text-[#4f46b8]"
+                onClick={() => setQuestion(prompt)}
+              >
+                {prompt}
+              </button>
+            ))}
+          </div>
           <textarea
             rows={3}
             value={question}

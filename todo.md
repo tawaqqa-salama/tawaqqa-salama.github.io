@@ -1,4 +1,8 @@
-- [ ] Investigate RAG response returning No reliable reference found from the design intelligence page.
-- [ ] Verify RAG endpoint, company context, indexed-document filters, and retrieval query behavior.
-- [ ] Add regression coverage for successful cited retrieval and tenant isolation after the fix.
-- [ ] Commit and push the current RAG endpoint routing fix to GitHub with a clear message.
+- [x] Investigate RAG response returning No reliable reference found from the design intelligence page.
+- [x] Verify RAG endpoint, company context, indexed-document filters, and retrieval query behavior.
+- [x] Add regression coverage for successful cited retrieval and tenant isolation after the fix.
+- [x] Commit and push the current RAG endpoint routing fix to GitHub with a clear message.
+- [x] Define the first Design Intelligence Center improvement based on the current UI and data flows.
+- [x] Implement the improvement without weakening tenant isolation or evidence requirements.
+- [x] Add regression tests and verify the Design Intelligence Center build path.
+- [x] Commit and push the Design Intelligence Center improvement to GitHub.
