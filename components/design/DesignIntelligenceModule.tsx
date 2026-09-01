@@ -28,7 +28,6 @@ import {
   listTasks,
   listWorkspaces,
   markNotificationRead,
-  ragQuery,
   rescheduleWorkspaceTasks,
   saveChecklist,
   seedSmartNotifications,
@@ -280,10 +279,32 @@ export default function DesignIntelligenceModule() {
   };
 
   const onAsk = async () => {
+    const query = question.trim();
+    if (!query || busy) return;
     setBusy(true);
-    const answer = await ragQuery(question);
-    setRag(answer);
-    setBusy(false);
+    setMessage(null);
+    try {
+      const response = await fetch('/api/design/rag', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ question: query, topK: 5 }),
+      });
+      const payload = (await response.json()) as RagAnswer & { ok?: boolean; error?: string };
+      if (!response.ok || !payload.ok) {
+        throw new Error(payload.error || 'RAG query failed');
+      }
+      setRag(payload);
+    } catch (error) {
+      setRag({
+        answer: 'تعذر تشغيل محرك المعرفة. تحقق من تسجيل الدخول ووجود ملفات مفهرسة للشركة.',
+        citations: [],
+        confidence: 0,
+        reliable: false,
+        message: error instanceof Error ? error.message : 'RAG query failed',
+      });
+    } finally {
+      setBusy(false);
+    }
   };
 
   /**

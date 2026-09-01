@@ -1,0 +1,4 @@
+- [ ] Investigate RAG response returning No reliable reference found from the design intelligence page.
+- [ ] Verify RAG endpoint, company context, indexed-document filters, and retrieval query behavior.
+- [ ] Add regression coverage for successful cited retrieval and tenant isolation after the fix.
+- [ ] Commit and push the current RAG endpoint routing fix to GitHub with a clear message.
