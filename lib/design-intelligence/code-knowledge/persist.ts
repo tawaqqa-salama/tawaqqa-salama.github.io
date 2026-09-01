@@ -695,6 +695,75 @@ export async function verifyPersistedCodeKnowledgeIngestion(input: {
   };
 }
 
+export type UpdateCodeKnowledgeDocumentMetadataInput = {
+  companyId: string;
+  documentId: string;
+  title?: string;
+  category?: string | null;
+  discipline?: string | null;
+  revision?: string | null;
+  issueDate?: string | null;
+  authorName?: string | null;
+  versionLabel?: string | null;
+  versionNo?: number | null;
+  tags?: string[];
+  keywords?: string[];
+  projectType?: string | null;
+  buildingType?: string | null;
+  hazardClassification?: string | null;
+  applicableCodes?: string[];
+  notes?: string | null;
+};
+
+/**
+ * Update only editable metadata on an already persisted canonical document.
+ * File bytes, SHA-256, Storage path, and chunks are intentionally untouched.
+ */
+export async function updatePersistedCodeKnowledgeDocumentMetadata(
+  input: UpdateCodeKnowledgeDocumentMetadataInput
+): Promise<{ ok: boolean; error?: string }> {
+  if (!shouldPersistCodeKnowledgeToSupabase()) {
+    return { ok: false, error: 'supabase_not_configured' };
+  }
+  if (!isUuid(input.companyId) || !isUuid(input.documentId)) {
+    return { ok: false, error: 'company_and_document_ids_must_be_uuid' };
+  }
+
+  const patch: Record<string, unknown> = {
+    updated_at: new Date().toISOString(),
+  };
+  const fields: Array<[keyof UpdateCodeKnowledgeDocumentMetadataInput, string]> = [
+    ['title', 'title'],
+    ['category', 'category'],
+    ['discipline', 'discipline'],
+    ['revision', 'revision'],
+    ['issueDate', 'issue_date'],
+    ['authorName', 'author_name'],
+    ['versionLabel', 'version_label'],
+    ['versionNo', 'version_no'],
+    ['tags', 'tags'],
+    ['keywords', 'keywords'],
+    ['projectType', 'project_type'],
+    ['buildingType', 'building_type'],
+    ['hazardClassification', 'hazard_classification'],
+    ['applicableCodes', 'applicable_codes'],
+    ['notes', 'notes'],
+  ];
+  for (const [source, target] of fields) {
+    if (input[source] !== undefined) patch[target] = input[source];
+  }
+
+  const { error } = await supabase
+    .from('di_knowledge_documents')
+    .update(patch)
+    .eq('id', input.documentId)
+    .eq('company_id', input.companyId)
+    .is('deleted_at', null)
+    .neq('status', 'superseded');
+  if (error) return { ok: false, error: error.message };
+  return { ok: true };
+}
+
 export async function listPersistedCodeKnowledgeDocuments(opts?: {
   companyId?: string | null;
   code?: string;
@@ -727,6 +796,20 @@ export async function listPersistedCodeKnowledgeDocuments(opts?: {
       id: row.id,
       company_id: row.company_id,
       title: row.title,
+      category: row.category,
+      discipline: row.discipline,
+      revision: row.revision,
+      issue_date: row.issue_date,
+      author_name: row.author_name,
+      version_label: row.version_label,
+      version_no: row.version_no,
+      tags: row.tags || [],
+      keywords: row.keywords || [],
+      project_type: row.project_type,
+      building_type: row.building_type,
+      hazard_classification: row.hazard_classification,
+      applicable_codes: row.applicable_codes || [],
+      notes: row.notes,
       code: row.code || '',
       edition: row.edition || '',
       code_edition_id: row.code_edition_id,

@@ -30,6 +30,7 @@ import {
   isUuid,
   newKnowledgeChunkId,
   newKnowledgeDocumentId,
+  updatePersistedCodeKnowledgeDocumentMetadata,
 } from '@/lib/design-intelligence/code-knowledge/persist';
 
 export type KnowledgeUploadDiagnostics = {
@@ -293,15 +294,21 @@ export function listKnowledgeDocumentsSync(): DiKnowledgeDocument[] {
   return readLocalDocs().filter((d) => !d.deleted_at);
 }
 
-export async function listKnowledgeDocuments(): Promise<DiKnowledgeDocument[]> {
+export async function listKnowledgeDocuments(options?: {
+  companyId?: string | null;
+}): Promise<DiKnowledgeDocument[]> {
   ensureSeedKnowledgeBase();
   if (!isDemoMode) {
-    const { data, error } = await supabase
+    let query = supabase
       .from('di_knowledge_documents')
       .select('*')
       .is('deleted_at', null)
       .order('created_at', { ascending: false })
       .limit(200);
+    if (options?.companyId && isUuid(options.companyId)) {
+      query = query.eq('company_id', options.companyId);
+    }
+    const { data, error } = await query;
     if (!error && data?.length) {
       const remote = data as DiKnowledgeDocument[];
       // Merge into memory so UI stays consistent without bloating localStorage
@@ -903,6 +910,46 @@ export async function uploadAndIndexKnowledgeFile(input: {
       }
     }
 
+    if (result.status === 'skipped_duplicate' && result.document.persisted) {
+      const metadataUpdate = await updatePersistedCodeKnowledgeDocumentMetadata({
+        companyId,
+        documentId: result.document.id,
+        title: input.meta.title,
+        category: input.meta.category ?? 'NFPA',
+        discipline: input.meta.discipline ?? 'Fire Protection',
+        revision: input.meta.revision,
+        issueDate: input.meta.issue_date,
+        authorName: input.meta.author_name,
+        versionLabel: input.meta.version_label,
+        versionNo: input.meta.version_no,
+        tags: input.meta.tags,
+        keywords: input.meta.keywords,
+        projectType: input.meta.project_type,
+        buildingType: input.meta.building_type,
+        hazardClassification: input.meta.hazard_classification,
+        applicableCodes: input.meta.applicable_codes,
+        notes: input.meta.notes,
+      });
+      if (!metadataUpdate.ok) {
+        throw new KnowledgePersistError(
+          `duplicate_metadata_update_failed: ${metadataUpdate.error || 'unknown_error'}`,
+          buildKnowledgeUploadDiagnostics({
+            authenticated,
+            company_id_present: true,
+            storage_upload_attempted: false,
+            db_insert_attempted: false,
+            chunks_insert_attempted: false,
+            storage_path: result.document.storage_path || null,
+            document_id: result.document.id,
+            chunk_count: result.document.chunk_count || 0,
+            handler_path:
+              'onUpload → uploadAndIndexKnowledgeFile → duplicate metadata update',
+            error: metadataUpdate.error || 'duplicate_metadata_update_failed',
+          })
+        );
+      }
+    }
+
     const diag = buildKnowledgeUploadDiagnostics({
       authenticated,
       company_id_present: true,
@@ -935,7 +982,28 @@ export async function uploadAndIndexKnowledgeFile(input: {
       );
     }
 
-    const d = result.document;
+    const d = {
+      ...result.document,
+      ...(result.status === 'skipped_duplicate'
+        ? {
+            title: input.meta.title,
+            category: input.meta.category || 'NFPA',
+            discipline: input.meta.discipline || 'Fire Protection',
+            revision: input.meta.revision || null,
+            issue_date: input.meta.issue_date || null,
+            author_name: input.meta.author_name || null,
+            version_label: input.meta.version_label || null,
+            version_no: input.meta.version_no,
+            tags: input.meta.tags || [],
+            keywords: input.meta.keywords || [],
+            project_type: input.meta.project_type || null,
+            building_type: input.meta.building_type || null,
+            hazard_classification: input.meta.hazard_classification || null,
+            applicable_codes: input.meta.applicable_codes || (codes.length ? codes : ['NFPA 13']),
+            notes: input.meta.notes || null,
+          }
+        : {}),
+    };
     const mapped: DiKnowledgeDocument & {
       persistedToCloud: boolean;
       diagnostics: KnowledgeUploadDiagnostics;
@@ -943,8 +1011,6 @@ export async function uploadAndIndexKnowledgeFile(input: {
       id: d.id,
       company_id: d.company_id,
       title: d.title,
-      category: input.meta.category || 'NFPA',
-      discipline: input.meta.discipline || 'Fire Protection',
       status: 'active',
       file_name: d.file_name,
       file_mime: d.file_mime || d.mime_type,
@@ -970,9 +1036,22 @@ export async function uploadAndIndexKnowledgeFile(input: {
       last_ingestion_at: d.last_ingestion_at,
       code: 'NFPA-13',
       edition: '2025',
-      source_type: 'PROJECT_PROVIDED_DOCUMENT',
-      platform_verification_status: 'NOT_VERIFIED_OFFICIAL',
-      applicable_codes: codes.length ? codes : ['NFPA 13'],
+      source_type: input.meta.source_kind || 'PROJECT_PROVIDED_DOCUMENT',
+      platform_verification_status: input.meta.platform_verification_status || 'NOT_VERIFIED_OFFICIAL',
+      applicable_codes: input.meta.applicable_codes || (codes.length ? codes : ['NFPA 13']),
+      category: input.meta.category || 'NFPA',
+      discipline: input.meta.discipline || 'Fire Protection',
+      revision: input.meta.revision || null,
+      issue_date: input.meta.issue_date || null,
+      author_name: input.meta.author_name || null,
+      version_label: input.meta.version_label || null,
+      version_no: input.meta.version_no,
+      tags: input.meta.tags || [],
+      keywords: input.meta.keywords || [],
+      project_type: input.meta.project_type || null,
+      building_type: input.meta.building_type || null,
+      hazard_classification: input.meta.hazard_classification || null,
+      notes: input.meta.notes || null,
       created_at: d.created_at,
       updated_at: d.updated_at,
       persistedToCloud: true,
