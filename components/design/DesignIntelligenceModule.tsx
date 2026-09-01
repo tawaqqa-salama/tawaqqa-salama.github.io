@@ -846,19 +846,49 @@ export default function DesignIntelligenceModule() {
             {label('design.rag.ask', 'Ask knowledge base')}
           </button>
           {rag ? (
-            <div className="rounded-xl border bg-slate-50 p-4 space-y-3">
-              <p className="text-sm whitespace-pre-wrap">{rag.answer}</p>
-              <p className="text-xs font-semibold">
-                Confidence: {rag.confidence}% — {rag.reliable ? 'Reliable' : 'No reliable reference found.'}
-              </p>
-              {rag.citations.map((c) => (
-                <div key={c.chunkId} className="text-xs border rounded-lg bg-white p-3">
-                  <div className="font-bold text-emerald-900">
-                    {c.documentTitle} · p.{c.pageNumber ?? '—'} · {c.codeReference || '—'} · {c.confidence}%
+            <div dir="rtl" className="rounded-xl border border-slate-200 bg-slate-50 p-4 text-right space-y-3">
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <h3 className="text-sm font-bold text-slate-900">
+                  {lang === 'en' ? 'Retrieved evidence' : 'الأدلة المسترجعة'}
+                </h3>
+                <span className={`rounded-full px-2.5 py-1 text-xs font-semibold ${
+                  rag.reliable ? 'bg-emerald-100 text-emerald-800' : 'bg-amber-100 text-amber-800'
+                }`}>
+                  {lang === 'en'
+                    ? `${rag.reliable ? 'Reliable' : 'Needs review'} · ${rag.confidence}% confidence`
+                    : `${rag.reliable ? 'موثوق' : 'يحتاج مراجعة'} · الثقة ${rag.confidence}%`}
+                </span>
+              </div>
+              {rag.citations.length ? (
+                <>
+                  <div className="rounded-lg border border-emerald-100 bg-white p-3">
+                    <p className="text-xs font-semibold text-emerald-800">
+                      {lang === 'en' ? 'Top evidence' : 'أقوى دليل مسترجع'}
+                    </p>
+                    <p dir="auto" className="mt-1 text-sm leading-7 text-slate-800">
+                      {rag.citations[0].paragraph}
+                    </p>
                   </div>
-                  <p className="mt-1 text-gray-600">{c.paragraph}</p>
-                </div>
-              ))}
+                  <div className="space-y-2">
+                    {rag.citations.map((c, index) => (
+                      <article key={c.chunkId} className="rounded-lg border border-slate-200 bg-white p-3 text-xs">
+                        <div className="flex flex-wrap items-center gap-x-3 gap-y-1 font-semibold text-emerald-900">
+                          <span>{lang === 'en' ? `Reference ${index + 1}` : `المرجع ${index + 1}`}</span>
+                          <span dir="auto">{c.documentTitle}</span>
+                          <span dir="ltr">{lang === 'en' ? 'Page' : 'صفحة'} {c.pageNumber ?? '—'}</span>
+                          {c.codeReference ? <span dir="auto">{c.codeReference}</span> : null}
+                          <span>{c.confidence}%</span>
+                        </div>
+                        <p dir="auto" className="mt-1 leading-6 text-slate-600">{c.paragraph}</p>
+                      </article>
+                    ))}
+                  </div>
+                </>
+              ) : (
+                <p dir="auto" className="text-sm leading-7 text-slate-700">
+                  {rag.answer}
+                </p>
+              )}
             </div>
           ) : null}
         </div>

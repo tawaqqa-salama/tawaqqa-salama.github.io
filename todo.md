@@ -9,3 +9,6 @@
 - [x] Investigate published RAG request failure despite indexed-document readiness showing 18 documents.
 - [x] Identify whether the failure is caused by auth context, tenant resolution, Supabase query, or response parsing.
 - [x] Add regression coverage and deploy the confirmed RAG runtime fix.
+- [x] Fix mixed Arabic/English direction and duplicated confidence text in the RAG result card.
+- [x] Present citations with explicit RTL structure, metadata labels, and readable evidence text.
+- [x] Add regression coverage for the corrected RAG result layout.
