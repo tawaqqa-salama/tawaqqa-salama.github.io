@@ -17,6 +17,12 @@ describe('design RAG UI integration', () => {
     expect(moduleSource).not.toContain('const answer = await ragQuery(question)');
   });
 
+  it('falls back to tenant-scoped direct RAG on static GitHub Pages', () => {
+    expect(moduleSource).toContain("response.status === 404 || response.status === 405");
+    expect(moduleSource).toContain('ragQuery(query, 5, { companyId: tenantCompanyId })');
+    expect(moduleSource).toContain('GitHub Pages is a static export');
+  });
+
   it('shows indexed-document readiness and query suggestions in the design center', () => {
     expect(moduleSource).toContain('indexedKnowledgeDocs');
     expect(moduleSource).toContain('No indexed company document is ready yet');

@@ -6,3 +6,6 @@
 - [x] Implement the improvement without weakening tenant isolation or evidence requirements.
 - [x] Add regression tests and verify the Design Intelligence Center build path.
 - [x] Commit and push the Design Intelligence Center improvement to GitHub.
+- [x] Investigate published RAG request failure despite indexed-document readiness showing 18 documents.
+- [x] Identify whether the failure is caused by auth context, tenant resolution, Supabase query, or response parsing.
+- [x] Add regression coverage and deploy the confirmed RAG runtime fix.

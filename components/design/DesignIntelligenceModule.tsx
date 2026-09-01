@@ -29,6 +29,7 @@ import {
   listWorkspaces,
   markNotificationRead,
   rescheduleWorkspaceTasks,
+  ragQuery,
   saveChecklist,
   seedSmartNotifications,
   suggestEngineeringSystems,
@@ -299,6 +300,16 @@ export default function DesignIntelligenceModule() {
         headers: { 'content-type': 'application/json' },
         body: JSON.stringify({ question: query, topK: 5 }),
       });
+      const contentType = response.headers.get('content-type') || '';
+      if ((response.status === 404 || response.status === 405) && tenantCompanyId) {
+        // GitHub Pages is a static export and cannot host Next route handlers.
+        // Fall back to the RLS-protected Supabase client with the session tenant.
+        setRag(await ragQuery(query, 5, { companyId: tenantCompanyId }));
+        return;
+      }
+      if (!contentType.includes('application/json')) {
+        throw new Error(`RAG endpoint returned non-JSON response (${response.status})`);
+      }
       const payload = (await response.json()) as RagAnswer & { ok?: boolean; error?: string };
       if (!response.ok || !payload.ok) {
         throw new Error(payload.error || 'RAG query failed');
