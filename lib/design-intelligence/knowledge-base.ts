@@ -1,5 +1,11 @@
 import { EKB_TOPICS } from '@/lib/compliance/ekb-catalog';
-import { cosineSimilarity, embedText, chunkText, extractTextFromFile } from '@/lib/design-intelligence/embeddings';
+import {
+  cosineSimilarity,
+  embedText,
+  chunkText,
+  extractTextFromFile,
+  normalizeKnowledgeSearchText,
+} from '@/lib/design-intelligence/embeddings';
 import { completeIndexingJob, enqueueIndexingJob } from '@/lib/design-intelligence/jobs';
 import type {
   DiKnowledgeChunk,
@@ -1387,12 +1393,130 @@ export async function reingestKnowledgeDocumentFromStorage(
   };
 }
 
-const CONFIDENCE_FLOOR = 0.18;
+/** Below this score: no citations (NEEDS_DATA). */
+export const MIN_RESULT_SCORE = 0.28;
+/** At or above: reliable = true. Between MIN and this: weak / needs review. */
+export const RELIABLE_SCORE = 0.45;
+
+export type RagQueryOptions = {
+  companyId?: string | null;
+  codeFamilies?: string[];
+  documentIds?: string[];
+  projectId?: string | null;
+  minimumConfidence?: number;
+};
+
+export type CodeFamily = 'NFPA' | 'SBC' | 'CIVIL_DEFENSE' | 'OTHER';
+
+/** Infer requested code families from the user question (intent parsing). */
+export function inferRequestedCodeFamilies(question: string): CodeFamily[] {
+  const q = String(question || '');
+  const families = new Set<CodeFamily>();
+  if (/\bNFPA\b/i.test(q) || /نفبا/i.test(q)) families.add('NFPA');
+  if (
+    /\bSBC\b/i.test(q) ||
+    /الكود\s*السعودي/i.test(q) ||
+    /الكود السعودي للحماية من الحريق/i.test(q)
+  ) {
+    families.add('SBC');
+  }
+  if (/الدفاع\s*المدني/i.test(q) || /civil\s*defense/i.test(q)) {
+    families.add('CIVIL_DEFENSE');
+  }
+  return [...families];
+}
+
+function detectChunkCodeFamilies(chunk: DiKnowledgeChunk, doc?: DiKnowledgeDocument | null): CodeFamily[] {
+  const hay = [
+    chunk.code,
+    chunk.code_reference,
+    chunk.content?.slice(0, 400),
+    doc?.code,
+    doc?.title,
+    ...(doc?.applicable_codes || []),
+  ]
+    .filter(Boolean)
+    .join(' ');
+  const out = new Set<CodeFamily>();
+  if (/\bNFPA\b/i.test(hay)) out.add('NFPA');
+  if (/\bSBC\b/i.test(hay) || /سعودي/i.test(hay)) out.add('SBC');
+  if (/دفاع\s*مدني|civil\s*defense/i.test(hay)) out.add('CIVIL_DEFENSE');
+  if (!out.size) out.add('OTHER');
+  return [...out];
+}
+
+function lexicalOverlapBoost(question: string, content: string): number {
+  const qTokens = new Set(
+    normalizeKnowledgeSearchText(question)
+      .split(/\s+/)
+      .filter((t) => t.length > 2)
+  );
+  if (!qTokens.size) return 0;
+  const cNorm = normalizeKnowledgeSearchText(content);
+  let hits = 0;
+  for (const t of qTokens) {
+    if (cNorm.includes(t)) hits += 1;
+  }
+  const ratio = hits / qTokens.size;
+  return Math.min(0.1, 0.03 + ratio * 0.07);
+}
+
+function exactCodeBoost(question: string, chunk: DiKnowledgeChunk, doc?: DiKnowledgeDocument | null): number {
+  const q = question.toUpperCase();
+  const qCompact = q.replace(/[\s-]+/g, '');
+  const refs = [chunk.code, chunk.code_reference, doc?.code, ...(doc?.applicable_codes || [])]
+    .filter(Boolean)
+    .map((s) => String(s).toUpperCase());
+  for (const ref of refs) {
+    const compact = ref.replace(/[\s-]+/g, '');
+    if (compact.length >= 4 && qCompact.includes(compact)) return 0.15;
+    if (/\bNFPA[\s-]?13\b/i.test(question) && /NFPA[\s-]?13/i.test(ref)) return 0.15;
+    if (/\bSBC[\s-]?801\b/i.test(question) && /SBC[\s-]?801/i.test(ref)) return 0.15;
+    // Family-level exact mention (question says NFPA, chunk is NFPA-*)
+    if (/\bNFPA\b/i.test(question) && /^NFPA/.test(compact)) return 0.15;
+    if (/\bSBC\b/i.test(question) && /^SBC/.test(compact)) return 0.15;
+  }
+  // Content-level exact family token
+  const contentU = String(chunk.content || '').toUpperCase();
+  if (/\bNFPA\b/i.test(question) && /\bNFPA\b/.test(contentU)) return 0.12;
+  if (/\bSBC\b/i.test(question) && /\bSBC\b/.test(contentU)) return 0.12;
+  return 0;
+}
+
+function titleBoost(question: string, title: string): number {
+  if (!title) return 0;
+  const qn = normalizeKnowledgeSearchText(question);
+  const tn = normalizeKnowledgeSearchText(title);
+  if (!tn) return 0;
+  const parts = tn.split(/\s+/).filter((t) => t.length > 2);
+  let hits = 0;
+  for (const p of parts) {
+    if (qn.includes(p)) hits += 1;
+  }
+  if (!parts.length) return 0;
+  return Math.min(0.05, (hits / parts.length) * 0.05);
+}
+
+function clampScore(n: number): number {
+  if (!Number.isFinite(n)) return 0;
+  return Math.max(0, Math.min(1, n));
+}
+
+function needsDataAnswer(message?: string): RagAnswer {
+  return {
+    answer: 'NEEDS_DATA',
+    citations: [],
+    confidence: 0,
+    reliable: false,
+    matchStrength: 'none',
+    message: message || 'No sufficiently relevant indexed source was found.',
+  };
+}
 
 export async function ragQuery(
   question: string,
   topK = 5,
-  opts?: { companyId?: string | null }
+  opts?: RagQueryOptions
 ): Promise<RagAnswer> {
   ensureSeedKnowledgeBase();
   const q = question.trim();
@@ -1402,11 +1526,34 @@ export async function ragQuery(
       citations: [],
       confidence: 0,
       reliable: false,
+      matchStrength: 'none',
       message: 'Empty question',
     };
   }
 
+  const requestedFamilies =
+    opts?.codeFamilies?.length
+      ? (opts.codeFamilies
+          .map((f) => {
+            const u = String(f).toUpperCase();
+            if (u.startsWith('NFPA')) return 'NFPA' as CodeFamily;
+            if (u.startsWith('SBC')) return 'SBC' as CodeFamily;
+            if (u.includes('CIVIL') || u.includes('دفاع')) return 'CIVIL_DEFENSE' as CodeFamily;
+            return null;
+          })
+          .filter(Boolean) as CodeFamily[])
+      : inferRequestedCodeFamilies(q);
+
+  const explicitFamily = requestedFamilies.filter((f) => f === 'NFPA' || f === 'SBC');
+  const minScore = opts?.minimumConfidence ?? MIN_RESULT_SCORE;
+  const docIdFilter =
+    opts?.documentIds?.length
+      ? new Set(opts.documentIds.map(String).filter(Boolean))
+      : null;
+
   let chunks = readLocalChunks();
+  let remoteDocsById = new Map<string, DiKnowledgeDocument>();
+
   if (!isDemoMode) {
     let query = supabase.from('di_knowledge_chunks').select('*').limit(2000);
     if (opts?.companyId) {
@@ -1419,75 +1566,217 @@ export async function ragQuery(
       const { data } = await query;
       if (data?.length) {
         const remote = data.map((row) => ({
-          id: row.id,
-          document_id: row.document_id,
-          chunk_index: row.chunk_index,
-          page_number: row.page_number,
-          paragraph_ref: row.paragraph_ref,
-          code_reference: row.code_reference,
-          content: row.content,
+          id: row.id as string,
+          document_id: row.document_id as string,
+          chunk_index: row.chunk_index as number,
+          page_number: (row.page_number as number | null) ?? null,
+          page_start: (row.page_start as number | null) ?? null,
+          page_end: (row.page_end as number | null) ?? null,
+          paragraph_ref: (row.paragraph_ref as string | null) ?? null,
+          code_reference: (row.code_reference as string | null) ?? null,
+          content: row.content as string,
           embedding: (row.embedding_json as number[]) || undefined,
           document_title: undefined as string | undefined,
-        }));
+          company_id: (row.company_id as string | null) ?? null,
+          code: (row.code as string | null) ?? null,
+          edition: (row.edition as string | null) ?? null,
+          section: (row.section as string | null) ?? null,
+          subsection: (row.subsection as string | null) ?? null,
+          table_reference: (row.table_reference as string | null) ?? null,
+          figure_reference: (row.figure_reference as string | null) ?? null,
+          paragraph_reference: (row.paragraph_reference as string | null) ?? null,
+          source_document_id: (row.source_document_id as string | null) ?? null,
+          source_verification_status: (row.source_verification_status as string | null) ?? null,
+        })) as DiKnowledgeChunk[];
         const localOnly = chunks.filter((c) => !remote.some((r) => r.id === c.id));
         chunks = [...remote, ...localOnly];
         memoryChunks = chunks;
+
+        const docIds = [...new Set(remote.map((r) => r.document_id).filter(Boolean))];
+        if (docIds.length) {
+          let docsQuery = supabase
+            .from('di_knowledge_documents')
+            .select(
+              'id,title,code,edition,applicable_codes,platform_verification_status,verification_status,source_document_id,company_id'
+            )
+            .in('id', docIds.slice(0, 200));
+          if (opts.companyId) {
+            docsQuery = docsQuery.eq('company_id', opts.companyId);
+          }
+          const { data: docRows } = await docsQuery;
+          for (const row of docRows || []) {
+            remoteDocsById.set(row.id as string, {
+              id: row.id as string,
+              title: (row.title as string) || 'Document',
+              status: 'active',
+              index_status: 'indexed',
+              code: (row.code as string | null) ?? null,
+              edition: (row.edition as string | null) ?? null,
+              applicable_codes: (row.applicable_codes as string[]) || [],
+              platform_verification_status:
+                (row.platform_verification_status as string | null) ?? null,
+              verification_status: (row.verification_status as string | null) ?? null,
+              source_document_id: (row.source_document_id as string | null) ?? null,
+              company_id: (row.company_id as string | null) ?? null,
+            });
+          }
+        }
       }
     }
   }
 
-  const docs = readLocalDocs();
-  const qVec = embedText(q);
-  const scored = chunks
-    .map((chunk) => {
-      const emb = chunk.embedding?.length ? chunk.embedding : embedText(chunk.content);
-      const sim = cosineSimilarity(qVec, emb);
-      return { chunk, sim };
-    })
-    .sort((a, b) => b.sim - a.sim)
-    .slice(0, topK);
+  if (docIdFilter) {
+    chunks = chunks.filter((c) => docIdFilter.has(c.document_id));
+  }
 
-  const best = scored[0]?.sim ?? 0;
-  if (best < CONFIDENCE_FLOOR || !scored.length) {
+  // Tenant isolation for local/demo chunks when companyId is set
+  if (opts?.companyId) {
+    chunks = chunks.filter(
+      (c) => !c.company_id || c.company_id === opts.companyId
+    );
+  }
+
+  const docs = readLocalDocs();
+  const resolveDoc = (documentId: string): DiKnowledgeDocument | undefined =>
+    remoteDocsById.get(documentId) || docs.find((d) => d.id === documentId);
+
+  const qVec = embedText(q);
+  type Scored = { chunk: DiKnowledgeChunk; sim: number; finalScore: number; families: CodeFamily[] };
+  const scoredAll: Scored[] = chunks.map((chunk) => {
+    const doc = resolveDoc(chunk.document_id);
+    const emb = chunk.embedding?.length ? chunk.embedding : embedText(chunk.content);
+    const sim = cosineSimilarity(qVec, emb);
+    const families = detectChunkCodeFamilies(chunk, doc);
+    let score = sim;
+    score += lexicalOverlapBoost(q, chunk.content);
+    score += exactCodeBoost(q, chunk, doc);
+    score += titleBoost(q, chunk.document_title || doc?.title || '');
+
+    if (explicitFamily.length) {
+      const matchesFamily = explicitFamily.some((f) => families.includes(f));
+      if (matchesFamily) {
+        score += 0.08;
+      } else {
+        // Wrong explicit family — strong penalty (may exclude below)
+        score -= 0.2;
+      }
+    }
+
+    return { chunk, sim, finalScore: clampScore(score), families };
+  });
+
+  scoredAll.sort((a, b) => b.finalScore - a.finalScore || b.sim - a.sim);
+
+  // If explicit code family requested, prefer matching family; wrong-family-only → NEEDS_DATA
+  let ranked = scoredAll;
+  if (explicitFamily.length) {
+    const matching = scoredAll.filter((s) =>
+      explicitFamily.some((f) => s.families.includes(f))
+    );
+    const strongMatch = matching.filter((s) => s.finalScore >= minScore);
+    if (strongMatch.length) {
+      ranked = matching;
+    } else if (matching.length === 0) {
+      return needsDataAnswer(
+        `No sufficiently relevant indexed source was found for ${explicitFamily.join('/')}.`
+      );
+    } else {
+      // Matching family exists but all weak — still prefer them over wrong family
+      ranked = matching;
+    }
+  }
+
+  const scored = ranked.slice(0, topK);
+  const best = scored[0]?.finalScore ?? 0;
+  const second = scored[1]?.finalScore ?? 0;
+
+  // Relevance-gap: all nearly random / weak
+  if (!scored.length || best < minScore) {
     return {
-      answer: 'No reliable reference found.',
-      citations: [],
+      ...needsDataAnswer('No sufficiently relevant indexed source was found.'),
       confidence: Math.round(best * 100),
-      reliable: false,
-      message: 'No reliable reference found.',
     };
   }
 
-  const citations: RagCitation[] = scored.map(({ chunk, sim }) => {
-    const doc = docs.find((d) => d.id === chunk.document_id);
+  // Top result wrong family after penalty still winning → NEEDS_DATA for explicit request
+  if (explicitFamily.length && scored[0]) {
+    const topOk = explicitFamily.some((f) => scored[0].families.includes(f));
+    if (!topOk) {
+      return needsDataAnswer(
+        `No sufficiently relevant indexed source was found for ${explicitFamily.join('/')}.`
+      );
+    }
+  }
+
+  // Near-random cluster: best is weak and peers are within noise
+  if (best < RELIABLE_SCORE && second > 0 && best - second < 0.02 && best < 0.35) {
+    return {
+      ...needsDataAnswer('No sufficiently relevant indexed source was found.'),
+      confidence: Math.round(best * 100),
+    };
+  }
+
+  const citations: RagCitation[] = scored.map(({ chunk, finalScore }) => {
+    const doc = resolveDoc(chunk.document_id);
+    const pageNumber =
+      chunk.page_number ?? chunk.page_start ?? null;
     return {
       documentId: chunk.document_id,
       documentTitle: chunk.document_title || doc?.title || 'Document',
-      pageNumber: chunk.page_number ?? null,
+      pageNumber,
       paragraph: chunk.content.slice(0, 420),
-      codeReference: chunk.code_reference || doc?.applicable_codes?.[0] || null,
-      confidence: Math.round(sim * 100),
+      codeReference: chunk.code_reference || chunk.code || doc?.applicable_codes?.[0] || doc?.code || null,
+      confidence: Math.round(finalScore * 100),
       chunkId: chunk.id,
+      code: chunk.code ?? doc?.code ?? null,
+      edition: chunk.edition ?? doc?.edition ?? null,
+      section: chunk.section ?? null,
+      subsection: chunk.subsection ?? null,
+      tableReference: chunk.table_reference ?? null,
+      figureReference: chunk.figure_reference ?? null,
+      paragraphReference: chunk.paragraph_reference ?? chunk.paragraph_ref ?? null,
+      sourceDocumentId: chunk.source_document_id ?? doc?.source_document_id ?? null,
+      sourceVerificationStatus: chunk.source_verification_status ?? null,
+      documentVerificationStatus:
+        doc?.platform_verification_status ?? doc?.verification_status ?? null,
     };
   });
 
   const top = citations[0];
-  const answer = [
-    `Based on indexed company knowledge (offline RAG):`,
-    '',
-    top.paragraph,
-    '',
-    `Reference: ${top.documentTitle}${top.pageNumber != null ? ` · p.${top.pageNumber}` : ''}${
-      top.codeReference ? ` · ${top.codeReference}` : ''
-    }`,
-    `Confidence: ${top.confidence}%`,
-  ].join('\n');
+  const reliable = best >= RELIABLE_SCORE;
+  const matchStrength: RagAnswer['matchStrength'] = reliable ? 'strong' : 'weak';
+
+  const answer = reliable
+    ? [
+        `Based on indexed company knowledge (offline RAG):`,
+        '',
+        top.paragraph,
+        '',
+        `Reference: ${top.documentTitle}${top.pageNumber != null ? ` · p.${top.pageNumber}` : ''}${
+          top.codeReference ? ` · ${top.codeReference}` : ''
+        }`,
+        `Confidence: ${top.confidence}%`,
+      ].join('\n')
+    : [
+        'Weak match — engineer review required.',
+        '',
+        top.paragraph,
+        '',
+        `Indexed reference: ${top.documentTitle}${top.pageNumber != null ? ` · p.${top.pageNumber}` : ''}${
+          top.codeReference ? ` · ${top.codeReference}` : ''
+        }`,
+        `Confidence: ${top.confidence}% (not reliable)`,
+      ].join('\n');
 
   return {
     answer,
     citations,
     confidence: top.confidence,
-    reliable: true,
+    reliable,
+    matchStrength,
+    message: reliable
+      ? undefined
+      : 'مطابقة ضعيفة — تحتاج مراجعة',
   };
 }
 

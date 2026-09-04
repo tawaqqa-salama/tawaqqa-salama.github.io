@@ -87,7 +87,21 @@ export async function runKnowledgeBackedPlanAnalysis(params: {
   const ctx = buildProjectKnowledgeContext(client, data);
   const docs = await listKnowledgeDocuments();
   const matched = matchKnowledgeDocuments(docs, ctx);
-  const rag = await ragQuery(ctx.query_ar, 8);
+  const { loadSession } = await import('@/lib/auth/session');
+  const companyId = loadSession()?.companyId || null;
+  const adoptedFamilies = (ctx.applicable_codes || [])
+    .map((c) => {
+      const u = String(c).toUpperCase();
+      if (u.includes('NFPA')) return 'NFPA';
+      if (u.includes('SBC')) return 'SBC';
+      return null;
+    })
+    .filter(Boolean) as string[];
+  const rag = await ragQuery(ctx.query_ar, 8, {
+    companyId,
+    projectId: params.projectId,
+    codeFamilies: adoptedFamilies.length ? adoptedFamilies : undefined,
+  });
 
   const baseSteps: DesignAnalysisStep[] = emptyAnalysisSteps();
   const byId = new Map<DesignAnalysisStep['id'], DesignAnalysisStep>(
@@ -475,7 +489,12 @@ export async function runKnowledgeBackedSystemDesign(params: {
   const artifactRefs = snapshotToArtifactRefs(snapshot);
 
   // RAG may explain requirements but cannot invent standards outside the snapshot
-  const rag = await ragQuery(queryAr, 5);
+  const { loadSession } = await import('@/lib/auth/session');
+  const companyId = loadSession()?.companyId || null;
+  const rag = await ragQuery(queryAr, 5, {
+    companyId,
+    projectId: params.projectId,
+  });
   const kbLines = filterCitationsToApplicableCodes(rag.citations || [], snapshot);
 
   return {
@@ -525,7 +544,10 @@ export async function runKnowledgeBackedCalculation(params: {
   const resolved = resolveApplicableStandards(standardsCtx, binding.system);
   const snapshot = toSystemStandardsSnapshot(binding.system, resolved);
 
-  const rag = await ragQuery(binding.query_ar, 4);
+  const rag = await ragQuery(binding.query_ar, 4, {
+    companyId: (await import('@/lib/auth/session')).loadSession()?.companyId || null,
+    projectId: params.projectId,
+  });
   const kbLines = filterCitationsToApplicableCodes(rag.citations || [], snapshot);
 
   const values: Record<string, number | string> = {

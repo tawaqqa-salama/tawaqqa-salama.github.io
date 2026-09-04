@@ -2,16 +2,82 @@
  * Offline embedding — deterministic bag-of-tokens hash vector (384-d).
  * Production can swap for OpenAI/voyage embeddings written into pgvector;
  * this keeps RAG isolated from the internet by default.
+ *
+ * Tokenization uses search-only normalization + small lexical aliases.
+ * Display / citation text must never be overwritten with this normalized form.
  */
 
 const DIM = 384;
 
+const ARABIC_DIACRITICS = /[\u064B-\u065F\u0670]/g;
+const TATWEEL = /\u0640/g;
+
+/** Lexical aliases for retrieval only — not engineering rules. */
+const TOKEN_ALIASES: Record<string, string[]> = {
+  رشاش: ['رشاشات', 'sprinkler', 'sprinklers'],
+  رشاشات: ['رشاش', 'sprinkler', 'sprinklers'],
+  sprinkler: ['sprinklers', 'رشاش', 'رشاشات'],
+  sprinklers: ['sprinkler', 'رشاش', 'رشاشات'],
+  مضخة: ['مضخات', 'pump', 'pumps'],
+  مضخات: ['مضخة', 'pump', 'pumps'],
+  pump: ['pumps', 'مضخة', 'مضخات'],
+  pumps: ['pump', 'مضخة', 'مضخات'],
+  خزان: ['خزانات', 'tank', 'tanks'],
+  خزانات: ['خزان', 'tank', 'tanks'],
+  tank: ['tanks', 'خزان', 'خزانات'],
+  tanks: ['tank', 'خزان', 'خزانات'],
+  انذار: ['إنذار', 'alarm'],
+  إنذار: ['انذار', 'alarm'],
+  alarm: ['انذار', 'إنذار'],
+  دخان: ['smoke'],
+  smoke: ['دخان'],
+  اطفاء: ['إطفاء', 'firefighting'],
+  إطفاء: ['اطفاء', 'firefighting'],
+  firefighting: ['اطفاء', 'إطفاء'],
+  'الدفاع المدني': ['civil defense', 'civildefence'],
+  'civil defense': ['الدفاع المدني', 'civildefence'],
+};
+
+/**
+ * Search-only normalization. Do NOT overwrite stored/display evidence with this.
+ */
+export function normalizeKnowledgeSearchText(text: string): string {
+  let s = String(text || '');
+  s = s.replace(ARABIC_DIACRITICS, '');
+  s = s.replace(TATWEEL, '');
+  // Alef variants → ا
+  s = s.replace(/[أإآ]/g, 'ا');
+  // Yeh / alef maqsura — safe for search
+  s = s.replace(/ى/g, 'ي');
+  // Canonical code tokens (keep numbers)
+  s = s.replace(/\bNFPA[\s-]?(\d+(?:\.\d+)*)\b/gi, (_m, n) => ` nfpa${String(n).replace(/\./g, '')} nfpa ${n} `);
+  s = s.replace(/\bSBC[\s-]?(\d+(?:\.\d+)*)\b/gi, (_m, n) => ` sbc${String(n).replace(/\./g, '')} sbc ${n} `);
+  // Punctuation → spaces (keep digits and letters)
+  s = s.replace(/[^\p{L}\p{N}\s]+/gu, ' ');
+  s = s.replace(/\s+/g, ' ').trim().toLowerCase();
+  return s;
+}
+
+function expandAliases(token: string): string[] {
+  const out = new Set<string>([token]);
+  const aliases = TOKEN_ALIASES[token];
+  if (aliases) {
+    for (const a of aliases) out.add(a.toLowerCase());
+  }
+  // Also check if any alias key matches after alef norm
+  return [...out];
+}
+
 function tokenize(text: string): string[] {
-  return String(text || '')
-    .toLowerCase()
-    .replace(/[^\p{L}\p{N}\s]+/gu, ' ')
-    .split(/\s+/)
-    .filter((t) => t.length > 1);
+  const normalized = normalizeKnowledgeSearchText(text);
+  const base = normalized.split(/\s+/).filter((t) => t.length > 1);
+  const expanded: string[] = [];
+  for (const t of base) {
+    for (const e of expandAliases(t)) {
+      if (e.length > 1) expanded.push(e);
+    }
+  }
+  return expanded;
 }
 
 function hashToken(token: string): number {

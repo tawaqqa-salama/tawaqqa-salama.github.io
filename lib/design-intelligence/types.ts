@@ -99,6 +99,17 @@ export type RagCitation = {
   codeReference: string | null;
   confidence: number;
   chunkId: string;
+  /** Additive source lineage — null when unavailable (never fabricate). */
+  code?: string | null;
+  edition?: string | null;
+  section?: string | null;
+  subsection?: string | null;
+  tableReference?: string | null;
+  figureReference?: string | null;
+  paragraphReference?: string | null;
+  sourceDocumentId?: string | null;
+  sourceVerificationStatus?: string | null;
+  documentVerificationStatus?: string | null;
 };
 
 export type RagAnswer = {
@@ -107,6 +118,8 @@ export type RagAnswer = {
   confidence: number;
   reliable: boolean;
   message?: string;
+  /** Retrieval quality band for UI (additive). */
+  matchStrength?: 'none' | 'weak' | 'strong';
 };
 
 export type DiWorkspaceAttachment = {

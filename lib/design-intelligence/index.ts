@@ -4,12 +4,16 @@ export {
   uploadAndIndexKnowledgeFile,
   reingestKnowledgeDocumentFromStorage,
   ragQuery,
+  inferRequestedCodeFamilies,
+  MIN_RESULT_SCORE,
+  RELIABLE_SCORE,
   ensureSeedKnowledgeBase,
   knowledgeCategories,
   indexDocumentText,
   KnowledgePersistError,
   buildKnowledgeUploadDiagnostics,
   type KnowledgeUploadDiagnostics,
+  type RagQueryOptions,
 } from '@/lib/design-intelligence/knowledge-base';
 export {
   buildDefaultDesignPlan,
