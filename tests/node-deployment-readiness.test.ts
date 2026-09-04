@@ -51,7 +51,7 @@ describe('Node deployment readiness', () => {
     expect(reingestRoute).toContain('maxDuration = 300');
     expect(reingestRoute).toContain("runtime = 'nodejs'");
     expect(nodeDoc).toContain('maxDuration = 300');
-    expect(nodeDoc).toContain('ASYNC JOB');
+    expect(nodeDoc).toContain('async job/queue');
   });
 
   it('documents required public and server-only env vars', () => {
@@ -59,7 +59,8 @@ describe('Node deployment readiness', () => {
     expect(nodeDoc).toContain('NEXT_PUBLIC_SUPABASE_ANON_KEY');
     expect(nodeDoc).toContain('AUTH_SESSION_SECRET');
     expect(nodeDoc).toContain('SUPABASE_SERVICE_ROLE_KEY');
-    expect(nodeDoc).toContain('never NEXT_PUBLIC_');
+    expect(nodeDoc).toContain('Never put');
+    expect(nodeDoc).toContain('NEXT_PUBLIC_*');
     expect(nodeDoc).toContain('GitHub Pages');
     expect(nodeDoc).toContain('Rollback');
   });
