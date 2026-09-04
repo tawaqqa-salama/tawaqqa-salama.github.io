@@ -21,7 +21,12 @@ import {
 import { hasPermission } from '@/lib/auth/permissions';
 import type { PermissionCode } from '@/lib/auth/types';
 import { createUserScopedSupabase } from '@/lib/supabase/server';
-import { hasModule as checkModule, getTenant, getUserMemberships } from '@/lib/tenant/service';
+import {
+  hasModule as checkModule,
+  getTenant,
+  getUserMemberships,
+  TenantLookupError,
+} from '@/lib/tenant/service';
 import type { PlatformModuleCode, TenantMembership, TenantRecord } from '@/lib/tenant/types';
 import { isTenantAdminRole, isSuperAdminRole } from '@/lib/tenant/rbac';
 
@@ -111,9 +116,36 @@ async function buildTenantContext(
     if (!ok) throw new TenantAccessError('Not a member of this tenant');
   }
 
-  const tenant = await getTenant(tenantId, scopedClient);
-  if (!tenant || !tenant.is_active || tenant.status === 'suspended') {
-    throw new TenantAccessError('Tenant inactive or suspended', 403);
+  // Authenticated Bearer paths must not fall back to the anon client — companies RLS
+  // requires auth.uid(). A null scoped client here is a configuration failure.
+  if (accessToken && !scopedClient) {
+    throw new TenantAccessError(
+      'User-scoped Supabase client unavailable for tenant lookup',
+      503
+    );
+  }
+
+  let tenant;
+  try {
+    tenant = await getTenant(tenantId, scopedClient, {
+      requireClient: Boolean(accessToken),
+    });
+  } catch (e) {
+    if (e instanceof TenantLookupError) {
+      // RLS / query errors must NOT be reported as "inactive or suspended"
+      throw new TenantAccessError(e.message, e.status);
+    }
+    throw e;
+  }
+
+  if (!tenant) {
+    throw new TenantAccessError('Tenant not found', 404);
+  }
+  if (!tenant.is_active) {
+    throw new TenantAccessError('Tenant inactive', 403);
+  }
+  if (tenant.status === 'suspended') {
+    throw new TenantAccessError('Tenant suspended', 403);
   }
 
   return {
