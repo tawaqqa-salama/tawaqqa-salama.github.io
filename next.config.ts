@@ -60,6 +60,10 @@ const nextConfig: NextConfig = {
           images: { unoptimized: true },
         }
       : {}),
+  // Keep pdfjs-dist out of the server webpack graph so Node can import the
+  // worker module from node_modules at runtime (Vercel). Avoids require.resolve
+  // → numeric module id → pathToFileURL crashes in bundled server functions.
+  serverExternalPackages: ["pdfjs-dist"],
   // Production bundles must not include local seed credentials or demo data.
   // Local development keeps the real in-memory implementation for demos/tests.
   turbopack: isProductionBuild
