@@ -83,10 +83,13 @@ export async function ensureNodePdfjsFakeWorkerPrimed(): Promise<void> {
 
   const g = globalThis as typeof globalThis & { pdfjsWorker?: PdfJsWorkerModule };
   if (!g.pdfjsWorker?.WorkerMessageHandler) {
+    // Dynamic specifier (sentinel) avoids TS module resolution of the .mjs worker
+    // and keeps webpack from rewriting a require.resolve path to a numeric id.
+    const workerSpecifier: string = NODE_PDF_WORKER_SRC_SENTINEL;
     const worker = (await import(
       /* webpackIgnore: true */
       /* @vite-ignore */
-      'pdfjs-dist/legacy/build/pdf.worker.min.mjs'
+      workerSpecifier
     )) as PdfJsWorkerModule;
     if (!worker?.WorkerMessageHandler) {
       throw new Error(

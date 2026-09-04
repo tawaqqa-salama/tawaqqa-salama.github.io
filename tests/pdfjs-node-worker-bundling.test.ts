@@ -154,6 +154,8 @@ describe('pdfjs Node/Vercel worker bundling safety', () => {
 
     const files = walkFiles(serverDir);
     const hits: string[] = [];
+    let sawFakeWorkerPrime = false;
+    let sawNumericGuard = false;
     for (const file of files) {
       const src = readFileSync(file, 'utf8');
       // Classic failure pattern: pathToFileURL(<number>) or pathToFileURL(29083)
@@ -168,7 +170,20 @@ describe('pdfjs Node/Vercel worker bundling safety', () => {
       ) {
         hits.push(`${file}: pathToFileURL + resolve + pdf.worker`);
       }
+      if (
+        /pdfjsWorker/.test(src) &&
+        /WorkerMessageHandler/.test(src) &&
+        /legacy\/build\/pdf\.worker/.test(src)
+      ) {
+        sawFakeWorkerPrime = true;
+      }
+      if (/pdf_worker_src_invalid/.test(src)) {
+        sawNumericGuard = true;
+      }
     }
     expect(hits).toEqual([]);
+    // Positive proof the Node strategy landed in the production server graph.
+    expect(sawFakeWorkerPrime).toBe(true);
+    expect(sawNumericGuard).toBe(true);
   });
 });
