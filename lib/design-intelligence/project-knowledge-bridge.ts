@@ -356,23 +356,41 @@ export async function runProjectKnowledgeCompliance(params: {
   const recommendations: ComplianceRecommendation[] = [];
   const citations: DesignKnowledgeCitation[] = [];
 
-  const rag = await ragQuery(ctx.query_ar, 6);
+  const { loadSession } = await import('@/lib/auth/session');
+  const companyId = loadSession()?.companyId || null;
+  const adoptedFamilies = (ctx.applicable_codes || [])
+    .map((c) => {
+      const u = String(c).toUpperCase();
+      if (u.includes('NFPA')) return 'NFPA';
+      if (u.includes('SBC')) return 'SBC';
+      return null;
+    })
+    .filter(Boolean) as string[];
+  const rag = await ragQuery(ctx.query_ar, 6, {
+    companyId,
+    projectId: ctx.projectId,
+    codeFamilies: adoptedFamilies.length ? adoptedFamilies : undefined,
+  });
   if (rag.reliable && rag.citations.length) {
     for (const c of rag.citations) {
       citations.push(citationFromRag(c));
       findings.push({
         id: `kb-${c.chunkId}`,
-        severity: c.confidence >= 40 ? 'warning' : 'info',
+        severity: c.confidence >= 45 ? 'warning' : 'info',
         code: c.codeReference || 'CD-KB',
         category: 'other',
-        message_ar: `مرجع معرفة: ${c.documentTitle} — ${c.paragraph.slice(0, 220)}`,
-        message_en: `Knowledge ref: ${c.documentTitle} — ${c.paragraph.slice(0, 220)}`,
+        message_ar: `مرجع مفهرس مرتبط: ${c.documentTitle} — ${c.paragraph.slice(0, 220)}`,
+        message_en: `Indexed reference related to topic: ${c.documentTitle} — ${c.paragraph.slice(0, 220)}`,
       });
     }
     recommendations.push({
       id: 'kb-rag-primary',
-      text_ar: `راجع الاشتراطات المرتبطة من قاعدة المعرفة (${rag.citations.length} مرجع، ثقة ${rag.confidence}%).`,
-      text_en: `Review linked knowledge-base requirements (${rag.citations.length} citations, ${rag.confidence}% confidence).`,
+      text_ar: adoptedFamilies.length
+        ? `راجع المراجع المفهرسة المرتبطة بالأكواد المعتمدة (${rag.citations.length} مرجع، ثقة ${rag.confidence}%).`
+        : `راجع المراجع المفهرسة المرتبطة بالموضوع (${rag.citations.length} مرجع، ثقة ${rag.confidence}%) — دون ادعاء انطباق تلقائي.`,
+      text_en: adoptedFamilies.length
+        ? `Review indexed references linked to adopted codes (${rag.citations.length} citations, ${rag.confidence}% confidence).`
+        : `Review indexed references related to the topic (${rag.citations.length} citations, ${rag.confidence}% confidence) — not automatic applicability.`,
     });
   } else {
     recommendations.push({

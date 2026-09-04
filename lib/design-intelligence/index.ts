@@ -4,12 +4,16 @@ export {
   uploadAndIndexKnowledgeFile,
   reingestKnowledgeDocumentFromStorage,
   ragQuery,
+  inferRequestedCodeFamilies,
+  MIN_RESULT_SCORE,
+  RELIABLE_SCORE,
   ensureSeedKnowledgeBase,
   knowledgeCategories,
   indexDocumentText,
   KnowledgePersistError,
   buildKnowledgeUploadDiagnostics,
   type KnowledgeUploadDiagnostics,
+  type RagQueryOptions,
 } from '@/lib/design-intelligence/knowledge-base';
 export {
   buildDefaultDesignPlan,
@@ -73,3 +77,7 @@ export {
   describeSalesKnowledgePreview,
   QUOTATION_SERVICE_KNOWLEDGE_MAP,
 } from '@/lib/design-intelligence/project-knowledge-bridge';
+export {
+  isVerifiedKnowledgeStatus,
+  shouldWarnUnverifiedKnowledgeSource,
+} from '@/lib/design-intelligence/verification-status';

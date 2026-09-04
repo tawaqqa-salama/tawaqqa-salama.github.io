@@ -120,6 +120,7 @@ export {
   applyOcrFallbackToPages,
   pagesFromPlainText,
   chunkPagesPreserving,
+  reconstructPageText,
 } from '@/lib/design-intelligence/code-knowledge/pdf-page-extract';
 export {
   searchCodeKnowledge,

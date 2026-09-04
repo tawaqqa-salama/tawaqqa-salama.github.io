@@ -54,6 +54,7 @@ import {
   type KnowledgeDeleteResult,
   type RagAnswer,
 } from '@/lib/design-intelligence';
+import { shouldWarnUnverifiedKnowledgeSource } from '@/lib/design-intelligence/verification-status';
 import EngineeringRulesPanel from '@/components/design/EngineeringRulesPanel';
 import CodeKnowledgePanel from '@/components/design/CodeKnowledgePanel';
 import { runBlueprintAiAudit } from '@/lib/compliance/blueprint-audit';
@@ -182,10 +183,23 @@ export default function DesignIntelligenceModule() {
     [docs]
   );
   const ragReady = Boolean(tenantCompanyId && indexedKnowledgeDocs.length);
+  const hasAdoptedCodes = Boolean(
+    activeWs?.applicable_codes && activeWs.applicable_codes.length > 0
+  );
   const ragPromptSuggestions = [
-    lang === 'en' ? 'What NFPA requirements apply to this project?' : 'ما متطلبات NFPA المنطبقة على هذا المشروع؟',
-    lang === 'en' ? 'What fire pump requirements are cited in the indexed files?' : 'ما متطلبات مضخة الحريق المذكورة في الملفات المفهرسة؟',
-    lang === 'en' ? 'Show the cited sprinkler spacing and coverage references.' : 'اعرض مراجع تباعد وتغطية الرشاشات المذكورة.',
+    lang === 'en'
+      ? hasAdoptedCodes
+        ? 'What NFPA references are linked to the adopted codes for this project?'
+        : 'What NFPA requirements are mentioned in the indexed files?'
+      : hasAdoptedCodes
+        ? 'ما مراجع NFPA المرتبطة بالأكواد المعتمدة لهذا المشروع؟'
+        : 'ما متطلبات NFPA المذكورة في الملفات المفهرسة؟',
+    lang === 'en'
+      ? 'What fire pump requirements are cited in the indexed files?'
+      : 'ما متطلبات مضخة الحريق المذكورة في الملفات المفهرسة؟',
+    lang === 'en'
+      ? 'Show the cited sprinkler spacing and coverage references.'
+      : 'اعرض مراجع تباعد وتغطية الرشاشات المذكورة.',
   ];
 
   const onUpload = async () => {
@@ -846,47 +860,130 @@ export default function DesignIntelligenceModule() {
             {label('design.rag.ask', 'Ask knowledge base')}
           </button>
           {rag ? (
-            <div dir="rtl" className="rounded-xl border border-slate-200 bg-slate-50 p-4 text-right space-y-3">
+            <div
+              dir={lang === 'ar' ? 'rtl' : 'ltr'}
+              className="rounded-xl border border-slate-200 bg-slate-50 p-4 space-y-3"
+              style={{ textAlign: lang === 'ar' ? 'right' : 'left' }}
+            >
               <div className="flex flex-wrap items-center justify-between gap-2">
                 <h3 className="text-sm font-bold text-slate-900">
                   {lang === 'en' ? 'Retrieved evidence' : 'الأدلة المسترجعة'}
                 </h3>
-                <span className={`rounded-full px-2.5 py-1 text-xs font-semibold ${
-                  rag.reliable ? 'bg-emerald-100 text-emerald-800' : 'bg-amber-100 text-amber-800'
-                }`}>
-                  {lang === 'en'
-                    ? `${rag.reliable ? 'Reliable' : 'Needs review'} · ${rag.confidence}% confidence`
-                    : `${rag.reliable ? 'موثوق' : 'يحتاج مراجعة'} · الثقة ${rag.confidence}%`}
-                </span>
+                {(() => {
+                  const strength =
+                    rag.matchStrength ||
+                    (rag.reliable ? 'strong' : rag.citations.length ? 'weak' : 'none');
+                  const pct = rag.confidence;
+                  if (strength === 'none' || (!rag.citations.length && !rag.reliable)) {
+                    return (
+                      <span className="rounded-full px-2.5 py-1 text-xs font-semibold bg-amber-100 text-amber-800">
+                        {lang === 'en'
+                          ? 'No sufficiently reliable reference'
+                          : 'لا يوجد مرجع موثوق كافٍ'}
+                      </span>
+                    );
+                  }
+                  if (strength === 'strong' && rag.reliable) {
+                    return (
+                      <span className="rounded-full px-2.5 py-1 text-xs font-semibold bg-emerald-100 text-emerald-800">
+                        {lang === 'en'
+                          ? `Strong match · ${pct}% confidence`
+                          : `مطابقة قوية · الثقة ${pct}%`}
+                      </span>
+                    );
+                  }
+                  return (
+                    <span className="rounded-full px-2.5 py-1 text-xs font-semibold bg-amber-100 text-amber-800">
+                      {lang === 'en'
+                        ? `Weak match · needs review · ${pct}%`
+                        : `مطابقة ضعيفة · تحتاج مراجعة · ${pct}%`}
+                    </span>
+                  );
+                })()}
               </div>
               {rag.citations.length ? (
                 <>
                   <div className="rounded-lg border border-emerald-100 bg-white p-3">
                     <p className="text-xs font-semibold text-emerald-800">
-                      {lang === 'en' ? 'Top evidence' : 'أقوى دليل مسترجع'}
+                      {rag.reliable
+                        ? lang === 'en'
+                          ? 'Strongest matching evidence'
+                          : 'أقوى دليل مطابق'
+                        : lang === 'en'
+                          ? 'Best matching result'
+                          : 'أفضل نتيجة مطابقة'}
                     </p>
-                    <p dir="auto" className="mt-1 text-sm leading-7 text-slate-800">
+                    <p
+                      dir={lang === 'ar' ? 'rtl' : 'ltr'}
+                      className="mt-1 text-sm leading-7 text-slate-800 break-words whitespace-pre-wrap"
+                      style={{ unicodeBidi: 'plaintext' }}
+                    >
                       {rag.citations[0].paragraph}
                     </p>
                   </div>
                   <div className="space-y-2">
-                    {rag.citations.map((c, index) => (
-                      <article key={c.chunkId} className="rounded-lg border border-slate-200 bg-white p-3 text-xs">
-                        <div className="flex flex-wrap items-center gap-x-3 gap-y-1 font-semibold text-emerald-900">
-                          <span>{lang === 'en' ? `Reference ${index + 1}` : `المرجع ${index + 1}`}</span>
-                          <span dir="auto">{c.documentTitle}</span>
-                          <span dir="ltr">{lang === 'en' ? 'Page' : 'صفحة'} {c.pageNumber ?? '—'}</span>
-                          {c.codeReference ? <span dir="auto">{c.codeReference}</span> : null}
-                          <span>{c.confidence}%</span>
-                        </div>
-                        <p dir="auto" className="mt-1 leading-6 text-slate-600">{c.paragraph}</p>
-                      </article>
-                    ))}
+                    {rag.citations.map((c, index) => {
+                      const unverified = shouldWarnUnverifiedKnowledgeSource({
+                        sourceVerificationStatus: c.sourceVerificationStatus,
+                        documentVerificationStatus: c.documentVerificationStatus,
+                        platformVerificationStatus: c.platformVerificationStatus,
+                      });
+                      return (
+                        <article
+                          key={c.chunkId}
+                          className="rounded-lg border border-slate-200 bg-white p-3 text-xs"
+                        >
+                          <div className="flex flex-wrap items-center gap-x-3 gap-y-1 font-semibold text-emerald-900">
+                            <span>
+                              {lang === 'en' ? `Reference ${index + 1}` : `المرجع ${index + 1}`}
+                            </span>
+                            <bdi>{c.documentTitle}</bdi>
+                            <bdi dir="ltr">
+                              {lang === 'en' ? 'Page' : 'صفحة'} {c.pageNumber ?? '—'}
+                            </bdi>
+                            {c.code || c.codeReference ? (
+                              <bdi dir="ltr">{c.code || c.codeReference}</bdi>
+                            ) : null}
+                            {c.edition ? <bdi dir="ltr">{c.edition}</bdi> : null}
+                            {c.section || c.tableReference || c.paragraphReference ? (
+                              <bdi dir="ltr">
+                                {[c.section, c.tableReference, c.paragraphReference]
+                                  .filter(Boolean)
+                                  .join(' · ')}
+                              </bdi>
+                            ) : null}
+                            <span>{c.confidence}%</span>
+                          </div>
+                          {unverified ? (
+                            <p className="mt-1 text-[11px] text-amber-800">
+                              {lang === 'en'
+                                ? 'Source is indexed, but not approved as a verified engineering baseline.'
+                                : 'المصدر مفهرس، لكنه غير مُعتمد كقاعدة هندسية موثقة.'}
+                            </p>
+                          ) : null}
+                          <p
+                            dir={lang === 'ar' ? 'rtl' : 'ltr'}
+                            className="mt-1 leading-6 text-slate-600 break-words whitespace-pre-wrap"
+                            style={{ unicodeBidi: 'plaintext' }}
+                          >
+                            {c.paragraph}
+                          </p>
+                        </article>
+                      );
+                    })}
                   </div>
                 </>
               ) : (
-                <p dir="auto" className="text-sm leading-7 text-slate-700">
-                  {rag.answer}
+                <p
+                  dir={lang === 'ar' ? 'rtl' : 'ltr'}
+                  className="text-sm leading-7 text-slate-700 break-words whitespace-pre-wrap"
+                  style={{ unicodeBidi: 'plaintext' }}
+                >
+                  {rag.answer === 'NEEDS_DATA'
+                    ? lang === 'en'
+                      ? rag.message || 'No sufficiently relevant indexed source was found.'
+                      : rag.message || 'لا يوجد مرجع موثوق كافٍ'
+                    : rag.answer}
                 </p>
               )}
             </div>
