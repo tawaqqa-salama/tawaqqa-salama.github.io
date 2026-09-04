@@ -69,6 +69,12 @@ export {
   listCodeKnowledgeDocumentsForUi,
 } from '@/lib/design-intelligence/code-knowledge/storage-ingestion';
 export {
+  canReingestKnowledgeRole,
+  findExistingNfpa13Document,
+  isKnowledgeDocumentPresentInStorage,
+  uploadMissingFileMessage,
+} from '@/lib/design-intelligence/code-knowledge/presence';
+export {
   DESIGN_KNOWLEDGE_FILE_SIZE_LIMIT_BYTES,
   RESUMABLE_UPLOAD_THRESHOLD_BYTES,
   TUS_CHUNK_SIZE_BYTES,
