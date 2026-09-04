@@ -1,6 +1,7 @@
 export {
   listKnowledgeDocuments,
   listKnowledgeDocumentsSync,
+  resolveKnowledgeDocumentsForUiMode,
   uploadAndIndexKnowledgeFile,
   reingestKnowledgeDocumentFromStorage,
   ragQuery,

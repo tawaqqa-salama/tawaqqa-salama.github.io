@@ -295,11 +295,15 @@ export function listKnowledgeDocumentsSync(): DiKnowledgeDocument[] {
   return readLocalDocs().filter((d) => !d.deleted_at);
 }
 
+/**
+ * Production-supabase: return tenant-scoped Supabase rows only.
+ * Do not merge stale localStorage/session docs (e.g. old chunk_count) into the list.
+ * Demo: seed + local/session memory.
+ */
 export async function listKnowledgeDocuments(options?: {
   companyId?: string | null;
 }): Promise<DiKnowledgeDocument[]> {
-  ensureSeedKnowledgeBase();
-  if (!isDemoMode) {
+  if (!isDemoMode && isSupabaseConfigured) {
     let query = supabase
       .from('di_knowledge_documents')
       .select('*')
@@ -310,21 +314,33 @@ export async function listKnowledgeDocuments(options?: {
       query = query.eq('company_id', options.companyId);
     }
     const { data, error } = await query;
-    if (!error && data?.length) {
-      const remote = data as DiKnowledgeDocument[];
-      // Merge into memory so UI stays consistent without bloating localStorage
-      const local = readLocalDocs().filter(
-        (d) => !d.deleted_at && !remote.some((r) => r.id === d.id)
-      );
-      writeLocalDocs([
-        ...remote,
-        ...local,
-        ...readLocalDocs().filter((d) => Boolean(d.deleted_at)),
-      ]);
-      return readLocalDocs().filter((d) => !d.deleted_at);
+    if (error) {
+      // Never fall back to stale local chunk counts in production.
+      return [];
     }
+    const remote = ((data || []) as DiKnowledgeDocument[]).filter((d) => !d.deleted_at);
+    // Replace in-memory cache with canonical remote rows only (no local merge).
+    writeLocalDocs(remote);
+    return remote;
   }
+
+  ensureSeedKnowledgeBase();
   return readLocalDocs().filter((d) => !d.deleted_at);
+}
+
+/**
+ * Pure helper for tests / UI: in production-supabase mode, persisted counts win
+ * and local-only rows are dropped. Demo keeps local list.
+ */
+export function resolveKnowledgeDocumentsForUiMode(input: {
+  productionSupabase: boolean;
+  persistedDocuments: DiKnowledgeDocument[];
+  localDocuments: DiKnowledgeDocument[];
+}): DiKnowledgeDocument[] {
+  if (input.productionSupabase) {
+    return input.persistedDocuments;
+  }
+  return input.localDocuments;
 }
 
 /** Includes soft-deleted rows (delete / duplicate helpers). */
