@@ -1,9 +1,11 @@
 /**
  * Platform routes must re-check live DB role — never trust cookie roleCode alone.
+ * Prefer Bearer JWT for Production Node hosts without service role.
  */
 
 import { NextResponse } from 'next/server';
 import { getSessionFromRequest } from '@/lib/tenant/context';
+import { getBearerAccessToken } from '@/lib/auth/bearer';
 import {
   ActorValidationError,
   resolveLiveActor,
@@ -24,7 +26,9 @@ export async function requireLivePlatformAdmin(request: Request): Promise<Platfo
     };
   }
   try {
-    const actor = await resolveLiveActor(session);
+    const actor = await resolveLiveActor(session, {
+      accessToken: getBearerAccessToken(request),
+    });
     if (!actor.isPlatformAdmin) {
       return {
         ok: false,

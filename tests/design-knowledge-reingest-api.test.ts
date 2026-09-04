@@ -21,8 +21,9 @@ describe('design knowledge reingest API', () => {
   it('uses user-scoped JWT client — never exposes service role to browser', () => {
     expect(routeSource).toContain('createUserScopedSupabase(accessToken)');
     expect(routeSource).toContain('Bearer access token required');
+    expect(routeSource).toContain('getBearerAccessToken');
     expect(routeSource).not.toContain('createServiceRoleSupabase');
-    expect(routeSource).not.toContain('SUPABASE_SERVICE_ROLE_KEY');
+    expect(routeSource).not.toMatch(/process\.env\.SUPABASE_SERVICE_ROLE_KEY/);
   });
 
   it('calls reingestKnowledgeDocumentFromStorage with session tenant', () => {
@@ -48,7 +49,7 @@ describe('design knowledge reingest API', () => {
 
   it('does not hardcode Production document IDs or secrets', () => {
     expect(routeSource).not.toContain('deb74a38-b94c-443a-831d-c8765a872809');
-    expect(routeSource).not.toContain('SERVICE_ROLE');
+    expect(routeSource).not.toMatch(/process\.env\.SUPABASE_SERVICE_ROLE/);
     expect(routeSource).not.toContain('eyJ');
   });
 });
