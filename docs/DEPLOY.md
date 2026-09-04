@@ -4,7 +4,7 @@
 
 - الكود المصدري (Next.js) على الفرع `main`
 - **واجهات ثابتة** عبر GitHub Pages → **https://tawaqqa-salama.github.io/**
-- **ERP حي (API + ZATCA)** عبر استضافة Node (Vercel موصى به) — انظر **[P0_PRODUCTION.md](./P0_PRODUCTION.md)**
+- **ERP حي (API + ZATCA)** عبر استضافة Node (Vercel موصى به) — انظر **[NODE_DEPLOYMENT.md](./NODE_DEPLOYMENT.md)** و **[P0_PRODUCTION.md](./P0_PRODUCTION.md)**
 
 لا حاجة لمستودع `taha` منفصل ولا لـ `USER_PAGES_TOKEN`.
 
@@ -12,8 +12,10 @@
 
 | المسار | Workflow | `app/api` | متى تستخدمه |
 |--------|----------|-----------|-------------|
-| GitHub Pages | `deploy-pages.yml` | يُخفى أثناء البناء | عرض عام / بدون ZATCA حي |
-| Node / Vercel | تكامل Vercel + `deploy-node.yml` للتحقق | يبقى | إنتاج محاسبة + فوترة |
+| GitHub Pages | `deploy-pages.yml` | يُخفى أثناء البناء | عرض عام / بدون ZATCA حي (fallback مؤقت) |
+| Node / Vercel | تكامل Vercel + `deploy-node.yml` للتحقق | يبقى | إنتاج محاسبة + فوترة + Knowledge API |
+
+خطوات إنشاء مشروع Vercel والتحقق قبل قطع الدومين: **[NODE_DEPLOYMENT.md](./NODE_DEPLOYMENT.md)**.
 
 ## تفعيل Pages (مرة واحدة)
 

@@ -14,12 +14,15 @@
 | GitHub Pages | لا | واجهة عرض / تسويق فقط |
 
 ### تفعيل Vercel
+الدليل التفصيلي (مع التحقق وRollback مع بقاء Pages): **[NODE_DEPLOYMENT.md](./NODE_DEPLOYMENT.md)**.
+
 1. اربط المستودع بـ Vercel
 2. Environment variables:
    - `NEXT_PUBLIC_SUPABASE_URL`
    - `NEXT_PUBLIC_SUPABASE_ANON_KEY`
-   - لا تضبط `USER_PAGES` أو `GITHUB_PAGES`
-3. طبّق SQL: `npm run db:apply-dds` (يشمل 029)
+   - `AUTH_SESSION_SECRET` (server-only)
+   - لا تضبط `USER_PAGES` أو `GITHUB_PAGES` أو `NEXT_PUBLIC_STATIC_EXPORT`
+3. طبّق SQL: `npm run db:apply-dds` (يشمل 029) — لا تغيّر بيانات Production من Cursor
 4. تأكد أن مستخدمي النظام لديهم `users.auth_user_id` مربوط بـ Supabase Auth
 
 ### متغيرات اختيارية

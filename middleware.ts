@@ -12,6 +12,7 @@ const PUBLIC_PREFIXES = [
   '/favicon',
   '/icons',
   '/assets',
+  '/api/health', // unauthenticated Node host liveness (no secrets)
   '/api/auth/session', // allow establishing cookie
   '/api/integrations/whatsapp/webhook', // Meta Cloud API webhook (verified by token/signature)
   '/api/whatsapp/webhook', // alias used by Meta/Vercel callback URLs

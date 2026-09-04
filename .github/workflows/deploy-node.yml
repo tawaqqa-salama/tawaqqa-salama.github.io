@@ -36,12 +36,18 @@ jobs:
         run: npm test
       - name: Build Node app (with API routes)
         env:
-          # Force non-export build so Route Handlers remain
+          # Force non-export build so Route Handlers + middleware remain
           USER_PAGES: ""
           GITHUB_PAGES: ""
+          NEXT_PUBLIC_STATIC_EXPORT: ""
+          NEXT_PUBLIC_USER_PAGES: ""
+          NEXT_PUBLIC_GITHUB_PAGES: ""
           ALLOW_DEMO_MODE: "true"
           NEXT_PUBLIC_SUPABASE_URL: ${{ secrets.NEXT_PUBLIC_SUPABASE_URL }}
           NEXT_PUBLIC_SUPABASE_ANON_KEY: ${{ secrets.NEXT_PUBLIC_SUPABASE_ANON_KEY }}
         run: |
           echo "Building Next.js for Node hosting (output export DISABLED)"
           npm run build
+          # Confirm Route Handlers were compiled into the server build
+          test -d .next/server/app/api
+          test -f .next/server/app/api/health/route.js || test -f .next/server/app/api/health/route.js.nft.json || ls .next/server/app/api/health
