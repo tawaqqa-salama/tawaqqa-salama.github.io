@@ -26,6 +26,11 @@ export function hasServiceRoleKey(): boolean {
 
 /**
  * Anon client authenticated as the given access token so auth.uid() / RLS apply.
+ *
+ * Uses the supabase-js `accessToken` option so PostgREST Authorization is the
+ * user JWT (not the anon key fallback). Also sets the Bearer header for clients
+ * that read global headers. Required for companies/users RLS on Node hosts
+ * without a service-role key.
  */
 export function createUserScopedSupabase(accessToken: string): SupabaseClient | null {
   if (!isSupabaseConfigured || isDemoMode) return null;
@@ -35,6 +40,7 @@ export function createUserScopedSupabase(accessToken: string): SupabaseClient | 
   if (!url || !key || !token) return null;
 
   return createClient(url, key, {
+    accessToken: async () => token,
     global: {
       headers: { Authorization: `Bearer ${token}` },
     },
