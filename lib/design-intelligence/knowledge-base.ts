@@ -1,11 +1,6 @@
+import type { SupabaseClient } from '@supabase/supabase-js';
 import { EKB_TOPICS } from '@/lib/compliance/ekb-catalog';
-import {
-  cosineSimilarity,
-  embedText,
-  chunkText,
-  extractTextFromFile,
-  normalizeKnowledgeSearchText,
-} from '@/lib/design-intelligence/embeddings';
+import { cosineSimilarity, embedText, chunkText, extractTextFromFile, normalizeKnowledgeSearchText } from '@/lib/design-intelligence/embeddings';
 import { completeIndexingJob, enqueueIndexingJob } from '@/lib/design-intelligence/jobs';
 import type {
   DiKnowledgeChunk,
@@ -482,12 +477,16 @@ async function upsertKnowledgeDocumentStub(
   return { ok: true };
 }
 
-async function verifyPersistedKnowledgeRows(documentId: string): Promise<{
+async function verifyPersistedKnowledgeRows(
+  documentId: string,
+  client?: SupabaseClient
+): Promise<{
   ok: boolean;
   chunkCount: number;
   error?: string;
 }> {
-  const { data: doc, error: docErr } = await supabase
+  const db = client || supabase;
+  const { data: doc, error: docErr } = await db
     .from('di_knowledge_documents')
     .select('id, index_status, chunk_count')
     .eq('id', documentId)
@@ -496,7 +495,7 @@ async function verifyPersistedKnowledgeRows(documentId: string): Promise<{
   if (docErr) return { ok: false, chunkCount: 0, error: docErr.message };
   if (!doc) return { ok: false, chunkCount: 0, error: 'db_document_missing' };
 
-  const { count, error: chunkErr } = await supabase
+  const { count, error: chunkErr } = await db
     .from('di_knowledge_chunks')
     .select('id', { count: 'exact', head: true })
     .eq('document_id', documentId);
@@ -521,9 +520,12 @@ export async function indexDocumentText(
   opts?: {
     /** When true (Production Knowledge upload), DB+chunk persistence is required. */
     requireCloudPersist?: boolean;
+    /** Optional user-scoped / server client so RLS applies (never browser service role). */
+    client?: SupabaseClient;
   }
 ): Promise<{ doc: DiKnowledgeDocument; chunks: DiKnowledgeChunk[]; persistedToCloud: boolean }> {
   const requireCloud = Boolean(opts?.requireCloudPersist) || isSupabaseConfigured;
+  const db = opts?.client || supabase;
   const pageTexts = pageMeta?.page_texts?.length
     ? pageMeta.page_texts.map((t, i) => ({
         page: i + 1,
@@ -636,7 +638,7 @@ export async function indexDocumentText(
     const companyId =
       updated.company_id && isUuid(updated.company_id) ? updated.company_id : null;
 
-    const { error: docErr } = await supabase.from('di_knowledge_documents').upsert({
+    const { error: docErr } = await db.from('di_knowledge_documents').upsert({
       id: updated.id,
       company_id: companyId,
       title: updated.title,
@@ -673,6 +675,7 @@ export async function indexDocumentText(
       pages_extracted: updated.pages_extracted,
       pages_ocr: updated.pages_ocr,
       ingestion_status: updated.ingestion_status,
+      ingestion_version: updated.ingestion_version ?? null,
       extraction_status: updated.extraction_status,
       extract_status: updated.extract_status,
       ocr_status: updated.ocr_status,
@@ -681,6 +684,7 @@ export async function indexDocumentText(
       code: updated.code,
       edition: updated.edition,
       source_type: updated.source_type,
+      verification_status: updated.verification_status ?? null,
       platform_verification_status: updated.platform_verification_status,
       updated_at: updated.updated_at,
       created_at: updated.created_at || now,
@@ -691,11 +695,11 @@ export async function indexDocumentText(
       throw new Error(`di_knowledge_documents insert failed: ${docErr.message}`);
     }
 
-    await supabase.from('di_knowledge_chunks').delete().eq('document_id', doc.id);
+    await db.from('di_knowledge_chunks').delete().eq('document_id', doc.id);
     const batchSize = 50;
     for (let i = 0; i < chunks.length; i += batchSize) {
       const batch = chunks.slice(i, i + batchSize);
-      const { error: chunkErr } = await supabase.from('di_knowledge_chunks').insert(
+      const { error: chunkErr } = await db.from('di_knowledge_chunks').insert(
         batch.map((c) => ({
           id: c.id,
           company_id: companyId,
@@ -724,7 +728,7 @@ export async function indexDocumentText(
       }
     }
 
-    const verified = await verifyPersistedKnowledgeRows(updated.id);
+    const verified = await verifyPersistedKnowledgeRows(updated.id, db);
     if (!verified.ok) {
       updated.index_status = 'failed';
       updated.ingestion_status = 'failed';
@@ -1315,9 +1319,16 @@ export async function uploadAndIndexKnowledgeFile(input: {
 /**
  * Re-ingest an existing knowledge document from its private Storage object.
  * Does NOT create a new document row. Replaces chunks for the same document_id.
+ *
+ * Pass `companyId` (and preferably a user-scoped `client`) from authenticated
+ * server routes so tenant isolation is enforced before any Storage/DB write.
  */
 export async function reingestKnowledgeDocumentFromStorage(
-  documentId: string
+  documentId: string,
+  opts?: {
+    companyId?: string | null;
+    client?: SupabaseClient;
+  }
 ): Promise<{
   ok: boolean;
   doc?: DiKnowledgeDocument;
@@ -1326,12 +1337,46 @@ export async function reingestKnowledgeDocumentFromStorage(
   page_count?: number | null;
   error?: string;
 }> {
-  const existing =
-    readLocalDocs().find((d) => d.id === documentId) ||
-    (await listKnowledgeDocuments()).find((d) => d.id === documentId);
-  if (!existing) {
+  if (!isUuid(documentId)) {
+    return { ok: false, chunks_before: 0, chunks_after: 0, error: 'invalid_document_id' };
+  }
+
+  const db = opts?.client || supabase;
+  const companyId = opts?.companyId && isUuid(opts.companyId) ? opts.companyId : null;
+
+  let existing: DiKnowledgeDocument | undefined;
+
+  if (!isDemoMode && companyId) {
+    const { data, error } = await db
+      .from('di_knowledge_documents')
+      .select('*')
+      .eq('id', documentId)
+      .eq('company_id', companyId)
+      .is('deleted_at', null)
+      .maybeSingle();
+    if (error) {
+      return { ok: false, chunks_before: 0, chunks_after: 0, error: error.message };
+    }
+    existing = (data as DiKnowledgeDocument | null) || undefined;
+  } else {
+    existing =
+      readLocalDocs().find((d) => d.id === documentId) ||
+      (await listKnowledgeDocuments(companyId ? { companyId } : undefined)).find(
+        (d) => d.id === documentId
+      );
+  }
+
+  if (!existing || existing.deleted_at) {
     return { ok: false, chunks_before: 0, chunks_after: 0, error: 'document_missing' };
   }
+
+  if (companyId && existing.company_id && existing.company_id !== companyId) {
+    return { ok: false, chunks_before: 0, chunks_after: 0, error: 'company_mismatch' };
+  }
+  if (companyId && !existing.company_id) {
+    return { ok: false, chunks_before: 0, chunks_after: 0, error: 'company_mismatch' };
+  }
+
   if (!existing.storage_path) {
     return {
       ok: false,
@@ -1341,10 +1386,19 @@ export async function reingestKnowledgeDocumentFromStorage(
     };
   }
 
-  const chunks_before =
-    readLocalChunks().filter((c) => c.document_id === documentId).length ||
-    existing.chunk_count ||
-    0;
+  // Record original counts before any write
+  let chunks_before = existing.chunk_count || 0;
+  if (!isDemoMode && companyId) {
+    const { count } = await db
+      .from('di_knowledge_chunks')
+      .select('id', { count: 'exact', head: true })
+      .eq('document_id', documentId)
+      .eq('company_id', companyId);
+    if (typeof count === 'number') chunks_before = count;
+  } else {
+    const localCount = readLocalChunks().filter((c) => c.document_id === documentId).length;
+    if (localCount) chunks_before = localCount;
+  }
 
   if (isDemoMode) {
     return {
@@ -1356,7 +1410,7 @@ export async function reingestKnowledgeDocumentFromStorage(
   }
 
   const bucket = existing.storage_bucket || CODE_KNOWLEDGE_STORAGE_BUCKET;
-  const { data, error } = await supabase.storage.from(bucket).download(existing.storage_path);
+  const { data, error } = await db.storage.from(bucket).download(existing.storage_path);
   if (error || !data) {
     return {
       ok: false,
@@ -1366,31 +1420,79 @@ export async function reingestKnowledgeDocumentFromStorage(
     };
   }
 
-  const bytes = new Uint8Array(await data.arrayBuffer());
-  const sha256 = await sha256HexFromBytes(bytes);
-  const file = new File([bytes], existing.file_name || 'document.pdf', {
-    type: existing.file_mime || existing.mime_type || 'application/pdf',
-  });
-  const extracted = await extractTextFromFile(file);
-
-  existing.ingestion_status = 'extracting';
-  existing.ingestion_version = (existing.ingestion_version || 1) + 1;
-  const { doc, chunks } = await indexDocumentText(existing, extracted.text, extracted.ocrUsed, {
-    page_count: extracted.page_count,
-    pages_extracted: extracted.pages_extracted,
-    pages_ocr: extracted.pages_ocr,
-    page_texts: extracted.page_texts,
-    extraction_method: extracted.extraction_method,
-    sha256,
-  });
-
-  return {
-    ok: true,
-    doc,
-    chunks_before,
-    chunks_after: chunks.length,
-    page_count: doc.page_count,
+  // Preserve identity + verification metadata; only bump ingestion_version
+  const preserved: DiKnowledgeDocument = {
+    ...existing,
+    company_id: existing.company_id || companyId,
+    code: existing.code,
+    edition: existing.edition,
+    storage_path: existing.storage_path,
+    storage_bucket: existing.storage_bucket,
+    platform_verification_status: existing.platform_verification_status,
+    verification_status: existing.verification_status,
+    source_type: existing.source_type,
+    source_document_id: existing.source_document_id,
+    ingestion_status: 'extracting',
+    ingestion_version: (existing.ingestion_version || 1) + 1,
   };
+
+  try {
+    const bytes = new Uint8Array(await data.arrayBuffer());
+    const sha256 = await sha256HexFromBytes(bytes);
+    const file = new File([bytes], preserved.file_name || 'document.pdf', {
+      type: preserved.file_mime || preserved.mime_type || 'application/pdf',
+    });
+    const extracted = await extractTextFromFile(file);
+
+    const { doc, chunks } = await indexDocumentText(
+      preserved,
+      extracted.text,
+      extracted.ocrUsed,
+      {
+        page_count: extracted.page_count,
+        pages_extracted: extracted.pages_extracted,
+        pages_ocr: extracted.pages_ocr,
+        page_texts: extracted.page_texts,
+        extraction_method: extracted.extraction_method,
+        sha256,
+      },
+      { client: opts?.client, requireCloudPersist: true }
+    );
+
+    return {
+      ok: true,
+      doc,
+      chunks_before,
+      chunks_after: chunks.length,
+      page_count: doc.page_count,
+    };
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err);
+    // Do not leave as indexed if persistence failed — best-effort mark failed
+    try {
+      if (companyId || preserved.company_id) {
+        let failQ = db
+          .from('di_knowledge_documents')
+          .update({
+            index_status: 'failed',
+            ingestion_status: 'failed',
+            updated_at: new Date().toISOString(),
+          })
+          .eq('id', documentId);
+        const tenant = companyId || preserved.company_id;
+        if (tenant) failQ = failQ.eq('company_id', tenant);
+        await failQ;
+      }
+    } catch {
+      /* ignore secondary failure */
+    }
+    return {
+      ok: false,
+      chunks_before,
+      chunks_after: chunks_before,
+      error: message,
+    };
+  }
 }
 
 /** Below this score: no citations (NEEDS_DATA). */
