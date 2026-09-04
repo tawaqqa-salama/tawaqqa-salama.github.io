@@ -9,6 +9,7 @@ import {
   ensurePdfJsWorkerConfigured,
   getBrowserPdfWorkerSrc,
   openPdfDocumentFromBytes,
+  NODE_PDF_WORKER_SRC_SENTINEL,
   resetPdfJsWorkerConfigForTests,
   resolveNodePdfWorkerSrc,
 } from '@/lib/design-intelligence/pdfjs-runtime';
@@ -76,8 +77,15 @@ describe('PDF extraction worker + pages', () => {
     expect(existsSync(join(root, 'public/pdfjs/pdf.worker.min.mjs'))).toBe(true);
 
     const nodeSrc = await resolveNodePdfWorkerSrc();
-    expect(nodeSrc.startsWith('file:')).toBe(true);
-    expect(nodeSrc.includes('node_modules/pdfjs-dist')).toBe(true);
+    // Sentinel string only — never file:// from require.resolve (webpack numeric ids).
+    expect(typeof nodeSrc).toBe('string');
+    expect(nodeSrc).toBe(NODE_PDF_WORKER_SRC_SENTINEL);
+    expect(nodeSrc.startsWith('file:')).toBe(false);
+    const codeOnly = runtime
+      .replace(/\/\*[\s\S]*?\*\//g, '')
+      .replace(/(^|[^:])\/\/.*$/gm, '$1');
+    expect(codeOnly).not.toMatch(/pathToFileURL\s*\(/);
+    expect(codeOnly).not.toMatch(/require\.resolve\s*\(/);
 
     expect(getBrowserPdfWorkerSrc()).toBe('/pdfjs/pdf.worker.min.mjs');
 
@@ -88,7 +96,8 @@ describe('PDF extraction worker + pages', () => {
     };
     await ensurePdfJsWorkerConfigured(pdfjs as never);
     expect(pdfjs.GlobalWorkerOptions.workerSrc).not.toMatch(/cdnjs|unpkg/);
-    expect(pdfjs.GlobalWorkerOptions.workerSrc.startsWith('file:')).toBe(true);
+    expect(typeof pdfjs.GlobalWorkerOptions.workerSrc).toBe('string');
+    expect(pdfjs.GlobalWorkerOptions.workerSrc).toBe(NODE_PDF_WORKER_SRC_SENTINEL);
   });
 
   it('G: build scripts sync local worker (no CDN) for production', () => {
