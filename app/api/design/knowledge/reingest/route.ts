@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import { reingestKnowledgeDocumentFromStorage } from '@/lib/design-intelligence/knowledge-base';
 import { isUuid } from '@/lib/design-intelligence/code-knowledge/persist';
+import { getBearerAccessToken } from '@/lib/auth/bearer';
 import { createUserScopedSupabase } from '@/lib/supabase/server';
 import { withTenantApi } from '@/lib/tenant/api-guard';
 import { requireRole } from '@/lib/tenant/context';
@@ -10,23 +11,30 @@ export const dynamic = 'force-dynamic';
 /** Large NFPA PDFs (hundreds of pages) need a long server budget. */
 export const maxDuration = 300;
 
-function bearerAccessToken(req: Request): string | null {
-  const authHeader = req.headers.get('authorization') || '';
-  if (!authHeader.startsWith('Bearer ')) return null;
-  const token = authHeader.slice(7).trim();
-  return token || null;
-}
-
 /**
  * Authenticated single-document Knowledge Base re-ingest.
  *
+ * - Live actor from verified Bearer JWT + auth_user_id (cookie role/company ignored)
  * - Session tenant only (client company_id ignored)
  * - Requires design module + tenant admin role (or platform admin)
- * - Uses user-scoped Supabase JWT so RLS applies — no service-role key to browser
+ * - Uses user-scoped Supabase JWT so RLS applies — service role not required
  * - Same document_id / Storage object; replaces chunks only
  * - Does NOT auto-run from development; caller must POST deliberately
  */
 export async function POST(req: Request) {
+  // Bearer required up-front so withTenantApi can validate live actor under RLS
+  // on Vercel hosts that do not configure a service-role key.
+  const accessToken = getBearerAccessToken(req);
+  if (!accessToken) {
+    return NextResponse.json(
+      {
+        ok: false,
+        error: 'Bearer access token required for Storage/RLS-scoped re-ingest',
+      },
+      { status: 401 }
+    );
+  }
+
   const gated = await withTenantApi(req, { module: 'design' });
   if ('response' in gated) return gated.response;
 
@@ -57,17 +65,6 @@ export async function POST(req: Request) {
       return NextResponse.json(
         { ok: false, error: 'documentId must be a valid UUID' },
         { status: 400 }
-      );
-    }
-
-    const accessToken = bearerAccessToken(req);
-    if (!accessToken) {
-      return NextResponse.json(
-        {
-          ok: false,
-          error: 'Bearer access token required for Storage/RLS-scoped re-ingest',
-        },
-        { status: 401 }
       );
     }
 

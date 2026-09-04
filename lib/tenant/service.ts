@@ -1,3 +1,4 @@
+import type { SupabaseClient } from '@supabase/supabase-js';
 import { supabase } from '@/lib/supabase';
 import { tenantMemory } from '@/lib/tenant/memory';
 import { isTenantMemoryMode } from '@/lib/tenant/mode';
@@ -58,9 +59,13 @@ export async function listTenants(): Promise<TenantRecord[]> {
   return (data || []).map((r) => mapCompany(r as Record<string, unknown>));
 }
 
-export async function getTenant(idOrSlug: string): Promise<TenantRecord | null> {
+export async function getTenant(
+  idOrSlug: string,
+  client?: SupabaseClient | null
+): Promise<TenantRecord | null> {
   if (isTenantMemoryMode()) return tenantMemory.getTenant(idOrSlug);
-  const { data } = await supabase
+  const db = client || supabase;
+  const { data } = await db
     .from('companies')
     .select('*')
     .or(`id.eq.${idOrSlug},slug.eq.${idOrSlug},code.eq.${idOrSlug}`)
@@ -284,11 +289,15 @@ export async function setTenantModules(
   });
 }
 
-export async function getTenantModules(companyId: string): Promise<string[]> {
+export async function getTenantModules(
+  companyId: string,
+  client?: SupabaseClient | null
+): Promise<string[]> {
   if (isTenantMemoryMode()) {
     return tenantMemory.modulesFor(companyId).filter((m) => m.enabled).map((m) => m.module_code);
   }
-  const { data } = await supabase
+  const db = client || supabase;
+  const { data } = await db
     .from('tenant_modules')
     .select('module_code')
     .eq('company_id', companyId)
@@ -296,8 +305,12 @@ export async function getTenantModules(companyId: string): Promise<string[]> {
   return (data || []).map((r) => r.module_code as string);
 }
 
-export async function hasModule(companyId: string, module: PlatformModuleCode | string) {
-  const mods = await getTenantModules(companyId);
+export async function hasModule(
+  companyId: string,
+  module: PlatformModuleCode | string,
+  client?: SupabaseClient | null
+) {
+  const mods = await getTenantModules(companyId, client);
   // Core modules always on if empty (pre-migration tenants)
   if (!mods.length) return true;
   return mods.includes(module);
@@ -327,10 +340,14 @@ export async function listPlans(): Promise<SaasPlan[]> {
  * Production has no tenant_memberships table.
  * Membership = active users row with company_id (one tenant per user).
  */
-export async function getUserMemberships(userId: string): Promise<TenantMembership[]> {
+export async function getUserMemberships(
+  userId: string,
+  client?: SupabaseClient | null
+): Promise<TenantMembership[]> {
   if (isTenantMemoryMode()) return tenantMemory.listMemberships(userId);
 
-  const { data, error } = await supabase
+  const db = client || supabase;
+  const { data, error } = await db
     .from('users')
     .select('id, company_id, role_code, is_active, deleted_at')
     .eq('id', userId)

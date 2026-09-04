@@ -1,6 +1,9 @@
 /**
  * Server-side tenant context helpers.
  * Tenant is resolved from live DB actor state — never trust cookie role/company alone.
+ *
+ * On Node/Vercel Production, prefer Authorization: Bearer (Supabase JWT) so
+ * resolveLiveActor + tenant lookups run under auth.uid() RLS without service role.
  */
 
 import { cookies } from 'next/headers';
@@ -9,6 +12,7 @@ import {
   decodeCookiePayload,
   type CookieSessionPayload,
 } from '@/lib/auth/session-cookie';
+import { getBearerAccessToken } from '@/lib/auth/bearer';
 import {
   ActorValidationError,
   applyLiveActorToSession,
@@ -16,6 +20,7 @@ import {
 } from '@/lib/auth/session-actor';
 import { hasPermission } from '@/lib/auth/permissions';
 import type { PermissionCode } from '@/lib/auth/types';
+import { createUserScopedSupabase } from '@/lib/supabase/server';
 import { hasModule as checkModule, getTenant, getUserMemberships } from '@/lib/tenant/service';
 import type { PlatformModuleCode, TenantMembership, TenantRecord } from '@/lib/tenant/types';
 import { isTenantAdminRole, isSuperAdminRole } from '@/lib/tenant/rbac';
@@ -27,6 +32,8 @@ export type TenantContext = {
   roleCode: string;
   isPlatformAdmin: boolean;
   supportMode: boolean;
+  /** Server-only: Bearer used for live actor / RLS-scoped lookups (never from body). */
+  accessToken?: string | null;
 };
 
 export class TenantAccessError extends Error {
@@ -51,11 +58,18 @@ export function getSessionFromRequest(request: Request): CookieSessionPayload | 
 
 async function buildTenantContext(
   session: CookieSessionPayload,
-  opts?: { companyIdFromRequest?: string | null; allowSupport?: boolean }
+  opts?: {
+    companyIdFromRequest?: string | null;
+    allowSupport?: boolean;
+    accessToken?: string | null;
+  }
 ): Promise<TenantContext> {
+  const accessToken = opts?.accessToken?.trim() || null;
+  const scopedClient = accessToken ? createUserScopedSupabase(accessToken) : null;
+
   let actor;
   try {
-    actor = await resolveLiveActor(session);
+    actor = await resolveLiveActor(session, { accessToken });
   } catch (e) {
     if (e instanceof ActorValidationError) {
       throw new TenantAccessError(e.message, e.status);
@@ -71,7 +85,7 @@ async function buildTenantContext(
   if (!tenantId) {
     const memberships: TenantMembership[] = actor.memberships.length
       ? (actor.memberships as TenantMembership[])
-      : await getUserMemberships(actor.user.id);
+      : await getUserMemberships(actor.user.id, scopedClient);
     const def = memberships.find((m) => m.is_default) || memberships[0];
     tenantId = def ? String(def.company_id) : null;
   }
@@ -90,14 +104,14 @@ async function buildTenantContext(
   if (!isPlatform) {
     const memberships: TenantMembership[] = actor.memberships.length
       ? (actor.memberships as TenantMembership[])
-      : await getUserMemberships(actor.user.id);
+      : await getUserMemberships(actor.user.id, scopedClient);
     const ok =
       memberships.some((m) => String(m.company_id) === tenantId) ||
       actor.user.company_id === tenantId;
     if (!ok) throw new TenantAccessError('Not a member of this tenant');
   }
 
-  const tenant = await getTenant(tenantId);
+  const tenant = await getTenant(tenantId, scopedClient);
   if (!tenant || !tenant.is_active || tenant.status === 'suspended') {
     throw new TenantAccessError('Tenant inactive or suspended', 403);
   }
@@ -109,12 +123,14 @@ async function buildTenantContext(
     roleCode: actor.roleCode,
     isPlatformAdmin: isPlatform,
     supportMode: Boolean(isPlatform && requested && requested !== actor.companyId),
+    accessToken,
   };
 }
 
 /**
  * Resolve tenant from an incoming Request (preferred for Route Handlers).
  * Revalidates is_active / deleted_at / role_code / company_id / memberships every call.
+ * Uses Bearer JWT for live actor validation when present (Production Node without service role).
  */
 export async function requireTenantFromRequest(
   request: Request,
@@ -122,7 +138,8 @@ export async function requireTenantFromRequest(
 ): Promise<TenantContext> {
   const session = getSessionFromRequest(request);
   if (!session) throw new TenantAccessError('Authentication required', 401);
-  return buildTenantContext(session, opts);
+  const accessToken = getBearerAccessToken(request);
+  return buildTenantContext(session, { ...opts, accessToken });
 }
 
 export async function getCurrentTenantId(
@@ -173,7 +190,8 @@ export async function requirePermission(
 
 export async function requireModule(ctx: TenantContext, module: PlatformModuleCode) {
   if (ctx.isPlatformAdmin) return;
-  const ok = await checkModule(ctx.tenantId, module);
+  const scoped = ctx.accessToken ? createUserScopedSupabase(ctx.accessToken) : null;
+  const ok = await checkModule(ctx.tenantId, module, scoped);
   if (!ok) throw new TenantAccessError(`Module disabled: ${module}`, 403);
 }
 
