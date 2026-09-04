@@ -27,7 +27,6 @@ import {
   registerKnowledgeDocument,
   registerNfpa13_2025ProjectEdition,
   registerNfpa13_2025RuleShells,
-  reingestCodeKnowledgeDocument,
   resumeIncompleteCodeKnowledgeIngestion,
   resetCodeKnowledgeStore,
   resetInMemoryCodeKnowledgeStorage,
@@ -38,6 +37,10 @@ import {
   deleteKnowledgeDocument,
   documentHasSha256Duplicate,
   shouldUseResumableUpload,
+  canReingestKnowledgeRole,
+  findExistingNfpa13Document,
+  isKnowledgeDocumentPresentInStorage,
+  uploadMissingFileMessage,
   type CodeKnowledgeDocumentMeta,
   type CodeKnowledgeSearchHit,
   type DiCodeEdition,
@@ -49,6 +52,7 @@ import {
 } from '@/lib/design-intelligence/code-knowledge';
 import { useAuth } from '@/lib/auth/AuthProvider';
 import { useLanguage } from '@/lib/i18n/LanguageProvider';
+import { supabase } from '@/lib/supabase';
 
 type Props = {
   companyId?: string;
@@ -109,6 +113,7 @@ export default function CodeKnowledgePanel({ companyId, clientId }: Props) {
   const [compare, setCompare] = useState<EditionComparisonResult | null>(null);
   const [indexStatus, setIndexStatus] = useState<string>('—');
   const [busy, setBusy] = useState(false);
+  const [reingestingId, setReingestingId] = useState<string | null>(null);
 
   const [uploadCode, setUploadCode] = useState('NFPA-13');
   const [uploadEdition, setUploadEdition] = useState('2025');
@@ -124,6 +129,12 @@ export default function CodeKnowledgePanel({ companyId, clientId }: Props) {
 
   const [sourceText, setSourceText] = useState(
     'Section 8.1 general requirements.\n\nTable 8.2.1 design criteria placeholder text for indexing tests only.\n\nPage 12 discusses spacing. Figure 8.3 shows coverage layout.'
+  );
+
+  const canReingest = canReingestKnowledgeRole(session?.roleCode || profile?.role_code);
+  const existingNfpa13 = useMemo(
+    () => findExistingNfpa13Document(docs, { edition: '2025' }),
+    [docs]
   );
 
   const refresh = useCallback(async () => {
@@ -201,9 +212,7 @@ export default function CodeKnowledgePanel({ companyId, clientId }: Props) {
    */
   const onUploadAndIndex = async () => {
     if (!uploadFile) {
-      setMessage(
-        'NFPA 13-2025 file is not present. Upload the PDF from this panel (Supabase Storage design-knowledge). Do not use Cursor/ChatGPT/web sources.'
-      );
+      setMessage(uploadMissingFileMessage(existingNfpa13));
       return;
     }
     if (persistedMode && !authCompany) {
@@ -372,23 +381,74 @@ export default function CodeKnowledgePanel({ companyId, clientId }: Props) {
   };
 
   const onReingest = async (documentId: string) => {
+    if (busy || reingestingId) return;
+    if (!canReingest) {
+      setMessage('FAILED: إعادة الفهرسة متاحة لمسؤول المستأجر فقط.');
+      return;
+    }
+    const confirmed = window.confirm(
+      'سيتم إعادة فهرسة المستند الحالي من الملف الموجود في التخزين. لن يتم إنشاء مستند جديد.'
+    );
+    if (!confirmed) return;
+
     setBusy(true);
+    setReingestingId(documentId);
+    setMessage(null);
     try {
-      const result = await reingestCodeKnowledgeDocument(documentId);
-      await refresh();
-      if ('error' in result && result.status === 'failed') {
-        setMessage(`FAILED: Re-ingest failed: ${result.error}`);
-      } else if (result.status === 'skipped_duplicate') {
-        setMessage('Re-ingest skipped — SHA-256 unchanged.');
-      } else if (result.status === 'failed') {
-        setMessage(`FAILED: ${'error' in result ? result.error : 'reingest_failed'}`);
-      } else {
+      const { data: authData, error: authErr } = await supabase.auth.getSession();
+      const accessToken = authData.session?.access_token;
+      if (authErr || !accessToken) {
         setMessage(
-          `Re-ingest: status=${result.status} persisted=${Boolean(result.document.persisted)}`
+          'FAILED: لا توجد جلسة Supabase مصادَقة — سجّل الدخول ثم أعد المحاولة.'
         );
+        return;
       }
+
+      const response = await fetch('/api/design/knowledge/reingest', {
+        method: 'POST',
+        headers: {
+          'content-type': 'application/json',
+          Authorization: `Bearer ${accessToken}`,
+        },
+        body: JSON.stringify({ documentId }),
+      });
+      const contentType = response.headers.get('content-type') || '';
+      if (!contentType.includes('application/json')) {
+        setMessage(`FAILED: reingest endpoint returned non-JSON (${response.status})`);
+        return;
+      }
+      const payload = (await response.json()) as {
+        ok?: boolean;
+        error?: string;
+        documentId?: string;
+        ingestion_version?: number | null;
+        page_count?: number | null;
+        chunks_after?: number;
+        chunks_before?: number;
+        code?: string | null;
+        edition?: string | null;
+        index_status?: string | null;
+        ingestion_status?: string | null;
+      };
+      if (!response.ok || !payload.ok) {
+        setMessage(`FAILED: ${payload.error || `reingest_failed (${response.status})`}`);
+        return;
+      }
+
+      await refresh();
+      const known =
+        docs.find((d) => d.id === documentId)?.title ||
+        docs.find((d) => d.id === documentId)?.file_name ||
+        payload.code ||
+        documentId;
+      setMessage(
+        `تمت إعادة الفهرسة بنجاح · ${known} · ingestion_version=${payload.ingestion_version ?? '—'} · pages=${payload.page_count ?? '—'} · chunks=${payload.chunks_after ?? '—'} (was ${payload.chunks_before ?? '—'}) · index=${payload.index_status || '—'} · ingestion=${payload.ingestion_status || '—'}`
+      );
+    } catch (err) {
+      setMessage(`FAILED: ${err instanceof Error ? err.message : String(err)}`);
     } finally {
       setBusy(false);
+      setReingestingId(null);
     }
   };
 
@@ -565,6 +625,38 @@ export default function CodeKnowledgePanel({ companyId, clientId }: Props) {
           {listSource} · company=
           <code className="text-[10px]">{company}</code>
         </p>
+        {existingNfpa13 ? (
+          <div className="mt-3 rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-2 text-sm text-emerald-950">
+            <div className="font-semibold">NFPA 13-2025 موجود في التخزين (مستند مفهرس)</div>
+            <div className="mt-1 text-xs break-all">
+              document_id=<code>{existingNfpa13.id}</code> · path=
+              <code>{existingNfpa13.storage_path}</code> · pages=
+              {existingNfpa13.page_count ?? '—'} · chunks={existingNfpa13.chunk_count ?? 0} ·
+              ingestion_version={existingNfpa13.ingestion_version ?? '—'}
+            </div>
+            {canReingest ? (
+              <button
+                type="button"
+                disabled={busy || Boolean(reingestingId)}
+                className="mt-2 rounded-lg bg-emerald-800 px-3 py-1.5 text-xs font-semibold text-white disabled:opacity-50"
+                onClick={() => void onReingest(existingNfpa13.id)}
+              >
+                {reingestingId === existingNfpa13.id
+                  ? 'جاري إعادة الفهرسة...'
+                  : 'إعادة الفهرسة'}
+              </button>
+            ) : (
+              <p className="mt-2 text-xs text-emerald-900/80">
+                إعادة الفهرسة متاحة لمسؤول المستأجر فقط.
+              </p>
+            )}
+          </div>
+        ) : (
+          <div className="mt-3 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-950">
+            لم يُعثر على مستند NFPA 13-2025 مفهرس لهذا المستأجر في القائمة المحمّلة من قاعدة
+            المعرفة. ارفع الملف من لوحة الرفع أدناه إن لزم.
+          </div>
+        )}
         <div className="mt-4 flex flex-wrap gap-2">
           <button
             type="button"
@@ -796,21 +888,23 @@ export default function CodeKnowledgePanel({ companyId, clientId }: Props) {
                     d.storage_path ? (
                       <button
                         type="button"
-                        disabled={busy}
+                        disabled={busy || Boolean(reingestingId)}
                         className="block text-amber-800 underline font-semibold disabled:opacity-40"
                         onClick={() => void onResumeChunks(d)}
                       >
                         Resume chunks
                       </button>
                     ) : null}
-                    <button
-                      type="button"
-                      disabled={busy || !d.storage_path}
-                      className="block text-cyan-700 underline disabled:opacity-40"
-                      onClick={() => void onReingest(d.id)}
-                    >
-                      Re-ingest
-                    </button>
+                    {canReingest && isKnowledgeDocumentPresentInStorage(d) ? (
+                      <button
+                        type="button"
+                        disabled={busy || Boolean(reingestingId)}
+                        className="block text-cyan-800 underline font-semibold disabled:opacity-40"
+                        onClick={() => void onReingest(d.id)}
+                      >
+                        {reingestingId === d.id ? 'جاري إعادة الفهرسة...' : 'إعادة الفهرسة'}
+                      </button>
+                    ) : null}
                     <button
                       type="button"
                       disabled={busy}
@@ -819,7 +913,9 @@ export default function CodeKnowledgePanel({ companyId, clientId }: Props) {
                         setUploadCode(d.code);
                         setUploadEdition(d.edition);
                         setMessage(
-                          'Select a new file then رفع وفهرسة to Replace / New Version (SHA change required).'
+                          isKnowledgeDocumentPresentInStorage(d)
+                            ? 'المستند موجود في التخزين. استخدم إعادة الفهرسة بدل رفع ملف جديد، أو اختر ملفاً جديداً فقط لإنشاء إصدار بديل (SHA مختلف).'
+                            : 'Select a new file then رفع وفهرسة to Replace / New Version (SHA change required).'
                         );
                       }}
                     >
