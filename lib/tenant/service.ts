@@ -59,20 +59,73 @@ export async function listTenants(): Promise<TenantRecord[]> {
   return (data || []).map((r) => mapCompany(r as Record<string, unknown>));
 }
 
+const UUID_RE =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+
+/** Raised when companies lookup fails (RLS / network) — not the same as missing/inactive. */
+export class TenantLookupError extends Error {
+  status: number;
+  reason: 'query_failed' | 'client_required';
+  constructor(message: string, reason: 'query_failed' | 'client_required', status = 503) {
+    super(message);
+    this.reason = reason;
+    this.status = status;
+  }
+}
+
+export type GetTenantOptions = {
+  /**
+   * When true (authenticated Node API with Bearer JWT), refuse the shared anon
+   * fallback — RLS on companies requires a user-scoped client.
+   */
+  requireClient?: boolean;
+};
+
+/**
+ * Load a company/tenant row.
+ * Pass a user-scoped Supabase client on authenticated Node paths so RLS sees auth.uid().
+ * Query/RLS failures throw TenantLookupError — they are NOT treated as inactive.
+ */
 export async function getTenant(
   idOrSlug: string,
-  client?: SupabaseClient | null
+  client?: SupabaseClient | null,
+  opts?: GetTenantOptions
 ): Promise<TenantRecord | null> {
   if (isTenantMemoryMode()) return tenantMemory.getTenant(idOrSlug);
+
+  if (opts?.requireClient && !client) {
+    throw new TenantLookupError(
+      'User-scoped Supabase client required for tenant lookup',
+      'client_required',
+      503
+    );
+  }
+
   const db = client || supabase;
-  const { data } = await db
-    .from('companies')
-    .select('*')
-    .or(`id.eq.${idOrSlug},slug.eq.${idOrSlug},code.eq.${idOrSlug}`)
-    .is('deleted_at', null)
-    .limit(1);
-  if (!data?.[0]) return null;
-  return mapCompany(data[0] as Record<string, unknown>);
+  const key = String(idOrSlug || '').trim();
+  if (!key) return null;
+
+  let query = db.from('companies').select('*').is('deleted_at', null);
+
+  // Prefer exact id match for actor company_id (UUID) — avoids fragile .or() filters.
+  if (UUID_RE.test(key)) {
+    query = query.eq('id', key);
+  } else {
+    query = query.or(`id.eq.${key},slug.eq.${key},code.eq.${key}`);
+  }
+
+  const { data, error } = await query.limit(1).maybeSingle();
+
+  if (error) {
+    throw new TenantLookupError(
+      `Tenant lookup failed: ${error.message}`,
+      'query_failed',
+      503
+    );
+  }
+
+  if (!data) return null;
+  return mapCompany(data as Record<string, unknown>);
 }
 
 export async function updateTenant(
