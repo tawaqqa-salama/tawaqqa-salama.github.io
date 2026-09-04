@@ -1737,8 +1737,8 @@ export async function ragQuery(
       paragraphReference: chunk.paragraph_reference ?? chunk.paragraph_ref ?? null,
       sourceDocumentId: chunk.source_document_id ?? doc?.source_document_id ?? null,
       sourceVerificationStatus: chunk.source_verification_status ?? null,
-      documentVerificationStatus:
-        doc?.platform_verification_status ?? doc?.verification_status ?? null,
+      documentVerificationStatus: doc?.verification_status ?? null,
+      platformVerificationStatus: doc?.platform_verification_status ?? null,
     };
   });
 

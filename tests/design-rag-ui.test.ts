@@ -61,5 +61,7 @@ describe('design RAG UI integration', () => {
     expect(moduleSource).toContain(
       'المصدر مفهرس، لكنه غير مُعتمد كقاعدة هندسية موثقة.'
     );
+    expect(moduleSource).toContain('shouldWarnUnverifiedKnowledgeSource');
+    expect(moduleSource).not.toContain('/VERIFIED/i');
   });
 });

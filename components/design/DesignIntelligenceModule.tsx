@@ -54,6 +54,7 @@ import {
   type KnowledgeDeleteResult,
   type RagAnswer,
 } from '@/lib/design-intelligence';
+import { shouldWarnUnverifiedKnowledgeSource } from '@/lib/design-intelligence/verification-status';
 import EngineeringRulesPanel from '@/components/design/EngineeringRulesPanel';
 import CodeKnowledgePanel from '@/components/design/CodeKnowledgePanel';
 import { runBlueprintAiAudit } from '@/lib/compliance/blueprint-audit';
@@ -922,12 +923,11 @@ export default function DesignIntelligenceModule() {
                   </div>
                   <div className="space-y-2">
                     {rag.citations.map((c, index) => {
-                      const unverified =
-                        (c.sourceVerificationStatus &&
-                          !/VERIFIED/i.test(c.sourceVerificationStatus)) ||
-                        (c.documentVerificationStatus &&
-                          !/VERIFIED/i.test(c.documentVerificationStatus) &&
-                          c.documentVerificationStatus !== 'verified');
+                      const unverified = shouldWarnUnverifiedKnowledgeSource({
+                        sourceVerificationStatus: c.sourceVerificationStatus,
+                        documentVerificationStatus: c.documentVerificationStatus,
+                        platformVerificationStatus: c.platformVerificationStatus,
+                      });
                       return (
                         <article
                           key={c.chunkId}

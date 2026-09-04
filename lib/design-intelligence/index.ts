@@ -77,3 +77,7 @@ export {
   describeSalesKnowledgePreview,
   QUOTATION_SERVICE_KNOWLEDGE_MAP,
 } from '@/lib/design-intelligence/project-knowledge-bridge';
+export {
+  isVerifiedKnowledgeStatus,
+  shouldWarnUnverifiedKnowledgeSource,
+} from '@/lib/design-intelligence/verification-status';

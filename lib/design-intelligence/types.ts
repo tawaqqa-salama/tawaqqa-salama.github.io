@@ -110,6 +110,8 @@ export type RagCitation = {
   sourceDocumentId?: string | null;
   sourceVerificationStatus?: string | null;
   documentVerificationStatus?: string | null;
+  /** Platform official verification when available (additive). */
+  platformVerificationStatus?: string | null;
 };
 
 export type RagAnswer = {
