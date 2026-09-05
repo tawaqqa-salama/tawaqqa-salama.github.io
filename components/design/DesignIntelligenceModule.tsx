@@ -147,14 +147,19 @@ export default function DesignIntelligenceModule() {
 
   const refresh = useCallback(() => {
     ensureSeedKnowledgeBase();
-    setDocs(listKnowledgeDocumentsSync());
     setWorkspaces(listWorkspaces());
     const wsId = activeWsId || listWorkspaces()[0]?.id || '';
     if (!activeWsId && wsId) setActiveWsId(wsId);
     setTasks(listTasks(wsId || undefined));
     setChecklists(listChecklists(wsId || undefined));
-    void listKnowledgeDocuments().then(setDocs);
-  }, [activeWsId]);
+    // Production: do not paint stale local/session chunk counts before the
+    // canonical Supabase list returns. Demo may use sync local seed.
+    const rt = getSupabaseRuntimeDiagnostics();
+    if (rt.runtime_mode !== 'production-supabase') {
+      setDocs(listKnowledgeDocumentsSync());
+    }
+    void listKnowledgeDocuments({ companyId: tenantCompanyId }).then(setDocs);
+  }, [activeWsId, tenantCompanyId]);
 
   useEffect(() => {
     refresh();
@@ -266,7 +271,7 @@ export default function DesignIntelligenceModule() {
       setNotesMeta('');
       setKbUploadPhase('indexed');
       setKbUploadPercent(100);
-      setDocs(await listKnowledgeDocuments());
+      setDocs(await listKnowledgeDocuments({ companyId: tenantCompanyId }));
       if (!doc.persistedToCloud) {
         throw new KnowledgePersistError(
           SUPABASE_PERSISTENCE_UNAVAILABLE,
@@ -372,7 +377,7 @@ export default function DesignIntelligenceModule() {
         mimeType: d.mime_type || d.file_mime || undefined,
         onPhase: (phase) => setKbUploadPhase(phase),
       });
-      setDocs(await listKnowledgeDocuments());
+      setDocs(await listKnowledgeDocuments({ companyId: tenantCompanyId }));
       if (result.status === 'failed') {
         setKbUploadPhase('failed');
         setMessage(
@@ -434,7 +439,7 @@ export default function DesignIntelligenceModule() {
           `Soft-deleted ${duplicateOnly ? 'duplicate' : 'document'} · chunks_removed=${result.chunksRemoved} · storage_removed=${result.storageRemoved}`
         );
       }
-      setDocs(await listKnowledgeDocuments());
+      setDocs(await listKnowledgeDocuments({ companyId: tenantCompanyId }));
     } catch (err) {
       setMessage(err instanceof Error ? err.message : String(err));
     } finally {

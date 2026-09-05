@@ -72,7 +72,9 @@ export {
   canReingestKnowledgeRole,
   findExistingNfpa13Document,
   isKnowledgeDocumentPresentInStorage,
+  selectDocumentsForCodeKnowledgeUi,
   uploadMissingFileMessage,
+  type ReingestAuthInput,
 } from '@/lib/design-intelligence/code-knowledge/presence';
 export {
   DESIGN_KNOWLEDGE_FILE_SIZE_LIMIT_BYTES,

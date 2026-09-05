@@ -40,6 +40,7 @@ import {
   canReingestKnowledgeRole,
   findExistingNfpa13Document,
   isKnowledgeDocumentPresentInStorage,
+  selectDocumentsForCodeKnowledgeUi,
   uploadMissingFileMessage,
   type CodeKnowledgeDocumentMeta,
   type CodeKnowledgeSearchHit,
@@ -179,7 +180,10 @@ export default function CodeKnowledgePanel({ companyId, clientId }: Props) {
     'Section 8.1 general requirements.\n\nTable 8.2.1 design criteria placeholder text for indexing tests only.\n\nPage 12 discusses spacing. Figure 8.3 shows coverage layout.'
   );
 
-  const canReingest = canReingestKnowledgeRole(session?.roleCode || profile?.role_code);
+  const canReingest = canReingestKnowledgeRole({
+    roleCode: session?.roleCode || profile?.role_code,
+    isPlatformAdmin: Boolean(session?.isPlatformAdmin),
+  });
   const existingNfpa13 = useMemo(
     () => findExistingNfpa13Document(docs, { edition: '2025' }),
     [docs]
@@ -189,8 +193,14 @@ export default function CodeKnowledgePanel({ companyId, clientId }: Props) {
     setEditions(listCodeEditions({ companyId: company }));
     setCodes(listAvailableCodes(company));
     setAdoption(getProjectAdoptedEdition(client, 'NFPA-13', company));
+    // Always re-fetch canonical persisted rows — never reuse stale local chunk counts.
     const listed = await listCodeKnowledgeDocumentsForUi({ companyId: company });
-    setDocs(listed.documents);
+    const next = selectDocumentsForCodeKnowledgeUi({
+      persistedMode: listed.persistedMode,
+      persistedDocuments: listed.persistedMode ? listed.documents : [],
+      localDocuments: listed.persistedMode ? [] : listed.documents,
+    });
+    setDocs(next);
     setListSource(listed.source);
   }, [company, client]);
 
@@ -936,10 +946,11 @@ export default function CodeKnowledgePanel({ companyId, clientId }: Props) {
         <p className="mt-1 text-xs text-slate-500">
           Last status: {indexStatus} · bucket={CODE_KNOWLEDGE_STORAGE_BUCKET} · source={listSource}
         </p>
-        <table className="mt-3 w-full min-w-[1200px] text-left text-xs">
+        <table className="mt-3 w-full min-w-[1280px] text-left text-xs">
           <thead className="border-b border-slate-200 text-slate-500">
             <tr>
               <th className="py-2 pr-2">Persisted</th>
+              <th className="py-2 pr-2">Title</th>
               <th className="py-2 pr-2">Code</th>
               <th className="py-2 pr-2">Edition</th>
               <th className="py-2 pr-2">Document</th>
@@ -949,6 +960,7 @@ export default function CodeKnowledgePanel({ companyId, clientId }: Props) {
               <th className="py-2 pr-2">Extracted</th>
               <th className="py-2 pr-2">OCR</th>
               <th className="py-2 pr-2">Chunks</th>
+              <th className="py-2 pr-2">Ingestion Ver.</th>
               <th className="py-2 pr-2">Ingestion</th>
               <th className="py-2 pr-2">Index</th>
               <th className="py-2 pr-2">Actions</th>
@@ -973,6 +985,7 @@ export default function CodeKnowledgePanel({ companyId, clientId }: Props) {
                       docPersisted={d.persisted}
                     />
                   </td>
+                  <td className="py-2 pr-2 font-medium">{d.title || d.file_name || '—'}</td>
                   <td className="py-2 pr-2 font-medium">{d.code}</td>
                   <td className="py-2 pr-2">{d.edition}</td>
                   <td className="py-2 pr-2">{d.file_name || d.title}</td>
@@ -984,6 +997,7 @@ export default function CodeKnowledgePanel({ companyId, clientId }: Props) {
                   <td className="py-2 pr-2">{d.pages_extracted ?? '—'}</td>
                   <td className="py-2 pr-2">{d.pages_ocr ?? (d.ocr_used ? 'yes' : '—')}</td>
                   <td className="py-2 pr-2">{d.chunk_count ?? 0}</td>
+                  <td className="py-2 pr-2">{d.ingestion_version ?? '—'}</td>
                   <td className="py-2 pr-2">{d.ingestion_status || '—'}</td>
                   <td className="py-2 pr-2">{displayIndex}</td>
                   <td className="py-2 pr-2 space-y-1">
@@ -1051,7 +1065,7 @@ export default function CodeKnowledgePanel({ companyId, clientId }: Props) {
             })}
             {!docs.length && (
               <tr>
-                <td colSpan={13} className="py-4 text-slate-400">
+                <td colSpan={15} className="py-4 text-slate-400">
                   No documents yet for this company.
                 </td>
               </tr>
