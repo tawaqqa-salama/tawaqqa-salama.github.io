@@ -18,7 +18,8 @@
     "reingest:nfpa13-canonical": "npx tsx scripts/reingest-nfpa13-canonical-from-storage.ts",
     "resume:nfpa13-chunks": "npx tsx scripts/resume-nfpa13-chunk-persist.ts",
     "storage:raise-design-knowledge-limit": "node scripts/raise-design-knowledge-upload-limit.mjs",
-    "verify:pdfjs-worker-build": "node scripts/verify-pdfjs-worker-build.mjs"
+    "verify:pdfjs-worker-build": "node scripts/verify-pdfjs-worker-build.mjs",
+    "cleanup:saudi-only-knowledge": "npx tsx scripts/apply-saudi-only-knowledge-cleanup.ts"
   },
   "dependencies": {
     "@noble/curves": "^2.2.0",
