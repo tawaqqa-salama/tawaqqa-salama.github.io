@@ -1671,6 +1671,11 @@ export type RagQueryOptions = {
   documentIds?: string[];
   projectId?: string | null;
   minimumConfidence?: number;
+  /**
+   * User-scoped Supabase client (Production API with Bearer JWT).
+   * Required for di_knowledge_* RLS. Demo/Pages may omit and use shared client.
+   */
+  client?: SupabaseClient | null;
 };
 
 export type CodeFamily = 'NFPA' | 'SBC' | 'CIVIL_DEFENSE' | 'OTHER';
@@ -1822,7 +1827,10 @@ export async function ragQuery(
   let remoteDocsById = new Map<string, DiKnowledgeDocument>();
 
   if (!isDemoMode) {
-    let query = supabase.from('di_knowledge_chunks').select('*').limit(2000);
+    // Prefer user-scoped client so PostgREST runs under auth.uid() RLS.
+    const db = opts?.client || supabase;
+    const { logRag } = await import('@/lib/design-intelligence/rag-log');
+    let query = db.from('di_knowledge_chunks').select('*').limit(2000);
     if (opts?.companyId) {
       query = query.eq('company_id', opts.companyId);
     } else {
@@ -1830,7 +1838,32 @@ export async function ragQuery(
       chunks = [];
     }
     if (opts?.companyId) {
-      const { data } = await query;
+      logRag({
+        stage: 'CHUNKS_QUERY_START',
+        companyId: opts.companyId,
+      });
+      const { data, error: chunksError } = await query;
+      if (chunksError) {
+        const { RagQueryError } = await import('@/lib/design-intelligence/rag-log');
+        const msg = String(chunksError.message || 'chunks_query_failed');
+        const denied = /permission|rls|policy|not authorized|jwt/i.test(msg);
+        logRag({
+          stage: 'RAG_FAILED',
+          companyId: opts.companyId,
+          errorCode: denied ? 'chunks_rls_denied' : 'chunks_query_failed',
+          error: msg,
+        });
+        throw new RagQueryError(
+          `chunks_query_failed: ${msg}`,
+          denied ? 'chunks_rls_denied' : 'chunks_query_failed',
+          denied ? 403 : 500
+        );
+      }
+      logRag({
+        stage: 'CHUNKS_QUERY_OK',
+        companyId: opts.companyId,
+        chunkCount: data?.length ?? 0,
+      });
       if (data?.length) {
         const remote = data.map((row) => ({
           id: row.id as string,
@@ -1861,7 +1894,12 @@ export async function ragQuery(
 
         const docIds = [...new Set(remote.map((r) => r.document_id).filter(Boolean))];
         if (docIds.length) {
-          let docsQuery = supabase
+          logRag({
+            stage: 'DOCS_QUERY_START',
+            companyId: opts.companyId,
+            documentCount: docIds.length,
+          });
+          let docsQuery = db
             .from('di_knowledge_documents')
             .select(
               'id,title,code,edition,applicable_codes,platform_verification_status,verification_status,source_document_id,company_id'
@@ -1870,7 +1908,28 @@ export async function ragQuery(
           if (opts.companyId) {
             docsQuery = docsQuery.eq('company_id', opts.companyId);
           }
-          const { data: docRows } = await docsQuery;
+          const { data: docRows, error: docsError } = await docsQuery;
+          if (docsError) {
+            const { RagQueryError } = await import('@/lib/design-intelligence/rag-log');
+            const msg = String(docsError.message || 'documents_query_failed');
+            const denied = /permission|rls|policy|not authorized|jwt/i.test(msg);
+            logRag({
+              stage: 'RAG_FAILED',
+              companyId: opts.companyId,
+              errorCode: denied ? 'documents_rls_denied' : 'documents_query_failed',
+              error: msg,
+            });
+            throw new RagQueryError(
+              `documents_query_failed: ${msg}`,
+              denied ? 'documents_rls_denied' : 'documents_query_failed',
+              denied ? 403 : 500
+            );
+          }
+          logRag({
+            stage: 'DOCS_QUERY_OK',
+            companyId: opts.companyId,
+            documentCount: docRows?.length ?? 0,
+          });
           for (const row of docRows || []) {
             remoteDocsById.set(row.id as string, {
               id: row.id as string,

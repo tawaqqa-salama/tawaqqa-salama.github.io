@@ -5,6 +5,7 @@ import ModuleSubNavSlot from '@/components/layout/ModuleSubNavSlot';
 import ModuleTabBar from '@/components/layout/ModuleTabBar';
 import ResponsiveTable from '@/components/ui/ResponsiveTable';
 import { useLanguage } from '@/lib/i18n/LanguageProvider';
+import { withBrowserAuthHeaders } from '@/lib/auth/browser-access-token';
 import {
   EXPECTED_PRODUCTION_SUPABASE_REF,
   getSupabaseProjectRef,
@@ -309,9 +310,10 @@ export default function DesignIntelligenceModule() {
     setBusy(true);
     setMessage(null);
     try {
+      const headers = await withBrowserAuthHeaders({ 'content-type': 'application/json' });
       const response = await fetch('/api/design/rag', {
         method: 'POST',
-        headers: { 'content-type': 'application/json' },
+        headers,
         body: JSON.stringify({ question: query, topK: 5 }),
       });
       const contentType = response.headers.get('content-type') || '';
@@ -324,14 +326,47 @@ export default function DesignIntelligenceModule() {
       if (!contentType.includes('application/json')) {
         throw new Error(`RAG endpoint returned non-JSON response (${response.status})`);
       }
-      const payload = (await response.json()) as RagAnswer & { ok?: boolean; error?: string };
+      const payload = (await response.json()) as RagAnswer & {
+        ok?: boolean;
+        error?: string;
+        errorCode?: string;
+        stage?: string;
+      };
       if (!response.ok || !payload.ok) {
-        throw new Error(payload.error || 'RAG query failed');
+        const errorCode = String(payload.errorCode || '').trim();
+        const detail = String(payload.error || 'RAG query failed').trim();
+        const stage = String(payload.stage || '').trim();
+        let answer: string;
+        if (response.status === 401 || errorCode === 'missing_bearer') {
+          answer = 'تعذر المصادقة على محرك المعرفة. سجّل الدخول ثم أعد المحاولة.';
+        } else if (
+          response.status === 403 ||
+          errorCode === 'tenant_access' ||
+          errorCode.includes('rls_denied')
+        ) {
+          answer = 'لا تملك صلاحية الوصول لقاعدة المعرفة لهذه الشركة.';
+        } else if (
+          errorCode.includes('chunks') ||
+          errorCode.includes('documents') ||
+          errorCode === 'scoped_client_unavailable'
+        ) {
+          answer = `تعذر البحث في قاعدة المعرفة (${errorCode || response.status}${stage ? ` · ${stage}` : ''}).`;
+        } else {
+          answer = `تعذر تشغيل محرك المعرفة (${errorCode || response.status}${stage ? ` · ${stage}` : ''}).`;
+        }
+        setRag({
+          answer,
+          citations: [],
+          confidence: 0,
+          reliable: false,
+          message: detail,
+        });
+        return;
       }
       setRag(payload);
     } catch (error) {
       setRag({
-        answer: 'تعذر تشغيل محرك المعرفة. تحقق من تسجيل الدخول ووجود ملفات مفهرسة للشركة.',
+        answer: 'تعذر تشغيل محرك المعرفة بسبب خطأ غير متوقع في الاتصال.',
         citations: [],
         confidence: 0,
         reliable: false,

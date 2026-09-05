@@ -11,10 +11,20 @@ const routeSource = readFileSync(
 );
 
 describe('design RAG UI integration', () => {
-  it('uses the tenant-gated RAG endpoint from the browser', () => {
+  it('uses the tenant-gated RAG endpoint from the browser with Bearer auth', () => {
     expect(moduleSource).toContain("fetch('/api/design/rag'");
+    expect(moduleSource).toContain('withBrowserAuthHeaders');
     expect(moduleSource).toContain("body: JSON.stringify({ question: query, topK: 5 })");
     expect(moduleSource).not.toContain('const answer = await ragQuery(question)');
+  });
+
+  it('does not collapse auth/RLS failures into a single generic RAG message', () => {
+    expect(moduleSource).toContain('تعذر المصادقة على محرك المعرفة');
+    expect(moduleSource).toContain('لا تملك صلاحية الوصول لقاعدة المعرفة');
+    expect(moduleSource).toContain('errorCode');
+    expect(moduleSource).not.toContain(
+      'تعذر تشغيل محرك المعرفة. تحقق من تسجيل الدخول ووجود ملفات مفهرسة للشركة.'
+    );
   });
 
   it('renders retrieved evidence with RTL/bidi isolation and confidence bands', () => {
@@ -52,6 +62,8 @@ describe('design RAG UI integration', () => {
     expect(routeSource).toContain("withTenantApi(req, { module: 'design' })");
     expect(routeSource).toContain('gated.ctx.tenantId');
     expect(routeSource).toContain('// Ignore client-supplied company_id');
+    expect(routeSource).toContain('createUserScopedSupabase(accessToken)');
+    expect(routeSource).toContain('getBearerAccessToken(req)');
     expect(routeSource).toContain('codeFamilies');
     expect(routeSource).toContain('documentIds');
     expect(routeSource).toContain('projectId');
