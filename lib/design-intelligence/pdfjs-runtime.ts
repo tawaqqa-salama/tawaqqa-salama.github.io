@@ -5,10 +5,10 @@
  * Do NOT pass `disableWorker: true` (obsolete; silently ignored).
  *
  * Runtime:
- * - Node / Vercel server: prime `globalThis.pdfjsWorker` by importing the worker
- *   module (pdfjs Node fake-worker path). Never pass `require.resolve(...)` through
- *   `pathToFileURL` — Next/webpack rewrites resolve results to numeric module ids
- *   (e.g. 29083), which crash with `pathToFileURL(number)`.
+ * - Node / Vercel server: prime `globalThis.pdfjsWorker` via a bundler-visible
+ *   static import of the worker module (`./pdfjs-node-worker`). Never use
+ *   webpackIgnore runtime imports, `require.resolve`, or `pathToFileURL` for the
+ *   worker — those either omit the file from Vercel NFT or crash on numeric ids.
  * - Browser (Knowledge Base client upload on static Pages): same-origin
  *   `/pdfjs/pdf.worker.min.mjs` synced from the installed package by
  *   `scripts/sync-pdfjs-worker.mjs` (postinstall + build).
@@ -29,7 +29,11 @@ type PdfJsWorkerModule = {
   WorkerMessageHandler?: unknown;
 };
 
-/** Sentinel string only — Node fake worker uses globalThis.pdfjsWorker, not this path. */
+/**
+ * Sentinel string only — Node fake worker uses globalThis.pdfjsWorker.
+ * Still set as GlobalWorkerOptions.workerSrc so pdfjs does not throw
+ * "No GlobalWorkerOptions.workerSrc specified".
+ */
 export const NODE_PDF_WORKER_SRC_SENTINEL =
   'pdfjs-dist/legacy/build/pdf.worker.min.mjs';
 
@@ -66,12 +70,12 @@ export function assertSafePdfWorkerSrc(value: unknown): asserts value is string 
 }
 
 /**
- * Node / Vercel: load the worker as a JS module and expose WorkerMessageHandler
- * on globalThis so pdfjs's fake-worker path never does import(file://...) /
- * pathToFileURL(require.resolve(...)).
+ * Node / Vercel: load the worker through a bundler-visible module and expose
+ * WorkerMessageHandler on globalThis so pdfjs's fake-worker path never does
+ * import(file://...) / pathToFileURL(require.resolve(...)).
  *
- * webpackIgnore keeps the specifier as a runtime import from node_modules
- * (with serverExternalPackages: ['pdfjs-dist']).
+ * The dynamic import of `./pdfjs-node-worker` is intentionally NOT webpackIgnored —
+ * Next must trace/bundle `pdf.worker.min.mjs` into the serverless function.
  */
 export async function ensureNodePdfjsFakeWorkerPrimed(): Promise<void> {
   if (isBrowser()) return;
@@ -83,20 +87,13 @@ export async function ensureNodePdfjsFakeWorkerPrimed(): Promise<void> {
 
   const g = globalThis as typeof globalThis & { pdfjsWorker?: PdfJsWorkerModule };
   if (!g.pdfjsWorker?.WorkerMessageHandler) {
-    // Dynamic specifier (sentinel) avoids TS module resolution of the .mjs worker
-    // and keeps webpack from rewriting a require.resolve path to a numeric id.
-    const workerSpecifier: string = NODE_PDF_WORKER_SRC_SENTINEL;
-    const worker = (await import(
-      /* webpackIgnore: true */
-      /* @vite-ignore */
-      workerSpecifier
-    )) as PdfJsWorkerModule;
-    if (!worker?.WorkerMessageHandler) {
-      throw new Error(
-        'pdf_worker_module_invalid: WorkerMessageHandler missing from pdfjs worker import'
-      );
-    }
-    g.pdfjsWorker = worker;
+    const { primePdfjsNodeWorkerOnGlobalThis } = await import('./pdfjs-node-worker');
+    primePdfjsNodeWorkerOnGlobalThis();
+  }
+  if (!g.pdfjsWorker?.WorkerMessageHandler) {
+    throw new Error(
+      'pdf_worker_module_invalid: WorkerMessageHandler missing after node worker prime'
+    );
   }
   nodeWorkerPrimed = true;
 }

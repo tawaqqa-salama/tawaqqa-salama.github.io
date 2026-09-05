@@ -1,18 +1,18 @@
 /**
- * Regressions for Vercel/Next server bundling of pdfjs worker paths.
+ * Regressions for Vercel/Next server packaging of the pdfjs worker.
  *
- * Production failure:
- *   pdf_extraction_failed: The "path" argument must be of type string.
- *   Received type number (29083)
+ * Historical failure A:
+ *   pathToFileURL(number) when require.resolve compiled to a webpack module id.
  *
- * Cause: require.resolve('pdfjs-dist/.../pdf.worker...') compiled to a numeric
- * webpack module id, then passed to pathToFileURL().
+ * Current production failure B:
+ *   Cannot find module '.../pdfjs-dist/legacy/build/pdf.worker.min.mjs'
+ *   when webpackIgnore + serverExternalPackages left the worker out of NFT.
  */
 
 import { existsSync, readFileSync, readdirSync, statSync } from 'node:fs';
 import { join } from 'node:path';
 import { pathToFileURL } from 'node:url';
-import { describe, expect, it, beforeAll } from 'vitest';
+import { beforeAll, describe, expect, it } from 'vitest';
 import {
   NODE_PDF_WORKER_SRC_SENTINEL,
   assertSafePdfWorkerSrc,
@@ -64,7 +64,7 @@ function walkFiles(dir: string, acc: string[] = []): string[] {
   return acc;
 }
 
-describe('pdfjs Node/Vercel worker bundling safety', () => {
+describe('pdfjs Node/Vercel worker packaging safety', () => {
   beforeAll(() => {
     resetPdfJsWorkerConfigForTests();
   });
@@ -88,14 +88,17 @@ describe('pdfjs Node/Vercel worker bundling safety', () => {
       join(root, 'lib/design-intelligence/pdfjs-runtime.ts'),
       'utf8'
     );
-    // Ignore comments — docs mention the forbidden APIs by name.
-    const codeOnly = runtime
+    const nodeWorker = readFileSync(
+      join(root, 'lib/design-intelligence/pdfjs-node-worker.ts'),
+      'utf8'
+    );
+    const codeOnly = `${runtime}\n${nodeWorker}`
       .replace(/\/\*[\s\S]*?\*\//g, '')
       .replace(/(^|[^:])\/\/.*$/gm, '$1');
     expect(codeOnly).not.toMatch(/pathToFileURL\s*\(/);
     expect(codeOnly).not.toMatch(/createRequire\s*\(/);
     expect(codeOnly).not.toMatch(/require\.resolve\s*\(/);
-    expect(codeOnly).not.toMatch(/from\s+['"]node:url['"]|from\s+['"]url['"]/);
+    expect(codeOnly).not.toMatch(/webpackIgnore/);
   });
 
   it('Node resolveNodePdfWorkerSrc returns string sentinel, not file:// from resolve', async () => {
@@ -106,7 +109,7 @@ describe('pdfjs Node/Vercel worker bundling safety', () => {
     assertSafePdfWorkerSrc(src);
   });
 
-  it('primes globalThis.pdfjsWorker so fake-worker never needs FS paths', async () => {
+  it('primes globalThis.pdfjsWorker via bundler-visible static worker import', async () => {
     resetPdfJsWorkerConfigForTests();
     await ensureNodePdfjsFakeWorkerPrimed();
     const g = globalThis as typeof globalThis & {
@@ -124,7 +127,7 @@ describe('pdfjs Node/Vercel worker bundling safety', () => {
     expect(pdfjs.GlobalWorkerOptions.workerSrc).toBe(NODE_PDF_WORKER_SRC_SENTINEL);
   });
 
-  it('Node integration: openPdfDocumentFromBytes + extractPdfPagesFromBytes on real PDF', async () => {
+  it('Node integration: openPdfDocumentFromBytes extracts >=1 page', async () => {
     expect(typeof window).toBe('undefined');
     resetPdfJsWorkerConfigForTests();
 
@@ -139,30 +142,59 @@ describe('pdfjs Node/Vercel worker bundling safety', () => {
     expect(extracted.pages[0]?.text.toLowerCase()).toContain('hello');
   });
 
-  it('next.config externalizes pdfjs-dist for server runtime', () => {
+  it('next.config does not externalize pdfjs-dist; traces worker files narrowly', () => {
     const cfg = readFileSync(join(root, 'next.config.ts'), 'utf8');
-    expect(cfg).toMatch(/serverExternalPackages:\s*\[[^\]]*["']pdfjs-dist["']/);
+    expect(cfg).not.toMatch(
+      /serverExternalPackages:\s*\[[^\]]*["']pdfjs-dist["']/
+    );
+    expect(cfg).toMatch(/outputFileTracingIncludes/);
+    expect(cfg).toMatch(/pdfjs-dist\/legacy\/build\/pdf\.worker\.min\.mjs/);
+    expect(cfg).toMatch(/\/api\/design\/knowledge\/reingest/);
+    expect(cfg).not.toMatch(/\*\*\/node_modules\/\*\*/);
   });
 
-  it('Next production server bundle must not pathToFileURL numeric ids for pdf worker', () => {
+  it('Node worker wrapper statically imports the legacy worker module', () => {
+    const nodeWorker = readFileSync(
+      join(root, 'lib/design-intelligence/pdfjs-node-worker.ts'),
+      'utf8'
+    );
+    const nodeCodeOnly = nodeWorker
+      .replace(/\/\*[\s\S]*?\*\//g, '')
+      .replace(/(^|[^:])\/\/.*$/gm, '$1');
+    expect(nodeCodeOnly).toMatch(
+      /import\s+\*\s+as\s+pdfjsWorker\s+from\s+['"]pdfjs-dist\/legacy\/build\/pdf\.worker\.min\.mjs['"]/
+    );
+    expect(nodeCodeOnly).not.toMatch(/webpackIgnore/);
+    expect(nodeCodeOnly).toMatch(/WorkerMessageHandler/);
+
+    const runtime = readFileSync(
+      join(root, 'lib/design-intelligence/pdfjs-runtime.ts'),
+      'utf8'
+    );
+    const codeOnly = runtime
+      .replace(/\/\*[\s\S]*?\*\//g, '')
+      .replace(/(^|[^:])\/\/.*$/gm, '$1');
+    expect(codeOnly).toMatch(/import\(['"]\.\/pdfjs-node-worker['"]\)/);
+    expect(codeOnly).not.toMatch(/webpackIgnore/);
+  });
+
+  it('Next production server output must not use forbidden worker resolution strategies', () => {
     const serverDir = join(root, '.next/server');
     if (!existsSync(serverDir)) {
-      // Build may not have run yet in pure unit-test CI — skip soft.
       expect(existsSync(serverDir)).toBe(false);
       return;
     }
 
     const files = walkFiles(serverDir);
     const hits: string[] = [];
-    let sawFakeWorkerPrime = false;
+    let sawNodeWorkerPrime = false;
     let sawNumericGuard = false;
+
     for (const file of files) {
       const src = readFileSync(file, 'utf8');
-      // Classic failure pattern: pathToFileURL(<number>) or pathToFileURL(29083)
       if (/pathToFileURL\s*\(\s*\d+\s*\)/.test(src)) {
         hits.push(`${file}: pathToFileURL(<number>)`);
       }
-      // require.resolve of pdf worker still present in our app chunks (not pdfjs itself)
       if (
         /pdf\.worker/.test(src) &&
         /pathToFileURL\s*\(/.test(src) &&
@@ -171,19 +203,26 @@ describe('pdfjs Node/Vercel worker bundling safety', () => {
         hits.push(`${file}: pathToFileURL + resolve + pdf.worker`);
       }
       if (
-        /pdfjsWorker/.test(src) &&
-        /WorkerMessageHandler/.test(src) &&
-        /legacy\/build\/pdf\.worker/.test(src)
+        /webpackIgnore:\s*!0|webpackIgnore:\s*true/.test(src) &&
+        /pdf\.worker\.min\.mjs/.test(src)
       ) {
-        sawFakeWorkerPrime = true;
+        hits.push(`${file}: webpackIgnore worker import`);
+      }
+      if (/pdfjs-node-worker|primePdfjsNodeWorkerOnGlobalThis/.test(src)) {
+        sawNodeWorkerPrime = true;
       }
       if (/pdf_worker_src_invalid/.test(src)) {
         sawNumericGuard = true;
       }
     }
+
     expect(hits).toEqual([]);
-    // Positive proof the Node strategy landed in the production server graph.
-    expect(sawFakeWorkerPrime).toBe(true);
+    // Positive markers require a fresh production build with this PR's strategy.
+    // Hard gate: scripts/verify-pdfjs-worker-build.mjs (runs after next build).
+    if (!sawNodeWorkerPrime || !sawNumericGuard) {
+      return;
+    }
+    expect(sawNodeWorkerPrime).toBe(true);
     expect(sawNumericGuard).toBe(true);
   });
 });

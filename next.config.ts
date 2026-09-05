@@ -60,10 +60,25 @@ const nextConfig: NextConfig = {
           images: { unoptimized: true },
         }
       : {}),
-  // Keep pdfjs-dist out of the server webpack graph so Node can import the
-  // worker module from node_modules at runtime (Vercel). Avoids require.resolve
-  // → numeric module id → pathToFileURL crashes in bundled server functions.
-  serverExternalPackages: ["pdfjs-dist"],
+  // pdfjs-dist is intentionally NOT listed in serverExternalPackages.
+  // Externalizing it previously left `legacy/build/pdf.worker.min.mjs` out of
+  // Vercel NFT when the worker was loaded via webpackIgnore dynamic import.
+  // The Node path now statically imports the worker through
+  // `lib/design-intelligence/pdfjs-node-worker.ts` so Next bundles/traces it.
+  // Narrow tracing includes as belt-and-suspenders for the reingest function
+  // and related server routes that open PDFs — exact worker files only.
+  outputFileTracingIncludes: {
+    "/api/design/knowledge/reingest": [
+      "./node_modules/pdfjs-dist/legacy/build/pdf.worker.min.mjs",
+      "./node_modules/pdfjs-dist/legacy/build/pdf.mjs",
+      "./node_modules/pdfjs-dist/package.json",
+    ],
+    "/api/design/rag": [
+      "./node_modules/pdfjs-dist/legacy/build/pdf.worker.min.mjs",
+      "./node_modules/pdfjs-dist/legacy/build/pdf.mjs",
+      "./node_modules/pdfjs-dist/package.json",
+    ],
+  },
   // Production bundles must not include local seed credentials or demo data.
   // Local development keeps the real in-memory implementation for demos/tests.
   turbopack: isProductionBuild

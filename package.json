@@ -5,7 +5,7 @@
   "scripts": {
     "postinstall": "node scripts/sync-pdfjs-worker.mjs",
     "dev": "next dev",
-    "build": "node scripts/sync-pdfjs-worker.mjs && next build",
+    "build": "node scripts/sync-pdfjs-worker.mjs && next build && node scripts/verify-pdfjs-worker-build.mjs",
     "build:user-pages": "bash scripts/build-user-pages.sh",
     "start": "next start",
     "lint": "eslint",
@@ -16,7 +16,8 @@
     "db:apply-dds": "node scripts/apply-dds-schema.mjs",
     "reingest:nfpa13-canonical": "npx tsx scripts/reingest-nfpa13-canonical-from-storage.ts",
     "resume:nfpa13-chunks": "npx tsx scripts/resume-nfpa13-chunk-persist.ts",
-    "storage:raise-design-knowledge-limit": "node scripts/raise-design-knowledge-upload-limit.mjs"
+    "storage:raise-design-knowledge-limit": "node scripts/raise-design-knowledge-upload-limit.mjs",
+    "verify:pdfjs-worker-build": "node scripts/verify-pdfjs-worker-build.mjs"
   },
   "dependencies": {
     "@noble/curves": "^2.2.0",
