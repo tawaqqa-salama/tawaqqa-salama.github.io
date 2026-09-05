@@ -4,6 +4,7 @@ import { useEffect, useState } from 'react';
 import { useLanguage } from '@/lib/i18n/LanguageProvider';
 import { useAuth } from '@/lib/auth/AuthProvider';
 import { areApiRoutesAvailable } from '@/lib/runtime/mode';
+import { withBrowserAuthHeaders } from '@/lib/auth/browser-access-token';
 
 type TenantLite = { id: string; name: string; code?: string };
 
@@ -20,23 +21,30 @@ export default function TenantSwitcher() {
       setTenant(null);
       return;
     }
-    void fetch('/api/tenant/context')
-      .then((r) => r.json())
-      .then((j) => {
-        if (!j.ok) return;
+    let cancelled = false;
+    void (async () => {
+      try {
+        const headers = await withBrowserAuthHeaders();
+        const r = await fetch('/api/tenant/context', { headers });
+        const j = await r.json();
+        if (cancelled || !j.ok) return;
         setTenant(j.tenant);
         setMemberships(j.memberships || []);
         if (j.isPlatformAdmin) {
-          void fetch('/api/platform/tenants')
-            .then((r) => r.json())
-            .then((p) => {
-              if (p.ok) setTenants(p.tenants || []);
-            });
+          const platformHeaders = await withBrowserAuthHeaders();
+          const pr = await fetch('/api/platform/tenants', { headers: platformHeaders });
+          const p = await pr.json();
+          if (!cancelled && p.ok) setTenants(p.tenants || []);
         } else if (j.tenant) {
           setTenants([j.tenant]);
         }
-      })
-      .catch(() => undefined);
+      } catch {
+        /* ignore */
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
   }, [session?.companyId, session?.fullName]);
 
   if (!tenant) return null;

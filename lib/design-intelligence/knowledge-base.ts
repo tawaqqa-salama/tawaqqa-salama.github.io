@@ -34,6 +34,12 @@ import {
   updatePersistedCodeKnowledgeDocumentMetadata,
 } from '@/lib/design-intelligence/code-knowledge/persist';
 
+import {
+  createReingestTimer,
+  logReingest,
+  sanitizeReingestErrorMessage,
+} from '@/lib/design-intelligence/reingest-log';
+
 export type KnowledgeUploadDiagnostics = {
   runtime_mode: 'production-supabase' | 'demo-local' | 'misconfigured';
   project_ref: string | null;
@@ -522,6 +528,12 @@ export async function indexDocumentText(
     requireCloudPersist?: boolean;
     /** Optional user-scoped / server client so RLS applies (never browser service role). */
     client?: SupabaseClient;
+    /** Optional structured reingest stage logger context (safe metadata only). */
+    reingestTrace?: {
+      documentId: string;
+      companyId?: string | null;
+      elapsedMs: () => number;
+    };
   }
 ): Promise<{ doc: DiKnowledgeDocument; chunks: DiKnowledgeChunk[]; persistedToCloud: boolean }> {
   const requireCloud = Boolean(opts?.requireCloudPersist) || isSupabaseConfigured;
@@ -695,10 +707,40 @@ export async function indexDocumentText(
       throw new Error(`di_knowledge_documents insert failed: ${docErr.message}`);
     }
 
+    const trace = opts?.reingestTrace;
+    if (trace) {
+      logReingest({
+        stage: 'OLD_CHUNKS_DELETE_START',
+        documentId: trace.documentId,
+        companyId: trace.companyId,
+        chunkCount: chunks.length,
+        elapsedMs: trace.elapsedMs(),
+      });
+    }
     await db.from('di_knowledge_chunks').delete().eq('document_id', doc.id);
+    if (trace) {
+      logReingest({
+        stage: 'OLD_CHUNKS_DELETE_OK',
+        documentId: trace.documentId,
+        companyId: trace.companyId,
+        elapsedMs: trace.elapsedMs(),
+      });
+    }
     const batchSize = 50;
+    const batchTotal = Math.ceil(chunks.length / batchSize) || 0;
+    if (trace) {
+      logReingest({
+        stage: 'CHUNK_INSERT_START',
+        documentId: trace.documentId,
+        companyId: trace.companyId,
+        chunkCount: chunks.length,
+        batchTotal,
+        elapsedMs: trace.elapsedMs(),
+      });
+    }
     for (let i = 0; i < chunks.length; i += batchSize) {
       const batch = chunks.slice(i, i + batchSize);
+      const batchIndex = Math.floor(i / batchSize) + 1;
       const { error: chunkErr } = await db.from('di_knowledge_chunks').insert(
         batch.map((c) => ({
           id: c.id,
@@ -726,6 +768,26 @@ export async function indexDocumentText(
         updated.ingestion_status = 'failed';
         throw new Error(`di_knowledge_chunks insert failed: ${chunkErr.message}`);
       }
+      if (trace) {
+        logReingest({
+          stage: 'CHUNK_INSERT_PROGRESS',
+          documentId: trace.documentId,
+          companyId: trace.companyId,
+          chunkCount: Math.min(i + batchSize, chunks.length),
+          batchIndex,
+          batchTotal,
+          elapsedMs: trace.elapsedMs(),
+        });
+      }
+    }
+    if (trace) {
+      logReingest({
+        stage: 'CHUNK_INSERT_OK',
+        documentId: trace.documentId,
+        companyId: trace.companyId,
+        chunkCount: chunks.length,
+        elapsedMs: trace.elapsedMs(),
+      });
     }
 
     const verified = await verifyPersistedKnowledgeRows(updated.id, db);
@@ -1343,6 +1405,13 @@ export async function reingestKnowledgeDocumentFromStorage(
 
   const db = opts?.client || supabase;
   const companyId = opts?.companyId && isUuid(opts.companyId) ? opts.companyId : null;
+  const timer = createReingestTimer();
+  logReingest({
+    stage: 'REINGEST_START',
+    documentId,
+    companyId,
+    elapsedMs: timer.elapsedMs(),
+  });
 
   let existing: DiKnowledgeDocument | undefined;
 
@@ -1386,6 +1455,15 @@ export async function reingestKnowledgeDocumentFromStorage(
     };
   }
 
+  logReingest({
+    stage: 'DOCUMENT_LOADED',
+    documentId,
+    companyId,
+    pageCount: existing.page_count ?? null,
+    chunkCount: existing.chunk_count ?? null,
+    elapsedMs: timer.elapsedMs(),
+  });
+
   // Record original counts before any write
   let chunks_before = existing.chunk_count || 0;
   if (!isDemoMode && companyId) {
@@ -1410,8 +1488,24 @@ export async function reingestKnowledgeDocumentFromStorage(
   }
 
   const bucket = existing.storage_bucket || CODE_KNOWLEDGE_STORAGE_BUCKET;
+  logReingest({
+    stage: 'STORAGE_DOWNLOAD_START',
+    documentId,
+    companyId,
+    chunksBefore: chunks_before,
+    elapsedMs: timer.elapsedMs(),
+  });
   const { data, error } = await db.storage.from(bucket).download(existing.storage_path);
   if (error || !data) {
+    logReingest({
+      stage: 'REINGEST_FAILED',
+      documentId,
+      companyId,
+      chunksBefore: chunks_before,
+      error: error?.message || 'storage_download_failed',
+      errorCode: 'storage_download_failed',
+      elapsedMs: timer.elapsedMs(),
+    });
     return {
       ok: false,
       chunks_before,
@@ -1419,6 +1513,12 @@ export async function reingestKnowledgeDocumentFromStorage(
       error: error?.message || 'storage_download_failed',
     };
   }
+  logReingest({
+    stage: 'STORAGE_DOWNLOAD_OK',
+    documentId,
+    companyId,
+    elapsedMs: timer.elapsedMs(),
+  });
 
   // Preserve identity + verification metadata; only bump ingestion_version
   const preserved: DiKnowledgeDocument = {
@@ -1442,8 +1542,28 @@ export async function reingestKnowledgeDocumentFromStorage(
     const file = new File([bytes], preserved.file_name || 'document.pdf', {
       type: preserved.file_mime || preserved.mime_type || 'application/pdf',
     });
+    logReingest({
+      stage: 'PDF_EXTRACT_START',
+      documentId,
+      companyId,
+      elapsedMs: timer.elapsedMs(),
+    });
     const extracted = await extractTextFromFile(file);
+    logReingest({
+      stage: 'PDF_EXTRACT_OK',
+      documentId,
+      companyId,
+      pageCount: extracted.page_count ?? null,
+      elapsedMs: timer.elapsedMs(),
+    });
 
+    logReingest({
+      stage: 'CHUNK_BUILD_START',
+      documentId,
+      companyId,
+      pageCount: extracted.page_count ?? null,
+      elapsedMs: timer.elapsedMs(),
+    });
     const { doc, chunks } = await indexDocumentText(
       preserved,
       extracted.text,
@@ -1456,8 +1576,44 @@ export async function reingestKnowledgeDocumentFromStorage(
         extraction_method: extracted.extraction_method,
         sha256,
       },
-      { client: opts?.client, requireCloudPersist: true }
+      {
+        client: opts?.client,
+        requireCloudPersist: true,
+        reingestTrace: {
+          documentId,
+          companyId,
+          elapsedMs: () => timer.elapsedMs(),
+        },
+      }
     );
+    logReingest({
+      stage: 'CHUNK_BUILD_OK',
+      documentId,
+      companyId,
+      pageCount: doc.page_count ?? null,
+      chunkCount: chunks.length,
+      elapsedMs: timer.elapsedMs(),
+    });
+    logReingest({
+      stage: 'DOCUMENT_UPDATE_OK',
+      documentId,
+      companyId,
+      pageCount: doc.page_count ?? null,
+      chunkCount: chunks.length,
+      chunksBefore: chunks_before,
+      chunksAfter: chunks.length,
+      elapsedMs: timer.elapsedMs(),
+    });
+    logReingest({
+      stage: 'REINGEST_DONE',
+      documentId,
+      companyId,
+      pageCount: doc.page_count ?? null,
+      chunkCount: chunks.length,
+      chunksBefore: chunks_before,
+      chunksAfter: chunks.length,
+      elapsedMs: timer.elapsedMs(),
+    });
 
     return {
       ok: true,
@@ -1468,6 +1624,15 @@ export async function reingestKnowledgeDocumentFromStorage(
     };
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
+    logReingest({
+      stage: 'REINGEST_FAILED',
+      documentId,
+      companyId,
+      chunksBefore: chunks_before,
+      error: sanitizeReingestErrorMessage(message),
+      errorCode: 'reingest_failed',
+      elapsedMs: timer.elapsedMs(),
+    });
     // Do not leave as indexed if persistence failed — best-effort mark failed
     try {
       if (companyId || preserved.company_id) {

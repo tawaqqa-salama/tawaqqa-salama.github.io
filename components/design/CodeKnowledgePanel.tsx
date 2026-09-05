@@ -8,7 +8,7 @@
  * Demo (no Supabase): session-memory with LOCAL / NOT SAVED badge.
  */
 
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   adoptNfpa13_2025ForProject,
   advanceCodeEditionStatus,
@@ -53,6 +53,7 @@ import {
 import { useAuth } from '@/lib/auth/AuthProvider';
 import { useLanguage } from '@/lib/i18n/LanguageProvider';
 import { supabase } from '@/lib/supabase';
+import { getBrowserAccessToken } from '@/lib/auth/browser-access-token';
 
 type Props = {
   companyId?: string;
@@ -84,6 +85,19 @@ function PersistenceBadge({ persistedMode, docPersisted }: { persistedMode: bool
   );
 }
 
+
+/** Stay under Vercel maxDuration (300s) so UI fails clearly before a silent platform kill. */
+const REINGEST_CLIENT_TIMEOUT_MS = 290_000;
+const RESUME_CLIENT_TIMEOUT_MS = 290_000;
+
+function formatElapsed(ms: number): string {
+  const s = Math.max(0, Math.floor(ms / 1000));
+  const m = Math.floor(s / 60);
+  const r = s % 60;
+  return m > 0 ? `${m}m ${r}s` : `${r}s`;
+}
+
+
 export default function CodeKnowledgePanel({ companyId, clientId }: Props) {
   const { session, profile } = useAuth();
   const { t } = useLanguage();
@@ -114,6 +128,10 @@ export default function CodeKnowledgePanel({ companyId, clientId }: Props) {
   const [indexStatus, setIndexStatus] = useState<string>('—');
   const [busy, setBusy] = useState(false);
   const [reingestingId, setReingestingId] = useState<string | null>(null);
+  const [operationElapsedMs, setOperationElapsedMs] = useState(0);
+  const [operationStage, setOperationStage] = useState<string | null>(null);
+  const operationStartedAtRef = useRef<number | null>(null);
+  const elapsedTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   const [uploadCode, setUploadCode] = useState('NFPA-13');
   const [uploadEdition, setUploadEdition] = useState('2025');
@@ -126,6 +144,36 @@ export default function CodeKnowledgePanel({ companyId, clientId }: Props) {
   /** Stable document UUID across Retry/Resume for the same File (no duplicate paths). */
   const [resumeDocumentId, setResumeDocumentId] = useState<string | null>(null);
   const [lastUploadError, setLastUploadError] = useState<string | null>(null);
+
+  const clearOperationTimer = () => {
+    if (elapsedTimerRef.current) {
+      clearInterval(elapsedTimerRef.current);
+      elapsedTimerRef.current = null;
+    }
+    operationStartedAtRef.current = null;
+  };
+
+  const startOperationTimer = (stage: string) => {
+    clearOperationTimer();
+    operationStartedAtRef.current = Date.now();
+    setOperationElapsedMs(0);
+    setOperationStage(stage);
+    elapsedTimerRef.current = setInterval(() => {
+      if (operationStartedAtRef.current != null) {
+        setOperationElapsedMs(Date.now() - operationStartedAtRef.current);
+      }
+    }, 500);
+  };
+
+  const finishOperation = (stage: string | null) => {
+    clearOperationTimer();
+    setOperationStage(stage);
+  };
+
+  useEffect(() => {
+    return () => clearOperationTimer();
+  }, []);
+
 
   const [sourceText, setSourceText] = useState(
     'Section 8.1 general requirements.\n\nTable 8.2.1 design criteria placeholder text for indexing tests only.\n\nPage 12 discusses spacing. Figure 8.3 shows coverage layout.'
@@ -283,6 +331,10 @@ export default function CodeKnowledgePanel({ companyId, clientId }: Props) {
         onPhase: (phase) => {
           setUploadPhase(phase);
           setIndexStatus(phase);
+          setOperationStage(String(phase));
+          if (phase === 'indexing') {
+            setUploadPercent((prev) => (prev < 5 ? 5 : prev));
+          }
         },
         registerUploadHandle: (handle) => setUploadHandle(handle),
       });
@@ -394,16 +446,29 @@ export default function CodeKnowledgePanel({ companyId, clientId }: Props) {
     setBusy(true);
     setReingestingId(documentId);
     setMessage(null);
+    setUploadPhase('indexing');
+    setUploadPercent(0);
+    startOperationTimer('AUTH');
+    const controller = new AbortController();
+    const timeoutId = window.setTimeout(() => controller.abort(), REINGEST_CLIENT_TIMEOUT_MS);
     try {
-      const { data: authData, error: authErr } = await supabase.auth.getSession();
-      const accessToken = authData.session?.access_token;
-      if (authErr || !accessToken) {
-        setMessage(
-          'FAILED: لا توجد جلسة Supabase مصادَقة — سجّل الدخول ثم أعد المحاولة.'
-        );
-        return;
+      setOperationStage('AUTH');
+      let accessToken = await getBrowserAccessToken();
+      if (!accessToken) {
+        const { data: authData, error: authErr } = await supabase.auth.getSession();
+        accessToken = authData.session?.access_token || null;
+        if (authErr || !accessToken) {
+          setUploadPhase('failed');
+          setIndexStatus('failed');
+          setMessage(
+            'FAILED: لا توجد جلسة Supabase مصادَقة — سجّل الدخول ثم أعد المحاولة.'
+          );
+          return;
+        }
       }
 
+      setOperationStage('REINGEST_REQUEST');
+      setMessage('Reingest in progress… waiting for server stages (download → extract → chunks).');
       const response = await fetch('/api/design/knowledge/reingest', {
         method: 'POST',
         headers: {
@@ -411,9 +476,12 @@ export default function CodeKnowledgePanel({ companyId, clientId }: Props) {
           Authorization: `Bearer ${accessToken}`,
         },
         body: JSON.stringify({ documentId }),
+        signal: controller.signal,
       });
       const contentType = response.headers.get('content-type') || '';
       if (!contentType.includes('application/json')) {
+        setUploadPhase('failed');
+        setIndexStatus('failed');
         setMessage(`FAILED: reingest endpoint returned non-JSON (${response.status})`);
         return;
       }
@@ -431,6 +499,8 @@ export default function CodeKnowledgePanel({ companyId, clientId }: Props) {
         ingestion_status?: string | null;
       };
       if (!response.ok || !payload.ok) {
+        setUploadPhase('failed');
+        setIndexStatus('failed');
         setMessage(`FAILED: ${payload.error || `reingest_failed (${response.status})`}`);
         return;
       }
@@ -441,12 +511,28 @@ export default function CodeKnowledgePanel({ companyId, clientId }: Props) {
         docs.find((d) => d.id === documentId)?.file_name ||
         payload.code ||
         documentId;
+      setUploadPhase('indexed');
+      setIndexStatus('indexed');
+      setUploadPercent(100);
       setMessage(
-        `تمت إعادة الفهرسة بنجاح · ${known} · ingestion_version=${payload.ingestion_version ?? '—'} · pages=${payload.page_count ?? '—'} · chunks=${payload.chunks_after ?? '—'} (was ${payload.chunks_before ?? '—'}) · index=${payload.index_status || '—'} · ingestion=${payload.ingestion_status || '—'}`
+        `تمت إعادة الفهرسة بنجاح · ${known} · ingestion_version=${payload.ingestion_version ?? '—'} · pages=${payload.page_count ?? '—'} · chunks=${payload.chunks_after ?? '—'} (was ${payload.chunks_before ?? '—'}) · index=${payload.index_status || '—'} · ingestion=${payload.ingestion_status || '—'} · elapsed=${formatElapsed(operationElapsedMs)}`
       );
     } catch (err) {
-      setMessage(`FAILED: ${err instanceof Error ? err.message : String(err)}`);
+      setUploadPhase('failed');
+      setIndexStatus('failed');
+      const aborted =
+        (err instanceof DOMException && err.name === 'AbortError') ||
+        (err instanceof Error && err.name === 'AbortError');
+      if (aborted) {
+        setMessage(
+          'FAILED: Reingest exceeded server execution time; operation status must be checked before retry.'
+        );
+      } else {
+        setMessage(`FAILED: ${err instanceof Error ? err.message : String(err)}`);
+      }
     } finally {
+      window.clearTimeout(timeoutId);
+      finishOperation(null);
       setBusy(false);
       setReingestingId(null);
     }
@@ -457,6 +543,7 @@ export default function CodeKnowledgePanel({ companyId, clientId }: Props) {
    * Preserves valid chunks; fills missing pages via authenticated session.
    */
   const onResumeChunks = async (d: CodeKnowledgeDocumentMeta) => {
+    if (busy || reingestingId) return;
     if (!d.storage_path) {
       setMessage('FAILED: storage_path_missing — cannot resume without Storage object.');
       return;
@@ -470,6 +557,12 @@ export default function CodeKnowledgePanel({ companyId, clientId }: Props) {
       `Resuming chunks from Storage (no re-upload)… document_id=${d.id}`
     );
     setUploadPhase('chunking');
+    setUploadPercent(0);
+    startOperationTimer('RESUME_START');
+    let timedOut = false;
+    const timeoutId = window.setTimeout(() => {
+      timedOut = true;
+    }, RESUME_CLIENT_TIMEOUT_MS);
     try {
       const result = await resumeIncompleteCodeKnowledgeIngestion({
         companyId: company,
@@ -486,6 +579,14 @@ export default function CodeKnowledgePanel({ companyId, clientId }: Props) {
           setIndexStatus(phase);
         },
       });
+      if (timedOut) {
+        setUploadPhase('failed');
+        setIndexStatus('failed');
+        setMessage(
+          'FAILED: Reingest exceeded server execution time; operation status must be checked before retry.'
+        );
+        return;
+      }
       await refresh();
       if (result.status === 'failed') {
         setUploadPhase('failed');
@@ -505,6 +606,8 @@ export default function CodeKnowledgePanel({ companyId, clientId }: Props) {
       setIndexStatus('failed');
       setMessage(`FAILED: ${err instanceof Error ? err.message : String(err)}`);
     } finally {
+      window.clearTimeout(timeoutId);
+      finishOperation(null);
       setBusy(false);
     }
   };
@@ -807,7 +910,10 @@ export default function CodeKnowledgePanel({ companyId, clientId }: Props) {
               <span>
                 {uploadPhase === 'uploading' || uploadPhase === 'upload_paused'
                   ? `Uploading ${uploadPercent}%`
-                  : uploadPhase}
+                  : operationStage
+                    ? `${uploadPhase} · ${operationStage}`
+                    : uploadPhase}
+                {busy ? ` · elapsed ${formatElapsed(operationElapsedMs)}` : ''}
               </span>
               <span className="font-mono">{uploadPercent}%</span>
             </div>

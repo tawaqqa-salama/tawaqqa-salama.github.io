@@ -5,6 +5,11 @@ import { getBearerAccessToken } from '@/lib/auth/bearer';
 import { createUserScopedSupabase } from '@/lib/supabase/server';
 import { withTenantApi } from '@/lib/tenant/api-guard';
 import { requireRole } from '@/lib/tenant/context';
+import {
+  createReingestTimer,
+  logReingest,
+  sanitizeReingestErrorMessage,
+} from '@/lib/design-intelligence/reingest-log';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -35,15 +40,37 @@ export async function POST(req: Request) {
     );
   }
 
+  const timer = createReingestTimer();
+  logReingest({ stage: 'REINGEST_START', elapsedMs: timer.elapsedMs() });
+
   const gated = await withTenantApi(req, { module: 'design' });
   if ('response' in gated) return gated.response;
+
+  logReingest({
+    stage: 'AUTH_OK',
+    companyId: gated.ctx.tenantId,
+    elapsedMs: timer.elapsedMs(),
+  });
 
   try {
     await requireRole(gated.ctx, ['tenant_admin', 'admin']);
   } catch (error) {
     const message = error instanceof Error ? error.message : 'Insufficient role';
+    logReingest({
+      stage: 'REINGEST_FAILED',
+      companyId: gated.ctx.tenantId,
+      error: sanitizeReingestErrorMessage(message),
+      errorCode: 'insufficient_role',
+      elapsedMs: timer.elapsedMs(),
+    });
     return NextResponse.json({ ok: false, error: message }, { status: 403 });
   }
+
+  logReingest({
+    stage: 'TENANT_OK',
+    companyId: gated.ctx.tenantId,
+    elapsedMs: timer.elapsedMs(),
+  });
 
   try {
     const contentType = req.headers.get('content-type') || '';
@@ -76,12 +103,29 @@ export async function POST(req: Request) {
       );
     }
 
+    logReingest({
+      stage: 'REINGEST_START',
+      documentId,
+      companyId: gated.ctx.tenantId,
+      elapsedMs: timer.elapsedMs(),
+    });
+
     const result = await reingestKnowledgeDocumentFromStorage(documentId, {
       companyId: gated.ctx.tenantId,
       client: userClient,
     });
 
     if (!result.ok) {
+      logReingest({
+        stage: 'REINGEST_FAILED',
+        documentId,
+        companyId: gated.ctx.tenantId,
+        chunksBefore: result.chunks_before,
+        chunksAfter: result.chunks_after,
+        error: sanitizeReingestErrorMessage(result.error || 'reingest_failed'),
+        errorCode: result.error || 'reingest_failed',
+        elapsedMs: timer.elapsedMs(),
+      });
       const status =
         result.error === 'document_missing' || result.error === 'company_mismatch'
           ? 404
@@ -103,6 +147,17 @@ export async function POST(req: Request) {
       );
     }
 
+    logReingest({
+      stage: 'REINGEST_DONE',
+      documentId,
+      companyId: gated.ctx.tenantId,
+      pageCount: result.page_count ?? result.doc?.page_count ?? null,
+      chunkCount: result.chunks_after,
+      chunksBefore: result.chunks_before,
+      chunksAfter: result.chunks_after,
+      elapsedMs: timer.elapsedMs(),
+    });
+
     return NextResponse.json({
       ok: true,
       documentId,
@@ -120,6 +175,13 @@ export async function POST(req: Request) {
       chunks_after: result.chunks_after,
     });
   } catch (error) {
+    logReingest({
+      stage: 'REINGEST_FAILED',
+      companyId: gated.ctx.tenantId,
+      error: sanitizeReingestErrorMessage(error),
+      errorCode: 'reingest_exception',
+      elapsedMs: timer.elapsedMs(),
+    });
     return NextResponse.json(
       {
         ok: false,

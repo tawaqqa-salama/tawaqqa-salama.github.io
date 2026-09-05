@@ -1,37 +1,81 @@
 import { NextResponse } from 'next/server';
-import { AUTH_COOKIE_NAME, decodeCookiePayload } from '@/lib/auth/session-cookie';
-import { getTenant, getTenantModules, getUserMemberships } from '@/lib/tenant/service';
-import { isSuperAdminRole } from '@/lib/tenant/rbac';
+import { getBearerAccessToken } from '@/lib/auth/bearer';
+import { createUserScopedSupabase } from '@/lib/supabase/server';
+import { isDemoMode, isSupabaseConfigured } from '@/lib/supabase';
+import { tenantErrorResponse } from '@/lib/tenant/api-guard';
+import {
+  requireTenantFromRequest,
+  TenantAccessError,
+} from '@/lib/tenant/context';
+import { isTenantMemoryMode } from '@/lib/tenant/mode';
+import { getTenantModules, getUserMemberships } from '@/lib/tenant/service';
 
 export const runtime = 'nodejs';
 
+/**
+ * Production Node (Supabase configured, not demo/memory): Bearer JWT is required.
+ * Cookie alone is not enough — companies RLS needs auth.uid() from the user JWT.
+ * Demo / in-memory tenant mode may omit Bearer.
+ */
+function requiresBearerForTenantContext(): boolean {
+  return isSupabaseConfigured && !isDemoMode && !isTenantMemoryMode();
+}
+
+/**
+ * Authenticated tenant context for AppShell / TenantSwitcher.
+ * Uses live actor + user-scoped Supabase when Bearer is present.
+ * Never falls back to the anonymous client on authenticated Production paths.
+ */
 export async function GET(request: Request) {
-  const cookie = request.headers.get('cookie') || '';
-  const match = cookie.match(new RegExp(`${AUTH_COOKIE_NAME}=([^;]+)`));
-  const session = decodeCookiePayload(match?.[1] ? decodeURIComponent(match[1]) : null);
-  if (!session) {
-    return NextResponse.json({ ok: false, error: 'Unauthorized' }, { status: 401 });
+  const accessToken = getBearerAccessToken(request);
+
+  if (requiresBearerForTenantContext() && !accessToken) {
+    return NextResponse.json(
+      {
+        ok: false,
+        error: 'Bearer access token required for tenant context',
+      },
+      { status: 401 }
+    );
   }
 
-  let companyId = session.companyId;
-  if (!companyId) {
-    const memberships = await getUserMemberships(session.userId);
-    companyId = memberships[0] ? String(memberships[0].company_id) : undefined;
-  }
-  if (!companyId) {
-    return NextResponse.json({ ok: false, error: 'No tenant' }, { status: 400 });
-  }
+  try {
+    // When Bearer is present, requireTenantFromRequest uses createUserScopedSupabase
+    // and requireClient — never the anon client for companies lookup.
+    const ctx = await requireTenantFromRequest(request);
 
-  const tenant = await getTenant(companyId);
-  const modules = await getTenantModules(companyId);
-  const memberships = await getUserMemberships(session.userId);
+    if (accessToken) {
+      const scoped = createUserScopedSupabase(accessToken);
+      if (!scoped) {
+        throw new TenantAccessError(
+          'User-scoped Supabase client unavailable for tenant context',
+          503
+        );
+      }
+      const modules = await getTenantModules(ctx.tenantId, scoped);
+      const memberships = await getUserMemberships(ctx.session.userId, scoped);
+      return NextResponse.json({
+        ok: true,
+        tenant: ctx.tenant,
+        modules,
+        memberships,
+        isPlatformAdmin: ctx.isPlatformAdmin,
+        roleCode: ctx.roleCode,
+      });
+    }
 
-  return NextResponse.json({
-    ok: true,
-    tenant,
-    modules,
-    memberships,
-    isPlatformAdmin: isSuperAdminRole(session.roleCode),
-    roleCode: session.roleCode,
-  });
+    // Demo / memory only — cookie session without Bearer
+    const modules = await getTenantModules(ctx.tenantId);
+    const memberships = await getUserMemberships(ctx.session.userId);
+    return NextResponse.json({
+      ok: true,
+      tenant: ctx.tenant,
+      modules,
+      memberships,
+      isPlatformAdmin: ctx.isPlatformAdmin,
+      roleCode: ctx.roleCode,
+    });
+  } catch (error) {
+    return tenantErrorResponse(error);
+  }
 }
