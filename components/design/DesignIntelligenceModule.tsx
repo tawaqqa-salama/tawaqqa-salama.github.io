@@ -106,7 +106,7 @@ export default function DesignIntelligenceModule() {
   const [title, setTitle] = useState('');
   const [category, setCategory] = useState(knowledgeCategories()[0]);
   const [discipline, setDiscipline] = useState('Fire Protection');
-  const [codes, setCodes] = useState('SBC 801, NFPA 13');
+  const [codes, setCodes] = useState('');
   const [revision, setRevision] = useState('A');
   const [author, setAuthor] = useState('');
   const [versionLabel, setVersionLabel] = useState('1.0');

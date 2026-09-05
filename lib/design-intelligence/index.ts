@@ -81,3 +81,15 @@ export {
   isVerifiedKnowledgeStatus,
   shouldWarnUnverifiedKnowledgeSource,
 } from '@/lib/design-intelligence/verification-status';
+
+export {
+  assertChunkDocumentCodeConsistency,
+  chunkMatchesQueryTopic,
+  inferRequestedBroadFamilies,
+  normalizeCanonicalCodeFamily,
+  reconcileChunkCodeWithDocument,
+  resolveSourceCodeFamily,
+  shouldRouteAsNfpa13Document,
+  type BroadCodeFamily,
+  type CanonicalCodeFamily,
+} from '@/lib/design-intelligence/code-family';
