@@ -21,6 +21,7 @@ import type { DepartmentId } from '@/lib/constants/navigation';
 import { DEPARTMENT_TO_MODULE } from '@/lib/tenant/types';
 import { isSuperAdminRole } from '@/lib/tenant/rbac';
 import { areApiRoutesAvailable } from '@/lib/runtime/mode';
+import { withBrowserAuthHeaders } from '@/lib/auth/browser-access-token';
 
 const DocumentPreviewSheet = dynamic(() => import('@/components/ui/DocumentPreviewSheet'), {
   ssr: false,
@@ -67,13 +68,22 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
       setEnabledModules([]);
       return;
     }
-    void fetch('/api/tenant/context')
-      .then((r) => r.json())
-      .then((j) => {
+    let cancelled = false;
+    void (async () => {
+      try {
+        const headers = await withBrowserAuthHeaders();
+        const r = await fetch('/api/tenant/context', { headers });
+        const j = await r.json();
+        if (cancelled) return;
         if (j.ok && Array.isArray(j.modules)) setEnabledModules(j.modules);
         else setEnabledModules([]);
-      })
-      .catch(() => setEnabledModules([]));
+      } catch {
+        if (!cancelled) setEnabledModules([]);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
   }, [session, isPublic]);
 
   useEffect(() => {

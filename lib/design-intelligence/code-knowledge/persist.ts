@@ -202,6 +202,8 @@ export async function persistCodeKnowledgeChunks(
     batchSize?: number;
     /** Insert retries per batch (default 4). */
     maxRetries?: number;
+    /** Safe progress callback: batches completed / total (no document text). */
+    onBatchProgress?: (done: number, total: number) => void;
   }
 ): Promise<{
   ok: boolean;
@@ -296,7 +298,13 @@ export async function persistCodeKnowledgeChunks(
     while (true) {
       attempt += 1;
       const { error } = await supabase.from('di_knowledge_chunks').insert(batch);
-      if (!error) break;
+      if (!error) {
+        opts?.onBatchProgress?.(
+          Math.min(i + batch.length, rows.length),
+          rows.length
+        );
+        break;
+      }
 
       const transient = isTransientPersistError(error.message);
       if (!transient || attempt >= maxRetries) {
