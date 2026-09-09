@@ -1,6 +1,21 @@
 import type { SupabaseClient } from '@supabase/supabase-js';
 import { EKB_TOPICS } from '@/lib/compliance/ekb-catalog';
-import { cosineSimilarity, embedText, chunkText, extractTextFromFile, normalizeKnowledgeSearchText } from '@/lib/design-intelligence/embeddings';
+import {
+  cosineSimilarity,
+  embedText,
+  chunkText,
+  extractTextFromFile,
+  normalizeKnowledgeSearchText,
+  tokenizeKnowledgeSearch,
+} from '@/lib/design-intelligence/embeddings';
+import {
+  contentMatchesEngineeringQuery,
+  ENGINEERING_ABSTAIN_MESSAGE_AR,
+  ENGINEERING_ABSTAIN_MESSAGE_EN,
+  engineeringTopicRelevanceScore,
+  questionHasSpecificEngineeringTopic,
+  SBC_ARABIC_EXTRACTION_REINGEST_REQUIRED,
+} from '@/lib/design-intelligence/engineering-topic-relevance';
 import { completeIndexingJob, enqueueIndexingJob } from '@/lib/design-intelligence/jobs';
 import type {
   DiKnowledgeChunk,
@@ -296,15 +311,45 @@ export function ensureSeedKnowledgeBase(): { docs: DiKnowledgeDocument[]; chunks
   return { docs: mergedDocs, chunks: mergedChunks };
 }
 
-export function listKnowledgeDocumentsSync(): DiKnowledgeDocument[] {
+/**
+ * Active indexed knowledge document for company RAG readiness counts.
+ * Soft-deleted / historical rows must never inflate the UI count.
+ */
+export function isActiveIndexedKnowledgeDocument(
+  doc: DiKnowledgeDocument,
+  companyId?: string | null
+): boolean {
+  if (doc.deleted_at) return false;
+  if (String(doc.index_status || '') !== 'indexed') return false;
+  if (String(doc.ingestion_status || '') !== 'indexed') return false;
+  if (companyId) {
+    if (!doc.company_id || doc.company_id !== companyId) return false;
+  }
+  return true;
+}
+
+function filterListedKnowledgeDocuments(
+  docs: DiKnowledgeDocument[],
+  companyId?: string | null
+): DiKnowledgeDocument[] {
+  return docs.filter((d) => {
+    if (d.deleted_at) return false;
+    if (companyId && d.company_id && d.company_id !== companyId) return false;
+    if (companyId && !d.company_id) return false;
+    return true;
+  });
+}
+
+export function listKnowledgeDocumentsSync(companyId?: string | null): DiKnowledgeDocument[] {
   ensureSeedKnowledgeBase();
-  return readLocalDocs().filter((d) => !d.deleted_at);
+  return filterListedKnowledgeDocuments(readLocalDocs(), companyId);
 }
 
 export async function listKnowledgeDocuments(options?: {
   companyId?: string | null;
 }): Promise<DiKnowledgeDocument[]> {
   ensureSeedKnowledgeBase();
+  const companyId = options?.companyId || null;
   if (!isDemoMode) {
     let query = supabase
       .from('di_knowledge_documents')
@@ -312,8 +357,8 @@ export async function listKnowledgeDocuments(options?: {
       .is('deleted_at', null)
       .order('created_at', { ascending: false })
       .limit(200);
-    if (options?.companyId && isUuid(options.companyId)) {
-      query = query.eq('company_id', options.companyId);
+    if (companyId && isUuid(companyId)) {
+      query = query.eq('company_id', companyId);
     }
     const { data, error } = await query;
     if (!error && data?.length) {
@@ -327,10 +372,10 @@ export async function listKnowledgeDocuments(options?: {
         ...local,
         ...readLocalDocs().filter((d) => Boolean(d.deleted_at)),
       ]);
-      return readLocalDocs().filter((d) => !d.deleted_at);
+      return filterListedKnowledgeDocuments(readLocalDocs(), companyId);
     }
   }
-  return readLocalDocs().filter((d) => !d.deleted_at);
+  return filterListedKnowledgeDocuments(readLocalDocs(), companyId);
 }
 
 /** Includes soft-deleted rows (delete / duplicate helpers). */
@@ -1718,19 +1763,36 @@ function detectChunkCodeFamilies(chunk: DiKnowledgeChunk, doc?: DiKnowledgeDocum
 }
 
 function lexicalOverlapBoost(question: string, content: string): number {
+  /** Alias-expanded exact/token match — primary lexical signal for engineering terms. */
   const qTokens = new Set(
-    normalizeKnowledgeSearchText(question)
-      .split(/\s+/)
-      .filter((t) => t.length > 2)
+    tokenizeKnowledgeSearch(question).filter(
+      (t) => t.length >= 2 || /^[a-z0-9.-]+$/i.test(t)
+    )
   );
   if (!qTokens.size) return 0;
-  const cNorm = normalizeKnowledgeSearchText(content);
+  const contentTokens = new Set(tokenizeKnowledgeSearch(content));
   let hits = 0;
   for (const t of qTokens) {
-    if (cNorm.includes(t)) hits += 1;
+    if (contentTokens.has(t)) hits += 1;
   }
   const ratio = hits / qTokens.size;
-  return Math.min(0.1, 0.03 + ratio * 0.07);
+  // Stronger ceiling so exact engineering-term hits can outrank weak semantic neighbors.
+  return Math.min(0.22, ratio * 0.28);
+}
+
+function sectionTitleRelevanceBoost(question: string, chunk: DiKnowledgeChunk): number {
+  const sectionHay = [chunk.section, chunk.subsection, chunk.code_reference, chunk.paragraph_reference, chunk.paragraph_ref]
+    .filter(Boolean)
+    .join(' ');
+  if (!sectionHay.trim()) return 0;
+  const qTokens = new Set(tokenizeKnowledgeSearch(question));
+  const sectionTokens = tokenizeKnowledgeSearch(sectionHay);
+  if (!qTokens.size || !sectionTokens.length) return 0;
+  let hits = 0;
+  for (const token of sectionTokens) {
+    if (qTokens.has(token)) hits += 1;
+  }
+  return Math.min(0.08, (hits / Math.max(1, sectionTokens.length)) * 0.1);
 }
 
 function exactCodeBoost(question: string, chunk: DiKnowledgeChunk, doc?: DiKnowledgeDocument | null): number {
@@ -1774,16 +1836,22 @@ function clampScore(n: number): number {
   return Math.max(0, Math.min(1, n));
 }
 
-function needsDataAnswer(message?: string): RagAnswer {
+function needsDataAnswer(message?: string, preferArabic = true): RagAnswer {
   return {
     answer: 'NEEDS_DATA',
     citations: [],
     confidence: 0,
     reliable: false,
     matchStrength: 'none',
-    message: message || 'No sufficiently relevant indexed source was found.',
+    message:
+      message ||
+      (preferArabic ? ENGINEERING_ABSTAIN_MESSAGE_AR : ENGINEERING_ABSTAIN_MESSAGE_EN),
   };
 }
+
+/** Re-export for callers / tests — persisted pre-fix SBC Arabic chunks need reingest. */
+export { SBC_ARABIC_EXTRACTION_REINGEST_REQUIRED };
+
 
 export async function ragQuery(
   question: string,
@@ -1967,16 +2035,27 @@ export async function ragQuery(
     remoteDocsById.get(documentId) || docs.find((d) => d.id === documentId);
 
   const qVec = embedText(q);
-  type Scored = { chunk: DiKnowledgeChunk; sim: number; finalScore: number; families: CodeFamily[] };
+  type Scored = {
+    chunk: DiKnowledgeChunk;
+    sim: number;
+    finalScore: number;
+    families: CodeFamily[];
+    topicMatched: boolean;
+  };
+  const engineeringQuery = questionHasSpecificEngineeringTopic(q);
   const scoredAll: Scored[] = chunks.map((chunk) => {
     const doc = resolveDoc(chunk.document_id);
     const emb = chunk.embedding?.length ? chunk.embedding : embedText(chunk.content);
     const sim = cosineSimilarity(qVec, emb);
     const families = detectChunkCodeFamilies(chunk, doc);
+    const topicBoost = engineeringTopicRelevanceScore(q, chunk.content);
+    const topicMatched = contentMatchesEngineeringQuery(q, chunk.content);
     let score = sim;
     score += lexicalOverlapBoost(q, chunk.content);
     score += exactCodeBoost(q, chunk, doc);
     score += titleBoost(q, chunk.document_title || doc?.title || '');
+    score += sectionTitleRelevanceBoost(q, chunk);
+    score += topicBoost;
 
     if (explicitFamily.length) {
       const matchesFamily = explicitFamily.some((f) => families.includes(f));
@@ -1988,7 +2067,7 @@ export async function ragQuery(
       }
     }
 
-    return { chunk, sim, finalScore: clampScore(score), families };
+    return { chunk, sim, finalScore: clampScore(score), families, topicMatched };
   });
 
   scoredAll.sort((a, b) => b.finalScore - a.finalScore || b.sim - a.sim);
@@ -2012,6 +2091,16 @@ export async function ragQuery(
     }
   }
 
+  // Engineering-system queries: drop unrelated systems (stairs/hazmat vs sprinklers).
+  // Do not pad the result list with off-topic chunks merely to fill topK.
+  if (engineeringQuery) {
+    const topical = ranked.filter((s) => s.topicMatched && s.finalScore >= minScore);
+    if (!topical.length) {
+      return needsDataAnswer(ENGINEERING_ABSTAIN_MESSAGE_AR);
+    }
+    ranked = topical;
+  }
+
   const scored = ranked.slice(0, topK);
   const best = scored[0]?.finalScore ?? 0;
   const second = scored[1]?.finalScore ?? 0;
@@ -2019,7 +2108,9 @@ export async function ragQuery(
   // Relevance-gap: all nearly random / weak
   if (!scored.length || best < minScore) {
     return {
-      ...needsDataAnswer('No sufficiently relevant indexed source was found.'),
+      ...needsDataAnswer(
+        engineeringQuery ? ENGINEERING_ABSTAIN_MESSAGE_AR : 'No sufficiently relevant indexed source was found.'
+      ),
       confidence: Math.round(best * 100),
     };
   }
@@ -2037,7 +2128,17 @@ export async function ragQuery(
   // Near-random cluster: best is weak and peers are within noise
   if (best < RELIABLE_SCORE && second > 0 && best - second < 0.02 && best < 0.35) {
     return {
-      ...needsDataAnswer('No sufficiently relevant indexed source was found.'),
+      ...needsDataAnswer(
+        engineeringQuery ? ENGINEERING_ABSTAIN_MESSAGE_AR : 'No sufficiently relevant indexed source was found.'
+      ),
+      confidence: Math.round(best * 100),
+    };
+  }
+
+  // Engineering topic with only weak evidence → abstain (do not return unrelated pages)
+  if (engineeringQuery && best < RELIABLE_SCORE) {
+    return {
+      ...needsDataAnswer(ENGINEERING_ABSTAIN_MESSAGE_AR),
       confidence: Math.round(best * 100),
     };
   }

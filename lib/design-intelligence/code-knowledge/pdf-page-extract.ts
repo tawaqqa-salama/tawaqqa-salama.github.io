@@ -34,6 +34,10 @@ export type PositionedTextItem = {
   height?: number;
   /** Original PDF.js item order — used when logical order already reads well. */
   order?: number;
+  /** PDF.js TextItem.hasEOL — hard line break after this run. */
+  hasEOL?: boolean;
+  /** PDF.js TextItem.dir when present (`ttb` / `ltr` / `rtl`). */
+  dir?: string;
 };
 
 const FORM_FEED = '\f';
@@ -78,7 +82,17 @@ function median(values: number[]): number {
  * Preserves line breaks; never reverses string content or numeric tokens.
  */
 export function reconstructPageText(
-  items: Array<PositionedTextItem | { str?: string; transform?: number[]; width?: number; height?: number }>
+  items: Array<
+    | PositionedTextItem
+    | {
+        str?: string;
+        transform?: number[];
+        width?: number;
+        height?: number;
+        hasEOL?: boolean;
+        dir?: string;
+      }
+  >
 ): string {
   const positioned: PositionedTextItem[] = [];
   items.forEach((raw, order) => {
@@ -87,7 +101,9 @@ export function reconstructPageText(
       'str' in raw && raw.str != null
         ? String(raw.str)
         : '';
-    if (!str) return;
+    // Keep empty strings that only signal EOL so line breaks survive.
+    const hasEOL = Boolean((raw as { hasEOL?: boolean }).hasEOL);
+    if (!str && !hasEOL) return;
     let x = 0;
     let y = 0;
     let width = typeof (raw as PositionedTextItem).width === 'number' ? (raw as PositionedTextItem).width : undefined;
@@ -106,7 +122,11 @@ export function reconstructPageText(
     }
     if (width == null && 'width' in raw) width = Number((raw as { width?: number }).width) || undefined;
     if (height == null && 'height' in raw) height = Number((raw as { height?: number }).height) || undefined;
-    positioned.push({ str, x, y, width, height, order });
+    const dir =
+      'dir' in raw && typeof (raw as { dir?: string }).dir === 'string'
+        ? (raw as { dir: string }).dir
+        : undefined;
+    positioned.push({ str, x, y, width, height, order, hasEOL, dir });
   });
 
   if (!positioned.length) return '';
@@ -157,58 +177,117 @@ export function reconstructPageText(
   return normalizeSafeWhitespace(lineTexts.join('\n'));
 }
 
-function orderLineItems(items: PositionedTextItem[]): string {
-  const joinedLogical = [...items]
-    .sort((a, b) => (a.order ?? 0) - (b.order ?? 0))
-    .map((i) => i.str)
-    .join('')
-    .replace(/\s+/g, ' ')
-    .trim();
+function isArabicLetter(ch: string): boolean {
+  return /[\u0600-\u06FF]/.test(ch);
+}
 
+function arabicLetterCount(text: string): number {
+  let n = 0;
+  for (const ch of text) if (isArabicLetter(ch)) n += 1;
+  return n;
+}
+
+/**
+ * Join PDF text runs without reversing Unicode.
+ * - Glue glyph-sized Arabic fragments (common pdfjs split) WITHOUT spaces.
+ * - Keep spaces between whole Arabic/Latin words.
+ * - Preserve decimals / code refs (317.4.1).
+ * - Honor hasEOL as a hard break marker (returned as trailing \n when alone).
+ */
+function orderLineItems(items: PositionedTextItem[]): string {
   const lineBlob = items.map((i) => i.str).join('');
   const arabicDom = isArabicDominant(lineBlob);
 
-  // Prefer PDF logical item sequence when it already forms coherent text
-  // (avoids breaking Arabic shaping / bilingual runs). Never reverse characters.
-  if (joinedLogical && (arabicDom || countArabic(joinedLogical) > 0)) {
-    // Mixed / Arabic: keep logical runs, separate by spaces between ordered items
-    const ordered = [...items].sort((a, b) => (a.order ?? 0) - (b.order ?? 0));
-    return joinRuns(ordered.map((i) => i.str));
+  // Prefer PDF logical item sequence for Arabic/mixed (never reverse characters).
+  // RTL x-sort is a fallback only when logical join is empty.
+  let ordered: PositionedTextItem[];
+  if (arabicDom || countArabic(lineBlob) > 0) {
+    ordered = [...items].sort((a, b) => (a.order ?? 0) - (b.order ?? 0));
+    const logical = joinRuns(ordered);
+    if (logical.trim()) return logical;
+    ordered = [...items].sort((a, b) => b.x - a.x || (a.order ?? 0) - (b.order ?? 0));
+    return joinRuns(ordered);
   }
 
-  if (arabicDom) {
-    // If coordinate ordering is needed, sort right-to-left by x — still do not reverse strings
-    const ordered = [...items].sort((a, b) => b.x - a.x || (a.order ?? 0) - (b.order ?? 0));
-    return joinRuns(ordered.map((i) => i.str));
-  }
-
-  // Latin dominant: left-to-right
-  const ordered = [...items].sort((a, b) => a.x - b.x || (a.order ?? 0) - (b.order ?? 0));
-  return joinRuns(ordered.map((i) => i.str));
+  ordered = [...items].sort((a, b) => a.x - b.x || (a.order ?? 0) - (b.order ?? 0));
+  return joinRuns(ordered);
 }
 
-function joinRuns(parts: string[]): string {
+function joinRuns(items: PositionedTextItem[]): string {
   const out: string[] = [];
-  for (const part of parts) {
-    const t = part.replace(/\s+/g, ' ');
-    if (!t) continue;
+  for (let i = 0; i < items.length; i += 1) {
+    const item = items[i];
+    const t = String(item.str || '');
+    if (!t) {
+      if (item.hasEOL) out.push('\n');
+      continue;
+    }
     if (!out.length) {
       out.push(t);
+      if (item.hasEOL) out.push('\n');
       continue;
     }
     const prev = out[out.length - 1];
-    // Avoid inserting space inside decimals / code refs when PDF splits "317" "." "4" "." "1"
+    if (prev === '\n') {
+      out.push(t);
+      if (item.hasEOL) out.push('\n');
+      continue;
+    }
+
+    const prevLast = prev.slice(-1);
+    const nextFirst = t.slice(0, 1);
+    const prevEnd = (items[i - 1]?.x ?? 0) + (items[i - 1]?.width ?? 0);
+    const gap = Math.abs(item.x - prevEnd);
+    const em = Math.max(items[i - 1]?.height || 10, item.height || 10);
+    const gapLooksLikeSpace = gap > em * 0.35;
+
+    // Decimals / dotted code refs: "317" "." "4" "." "1"
     if (/[\d.]$/.test(prev) && /^[\d.]/.test(t)) {
       out[out.length - 1] = prev + t;
-    } else if (/[A-Za-z]$/.test(prev) && /^[A-Za-z]/.test(t) && !/\s$/.test(prev)) {
-      // PDF sometimes splits words without spaces — keep adjacent Latin glued only if no space intent
-      // Prefer space between distinct tokens
+    } else if (/\s$/.test(prev) || /^\s/.test(t)) {
+      out[out.length - 1] = prev + t;
+    } else if (
+      isArabicLetter(prevLast) &&
+      isArabicLetter(nextFirst) &&
+      !gapLooksLikeSpace &&
+      (arabicLetterCount(prev.replace(/\s/g, '')) <= 2 ||
+        arabicLetterCount(t.replace(/\s/g, '')) <= 2)
+    ) {
+      // Glyph fragments → glue (never reverse)
+      out[out.length - 1] = prev + t;
+    } else if (
+      isArabicLetter(prevLast) &&
+      isArabicLetter(nextFirst) &&
+      !gapLooksLikeSpace &&
+      arabicLetterCount(prev.replace(/\s/g, '')) > 2 &&
+      arabicLetterCount(t.replace(/\s/g, '')) > 2
+    ) {
+      // Whole Arabic words with negligible gap but separate items → keep word boundary
       out.push(t);
+    } else if (/[A-Za-z]$/.test(prev) && /^[A-Za-z]/.test(t) && !gapLooksLikeSpace && t.length === 1) {
+      out[out.length - 1] = prev + t;
     } else {
       out.push(t);
     }
+    if (item.hasEOL) out.push('\n');
   }
-  return out.join(' ').replace(/\s+/g, ' ').trim();
+
+  // Insert spaces between adjacent non-glued tokens stored as separate array entries
+  let joined = '';
+  for (let i = 0; i < out.length; i += 1) {
+    const part = out[i];
+    if (!joined) {
+      joined = part;
+      continue;
+    }
+    if (part === '\n' || joined.endsWith('\n') || /\s$/.test(joined) || /^\s/.test(part)) {
+      joined += part;
+      continue;
+    }
+    // Already glued pieces live in a single entry; separate entries get a space
+    joined += ` ${part}`;
+  }
+  return normalizeSafeWhitespace(joined.replace(/\n+/g, '\n'));
 }
 
 /**
@@ -235,7 +314,14 @@ export async function extractPdfPagesFromBytes(
       const content = await page.getTextContent();
       const items = (content.items || []).filter(
         (it) => typeof it === 'object' && it && 'str' in it
-      ) as Array<{ str: string; transform?: number[]; width?: number; height?: number }>;
+      ) as Array<{
+        str: string;
+        transform?: number[];
+        width?: number;
+        height?: number;
+        hasEOL?: boolean;
+        dir?: string;
+      }>;
       const text = reconstructPageText(items);
       pages.push({
         page: i,
