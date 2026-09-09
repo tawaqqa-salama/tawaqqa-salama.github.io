@@ -7,8 +7,41 @@
 import type { CodeKnowledgeDocumentMeta } from '@/lib/design-intelligence/code-knowledge/types';
 import { isSuperAdminRole, isTenantAdminRole } from '@/lib/tenant/rbac';
 
-export function canReingestKnowledgeRole(roleCode: string | null | undefined): boolean {
-  return isTenantAdminRole(roleCode) || isSuperAdminRole(roleCode);
+export type ReingestAuthInput = {
+  roleCode?: string | null;
+  /** Same bypass as server `requireRole` — platform/super admin may reingest. */
+  isPlatformAdmin?: boolean | null;
+};
+
+/**
+ * UI gate aligned with POST /api/design/knowledge/reingest:
+ * `requireRole(['tenant_admin','admin'])` + platform-admin bypass.
+ * Does not weaken server authorization — only mirrors it for button visibility.
+ */
+export function canReingestKnowledgeRole(
+  roleCodeOrAuth: string | null | undefined | ReingestAuthInput
+): boolean {
+  if (roleCodeOrAuth && typeof roleCodeOrAuth === 'object') {
+    if (roleCodeOrAuth.isPlatformAdmin) return true;
+    const role = roleCodeOrAuth.roleCode;
+    return isTenantAdminRole(role) || isSuperAdminRole(role);
+  }
+  return isTenantAdminRole(roleCodeOrAuth) || isSuperAdminRole(roleCodeOrAuth);
+}
+
+/**
+ * Production-supabase UI listing: persisted rows only.
+ * Never merge stale local/session/in-memory counts into canonical rows.
+ */
+export function selectDocumentsForCodeKnowledgeUi(input: {
+  persistedMode: boolean;
+  persistedDocuments: CodeKnowledgeDocumentMeta[];
+  localDocuments: CodeKnowledgeDocumentMeta[];
+}): CodeKnowledgeDocumentMeta[] {
+  if (input.persistedMode) {
+    return input.persistedDocuments;
+  }
+  return input.localDocuments;
 }
 
 /** True when a document row proves Storage-backed presence for this tenant list. */

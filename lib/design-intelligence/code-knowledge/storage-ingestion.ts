@@ -1002,6 +1002,8 @@ export async function ingestCodeKnowledgeFromStorage(
 
 /**
  * UI document list: Production reads Supabase only; Demo uses session-memory.
+ * In production-supabase mode, never merge session-memory / localStorage counts
+ * into persisted rows (stale local chunk_count must not win over DB).
  */
 export async function listCodeKnowledgeDocumentsForUi(options?: {
   companyId?: string | null;
@@ -1009,15 +1011,19 @@ export async function listCodeKnowledgeDocumentsForUi(options?: {
   documents: CodeKnowledgeDocumentMeta[];
   source: 'supabase' | 'session-memory';
   persistedMode: boolean;
+  error?: string;
 }> {
-  if (shouldPersistCodeKnowledgeToSupabase()) {
+  const persistedMode = shouldPersistCodeKnowledgeToSupabase();
+  if (persistedMode) {
     const listed = await listPersistedCodeKnowledgeDocuments({
       companyId: options?.companyId,
     });
+    // Canonical tenant rows only — empty on error (no local fallback).
     return {
       documents: listed.ok ? listed.documents : [],
       source: 'supabase',
       persistedMode: true,
+      error: listed.ok ? undefined : listed.error,
     };
   }
 

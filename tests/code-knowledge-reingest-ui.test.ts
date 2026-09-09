@@ -78,6 +78,11 @@ describe('reingest role gate', () => {
     expect(canReingestKnowledgeRole('sales')).toBe(false);
     expect(canReingestKnowledgeRole(null)).toBe(false);
   });
+
+  it('allows platform admin bypass matching requireRole', () => {
+    expect(canReingestKnowledgeRole({ roleCode: 'engineer', isPlatformAdmin: true })).toBe(true);
+    expect(canReingestKnowledgeRole({ roleCode: 'staff', isPlatformAdmin: true })).toBe(true);
+  });
 });
 
 describe('CodeKnowledgePanel reingest UI wiring', () => {
@@ -117,6 +122,7 @@ describe('CodeKnowledgePanel reingest UI wiring', () => {
 
   it('gates actionable reingest on admin role and does not call legacy client reingest', () => {
     expect(panelSource).toContain('canReingestKnowledgeRole');
+    expect(panelSource).toContain('isPlatformAdmin: Boolean(session?.isPlatformAdmin)');
     expect(panelSource).toContain('canReingest && isKnowledgeDocumentPresentInStorage(d)');
     expect(panelSource).not.toContain('reingestCodeKnowledgeDocument');
     expect(panelSource).not.toContain('uploadAndIngestCodeKnowledgeDocument({\n        companyId: company,\n        code: d.code');
