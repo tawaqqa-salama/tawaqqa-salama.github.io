@@ -35,6 +35,14 @@ import {
 } from '@/lib/design-intelligence/code-knowledge/persist';
 
 import {
+  assertChunkDocumentCodeConsistency,
+  chunkMatchesQueryTopic,
+  inferRequestedBroadFamilies,
+  reconcileChunkCodeWithDocument,
+  resolveSourceCodeFamily,
+  shouldRouteAsNfpa13Document,
+} from '@/lib/design-intelligence/code-family';
+import {
   createReingestTimer,
   logReingest,
   sanitizeReingestErrorMessage,
@@ -577,6 +585,12 @@ export async function indexDocumentText(
             content: part.content,
             embedding: embedText(part.content),
             document_title: doc.title,
+            code: reconcileChunkCodeWithDocument({
+              documentCode: doc.code,
+              documentTitle: doc.title,
+              chunkCode: null,
+            }),
+            edition: doc.edition ?? null,
             section: refs.section,
             subsection: refs.subsection,
             table_reference: refs.table_reference,
@@ -598,7 +612,21 @@ export async function indexDocumentText(
           content: part.content,
           embedding: embedText(part.content),
           document_title: doc.title,
+          code: reconcileChunkCodeWithDocument({
+            documentCode: doc.code,
+            documentTitle: doc.title,
+            chunkCode: null,
+          }),
+          edition: doc.edition ?? null,
         }));
+
+  for (const chunk of chunks) {
+    assertChunkDocumentCodeConsistency({
+      documentCode: doc.code,
+      documentTitle: doc.title,
+      chunkCode: chunk.code,
+    });
+  }
 
   const now = new Date().toISOString();
   const updated: DiKnowledgeDocument = {
@@ -828,11 +856,9 @@ function looksLikeNfpa13_2025(input: {
   title: string;
   codes: string[];
 }): boolean {
-  return (
-    /nfpa\s*-?\s*13/i.test(input.fileName) ||
-    /nfpa\s*-?\s*13/i.test(input.title) ||
-    input.codes.some((c) => /nfpa\s*-?\s*13/i.test(c))
-  );
+  // Do not treat workspace default "SBC 801, NFPA 13" as proof the file is NFPA-13.
+  // Saudi / SBC titles must never be forced into the NFPA-13 ingest path.
+  return shouldRouteAsNfpa13Document(input);
 }
 
 export class KnowledgePersistError extends Error {
@@ -1661,7 +1687,7 @@ export async function reingestKnowledgeDocumentFromStorage(
 }
 
 /** Below this score: no citations (NEEDS_DATA). */
-export const MIN_RESULT_SCORE = 0.28;
+export const MIN_RESULT_SCORE = 0.32;
 /** At or above: reliable = true. Between MIN and this: weak / needs review. */
 export const RELIABLE_SCORE = 0.45;
 
@@ -1682,39 +1708,20 @@ export type CodeFamily = 'NFPA' | 'SBC' | 'CIVIL_DEFENSE' | 'OTHER';
 
 /** Infer requested code families from the user question (intent parsing). */
 export function inferRequestedCodeFamilies(question: string): CodeFamily[] {
-  const q = String(question || '');
-  const families = new Set<CodeFamily>();
-  if (/\bNFPA\b/i.test(q) || /نفبا/i.test(q)) families.add('NFPA');
-  if (
-    /\bSBC\b/i.test(q) ||
-    /الكود\s*السعودي/i.test(q) ||
-    /الكود السعودي للحماية من الحريق/i.test(q)
-  ) {
-    families.add('SBC');
-  }
-  if (/الدفاع\s*المدني/i.test(q) || /civil\s*defense/i.test(q)) {
-    families.add('CIVIL_DEFENSE');
-  }
-  return [...families];
+  return inferRequestedBroadFamilies(question) as CodeFamily[];
 }
 
 function detectChunkCodeFamilies(chunk: DiKnowledgeChunk, doc?: DiKnowledgeDocument | null): CodeFamily[] {
-  const hay = [
-    chunk.code,
-    chunk.code_reference,
-    chunk.content?.slice(0, 400),
-    doc?.code,
-    doc?.title,
-    ...(doc?.applicable_codes || []),
-  ]
-    .filter(Boolean)
-    .join(' ');
-  const out = new Set<CodeFamily>();
-  if (/\bNFPA\b/i.test(hay)) out.add('NFPA');
-  if (/\bSBC\b/i.test(hay) || /سعودي/i.test(hay)) out.add('SBC');
-  if (/دفاع\s*مدني|civil\s*defense/i.test(hay)) out.add('CIVIL_DEFENSE');
-  if (!out.size) out.add('OTHER');
-  return [...out];
+  // Authoritative family from persisted source metadata (title wins over conflicting code).
+  // Do not treat a mislabeled NFPA-13 code on an SBC-titled document as NFPA.
+  const resolved = resolveSourceCodeFamily({
+    code: chunk.code ?? doc?.code,
+    edition: chunk.edition ?? doc?.edition,
+    title: chunk.document_title || doc?.title,
+    applicableCodes: doc?.applicable_codes,
+    contentSample: chunk.content?.slice(0, 400),
+  });
+  return [resolved.broad as CodeFamily];
 }
 
 function lexicalOverlapBoost(question: string, content: string): number {
@@ -1967,9 +1974,19 @@ export async function ragQuery(
     remoteDocsById.get(documentId) || docs.find((d) => d.id === documentId);
 
   const qVec = embedText(q);
-  type Scored = { chunk: DiKnowledgeChunk; sim: number; finalScore: number; families: CodeFamily[] };
-  const scoredAll: Scored[] = chunks.map((chunk) => {
+  type Scored = {
+    chunk: DiKnowledgeChunk;
+    sim: number;
+    finalScore: number;
+    families: CodeFamily[];
+  };
+  const scoredAll: Scored[] = [];
+  for (const chunk of chunks) {
     const doc = resolveDoc(chunk.document_id);
+    // Topic gate: stair/egress chunks must not surface for sprinkler-spacing queries.
+    if (!chunkMatchesQueryTopic(q, chunk.content)) {
+      continue;
+    }
     const emb = chunk.embedding?.length ? chunk.embedding : embedText(chunk.content);
     const sim = cosineSimilarity(qVec, emb);
     const families = detectChunkCodeFamilies(chunk, doc);
@@ -1977,46 +1994,45 @@ export async function ragQuery(
     score += lexicalOverlapBoost(q, chunk.content);
     score += exactCodeBoost(q, chunk, doc);
     score += titleBoost(q, chunk.document_title || doc?.title || '');
+    // On-topic lexical alignment (e.g. sprinkler↔رشاشات) — helps Arabic/English pairs clear MIN.
+    if (chunkMatchesQueryTopic(q, chunk.content)) {
+      score += 0.06;
+    }
 
     if (explicitFamily.length) {
       const matchesFamily = explicitFamily.some((f) => families.includes(f));
       if (matchesFamily) {
         score += 0.08;
       } else {
-        // Wrong explicit family — strong penalty (may exclude below)
-        score -= 0.2;
+        // Wrong family is excluded below — keep a hard penalty for ranking diagnostics.
+        score -= 0.5;
       }
     }
 
-    return { chunk, sim, finalScore: clampScore(score), families };
-  });
+    scoredAll.push({ chunk, sim, finalScore: clampScore(score), families });
+  }
 
   scoredAll.sort((a, b) => b.finalScore - a.finalScore || b.sim - a.sim);
 
-  // If explicit code family requested, prefer matching family; wrong-family-only → NEEDS_DATA
+  // Hard exclude wrong code family when the query (or caller) requests NFPA/SBC.
+  // Wrong-family hits are never merely down-ranked into the result set.
   let ranked = scoredAll;
   if (explicitFamily.length) {
     const matching = scoredAll.filter((s) =>
       explicitFamily.some((f) => s.families.includes(f))
     );
-    const strongMatch = matching.filter((s) => s.finalScore >= minScore);
-    if (strongMatch.length) {
-      ranked = matching;
-    } else if (matching.length === 0) {
+    if (matching.length === 0) {
       return needsDataAnswer(
         `No sufficiently relevant indexed source was found for ${explicitFamily.join('/')}.`
       );
-    } else {
-      // Matching family exists but all weak — still prefer them over wrong family
-      ranked = matching;
     }
+    ranked = matching;
   }
 
-  const scored = ranked.slice(0, topK);
-  const best = scored[0]?.finalScore ?? 0;
+  const scored = ranked.filter((s) => s.finalScore >= minScore).slice(0, topK);
+  const best = scored[0]?.finalScore ?? ranked[0]?.finalScore ?? 0;
   const second = scored[1]?.finalScore ?? 0;
 
-  // Relevance-gap: all nearly random / weak
   if (!scored.length || best < minScore) {
     return {
       ...needsDataAnswer('No sufficiently relevant indexed source was found.'),
@@ -2024,17 +2040,7 @@ export async function ragQuery(
     };
   }
 
-  // Top result wrong family after penalty still winning → NEEDS_DATA for explicit request
-  if (explicitFamily.length && scored[0]) {
-    const topOk = explicitFamily.some((f) => scored[0].families.includes(f));
-    if (!topOk) {
-      return needsDataAnswer(
-        `No sufficiently relevant indexed source was found for ${explicitFamily.join('/')}.`
-      );
-    }
-  }
-
-  // Near-random cluster: best is weak and peers are within noise
+  // Near-random / weak cluster must not be presented as engineering evidence.
   if (best < RELIABLE_SCORE && second > 0 && best - second < 0.02 && best < 0.35) {
     return {
       ...needsDataAnswer('No sufficiently relevant indexed source was found.'),
@@ -2044,18 +2050,33 @@ export async function ragQuery(
 
   const citations: RagCitation[] = scored.map(({ chunk, finalScore }) => {
     const doc = resolveDoc(chunk.document_id);
-    const pageNumber =
-      chunk.page_number ?? chunk.page_start ?? null;
+    const pageNumber = chunk.page_number ?? chunk.page_start ?? null;
+    // Citation labels come from persisted source metadata — never from query inference.
+    // If title clearly indicates SBC/Saudi Fire Code but code was mislabeled NFPA-13,
+    // display the resolved source family (title wins) without mutating Production rows.
+    const source = resolveSourceCodeFamily({
+      code: chunk.code ?? doc?.code,
+      edition: chunk.edition ?? doc?.edition,
+      title: chunk.document_title || doc?.title,
+      applicableCodes: doc?.applicable_codes,
+      contentSample: chunk.content?.slice(0, 240),
+    });
+    const displayCode = source.displayCode;
+    const displayEdition = source.displayEdition;
     return {
       documentId: chunk.document_id,
       documentTitle: chunk.document_title || doc?.title || 'Document',
       pageNumber,
       paragraph: chunk.content.slice(0, 420),
-      codeReference: chunk.code_reference || chunk.code || doc?.applicable_codes?.[0] || doc?.code || null,
+      codeReference:
+        chunk.code_reference ||
+        displayCode ||
+        doc?.applicable_codes?.[0] ||
+        null,
       confidence: Math.round(finalScore * 100),
       chunkId: chunk.id,
-      code: chunk.code ?? doc?.code ?? null,
-      edition: chunk.edition ?? doc?.edition ?? null,
+      code: displayCode,
+      edition: displayEdition,
       section: chunk.section ?? null,
       subsection: chunk.subsection ?? null,
       tableReference: chunk.table_reference ?? null,
