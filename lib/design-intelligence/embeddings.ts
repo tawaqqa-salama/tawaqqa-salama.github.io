@@ -14,10 +14,15 @@ const TATWEEL = /\u0640/g;
 
 /** Lexical aliases for retrieval only — not engineering rules. */
 const TOKEN_ALIASES: Record<string, string[]> = {
-  رشاش: ['رشاشات', 'sprinkler', 'sprinklers'],
-  رشاشات: ['رشاش', 'sprinkler', 'sprinklers'],
-  sprinkler: ['sprinklers', 'رشاش', 'رشاشات'],
-  sprinklers: ['sprinkler', 'رشاش', 'رشاشات'],
+  رش: ['الرش', 'مرش', 'مرشات', 'رشاش', 'رشاشات', 'الرشاشات', 'sprinkler', 'sprinklers'],
+  الرش: ['رش', 'مرش', 'مرشات', 'رشاش', 'رشاشات', 'الرشاشات', 'sprinkler', 'sprinklers'],
+  مرش: ['رش', 'مرشات', 'رشاش', 'رشاشات', 'الرشاشات', 'sprinkler', 'sprinklers'],
+  مرشات: ['رش', 'مرش', 'رشاش', 'رشاشات', 'الرشاشات', 'sprinkler', 'sprinklers'],
+  رشاش: ['رشاشات', 'مرش', 'مرشات', 'رش', 'الرش', 'الرشاشات', 'sprinkler', 'sprinklers'],
+  رشاشات: ['رشاش', 'مرش', 'مرشات', 'رش', 'الرش', 'الرشاشات', 'sprinkler', 'sprinklers'],
+  الرشاشات: ['رشاش', 'رشاشات', 'مرش', 'مرشات', 'رش', 'الرش', 'sprinkler', 'sprinklers'],
+  sprinkler: ['sprinklers', 'رشاش', 'رشاشات', 'مرش', 'مرشات', 'رش', 'الرش', 'الرشاشات'],
+  sprinklers: ['sprinkler', 'رشاش', 'رشاشات', 'مرش', 'مرشات', 'رش', 'الرش', 'الرشاشات'],
   مضخة: ['مضخات', 'pump', 'pumps'],
   مضخات: ['مضخة', 'pump', 'pumps'],
   pump: ['pumps', 'مضخة', 'مضخات'],
@@ -68,7 +73,11 @@ function expandAliases(token: string): string[] {
   return [...out];
 }
 
-function tokenize(text: string): string[] {
+/**
+ * Search tokenization with alias expansion.
+ * Used by hybrid lexical ranking — never mutates stored citation text.
+ */
+export function tokenizeKnowledgeSearch(text: string): string[] {
   const normalized = normalizeKnowledgeSearchText(text);
   const base = normalized.split(/\s+/).filter((t) => t.length > 1);
   const expanded: string[] = [];
@@ -77,7 +86,24 @@ function tokenize(text: string): string[] {
       if (e.length > 1) expanded.push(e);
     }
   }
+  // Also expand multi-word sprinkler phrases present in the raw normalized haystack
+  const phrases = [
+    'نظام الرش',
+    'انظمة الرش',
+    'الرش الالي',
+    'automatic sprinkler',
+  ];
+  for (const p of phrases) {
+    const pn = normalizeKnowledgeSearchText(p);
+    if (pn && normalized.includes(pn)) {
+      for (const e of expandAliases('رشاش')) expanded.push(e);
+    }
+  }
   return expanded;
+}
+
+function tokenize(text: string): string[] {
+  return tokenizeKnowledgeSearch(text);
 }
 
 function hashToken(token: string): number {

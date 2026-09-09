@@ -29,6 +29,31 @@ describe('reconstructPageText', () => {
     expect(text).toContain('Second line');
   });
 
+
+  it('glues Arabic glyph fragments without inserting spaces', () => {
+    const word = 'الرشاشات';
+    const items = [...word].map((ch, i) => {
+      const it = item(ch, 100 + i * 3, 200, i, 10);
+      it.width = 3;
+      return it;
+    });
+    const text = reconstructPageText(items);
+    expect(text.replace(/\s/g, '')).toBe(word);
+    expect(text).not.toMatch(/ا\s+ل\s+ر/);
+    expect(text).not.toBe([...word].reverse().join(''));
+  });
+
+  it('keeps word boundaries between whole Arabic words', () => {
+    const left = item('نظام', 100, 300, 0, 12);
+    left.width = 40;
+    const right = item('الرش', 160, 300, 1, 12); // gap > 0.35em → space
+    right.width = 30;
+    const text = reconstructPageText([left, right]);
+    expect(text).toContain('نظام');
+    expect(text).toContain('الرش');
+    expect(text).not.toBe('الرش نظام'.split('').reverse().join(''));
+  });
+
   it('keeps Arabic line logical (no character reverse)', () => {
     const ar = 'متطلبات الرشاشات في المباني';
     const text = reconstructPageText([item(ar, 400, 500, 0)]);

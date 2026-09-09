@@ -35,7 +35,7 @@ describe('design RAG UI integration', () => {
     expect(moduleSource).toContain('<bdi dir="ltr">');
     expect(moduleSource).toContain('مطابقة قوية');
     expect(moduleSource).toContain('مطابقة ضعيفة · تحتاج مراجعة');
-    expect(moduleSource).toContain('لا يوجد مرجع موثوق كافٍ');
+    expect(moduleSource).toContain('لا يوجد مرجع مفهرس ذو صلة كافية للإجابة على هذا السؤال.');
     expect(moduleSource).toContain('أفضل نتيجة مطابقة');
     expect(moduleSource).toContain('أقوى دليل مطابق');
     // Weak results must not use the old "موثوق · الثقة" badge pattern
@@ -51,6 +51,7 @@ describe('design RAG UI integration', () => {
 
   it('shows indexed-document readiness and non-applicability prompt suggestions', () => {
     expect(moduleSource).toContain('indexedKnowledgeDocs');
+    expect(moduleSource).toContain('isActiveIndexedKnowledgeDocument');
     expect(moduleSource).toContain('No indexed company document is ready yet');
     expect(moduleSource).toContain('ragPromptSuggestions');
     expect(moduleSource).toContain('ما متطلبات NFPA المذكورة في الملفات المفهرسة؟');
