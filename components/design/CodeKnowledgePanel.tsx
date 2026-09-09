@@ -54,6 +54,8 @@ import { useAuth } from '@/lib/auth/AuthProvider';
 import { useLanguage } from '@/lib/i18n/LanguageProvider';
 import { supabase } from '@/lib/supabase';
 import { getBrowserAccessToken } from '@/lib/auth/browser-access-token';
+import { isSuperAdminRole } from '@/lib/tenant/rbac';
+import SaudiOnlyKnowledgeCleanupPanel from '@/components/platform/SaudiOnlyKnowledgeCleanupPanel';
 
 type Props = {
   companyId?: string;
@@ -711,6 +713,12 @@ export default function CodeKnowledgePanel({ companyId, clientId }: Props) {
 
   return (
     <div className="space-y-6">
+      {isSuperAdminRole(session?.roleCode || profile?.role_code) ? (
+        <div className="mb-4">
+          <SaudiOnlyKnowledgeCleanupPanel />
+        </div>
+      ) : null}
+
       <div className="rounded-xl border border-slate-200 bg-gradient-to-br from-slate-50 via-white to-cyan-50 p-5">
         <div className="flex flex-wrap items-center gap-2">
           <h2 className="text-xl font-semibold text-slate-900">Code Knowledge Pipeline</h2>

@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useState } from 'react';
 import { useLanguage } from '@/lib/i18n/LanguageProvider';
 import type { TenantRecord } from '@/lib/tenant/types';
+import SaudiOnlyKnowledgeCleanupPanel from '@/components/platform/SaudiOnlyKnowledgeCleanupPanel';
 
 const MODULE_OPTIONS = [
   'crm',
@@ -210,6 +211,8 @@ export default function PlatformAdminPage() {
           ))}
         </div>
       </div>
+
+      <SaudiOnlyKnowledgeCleanupPanel />
 
       <div className="rounded-xl border bg-white p-4">
         <h2 className="font-bold text-sm mb-2">{t('platform.audit')}</h2>
