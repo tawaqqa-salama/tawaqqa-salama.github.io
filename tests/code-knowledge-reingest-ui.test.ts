@@ -85,9 +85,10 @@ describe('CodeKnowledgePanel reingest UI wiring', () => {
     expect(panelSource).not.toContain(
       'NFPA 13-2025 file is not present. Upload the PDF from this panel'
     );
-    expect(panelSource).toContain('uploadMissingFileMessage');
-    expect(panelSource).toContain('findExistingNfpa13Document');
-    expect(panelSource).toContain('NFPA 13-2025 موجود في التخزين');
+    expect(panelSource).toContain('saudiUploadMissingFileMessage');
+    expect(panelSource).toContain('findExistingSaudiCodeDocument');
+    expect(panelSource).toContain('SBC 801-{DEFAULT_SAUDI_EDITION} موجود في التخزين');
+    expect(panelSource).not.toContain('NFPA 13-2025 موجود في التخزين');
   });
 
   it('shows Arabic reingest control and posts to the authenticated API', () => {
