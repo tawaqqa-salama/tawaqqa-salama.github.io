@@ -1,14 +1,11 @@
 /**
  * Selective OCR / alternate extraction boundary for Design Intelligence.
  *
- * Vercel Node runtimes do not ship a safe native OCR stack by default.
- * This module never fakes OCR success: when runtime OCR is unavailable it
- * returns a precise diagnostic so the page can be marked unusable.
+ * Native PDF.js extraction remains primary. OCR runs only when
+ * assessExtractionTextQuality rejects the page. OCR results are re-gated;
+ * failures/timeouts mark the page unusable — never keep corrupted CID text.
  *
- * Required for real OCR (ops note — not auto-installed):
- * - Tesseract (ara+eng) or a managed OCR API reachable from the region
- * - Memory/time budget for selective page rasterization of large SBC PDFs
- * - Do NOT add Chromium solely for OCR without proving Vercel build fit
+ * Production OCR is configured via DI_OCR_* (server-only). No fake success.
  */
 
 import {
@@ -16,8 +13,14 @@ import {
   pickBetterExtractionCandidate,
   type ExtractionQualityAssessment,
 } from '@/lib/design-intelligence/code-knowledge/extraction-quality';
+import {
+  invokeConfiguredOcrProvider,
+  isConfiguredOcrProviderAvailable,
+} from '@/lib/design-intelligence/code-knowledge/ocr-provider';
+import { logReingest } from '@/lib/design-intelligence/reingest-log';
 
-export type PageExtractionMethod = 'pdf_text' | 'ocr' | 'alternate' | 'unusable';
+/** Page-level provenance persisted on chunks / citations. */
+export type PageExtractionMethod = 'native_pdf' | 'ocr' | 'alternate' | 'unusable';
 
 export type PageOcrFallbackResult = {
   text: string;
@@ -26,12 +29,15 @@ export type PageOcrFallbackResult = {
   ocrAttempted: boolean;
   ocrAvailable: boolean;
   diagnostic: string | null;
+  nativeQualityScore: number;
+  ocrQualityScore: number | null;
 };
 
 export type OcrPageProvider = (input: {
   pageNumber: number;
   pdfText: string;
   pageImageBytes?: Uint8Array | null;
+  pdfBytes?: Uint8Array | null;
 }) => Promise<{ text: string; engine: 'ocr' | 'alternate' } | null>;
 
 let injectedProvider: OcrPageProvider | null = null;
@@ -42,16 +48,70 @@ export function setOcrPageProviderForTests(provider: OcrPageProvider | null): vo
 
 export function isRuntimeOcrAvailable(): boolean {
   if (injectedProvider) return true;
-  return Boolean(process.env.DI_OCR_ENDPOINT && process.env.DI_OCR_ENABLED === '1');
+  return isConfiguredOcrProviderAvailable();
+}
+
+function logOcrStage(
+  stage:
+    | 'OCR_REQUIRED'
+    | 'OCR_START'
+    | 'OCR_OK'
+    | 'OCR_REJECTED'
+    | 'OCR_FAILED'
+    | 'QUALITY_GATE_NATIVE_OK'
+    | 'QUALITY_GATE_NATIVE_REJECTED'
+    | 'QUALITY_GATE_OCR_OK'
+    | 'QUALITY_GATE_OCR_REJECTED',
+  fields: {
+    documentId?: string | null;
+    companyId?: string | null;
+    pageNumber: number;
+    nativeQualityScore?: number | null;
+    ocrQualityScore?: number | null;
+    reason?: string | null;
+    elapsedMs?: number | null;
+  }
+): void {
+  logReingest({
+    stage,
+    documentId: fields.documentId,
+    companyId: fields.companyId,
+    pageNumber: fields.pageNumber,
+    nativeQualityScore: fields.nativeQualityScore,
+    ocrQualityScore: fields.ocrQualityScore,
+    reason: fields.reason,
+    elapsedMs: fields.elapsedMs,
+  });
 }
 
 async function runOcrProvider(input: {
   pageNumber: number;
   pdfText: string;
-}): Promise<{ text: string; engine: 'ocr' | 'alternate' } | null> {
-  if (injectedProvider) return injectedProvider(input);
-  if (!isRuntimeOcrAvailable()) return null;
-  return null;
+  pageImageBytes?: Uint8Array | null;
+  pdfBytes?: Uint8Array | null;
+}): Promise<{ text: string; engine: 'ocr' | 'alternate'; error?: string } | null> {
+  if (injectedProvider) {
+    const provided = await injectedProvider(input);
+    if (!provided?.text.trim()) return null;
+    return provided;
+  }
+  if (!isConfiguredOcrProviderAvailable()) return null;
+
+  const result = await invokeConfiguredOcrProvider({
+    pageNumber: input.pageNumber,
+    pdfText: input.pdfText,
+    pageImageBytes: input.pageImageBytes,
+    pdfBytes: input.pdfBytes,
+  });
+
+  if (result.text) {
+    return { text: result.text, engine: 'ocr' };
+  }
+  return {
+    text: '',
+    engine: 'ocr',
+    error: result.error || 'ocr_provider_failed',
+  };
 }
 
 /**
@@ -62,39 +122,134 @@ export async function resolvePageTextWithQualityGate(input: {
   pageNumber: number;
   pdfText: string;
   ocrText?: string | null;
+  pageImageBytes?: Uint8Array | null;
+  pdfBytes?: Uint8Array | null;
+  documentId?: string | null;
+  companyId?: string | null;
 }): Promise<PageOcrFallbackResult> {
   const pdfText = String(input.pdfText || '');
   const pdfQuality = assessExtractionTextQuality(pdfText);
+  const pageNumber = input.pageNumber;
+  const documentId = input.documentId;
+  const companyId = input.companyId;
 
   if (pdfQuality.usable) {
+    logOcrStage('QUALITY_GATE_NATIVE_OK', {
+      documentId,
+      companyId,
+      pageNumber,
+      nativeQualityScore: pdfQuality.score,
+      reason: 'native_extraction_usable',
+    });
     return {
       text: pdfText,
-      method: 'pdf_text',
+      method: 'native_pdf',
       quality: pdfQuality,
       ocrAttempted: false,
       ocrAvailable: isRuntimeOcrAvailable() || Boolean(input.ocrText?.trim()),
       diagnostic: null,
+      nativeQualityScore: pdfQuality.score,
+      ocrQualityScore: null,
     };
   }
+
+  logOcrStage('QUALITY_GATE_NATIVE_REJECTED', {
+    documentId,
+    companyId,
+    pageNumber,
+    nativeQualityScore: pdfQuality.score,
+    reason: pdfQuality.reasons.join(',') || 'native_unusable',
+  });
+
+  logOcrStage('OCR_REQUIRED', {
+    documentId,
+    companyId,
+    pageNumber,
+    nativeQualityScore: pdfQuality.score,
+    reason: pdfQuality.reasons.join(',') || 'native_unusable',
+  });
 
   let ocrText = String(input.ocrText || '').trim();
   let ocrAvailable = Boolean(ocrText) || isRuntimeOcrAvailable();
   let diagnostic: string | null = null;
+  let ocrQualityScore: number | null = null;
+  let providerError: string | null = null;
 
   if (!ocrText) {
-    const provided = await runOcrProvider({
-      pageNumber: input.pageNumber,
-      pdfText,
+    logOcrStage('OCR_START', {
+      documentId,
+      companyId,
+      pageNumber,
+      nativeQualityScore: pdfQuality.score,
+      reason: 'selective_page_ocr',
     });
-    if (provided?.text.trim()) {
-      ocrText = provided.text.trim();
-      ocrAvailable = true;
-    } else if (!isRuntimeOcrAvailable() && !input.ocrText) {
-      diagnostic =
-        'ocr_unavailable_on_runtime: selective OCR required but no DI_OCR_ENABLED worker/endpoint is configured for this Vercel Node deployment';
-      ocrAvailable = false;
-    } else {
-      diagnostic = 'ocr_attempted_but_empty: OCR/alternate provider returned no usable text';
+    const started = Date.now();
+    try {
+      const provided = await runOcrProvider({
+        pageNumber,
+        pdfText,
+        pageImageBytes: input.pageImageBytes,
+        pdfBytes: input.pdfBytes,
+      });
+      const elapsedMs = Date.now() - started;
+      if (provided?.text.trim()) {
+        ocrText = provided.text.trim();
+        ocrAvailable = true;
+        logOcrStage('OCR_OK', {
+          documentId,
+          companyId,
+          pageNumber,
+          nativeQualityScore: pdfQuality.score,
+          reason: provided.engine,
+          elapsedMs,
+        });
+      } else if (provided?.error) {
+        providerError = provided.error;
+        ocrAvailable = isRuntimeOcrAvailable();
+        logOcrStage('OCR_FAILED', {
+          documentId,
+          companyId,
+          pageNumber,
+          nativeQualityScore: pdfQuality.score,
+          reason: providerError,
+          elapsedMs,
+        });
+        diagnostic = `ocr_failed: ${providerError}`;
+      } else if (!isRuntimeOcrAvailable() && !input.ocrText) {
+        diagnostic =
+          'ocr_unavailable_on_runtime: selective OCR required but no DI_OCR_ENABLED worker/endpoint is configured for this deployment';
+        ocrAvailable = false;
+        logOcrStage('OCR_FAILED', {
+          documentId,
+          companyId,
+          pageNumber,
+          nativeQualityScore: pdfQuality.score,
+          reason: 'ocr_unavailable_on_runtime',
+          elapsedMs,
+        });
+      } else {
+        diagnostic = 'ocr_attempted_but_empty: OCR/alternate provider returned no usable text';
+        logOcrStage('OCR_FAILED', {
+          documentId,
+          companyId,
+          pageNumber,
+          nativeQualityScore: pdfQuality.score,
+          reason: 'ocr_empty',
+          elapsedMs,
+        });
+      }
+    } catch (err) {
+      const elapsedMs = Date.now() - started;
+      providerError = err instanceof Error ? err.message : String(err || 'ocr_threw');
+      diagnostic = `ocr_failed: ${providerError.slice(0, 180)}`;
+      logOcrStage('OCR_FAILED', {
+        documentId,
+        companyId,
+        pageNumber,
+        nativeQualityScore: pdfQuality.score,
+        reason: providerError.slice(0, 180),
+        elapsedMs,
+      });
     }
   }
 
@@ -114,12 +269,44 @@ export async function resolvePageTextWithQualityGate(input: {
       diagnostic:
         diagnostic ||
         `pdf_text_unusable: ${pdfQuality.reasons.join(',') || 'low_quality'}`,
+      nativeQualityScore: pdfQuality.score,
+      ocrQualityScore: null,
     };
   }
 
   const ocrQuality = assessExtractionTextQuality(ocrText);
+  ocrQualityScore = ocrQuality.score;
+
+  if (ocrQuality.usable) {
+    logOcrStage('QUALITY_GATE_OCR_OK', {
+      documentId,
+      companyId,
+      pageNumber,
+      nativeQualityScore: pdfQuality.score,
+      ocrQualityScore,
+      reason: 'ocr_extraction_usable',
+    });
+  } else {
+    logOcrStage('QUALITY_GATE_OCR_REJECTED', {
+      documentId,
+      companyId,
+      pageNumber,
+      nativeQualityScore: pdfQuality.score,
+      ocrQualityScore,
+      reason: ocrQuality.reasons.join(',') || 'ocr_unusable',
+    });
+    logOcrStage('OCR_REJECTED', {
+      documentId,
+      companyId,
+      pageNumber,
+      nativeQualityScore: pdfQuality.score,
+      ocrQualityScore,
+      reason: ocrQuality.reasons.join(',') || 'ocr_unusable',
+    });
+  }
+
   const best = pickBetterExtractionCandidate(
-    { text: pdfText, quality: pdfQuality, method: 'pdf_text' },
+    { text: pdfText, quality: pdfQuality, method: 'native_pdf' },
     { text: ocrText, quality: ocrQuality, method: 'ocr' }
   );
 
@@ -131,15 +318,38 @@ export async function resolvePageTextWithQualityGate(input: {
       ocrAttempted: true,
       ocrAvailable: true,
       diagnostic: `pdf_and_ocr_unusable: pdf=[${pdfQuality.reasons.join(',')}] ocr=[${ocrQuality.reasons.join(',')}]`,
+      nativeQualityScore: pdfQuality.score,
+      ocrQualityScore,
+    };
+  }
+
+  // Never accept rejected native text even if pickBetter ties oddly
+  const method: PageExtractionMethod =
+    best.method === 'ocr' || !pdfQuality.usable ? 'ocr' : 'native_pdf';
+  const acceptedText = method === 'ocr' ? ocrText : pdfText;
+  const acceptedQuality = method === 'ocr' ? ocrQuality : pdfQuality;
+
+  if (!acceptedQuality.usable) {
+    return {
+      text: '',
+      method: 'unusable',
+      quality: acceptedQuality,
+      ocrAttempted: true,
+      ocrAvailable: true,
+      diagnostic: 'accepted_candidate_failed_quality_gate',
+      nativeQualityScore: pdfQuality.score,
+      ocrQualityScore,
     };
   }
 
   return {
-    text: best.text,
-    method: best.method === 'pdf_text' ? 'pdf_text' : 'ocr',
-    quality: best.quality,
+    text: acceptedText,
+    method,
+    quality: acceptedQuality,
     ocrAttempted: true,
     ocrAvailable: true,
     diagnostic: null,
+    nativeQualityScore: pdfQuality.score,
+    ocrQualityScore,
   };
 }

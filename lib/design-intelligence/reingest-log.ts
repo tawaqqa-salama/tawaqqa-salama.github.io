@@ -21,13 +21,23 @@ export type ReingestLogStage =
   | 'CHUNK_INSERT_OK'
   | 'DOCUMENT_UPDATE_OK'
   | 'REINGEST_DONE'
-  | 'REINGEST_FAILED';
+  | 'REINGEST_FAILED'
+  | 'OCR_REQUIRED'
+  | 'OCR_START'
+  | 'OCR_OK'
+  | 'OCR_REJECTED'
+  | 'OCR_FAILED'
+  | 'QUALITY_GATE_NATIVE_OK'
+  | 'QUALITY_GATE_NATIVE_REJECTED'
+  | 'QUALITY_GATE_OCR_OK'
+  | 'QUALITY_GATE_OCR_REJECTED';
 
 export type ReingestLogFields = {
   stage: ReingestLogStage;
   documentId?: string | null;
   companyId?: string | null;
   pageCount?: number | null;
+  pageNumber?: number | null;
   chunkCount?: number | null;
   chunksBefore?: number | null;
   chunksAfter?: number | null;
@@ -36,6 +46,9 @@ export type ReingestLogFields = {
   elapsedMs?: number | null;
   error?: string | null;
   errorCode?: string | null;
+  nativeQualityScore?: number | null;
+  ocrQualityScore?: number | null;
+  reason?: string | null;
 };
 
 const SECRETISH =
@@ -56,12 +69,20 @@ export function logReingest(fields: ReingestLogFields): void {
   if (fields.documentId) payload.documentId = fields.documentId;
   if (fields.companyId) payload.companyId = fields.companyId;
   if (fields.pageCount != null) payload.pageCount = fields.pageCount;
+  if (fields.pageNumber != null) payload.pageNumber = fields.pageNumber;
   if (fields.chunkCount != null) payload.chunkCount = fields.chunkCount;
   if (fields.chunksBefore != null) payload.chunksBefore = fields.chunksBefore;
   if (fields.chunksAfter != null) payload.chunksAfter = fields.chunksAfter;
   if (fields.batchIndex != null) payload.batchIndex = fields.batchIndex;
   if (fields.batchTotal != null) payload.batchTotal = fields.batchTotal;
   if (fields.elapsedMs != null) payload.elapsedMs = fields.elapsedMs;
+  if (fields.nativeQualityScore != null) {
+    payload.nativeQualityScore = Number(fields.nativeQualityScore.toFixed(4));
+  }
+  if (fields.ocrQualityScore != null) {
+    payload.ocrQualityScore = Number(fields.ocrQualityScore.toFixed(4));
+  }
+  if (fields.reason) payload.reason = String(fields.reason).slice(0, 240);
   if (fields.error) payload.error = sanitizeReingestErrorMessage(fields.error);
   if (fields.errorCode) payload.errorCode = fields.errorCode;
 

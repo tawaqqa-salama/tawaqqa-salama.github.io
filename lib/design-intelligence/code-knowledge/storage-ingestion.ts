@@ -819,7 +819,12 @@ export async function ingestCodeKnowledgeFromStorage(
     pages.length
       ? pages
       : [{ page: 1, text: '', extraction_method: 'empty' }],
-    input.ocrPageText
+    input.ocrPageText,
+    {
+      pdfBytes: bytes,
+      documentId: input.documentId,
+      companyId: input.companyId,
+    }
   );
 
   input.onPhase?.('chunking');

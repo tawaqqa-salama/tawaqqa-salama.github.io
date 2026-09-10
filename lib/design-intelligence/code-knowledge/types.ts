@@ -106,14 +106,16 @@ export type IngestionStatus =
 
 /**
  * Page/chunk extraction provenance.
- * - text: usable PDF.js text
- * - ocr: selective OCR fallback won
+ * - native_pdf: usable PDF.js / geometry-reconstructed text (primary path)
+ * - text: legacy alias for native_pdf (existing rows / plain-text uploads)
+ * - ocr: selective OCR fallback won (and passed quality gate)
  * - alternate: alternate extractor won
- * - mixed: document contains both text and ocr pages
+ * - mixed: document contains both native and ocr pages
  * - empty: no extractable text
  * - unusable: extraction failed quality gate (must not be indexed as evidence)
  */
 export type ExtractionMethod =
+  | 'native_pdf'
   | 'text'
   | 'ocr'
   | 'alternate'
