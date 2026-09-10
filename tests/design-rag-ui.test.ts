@@ -52,10 +52,11 @@ describe('design RAG UI integration', () => {
   it('shows indexed-document readiness and non-applicability prompt suggestions', () => {
     expect(moduleSource).toContain('indexedKnowledgeDocs');
     expect(moduleSource).toContain('isActiveIndexedKnowledgeDocument');
-    expect(moduleSource).toContain('No indexed company document is ready yet');
+    expect(moduleSource).toContain('No indexed Saudi code document is ready yet');
     expect(moduleSource).toContain('ragPromptSuggestions');
-    expect(moduleSource).toContain('ما متطلبات NFPA المذكورة في الملفات المفهرسة؟');
+    expect(moduleSource).toContain('ما متطلبات الرشاشات في SBC 801 المذكورة في الملفات المفهرسة؟');
     expect(moduleSource).not.toContain('ما متطلبات NFPA المنطبقة على هذا المشروع؟');
+    expect(moduleSource).not.toContain('ما متطلبات NFPA المذكورة في الملفات المفهرسة؟');
     expect(moduleSource).toContain('setQuestion(prompt)');
   });
 

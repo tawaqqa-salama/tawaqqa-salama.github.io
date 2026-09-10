@@ -67,8 +67,8 @@ import type { BlueprintAiAuditResult } from '@/lib/types/project-reports';
 
 const TABS: { id: DesignIntelligenceTabId; labelKey: string; fallback: string }[] = [
   { id: 'knowledge', labelKey: 'design.tab.knowledge', fallback: 'Knowledge Base' },
-  { id: 'codes', labelKey: 'design.tab.codes', fallback: 'Code Knowledge' },
-  { id: 'rag', labelKey: 'design.tab.rag', fallback: 'AI Knowledge Engine' },
+  { id: 'codes', labelKey: 'design.tab.codes', fallback: 'Saudi code knowledge base' },
+  { id: 'rag', labelKey: 'design.tab.rag', fallback: 'Saudi code knowledge base' },
   { id: 'workspace', labelKey: 'design.tab.workspace', fallback: 'Design Workspace' },
   { id: 'rules', labelKey: 'design.tab.rules', fallback: 'Decision Engine' },
   { id: 'planner', labelKey: 'design.tab.planner', fallback: 'AI Design Planner' },
@@ -107,7 +107,7 @@ export default function DesignIntelligenceModule() {
   const [title, setTitle] = useState('');
   const [category, setCategory] = useState(knowledgeCategories()[0]);
   const [discipline, setDiscipline] = useState('Fire Protection');
-  const [codes, setCodes] = useState('SBC 801, NFPA 13');
+  const [codes, setCodes] = useState('SBC 801');
   const [revision, setRevision] = useState('A');
   const [author, setAuthor] = useState('');
   const [versionLabel, setVersionLabel] = useState('1.0');
@@ -193,17 +193,17 @@ export default function DesignIntelligenceModule() {
   const ragPromptSuggestions = [
     lang === 'en'
       ? hasAdoptedCodes
-        ? 'What NFPA references are linked to the adopted codes for this project?'
-        : 'What NFPA requirements are mentioned in the indexed files?'
+        ? 'What Saudi code references are linked to the adopted codes for this project?'
+        : 'What SBC 801 sprinkler requirements are mentioned in the indexed files?'
       : hasAdoptedCodes
-        ? 'ما مراجع NFPA المرتبطة بالأكواد المعتمدة لهذا المشروع؟'
-        : 'ما متطلبات NFPA المذكورة في الملفات المفهرسة؟',
+        ? 'ما مراجع الكود السعودي المرتبطة بالأكواد المعتمدة لهذا المشروع؟'
+        : 'ما متطلبات الرشاشات في SBC 801 المذكورة في الملفات المفهرسة؟',
     lang === 'en'
-      ? 'What fire pump requirements are cited in the indexed files?'
-      : 'ما متطلبات مضخة الحريق المذكورة في الملفات المفهرسة؟',
+      ? 'What fire pump requirements are cited in the Saudi building code?'
+      : 'ما متطلبات مضخة الحريق في الكود السعودي؟',
     lang === 'en'
-      ? 'Show the cited sprinkler spacing and coverage references.'
-      : 'اعرض مراجع تباعد وتغطية الرشاشات المذكورة.',
+      ? 'Show the cited sprinkler spacing and coverage references from SBC 801.'
+      : 'اعرض مراجع تباعد وتغطية الرشاشات من SBC 801.',
   ];
 
   const onUpload = async () => {
@@ -381,7 +381,7 @@ export default function DesignIntelligenceModule() {
   };
 
   /**
-   * Repair failed large NFPA ingest: dedupe + fill gaps from existing Storage.
+   * Repair failed large Saudi code ingest: dedupe + fill gaps from existing Storage.
    * No re-upload. Works from Knowledge Base table (same document_id).
    */
   const onResumeKnowledgeChunks = async (d: DiKnowledgeDocument) => {
@@ -403,8 +403,8 @@ export default function DesignIntelligenceModule() {
         documentId: d.id,
         storagePath: d.storage_path,
         storageBucket: d.storage_bucket || undefined,
-        code: d.code || 'NFPA-13',
-        edition: d.edition || '2025',
+        code: d.code || 'SBC-801',
+        edition: d.edition || '2018',
         title: d.title,
         fileName: d.file_name || undefined,
         mimeType: d.mime_type || d.file_mime || undefined,
@@ -592,8 +592,8 @@ export default function DesignIntelligenceModule() {
         <div className="space-y-4">
           <div className="rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-950">
             {lang === 'en'
-              ? 'These Civil Defense / code documents auto-link to Sales quotation scope and Project Design Center compliance (SBC/NFPA + RAG citations).'
-              : 'لوائح الدفاع المدني والأكواد المرفوعة هنا تُربط تلقائياً بنطاق عرض السعر في المبيعات وبفحص الامتثال في مركز تصاميم المشروع (SBC/NFPA + مراجع المعرفة).'}
+              ? 'These Civil Defense / Saudi code documents auto-link to Sales quotation scope and Project Design Center compliance (SBC + RAG citations).'
+              : 'لوائح الدفاع المدني والأكواد السعودية المرفوعة هنا تُربط تلقائياً بنطاق عرض السعر في المبيعات وبفحص الامتثال في مركز تصاميم المشروع (SBC + مراجع المعرفة).'}
           </div>
         <div className="grid grid-cols-1 xl:grid-cols-5 gap-4">
           <div className="xl:col-span-2 rounded-xl border bg-white p-4 space-y-3">
@@ -601,7 +601,7 @@ export default function DesignIntelligenceModule() {
               {label('design.kb.upload', 'Upload engineering reference')}
             </h2>
             <p className="text-xs text-gray-500">
-              PDF, Word, Excel, Images, DWG/DXF, catalogs, SBC/NFPA — OCR/chunk/embed/index offline.
+              PDF, Word, Excel, Images, DWG/DXF, catalogs, SBC — OCR/chunk/embed/index offline.
             </p>
             <Field label={label('design.kb.title', 'Title')} value={title} onChange={setTitle} />
             <label className="block text-sm">
@@ -852,19 +852,27 @@ export default function DesignIntelligenceModule() {
           <h2 className="font-bold">
             {tab === 'copilot'
               ? label('design.copilot.title', 'Engineering Copilot')
-              : label('design.rag.title', 'AI Knowledge Engine (RAG)')}
+              : label('design.rag.title', 'Saudi code knowledge base')}
           </h2>
           <p className="text-xs text-gray-500">
-            Answers only from indexed company files — no internet. Citations include file, page, paragraph, code, confidence.
+            {lang === 'en'
+              ? 'Answers only from indexed Saudi code company files — no internet. Citations include file, page, paragraph, code, confidence.'
+              : 'الإجابات فقط من الملفات السعودية المفهرسة للشركة — بدون إنترنت. المراجع تشمل الملف والصفحة والفقرة والكود ومستوى الثقة.'}
           </p>
           <div className={`rounded-xl border px-3 py-2 text-xs ${
             ragReady ? 'border-emerald-200 bg-emerald-50 text-emerald-900' : 'border-amber-200 bg-amber-50 text-amber-900'
           }`}>
             {ragReady
-              ? `${indexedKnowledgeDocs.length} indexed document${indexedKnowledgeDocs.length === 1 ? '' : 's'} available for this company.`
+              ? lang === 'en'
+                ? `${indexedKnowledgeDocs.length} indexed Saudi reference${indexedKnowledgeDocs.length === 1 ? '' : 's'} available for this company.`
+                : `${indexedKnowledgeDocs.length} من المراجع السعودية المفهرسة متاحة لهذه الشركة.`
               : tenantCompanyId
-                ? 'No indexed company document is ready yet. Upload and index a source document first.'
-                : 'Company context is unavailable. Sign in with a company account before querying RAG.'}
+                ? lang === 'en'
+                  ? 'No indexed Saudi code document is ready yet. Upload and index a source document first.'
+                  : 'لا يوجد مستند كود سعودي مفهرس جاهز بعد. ارفع المصدر وافهرسه أولاً.'
+                : lang === 'en'
+                  ? 'Company context is unavailable. Sign in with a company account before searching Saudi code.'
+                  : 'سياق الشركة غير متاح. سجّل الدخول بحساب شركة قبل البحث في الكود السعودي.'}
           </div>
           <div className="flex flex-wrap gap-2">
             {ragPromptSuggestions.map((prompt) => (
@@ -895,7 +903,7 @@ export default function DesignIntelligenceModule() {
             onClick={() => void onAsk()}
             className="px-4 py-2.5 rounded-xl bg-[#635bdb] text-white text-sm font-semibold disabled:opacity-50"
           >
-            {label('design.rag.ask', 'Ask knowledge base')}
+            {label('design.rag.ask', 'Search Saudi code')}
           </button>
           {rag ? (
             <div
@@ -1463,7 +1471,7 @@ export default function DesignIntelligenceModule() {
             }}
             className="px-3 py-1.5 rounded-lg border text-xs font-semibold"
           >
-            Seed smart alerts (NFPA / codes / deadlines)
+            Seed smart alerts (Saudi codes / deadlines)
           </button>
           {listNotifications().map((n) => (
             <button
@@ -1586,7 +1594,7 @@ export default function DesignIntelligenceModule() {
             <Stat label="Lessons / repeated issues" value={stats.lessonsCount} />
             <Stat label="Unread alerts" value={stats.unreadNotifications} />
             <Stat label="KB documents" value={docs.length} />
-            <Stat label="AI usage (RAG docs)" value={docs.filter((d) => d.index_status === 'indexed').length} />
+            <Stat label="AI usage (RAG docs)" value={indexedKnowledgeDocs.length} />
           </div>
           <div className="rounded-xl border bg-white p-4">
             <h3 className="font-bold text-sm mb-2">Most used codes</h3>

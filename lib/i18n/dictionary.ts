@@ -203,8 +203,8 @@ const ar: Dict = {
   'design.kb.upload': 'رفع مرجع هندسي',
   'design.kb.title': 'العنوان',
   'design.kb.index': 'رفع وفهرسة',
-  'design.rag.title': 'محرك المعرفة (RAG)',
-  'design.rag.ask': 'اسأل قاعدة المعرفة',
+  'design.rag.title': 'قاعدة معرفة الأكواد السعودية',
+  'design.rag.ask': 'البحث في الكود السعودي',
   'design.copilot.title': 'Copilot الهندسي',
   'design.rules.title': 'محرك القرار الهندسي',
   'design.rules.subtitle':
@@ -632,8 +632,8 @@ const en: Dict = {
   'design.kb.upload': 'Upload engineering reference',
   'design.kb.title': 'Title',
   'design.kb.index': 'Upload & Index',
-  'design.rag.title': 'AI Knowledge Engine (RAG)',
-  'design.rag.ask': 'Ask knowledge base',
+  'design.rag.title': 'Saudi code knowledge base',
+  'design.rag.ask': 'Search Saudi code',
   'design.copilot.title': 'Engineering Copilot',
   'design.rules.title': 'Engineering Decision Engine',
   'design.rules.subtitle':

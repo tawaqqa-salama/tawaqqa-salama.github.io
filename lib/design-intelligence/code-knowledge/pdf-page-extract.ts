@@ -14,6 +14,10 @@ export type ExtractedPdfPage = {
   page: number;
   text: string;
   extraction_method: ExtractionMethod;
+  quality_score?: number;
+  quality_reasons?: string[];
+  quality_usable?: boolean;
+  extraction_diagnostic?: string | null;
 };
 
 export type PdfPageExtractResult = {
@@ -21,6 +25,7 @@ export type PdfPageExtractResult = {
   page_count: number;
   pages_extracted: number;
   pages_ocr: number;
+  pages_rejected: number;
   combined_text: string;
   extraction_method: ExtractionMethod;
   ocr_used: boolean;
@@ -370,21 +375,69 @@ export async function extractPdfPagesFromBytes(
 }
 
 /**
- * OCR fallback placeholder: marks empty pages as OCR-attempted without inventing body text.
- * A real OCR worker can replace empty strings later; we never fabricate NFPA content.
+ * Legacy empty-page OCR marker (no invented body). Prefer
+ * `applyExtractionQualityGateToPages` which runs selective OCR only on
+ * failed/suspicious pages and rejects unusable text.
  */
 export function applyOcrFallbackToPages(
   pages: ExtractedPdfPage[],
   ocrPageText?: Record<number, string>
 ): PdfPageExtractResult {
   const next = pages.map((p) => {
-    if (p.text.trim()) return { ...p, extraction_method: 'text' as ExtractionMethod };
+    if (p.text.trim()) {
+      return {
+        ...p,
+        extraction_method: (p.extraction_method || 'text') as ExtractionMethod,
+      };
+    }
     const ocr = ocrPageText?.[p.page]?.trim() || '';
     if (ocr) {
       return { page: p.page, text: ocr, extraction_method: 'ocr' as ExtractionMethod };
     }
     return { page: p.page, text: '', extraction_method: 'ocr' as ExtractionMethod };
   });
+  return summarizePages(next);
+}
+
+/**
+ * PDF.js text → geometry reconstruction (already applied) → quality assessment →
+ * selective OCR only for failed pages → choose better candidate deterministically.
+ * Unusable pages are marked and excluded from combined/indexable text.
+ */
+export async function applyExtractionQualityGateToPages(
+  pages: ExtractedPdfPage[],
+  ocrPageText?: Record<number, string>
+): Promise<PdfPageExtractResult> {
+  const { resolvePageTextWithQualityGate } = await import(
+    '@/lib/design-intelligence/code-knowledge/ocr-page-fallback'
+  );
+
+  const next: ExtractedPdfPage[] = [];
+  for (const page of pages) {
+    const resolved = await resolvePageTextWithQualityGate({
+      pageNumber: page.page,
+      pdfText: page.text,
+      ocrText: ocrPageText?.[page.page] ?? null,
+    });
+
+    let method: ExtractionMethod = 'text';
+    if (resolved.method === 'ocr') method = 'ocr';
+    else if (resolved.method === 'alternate') method = 'alternate';
+    else if (resolved.method === 'unusable') method = 'unusable';
+    else if (!resolved.text.trim()) method = 'empty';
+    else method = 'text';
+
+    next.push({
+      page: page.page,
+      text: method === 'unusable' ? '' : resolved.text,
+      extraction_method: method,
+      quality_score: resolved.quality.score,
+      quality_reasons: resolved.quality.reasons,
+      quality_usable: resolved.quality.usable,
+      extraction_diagnostic: resolved.diagnostic,
+    });
+  }
+
   return summarizePages(next);
 }
 
@@ -396,6 +449,7 @@ export function pagesFromPlainText(text: string): PdfPageExtractResult {
       page_count: 0,
       pages_extracted: 0,
       pages_ocr: 0,
+      pages_rejected: 0,
       combined_text: '',
       extraction_method: 'empty',
       ocr_used: false,
@@ -550,6 +604,13 @@ export function chunkPagesPreserving(
   const targetMax = Math.min(Math.max(maxChars, TARGET_MIN), TARGET_MAX);
 
   for (const page of pages) {
+    // Never index unusable / failed-quality pages as engineering evidence
+    if (
+      page.extraction_method === 'unusable' ||
+      page.quality_usable === false
+    ) {
+      continue;
+    }
     const text = page.text.trim();
     if (!text) {
       if (includeEmpty) {
@@ -581,13 +642,22 @@ export function chunkPagesPreserving(
 }
 
 function summarizePages(pages: ExtractedPdfPage[]): PdfPageExtractResult {
-  const pages_extracted = pages.filter((p) => p.text.trim() && p.extraction_method === 'text').length;
+  const pages_extracted = pages.filter(
+    (p) => p.text.trim() && (p.extraction_method === 'text' || p.quality_usable === true)
+  ).length;
   const pages_ocr = pages.filter((p) => p.extraction_method === 'ocr').length;
+  const pages_rejected = pages.filter(
+    (p) => p.extraction_method === 'unusable' || p.quality_usable === false
+  ).length;
   const hasText = pages.some((p) => p.extraction_method === 'text' && p.text.trim());
   const hasOcr = pages_ocr > 0;
+  const hasAlternate = pages.some((p) => p.extraction_method === 'alternate' && p.text.trim());
   let extraction_method: ExtractionMethod = 'empty';
-  if (hasText && hasOcr) extraction_method = 'mixed';
-  else if (hasOcr && !hasText) extraction_method = 'ocr';
+  if (pages.every((p) => p.extraction_method === 'unusable' || !p.text.trim()) && pages.length) {
+    extraction_method = pages.some((p) => p.extraction_method === 'unusable') ? 'unusable' : 'empty';
+  } else if ((hasText || hasAlternate) && hasOcr) extraction_method = 'mixed';
+  else if (hasOcr && !hasText && !hasAlternate) extraction_method = 'ocr';
+  else if (hasAlternate && !hasText) extraction_method = 'alternate';
   else if (hasText) extraction_method = 'text';
 
   return {
@@ -595,7 +665,12 @@ function summarizePages(pages: ExtractedPdfPage[]): PdfPageExtractResult {
     page_count: pages.length,
     pages_extracted,
     pages_ocr,
-    combined_text: pages.map((p) => p.text).join(FORM_FEED),
+    pages_rejected,
+    // Unusable pages must not enter the combined indexed body
+    combined_text: pages
+      .filter((p) => p.extraction_method !== 'unusable' && p.quality_usable !== false)
+      .map((p) => p.text)
+      .join(FORM_FEED),
     extraction_method,
     ocr_used: hasOcr,
   };

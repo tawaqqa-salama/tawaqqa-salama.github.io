@@ -10,7 +10,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
-  adoptNfpa13_2025ForProject,
+  adoptCodeEditionForProject,
   advanceCodeEditionStatus,
   CODE_KNOWLEDGE_STORAGE_BUCKET,
   compareCodeEditions,
@@ -21,12 +21,9 @@ import {
   listCodeKnowledgeDocumentsForUi,
   listEditionRules,
   listPipelineJobs,
-  NFPA13_PIPELINE_RULE_IDS,
   registerCodeEdition,
   registerEditionRuleShellsForNewEdition,
   registerKnowledgeDocument,
-  registerNfpa13_2025ProjectEdition,
-  registerNfpa13_2025RuleShells,
   resumeIncompleteCodeKnowledgeIngestion,
   resetCodeKnowledgeStore,
   resetInMemoryCodeKnowledgeStorage,
@@ -38,9 +35,7 @@ import {
   documentHasSha256Duplicate,
   shouldUseResumableUpload,
   canReingestKnowledgeRole,
-  findExistingNfpa13Document,
   isKnowledgeDocumentPresentInStorage,
-  uploadMissingFileMessage,
   type CodeKnowledgeDocumentMeta,
   type CodeKnowledgeSearchHit,
   type DiCodeEdition,
@@ -64,6 +59,45 @@ type Props = {
 
 const DEMO_COMPANY = 'demo-company';
 const DEMO_CLIENT = 'demo-client';
+const DEFAULT_SAUDI_CODE = 'SBC-801';
+const DEFAULT_SAUDI_EDITION = '2018';
+const SAUDI_COMPARE_EDITION = '2023';
+const SAUDI_PIPELINE_RULE_IDS = [
+  'SBC801_SPRINKLER_SPACING',
+  'SBC801_FIRE_PUMP',
+  'SBC801_HAZARD_CLASS',
+] as const;
+
+function findExistingSaudiCodeDocument(
+  docs: CodeKnowledgeDocumentMeta[],
+  opts?: { code?: string; edition?: string }
+): CodeKnowledgeDocumentMeta | null {
+  const codeWanted = (opts?.code || DEFAULT_SAUDI_CODE).toUpperCase().replace(/\s+/g, '-');
+  const edition = opts?.edition || DEFAULT_SAUDI_EDITION;
+  const match = docs.find((d) => {
+    if (d.deleted_at) return false;
+    const code = String(d.code || '').toUpperCase().replace(/\s+/g, '-');
+    if (code !== codeWanted) return false;
+    if (String(d.edition || '') !== edition) return false;
+    return isKnowledgeDocumentPresentInStorage(d);
+  });
+  return match || null;
+}
+
+function saudiUploadMissingFileMessage(
+  existing: CodeKnowledgeDocumentMeta | null
+): string {
+  if (existing) {
+    return (
+      `SBC 801-${DEFAULT_SAUDI_EDITION} is already present in Storage (document_id=${existing.id}). ` +
+      `Use إعادة الفهرسة to re-ingest the existing file — do not upload a new PDF.`
+    );
+  }
+  return (
+    'Select a PDF file to upload, or wait for tenant documents to load. ' +
+    `If SBC 801-${DEFAULT_SAUDI_EDITION} already exists in the Documents list, use إعادة الفهرسة instead of uploading again.`
+  );
+}
 
 function PersistenceBadge({ persistedMode, docPersisted }: { persistedMode: boolean; docPersisted?: boolean }) {
   if (persistedMode && docPersisted) {
@@ -102,7 +136,7 @@ function formatElapsed(ms: number): string {
 
 export default function CodeKnowledgePanel({ companyId, clientId }: Props) {
   const { session, profile } = useAuth();
-  const { t } = useLanguage();
+  const { t, lang } = useLanguage();
   const uploadLabel = (() => {
     const v = t('design.kb.index');
     return v === 'design.kb.index' ? 'رفع وفهرسة' : v;
@@ -122,7 +156,7 @@ export default function CodeKnowledgePanel({ companyId, clientId }: Props) {
   const [codes, setCodes] = useState<string[]>([]);
   const [docs, setDocs] = useState<CodeKnowledgeDocumentMeta[]>([]);
   const [listSource, setListSource] = useState<'supabase' | 'session-memory'>('session-memory');
-  const [query, setQuery] = useState('sprinkler density Section 5 Table 5.1');
+  const [query, setQuery] = useState('اشتراطات الرشاشات في SBC 801');
   const [hits, setHits] = useState<CodeKnowledgeSearchHit[]>([]);
   const [selectedHit, setSelectedHit] = useState<CodeKnowledgeSearchHit | null>(null);
   const [message, setMessage] = useState<string | null>(null);
@@ -135,8 +169,8 @@ export default function CodeKnowledgePanel({ companyId, clientId }: Props) {
   const operationStartedAtRef = useRef<number | null>(null);
   const elapsedTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
-  const [uploadCode, setUploadCode] = useState('NFPA-13');
-  const [uploadEdition, setUploadEdition] = useState('2025');
+  const [uploadCode, setUploadCode] = useState(DEFAULT_SAUDI_CODE);
+  const [uploadEdition, setUploadEdition] = useState(DEFAULT_SAUDI_EDITION);
   const [uploadFile, setUploadFile] = useState<File | null>(null);
   const [uploadPercent, setUploadPercent] = useState(0);
   const [uploadPhase, setUploadPhase] = useState<UploadPhase | 'idle'>('idle');
@@ -178,43 +212,93 @@ export default function CodeKnowledgePanel({ companyId, clientId }: Props) {
 
 
   const [sourceText, setSourceText] = useState(
-    'Section 8.1 general requirements.\n\nTable 8.2.1 design criteria placeholder text for indexing tests only.\n\nPage 12 discusses spacing. Figure 8.3 shows coverage layout.'
+    'SBC 801 — متطلبات عامة لأنظمة الإطفاء.\n\nجدول معايير التصميم — نص تجريبي للفهرسة فقط.\n\nصفحة تناقش تباعد الرشاشات ومتطلبات مضخة الحريق في الكود السعودي.'
   );
 
   const canReingest = canReingestKnowledgeRole(session?.roleCode || profile?.role_code);
-  const existingNfpa13 = useMemo(
-    () => findExistingNfpa13Document(docs, { edition: '2025' }),
+  const existingSaudiCode = useMemo(
+    () =>
+      findExistingSaudiCodeDocument(docs, {
+        code: DEFAULT_SAUDI_CODE,
+        edition: DEFAULT_SAUDI_EDITION,
+      }),
     [docs]
   );
 
   const refresh = useCallback(async () => {
     setEditions(listCodeEditions({ companyId: company }));
     setCodes(listAvailableCodes(company));
-    setAdoption(getProjectAdoptedEdition(client, 'NFPA-13', company));
+    setAdoption(getProjectAdoptedEdition(client, DEFAULT_SAUDI_CODE, company));
     const listed = await listCodeKnowledgeDocumentsForUi({ companyId: company });
     setDocs(listed.documents);
     setListSource(listed.source);
   }, [company, client]);
 
   useEffect(() => {
-    registerNfpa13_2025ProjectEdition({ companyId: company });
-    registerNfpa13_2025RuleShells();
+    registerCodeEdition({
+      companyId: company,
+      code: DEFAULT_SAUDI_CODE,
+      edition: DEFAULT_SAUDI_EDITION,
+      title: 'Saudi Building Code — Fire Protection (SBC 801)',
+      status: 'available',
+      adoption_status: 'PROJECT_ADOPTED',
+      verification_status: 'PROJECT_COVER_IDENTIFIED',
+      platform_verification_status: 'NOT_VERIFIED_OFFICIAL',
+      source_type: 'PROJECT_PROVIDED_DOCUMENT',
+      source_document_id: `project_provided:${DEFAULT_SAUDI_CODE}-${DEFAULT_SAUDI_EDITION}-cover`,
+      idempotent: true,
+    });
+    registerEditionRuleShellsForNewEdition({
+      code: DEFAULT_SAUDI_CODE,
+      edition: DEFAULT_SAUDI_EDITION,
+      rule_codes: [...SAUDI_PIPELINE_RULE_IDS],
+    });
     void refresh();
   }, [company, refresh]);
 
   const rules = useMemo(
-    () => listEditionRules({ code: 'NFPA-13', edition: adoption?.edition || '2025' }),
+    () =>
+      listEditionRules({
+        code: DEFAULT_SAUDI_CODE,
+        edition: adoption?.edition || DEFAULT_SAUDI_EDITION,
+      }),
     [adoption, editions]
   );
 
   const onBootstrap = () => {
-    registerNfpa13_2025ProjectEdition({ companyId: company });
-    const a = adoptNfpa13_2025ForProject({ companyId: company, clientId: client });
-    registerNfpa13_2025RuleShells();
+    registerCodeEdition({
+      companyId: company,
+      code: DEFAULT_SAUDI_CODE,
+      edition: DEFAULT_SAUDI_EDITION,
+      title: 'Saudi Building Code — Fire Protection (SBC 801)',
+      status: 'available',
+      adoption_status: 'PROJECT_ADOPTED',
+      verification_status: 'PROJECT_COVER_IDENTIFIED',
+      platform_verification_status: 'NOT_VERIFIED_OFFICIAL',
+      source_type: 'PROJECT_PROVIDED_DOCUMENT',
+      source_document_id: `project_provided:${DEFAULT_SAUDI_CODE}-${DEFAULT_SAUDI_EDITION}-cover`,
+      idempotent: true,
+    });
+    const a = adoptCodeEditionForProject({
+      companyId: company,
+      clientId: client,
+      code: DEFAULT_SAUDI_CODE,
+      edition: DEFAULT_SAUDI_EDITION,
+      title: 'Saudi Building Code — Fire Protection (SBC 801)',
+      source_type: 'PROJECT_PROVIDED_DOCUMENT',
+      source_document_id: `project_provided:${DEFAULT_SAUDI_CODE}-${DEFAULT_SAUDI_EDITION}-cover`,
+      verification_status: 'PROJECT_COVER_IDENTIFIED',
+      platform_verification_status: 'NOT_VERIFIED_OFFICIAL',
+    });
+    registerEditionRuleShellsForNewEdition({
+      code: DEFAULT_SAUDI_CODE,
+      edition: DEFAULT_SAUDI_EDITION,
+      rule_codes: [...SAUDI_PIPELINE_RULE_IDS],
+    });
     setAdoption(a);
     void refresh();
     setMessage(
-      'NFPA-13 2025 registered & project-adopted. platform_verification_status=NOT_VERIFIED_OFFICIAL. Rules=RULE_NOT_CONFIGURED.'
+      `SBC-801 ${DEFAULT_SAUDI_EDITION} registered & project-adopted. platform_verification_status=NOT_VERIFIED_OFFICIAL. Rules=RULE_NOT_CONFIGURED.`
     );
   };
 
@@ -227,16 +311,16 @@ export default function CodeKnowledgePanel({ companyId, clientId }: Props) {
     }
     const doc = registerKnowledgeDocument({
       companyId: company,
-      title: 'NFPA 13 — 2025 (project-provided excerpt for indexing)',
-      code: 'NFPA-13',
-      edition: '2025',
-      source_document_id: 'project_provided:NFPA-13-2025-cover',
+      title: `SBC 801 — ${DEFAULT_SAUDI_EDITION} (project-provided excerpt for indexing)`,
+      code: DEFAULT_SAUDI_CODE,
+      edition: DEFAULT_SAUDI_EDITION,
+      source_document_id: `project_provided:${DEFAULT_SAUDI_CODE}-${DEFAULT_SAUDI_EDITION}-cover`,
       source_type: 'PROJECT_PROVIDED_DOCUMENT',
       adoption_status: 'PROJECT_ADOPTED',
       verification_status: 'PROJECT_COVER_IDENTIFIED',
       platform_verification_status: 'NOT_VERIFIED_OFFICIAL',
       extracted_text: sourceText,
-      file_name: 'nfpa13-2025-excerpt.txt',
+      file_name: `sbc801-${DEFAULT_SAUDI_EDITION}-excerpt.txt`,
       file_mime: 'text/plain',
     });
     const result = runDocumentPipeline(doc.id);
@@ -262,7 +346,7 @@ export default function CodeKnowledgePanel({ companyId, clientId }: Props) {
    */
   const onUploadAndIndex = async () => {
     if (!uploadFile) {
-      setMessage(uploadMissingFileMessage(existingNfpa13));
+      setMessage(saudiUploadMissingFileMessage(existingSaudiCode));
       return;
     }
     if (persistedMode && !authCompany) {
@@ -315,8 +399,8 @@ export default function CodeKnowledgePanel({ companyId, clientId }: Props) {
 
       const result = await uploadAndIngestCodeKnowledgeDocument({
         companyId: company,
-        code: uploadCode.trim() || 'NFPA-13',
-        edition: uploadEdition.trim() || '2025',
+        code: uploadCode.trim() || DEFAULT_SAUDI_CODE,
+        edition: uploadEdition.trim() || DEFAULT_SAUDI_EDITION,
         title: `${uploadCode} ${uploadEdition} — ${uploadFile.name}`,
         fileName: uploadFile.name,
         mimeType: uploadFile.type || undefined,
@@ -397,16 +481,28 @@ export default function CodeKnowledgePanel({ companyId, clientId }: Props) {
       setLastUploadError(null);
 
       if (
-        uploadCode.trim() === 'NFPA-13' &&
-        uploadEdition.trim() === '2025' &&
+        uploadCode.trim().toUpperCase().replace(/\s+/g, '-') === DEFAULT_SAUDI_CODE &&
+        uploadEdition.trim() === DEFAULT_SAUDI_EDITION &&
         (result.document.persisted || !persistedMode)
       ) {
-        adoptNfpa13_2025ForProject({
+        adoptCodeEditionForProject({
           companyId: company,
           clientId: client,
-          source_document_id: result.document.source_document_id || result.document.id,
+          code: DEFAULT_SAUDI_CODE,
+          edition: DEFAULT_SAUDI_EDITION,
+          title: 'Saudi Building Code — Fire Protection (SBC 801)',
+          source_type: 'PROJECT_PROVIDED_DOCUMENT',
+          source_document_id:
+            result.document.source_document_id || result.document.id,
+          verification_status: 'PROJECT_COVER_IDENTIFIED',
+          platform_verification_status: 'NOT_VERIFIED_OFFICIAL',
+          knowledge_document_id: result.document.id,
         });
-        registerNfpa13_2025RuleShells();
+        registerEditionRuleShellsForNewEdition({
+          code: DEFAULT_SAUDI_CODE,
+          edition: DEFAULT_SAUDI_EDITION,
+          rule_codes: [...SAUDI_PIPELINE_RULE_IDS],
+        });
       }
 
       setUploadPhase('indexed');
@@ -668,10 +764,10 @@ export default function CodeKnowledgePanel({ companyId, clientId }: Props) {
   };
 
   const onSearch = () => {
-    const edition = adoption?.edition || uploadEdition || '2025';
+    const edition = adoption?.edition || uploadEdition || DEFAULT_SAUDI_EDITION;
     const found = searchCodeKnowledge({
       companyId: company,
-      code: uploadCode || 'NFPA-13',
+      code: uploadCode || DEFAULT_SAUDI_CODE,
       edition,
       query,
       topK: 6,
@@ -685,23 +781,27 @@ export default function CodeKnowledgePanel({ companyId, clientId }: Props) {
   const onCompare = () => {
     registerCodeEdition({
       companyId: company,
-      code: 'NFPA-13',
-      edition: '2028',
-      title: 'NFPA 13 (draft future edition — not adopted)',
+      code: DEFAULT_SAUDI_CODE,
+      edition: SAUDI_COMPARE_EDITION,
+      title: 'SBC 801 (draft future edition — not adopted)',
       status: 'draft',
       platform_verification_status: 'NOT_VERIFIED_OFFICIAL',
       idempotent: true,
     });
     registerEditionRuleShellsForNewEdition({
-      code: 'NFPA-13',
-      edition: '2028',
-      rule_codes: [...NFPA13_PIPELINE_RULE_IDS],
+      code: DEFAULT_SAUDI_CODE,
+      edition: SAUDI_COMPARE_EDITION,
+      rule_codes: [...SAUDI_PIPELINE_RULE_IDS],
     });
-    const result = compareCodeEditions('NFPA-13', '2025', '2028');
+    const result = compareCodeEditions(
+      DEFAULT_SAUDI_CODE,
+      DEFAULT_SAUDI_EDITION,
+      SAUDI_COMPARE_EDITION
+    );
     setCompare(result);
     void refresh();
     setMessage(
-      `Comparison status=${result.status}. new_edition_activated=${result.new_edition_activated}. Project stays on ${adoption?.edition || '2025'}.`
+      `Comparison status=${result.status}. new_edition_activated=${result.new_edition_activated}. Project stays on ${adoption?.edition || DEFAULT_SAUDI_EDITION}.`
     );
   };
 
@@ -721,14 +821,20 @@ export default function CodeKnowledgePanel({ companyId, clientId }: Props) {
 
       <div className="rounded-xl border border-slate-200 bg-gradient-to-br from-slate-50 via-white to-cyan-50 p-5">
         <div className="flex flex-wrap items-center gap-2">
-          <h2 className="text-xl font-semibold text-slate-900">Code Knowledge Pipeline</h2>
+          <h2 className="text-xl font-semibold text-slate-900">
+            {lang === 'en' ? 'Saudi code knowledge base' : 'قاعدة معرفة الأكواد السعودية'}
+          </h2>
           <PersistenceBadge persistedMode={persistedMode} docPersisted={persistedMode} />
         </div>
         <p className="mt-1 max-w-3xl text-sm text-slate-600">
-          Upload NFPA / code documents into private Supabase Storage (
+          {lang === 'en'
+            ? 'Upload Saudi Building Code (SBC) documents into private Supabase Storage ('
+            : 'ارفع وثائق الكود السعودي للبناء (SBC) إلى تخزين Supabase الخاص ('}
           <code className="text-xs">{CODE_KNOWLEDGE_STORAGE_BUCKET}</code>
-          ), ingest with page-preserving extraction, and search with citations. RAG is advisory —
-          it cannot produce PASS. Compliance authority remains{' '}
+          )
+          {lang === 'en'
+            ? ', ingest with page-preserving extraction, and search with citations. RAG is advisory — it cannot produce PASS. Compliance authority remains '
+            : '، ثم الفهرسة مع الحفاظ على الصفحات والبحث مع المراجع. محرك المعرفة استشاري — لا يُنتج PASS. سلطة الامتثال تبقى في '}
           <code className="text-xs">lib/projects/compliance</code>.
         </p>
         <p className="mt-2 text-xs text-slate-500">
@@ -736,23 +842,25 @@ export default function CodeKnowledgePanel({ companyId, clientId }: Props) {
           {listSource} · company=
           <code className="text-[10px]">{company}</code>
         </p>
-        {existingNfpa13 ? (
+        {existingSaudiCode ? (
           <div className="mt-3 rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-2 text-sm text-emerald-950">
-            <div className="font-semibold">NFPA 13-2025 موجود في التخزين (مستند مفهرس)</div>
+            <div className="font-semibold">
+              SBC 801-{DEFAULT_SAUDI_EDITION} موجود في التخزين (مستند مفهرس)
+            </div>
             <div className="mt-1 text-xs break-all">
-              document_id=<code>{existingNfpa13.id}</code> · path=
-              <code>{existingNfpa13.storage_path}</code> · pages=
-              {existingNfpa13.page_count ?? '—'} · chunks={existingNfpa13.chunk_count ?? 0} ·
-              ingestion_version={existingNfpa13.ingestion_version ?? '—'}
+              document_id=<code>{existingSaudiCode.id}</code> · path=
+              <code>{existingSaudiCode.storage_path}</code> · pages=
+              {existingSaudiCode.page_count ?? '—'} · chunks={existingSaudiCode.chunk_count ?? 0} ·
+              ingestion_version={existingSaudiCode.ingestion_version ?? '—'}
             </div>
             {canReingest ? (
               <button
                 type="button"
                 disabled={busy || Boolean(reingestingId)}
                 className="mt-2 rounded-lg bg-emerald-800 px-3 py-1.5 text-xs font-semibold text-white disabled:opacity-50"
-                onClick={() => void onReingest(existingNfpa13.id)}
+                onClick={() => void onReingest(existingSaudiCode.id)}
               >
-                {reingestingId === existingNfpa13.id
+                {reingestingId === existingSaudiCode.id
                   ? 'جاري إعادة الفهرسة...'
                   : 'إعادة الفهرسة'}
               </button>
@@ -764,8 +872,8 @@ export default function CodeKnowledgePanel({ companyId, clientId }: Props) {
           </div>
         ) : (
           <div className="mt-3 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-950">
-            لم يُعثر على مستند NFPA 13-2025 مفهرس لهذا المستأجر في القائمة المحمّلة من قاعدة
-            المعرفة. ارفع الملف من لوحة الرفع أدناه إن لزم.
+            لم يُعثر على مستند SBC 801-{DEFAULT_SAUDI_EDITION} مفهرس لهذا المستأجر في القائمة
+            المحمّلة من قاعدة المعرفة. ارفع الملف من لوحة الرفع أدناه إن لزم.
           </div>
         )}
         <div className="mt-4 flex flex-wrap gap-2">
@@ -774,7 +882,7 @@ export default function CodeKnowledgePanel({ companyId, clientId }: Props) {
             className="rounded-lg bg-slate-900 px-3 py-2 text-sm text-white"
             onClick={onBootstrap}
           >
-            Register + adopt NFPA-13 2025
+            Register + adopt SBC-801 {DEFAULT_SAUDI_EDITION}
           </button>
           <button
             type="button"
@@ -788,14 +896,14 @@ export default function CodeKnowledgePanel({ companyId, clientId }: Props) {
             className="rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm"
             onClick={onSearch}
           >
-            Search code
+            {lang === 'en' ? 'Search Saudi code' : 'البحث في الكود السعودي'}
           </button>
           <button
             type="button"
             className="rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm"
             onClick={onCompare}
           >
-            Compare 2025 vs 2028
+            Compare {DEFAULT_SAUDI_EDITION} vs {SAUDI_COMPARE_EDITION}
           </button>
           <button
             type="button"
@@ -840,7 +948,7 @@ export default function CodeKnowledgePanel({ companyId, clientId }: Props) {
               className="mt-1 w-full rounded-lg border border-slate-200 px-3 py-2 text-sm"
               value={uploadCode}
               onChange={(e) => setUploadCode(e.target.value)}
-              placeholder="NFPA-13"
+              placeholder="SBC-801"
             />
           </label>
           <label className="block text-xs text-slate-500">
@@ -849,7 +957,7 @@ export default function CodeKnowledgePanel({ companyId, clientId }: Props) {
               className="mt-1 w-full rounded-lg border border-slate-200 px-3 py-2 text-sm"
               value={uploadEdition}
               onChange={(e) => setUploadEdition(e.target.value)}
-              placeholder="2025"
+              placeholder="2018"
             />
           </label>
           <label className="block text-xs text-slate-500 sm:col-span-2">
@@ -940,7 +1048,9 @@ export default function CodeKnowledgePanel({ companyId, clientId }: Props) {
       </section>
 
       <section className="rounded-xl border border-slate-200 bg-white p-4 overflow-x-auto">
-        <h3 className="font-medium text-slate-900">Documents</h3>
+        <h3 className="font-medium text-slate-900">
+          {lang === 'en' ? 'Indexed Saudi references' : 'المراجع السعودية المفهرسة'}
+        </h3>
         <p className="mt-1 text-xs text-slate-500">
           Last status: {indexStatus} · bucket={CODE_KNOWLEDGE_STORAGE_BUCKET} · source={listSource}
         </p>
@@ -1167,7 +1277,9 @@ export default function CodeKnowledgePanel({ companyId, clientId }: Props) {
       </div>
 
       <section className="rounded-xl border border-slate-200 bg-white p-4">
-        <h3 className="font-medium text-slate-900">Code search (RAG)</h3>
+        <h3 className="font-medium text-slate-900">
+          {lang === 'en' ? 'Search Saudi code' : 'البحث في الكود السعودي'}
+        </h3>
         <p className="mt-1 text-xs text-amber-800">
           Filtered by code + edition (+ optional document/section/page). Never returns another edition.
           Cannot produce compliance PASS.
@@ -1177,14 +1289,18 @@ export default function CodeKnowledgePanel({ companyId, clientId }: Props) {
             className="min-w-[240px] flex-1 rounded-lg border border-slate-200 px-3 py-2 text-sm"
             value={query}
             onChange={(e) => setQuery(e.target.value)}
-            placeholder="Search adopted edition…"
+            placeholder={
+              lang === 'en'
+                ? 'Search adopted Saudi edition…'
+                : 'ابحث في الطبعة السعودية المعتمدة…'
+            }
           />
           <button
             type="button"
             className="rounded-lg bg-cyan-700 px-3 py-2 text-sm text-white"
             onClick={onSearch}
           >
-            Search
+            {lang === 'en' ? 'Search Saudi code' : 'البحث في الكود السعودي'}
           </button>
         </div>
         <div className="mt-3 grid gap-3 lg:grid-cols-2">

@@ -162,9 +162,12 @@ describe('ragQuery ranking and confidence', () => {
 
     const result = await runRag('ما متطلبات NFPA المذكورة في الملفات؟', chunks, docs);
 
-    expect(result.citations.length).toBeGreaterThan(0);
-    expect(result.citations[0].code || result.citations[0].codeReference || '').toMatch(/NFPA/i);
-    expect(result.citations[0].documentId).toBe('d-nfpa');
+    // Saudi-only policy: NFPA documents are excluded as engineering authority.
+    // Explicit NFPA-only questions must not promote NFPA sources.
+    expect(result.citations.every((c) => !/NFPA/i.test(String(c.code || c.codeReference || '')))).toBe(
+      true
+    );
+    expect(result.citations[0]?.documentId !== 'd-nfpa').toBe(true);
   });
 
   it('returns unreliable NEEDS_DATA when only wrong family exists for explicit NFPA', async () => {
@@ -239,8 +242,8 @@ describe('ragQuery ranking and confidence', () => {
   });
 
   it('never returns company B chunks for company A query', async () => {
-    const contentA = 'NFPA 13 fire pump suction and discharge requirements for company A.';
-    const contentB = 'NFPA 13 fire pump suction and discharge requirements for company B secret.';
+    const contentA = 'SBC-801 fire pump suction and discharge requirements for company A.';
+    const contentB = 'SBC-801 fire pump suction and discharge requirements for company B secret.';
     const chunks: DiKnowledgeChunk[] = [
       {
         id: 'c-a',
@@ -250,8 +253,8 @@ describe('ragQuery ranking and confidence', () => {
         content: contentA,
         embedding: embedText(contentA),
         company_id: 'company-a',
-        code: 'NFPA-13',
-        document_title: 'A NFPA',
+        code: 'SBC-801',
+        document_title: 'A SBC',
       },
       {
         id: 'c-b',
@@ -261,24 +264,26 @@ describe('ragQuery ranking and confidence', () => {
         content: contentB,
         embedding: embedText(contentB),
         company_id: 'company-b',
-        code: 'NFPA-13',
-        document_title: 'B NFPA secret',
+        code: 'SBC-801',
+        document_title: 'B SBC secret',
       },
     ];
-    const result = await runRag('NFPA 13 fire pump requirements', chunks, [
+    const result = await runRag('SBC-801 fire pump requirements', chunks, [
       {
         id: 'd-a',
-        title: 'A NFPA',
+        title: 'A SBC',
         status: 'active',
         index_status: 'indexed',
         company_id: 'company-a',
+        code: 'SBC-801',
       },
       {
         id: 'd-b',
-        title: 'B NFPA secret',
+        title: 'B SBC secret',
         status: 'active',
         index_status: 'indexed',
         company_id: 'company-b',
+        code: 'SBC-801',
       },
     ]);
     for (const c of result.citations) {
@@ -289,7 +294,7 @@ describe('ragQuery ranking and confidence', () => {
 
   it('populates traceability fields when available', async () => {
     const content =
-      'NFPA 13 section 9.3.2.1 fire pump room ventilation and drainage requirements detailed.';
+      'SBC-801 section 903.3.1.1 automatic sprinkler system requirements for fire pump room ventilation and drainage detailed.';
     const chunks: DiKnowledgeChunk[] = [
       {
         id: 'c-trace',
@@ -299,24 +304,24 @@ describe('ragQuery ranking and confidence', () => {
         content,
         embedding: embedText(content),
         company_id: 'company-a',
-        code: 'NFPA-13',
-        edition: '2025',
-        section: '9.3.2.1',
-        code_reference: 'NFPA 13 §9.3.2.1',
-        document_title: 'NFPA 13 2025',
+        code: 'SBC-801',
+        edition: '2018',
+        section: '903.3.1.1',
+        code_reference: 'SBC-801 §903.3.1.1',
+        document_title: 'SBC 801 2018',
         source_verification_status: 'NOT_VERIFIED_OFFICIAL',
         source_document_id: 'src-1',
       },
     ];
-    const result = await runRag('NFPA 13 fire pump room ventilation', chunks, [
+    const result = await runRag('SBC-801 sprinkler fire pump room ventilation', chunks, [
       {
         id: 'd-trace',
-        title: 'NFPA 13 2025',
+        title: 'SBC 801 2018',
         status: 'active',
         index_status: 'indexed',
         company_id: 'company-a',
-        code: 'NFPA-13',
-        edition: '2025',
+        code: 'SBC-801',
+        edition: '2018',
         platform_verification_status: 'NOT_VERIFIED_OFFICIAL',
       },
     ]);
@@ -325,9 +330,9 @@ describe('ragQuery ranking and confidence', () => {
     expect(c.documentId).toBe('d-trace');
     expect(c.chunkId).toBe('c-trace');
     expect(c.pageNumber).toBe(17);
-    expect(c.code).toBe('NFPA-13');
-    expect(c.edition).toBe('2025');
-    expect(c.section).toBe('9.3.2.1');
+    expect(c.code).toBe('SBC-801');
+    expect(c.edition).toBe('2018');
+    expect(c.section).toBe('903.3.1.1');
   });
 });
 

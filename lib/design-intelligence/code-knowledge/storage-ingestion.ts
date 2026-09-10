@@ -11,7 +11,7 @@ import {
   sha256HexFromBytes,
 } from '@/lib/design-intelligence/code-knowledge/sha256';
 import {
-  applyOcrFallbackToPages,
+  applyExtractionQualityGateToPages,
   chunkPagesPreserving,
   extractPdfPagesFromBytes,
   pagesFromPlainText,
@@ -814,7 +814,8 @@ export async function ingestCodeKnowledgeFromStorage(
   }
 
   const needsOcr = pages.length === 0 || pages.every((p) => !p.text.trim());
-  const afterOcr = applyOcrFallbackToPages(
+  // Selective quality gate + OCR boundary (no invented body text; rejects unusable pages)
+  const afterOcr = await applyExtractionQualityGateToPages(
     pages.length
       ? pages
       : [{ page: 1, text: '', extraction_method: 'empty' }],
