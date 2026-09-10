@@ -406,7 +406,13 @@ export function applyOcrFallbackToPages(
  */
 export async function applyExtractionQualityGateToPages(
   pages: ExtractedPdfPage[],
-  ocrPageText?: Record<number, string>
+  ocrPageText?: Record<number, string>,
+  opts?: {
+    pdfBytes?: Uint8Array | null;
+    documentId?: string | null;
+    companyId?: string | null;
+    ocrPageImages?: Record<number, Uint8Array>;
+  }
 ): Promise<PdfPageExtractResult> {
   const { resolvePageTextWithQualityGate } = await import(
     '@/lib/design-intelligence/code-knowledge/ocr-page-fallback'
@@ -418,14 +424,18 @@ export async function applyExtractionQualityGateToPages(
       pageNumber: page.page,
       pdfText: page.text,
       ocrText: ocrPageText?.[page.page] ?? null,
+      pageImageBytes: opts?.ocrPageImages?.[page.page] ?? null,
+      pdfBytes: opts?.pdfBytes ?? null,
+      documentId: opts?.documentId ?? null,
+      companyId: opts?.companyId ?? null,
     });
 
-    let method: ExtractionMethod = 'text';
+    let method: ExtractionMethod = 'native_pdf';
     if (resolved.method === 'ocr') method = 'ocr';
     else if (resolved.method === 'alternate') method = 'alternate';
     else if (resolved.method === 'unusable') method = 'unusable';
     else if (!resolved.text.trim()) method = 'empty';
-    else method = 'text';
+    else method = 'native_pdf';
 
     next.push({
       page: page.page,
@@ -641,15 +651,24 @@ export function chunkPagesPreserving(
   return out.filter((c) => c.content.length > 0);
 }
 
+function isNativePageMethod(method: ExtractionMethod | string | undefined): boolean {
+  return method === 'native_pdf' || method === 'text';
+}
+
 function summarizePages(pages: ExtractedPdfPage[]): PdfPageExtractResult {
   const pages_extracted = pages.filter(
-    (p) => p.text.trim() && (p.extraction_method === 'text' || p.quality_usable === true)
+    (p) =>
+      p.text.trim() &&
+      (isNativePageMethod(p.extraction_method) ||
+        p.extraction_method === 'ocr' ||
+        p.extraction_method === 'alternate' ||
+        p.quality_usable === true)
   ).length;
   const pages_ocr = pages.filter((p) => p.extraction_method === 'ocr').length;
   const pages_rejected = pages.filter(
     (p) => p.extraction_method === 'unusable' || p.quality_usable === false
   ).length;
-  const hasText = pages.some((p) => p.extraction_method === 'text' && p.text.trim());
+  const hasText = pages.some((p) => isNativePageMethod(p.extraction_method) && p.text.trim());
   const hasOcr = pages_ocr > 0;
   const hasAlternate = pages.some((p) => p.extraction_method === 'alternate' && p.text.trim());
   let extraction_method: ExtractionMethod = 'empty';
@@ -658,7 +677,7 @@ function summarizePages(pages: ExtractedPdfPage[]): PdfPageExtractResult {
   } else if ((hasText || hasAlternate) && hasOcr) extraction_method = 'mixed';
   else if (hasOcr && !hasText && !hasAlternate) extraction_method = 'ocr';
   else if (hasAlternate && !hasText) extraction_method = 'alternate';
-  else if (hasText) extraction_method = 'text';
+  else if (hasText) extraction_method = 'native_pdf';
 
   return {
     pages,

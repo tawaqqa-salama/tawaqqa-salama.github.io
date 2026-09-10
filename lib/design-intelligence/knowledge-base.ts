@@ -594,6 +594,8 @@ export async function indexDocumentText(
     pages_extracted?: number | null;
     pages_ocr?: number | null;
     page_texts?: string[];
+    page_extraction_methods?: string[];
+    page_quality_scores?: Array<number | null>;
     extraction_method?: string;
     sha256?: string | null;
   },
@@ -613,15 +615,31 @@ export async function indexDocumentText(
   const requireCloud = Boolean(opts?.requireCloudPersist) || isSupabaseConfigured;
   const db = opts?.client || supabase;
   const pageTexts = pageMeta?.page_texts?.length
-    ? pageMeta.page_texts.map((t, i) => ({
-        page: i + 1,
-        text: t,
-        extraction_method: (t.trim()
-          ? 'text'
-          : ocrUsed
-            ? 'ocr'
-            : 'empty') as 'text' | 'ocr' | 'empty',
-      }))
+    ? pageMeta.page_texts.map((t, i) => {
+        const methodFromMeta = pageMeta.page_extraction_methods?.[i];
+        let extraction_method: string;
+        if (methodFromMeta) {
+          extraction_method = methodFromMeta;
+        } else if (t.trim()) {
+          extraction_method = 'native_pdf';
+        } else if (ocrUsed) {
+          extraction_method = 'ocr';
+        } else {
+          extraction_method = 'empty';
+        }
+        return {
+          page: i + 1,
+          text: t,
+          extraction_method: extraction_method as
+            | 'native_pdf'
+            | 'text'
+            | 'ocr'
+            | 'empty'
+            | 'unusable',
+          quality_score: pageMeta.page_quality_scores?.[i] ?? undefined,
+          quality_usable: methodFromMeta === 'unusable' ? false : undefined,
+        };
+      })
     : pagesFromPlainText(text).pages;
 
   const pageParts = chunkPagesPreserving(pageTexts, 900);
@@ -666,7 +684,7 @@ export async function indexDocumentText(
           page_number: part.pageGuess,
           page_start: part.pageGuess,
           page_end: part.pageGuess,
-          extraction_method: ocrUsed ? 'ocr' : 'text',
+          extraction_method: ocrUsed ? 'ocr' : 'native_pdf',
           paragraph_ref: `§${i + 1}`,
           code_reference: doc.applicable_codes?.[0] || null,
           content: part.content,
@@ -1374,6 +1392,8 @@ export async function uploadAndIndexKnowledgeFile(input: {
         pages_extracted: extracted.pages_extracted,
         pages_ocr: extracted.pages_ocr,
         page_texts: extracted.page_texts,
+        page_extraction_methods: extracted.page_extraction_methods,
+        page_quality_scores: extracted.page_quality_scores,
         extraction_method: extracted.extraction_method,
         sha256,
       },
@@ -1662,6 +1682,8 @@ export async function reingestKnowledgeDocumentFromStorage(
         pages_extracted: extracted.pages_extracted,
         pages_ocr: extracted.pages_ocr,
         page_texts: extracted.page_texts,
+        page_extraction_methods: extracted.page_extraction_methods,
+        page_quality_scores: extracted.page_quality_scores,
         extraction_method: extracted.extraction_method,
         sha256,
       },
@@ -2286,7 +2308,15 @@ export async function ragQuery(
 
   const top = citations[0];
   const topQuality = qualityByChunkId.get(scored[0]?.chunk.id || '')?.score ?? 0;
-  const reliable = best >= RELIABLE_SCORE && topQuality >= 0.85;
+  const reliable =
+    best >= RELIABLE_SCORE &&
+    topQuality >= 0.85 &&
+    // OCR evidence may be strong only when quality clearly passes
+    !(
+      (qualityByChunkId.get(scored[0]?.chunk.id || '')?.method === 'ocr' ||
+        scored[0]?.chunk.extraction_method === 'ocr') &&
+      topQuality < 0.85
+    );
   const matchStrength: RagAnswer['matchStrength'] = reliable ? 'strong' : 'weak';
 
   if (!reliable && engineeringQuery && topQuality < EXTRACTION_QUALITY_MIN_USABLE_SCORE) {

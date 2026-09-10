@@ -1,4 +1,8 @@
 import type { NextConfig } from "next";
+import path from "path";
+import { fileURLToPath } from "url";
+
+const configDir = path.dirname(fileURLToPath(import.meta.url));
 
 /**
  * GitHub Pages (user site): https://tawaqqa-salama.github.io/
@@ -89,6 +93,20 @@ const nextConfig: NextConfig = {
         },
       }
     : undefined,
+  // Client webpack bundles must never load Node OCR (tesseract / Buffer / secrets).
+  webpack: (config, { isServer }) => {
+    if (!isServer) {
+      config.resolve = config.resolve || {};
+      config.resolve.alias = {
+        ...(config.resolve.alias || {}),
+        "@/lib/design-intelligence/code-knowledge/ocr-provider": path.resolve(
+          configDir,
+          "lib/design-intelligence/code-knowledge/ocr-provider.browser.ts"
+        ),
+      };
+    }
+    return config;
+  },
   allowedDevOrigins: [
     "*.trycloudflare.com",
     "*.loca.lt",

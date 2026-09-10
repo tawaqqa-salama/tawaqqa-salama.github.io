@@ -241,7 +241,9 @@ export async function extractTextFromFile(file: File): Promise<{
     try {
       const raw = await extractPdfPagesFromBytes(bytes);
       // Selective quality gate + OCR boundary (no invented body text)
-      const extracted = await applyExtractionQualityGateToPages(raw.pages);
+      const extracted = await applyExtractionQualityGateToPages(raw.pages, undefined, {
+        pdfBytes: bytes,
+      });
       return {
         text: extracted.combined_text,
         ocrUsed: extracted.ocr_used,

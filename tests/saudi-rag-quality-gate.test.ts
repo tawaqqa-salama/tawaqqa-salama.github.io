@@ -85,6 +85,17 @@ describe('selective OCR fallback', () => {
     expect(result.text).toContain('أنظمة الرش');
   });
 
+  it('clean native Arabic → native_pdf provenance without OCR', async () => {
+    const clean =
+      'يجب توفير أنظمة الرش الآلي وفق متطلبات الكود السعودي SBC-801 طبعة 2018 في المباني العالية.';
+    const result = await resolvePageTextWithQualityGate({
+      pageNumber: 10,
+      pdfText: clean,
+    });
+    expect(result.method).toBe('native_pdf');
+    expect(result.ocrAttempted).toBe(false);
+  });
+
   it('H: failed PDF text + failed OCR → page unusable', async () => {
     const bad = 'اااااااااااااااا ال ب ت ث';
     const result = await resolvePageTextWithQualityGate({
