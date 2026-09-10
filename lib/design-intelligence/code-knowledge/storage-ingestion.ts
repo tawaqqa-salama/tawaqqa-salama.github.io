@@ -12,7 +12,6 @@ import {
 } from '@/lib/design-intelligence/code-knowledge/sha256';
 import {
   applyExtractionQualityGateToPages,
-  applyOcrFallbackToPages,
   chunkPagesPreserving,
   extractPdfPagesFromBytes,
   pagesFromPlainText,
