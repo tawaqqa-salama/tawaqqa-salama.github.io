@@ -177,117 +177,143 @@ export function reconstructPageText(
   return normalizeSafeWhitespace(lineTexts.join('\n'));
 }
 
-function isArabicLetter(ch: string): boolean {
-  return /[\u0600-\u06FF]/.test(ch);
+/**
+ * Direction-agnostic horizontal gap between two axis-aligned text runs.
+ * Critical for RTL Arabic: logical next item is often to the LEFT of the previous,
+ * so `next.x - (prev.x + prev.width)` is meaningless; box-to-box distance is correct.
+ */
+export function horizontalGapBetweenRuns(
+  a: { x: number; width?: number },
+  b: { x: number; width?: number }
+): number {
+  const aLeft = a.x;
+  const aRight = a.x + (typeof a.width === 'number' && a.width > 0 ? a.width : 0);
+  const bLeft = b.x;
+  const bRight = b.x + (typeof b.width === 'number' && b.width > 0 ? b.width : 0);
+  if (aRight < bLeft) return bLeft - aRight;
+  if (bRight < aLeft) return aLeft - bRight;
+  return 0; // overlap or touching
 }
 
-function arabicLetterCount(text: string): number {
-  let n = 0;
-  for (const ch of text) if (isArabicLetter(ch)) n += 1;
-  return n;
+function estimateEm(a: PositionedTextItem, b: PositionedTextItem): number {
+  const fromHeight = Math.max(a.height || 0, b.height || 0);
+  if (fromHeight > 0) return fromHeight;
+  return 10;
+}
+
+/** Typical SBC Arabic inter-word gap is ~0.25–0.30em; intra-glyph gaps are ~0–0.05em. */
+function wordGapThreshold(em: number): number {
+  return Math.max(1.0, em * 0.15);
+}
+
+/** Large geometric gaps are treated as column / cell breaks, not sentence spaces. */
+function columnGapThreshold(em: number): number {
+  return Math.max(em * 3.0, wordGapThreshold(em) * 10);
+}
+
+function shouldGlueCodeOrDecimal(prev: string, next: string): boolean {
+  // "903" "." "3" "." "1" "." "1" / "NFPA" "13"
+  if (/[\d.]$/.test(prev) && /^[\d.]/.test(next)) return true;
+  if (/[A-Za-z]$/.test(prev) && /^[A-Za-z]$/.test(next) && next.length === 1) return true;
+  // Section id stuck to open paren: "903.3.1.1" "(" 
+  if (/[\dA-Za-z.]$/.test(prev) && /^[)\].,;:%]/.test(next)) return true;
+  if (/[(\[]$/.test(prev) && /^[\dA-Za-z\u0600-\u06FF]/.test(next)) return true;
+  return false;
 }
 
 /**
- * Join PDF text runs without reversing Unicode.
- * - Glue glyph-sized Arabic fragments (common pdfjs split) WITHOUT spaces.
- * - Keep spaces between whole Arabic/Latin words.
- * - Preserve decimals / code refs (317.4.1).
- * - Honor hasEOL as a hard break marker (returned as trailing \n when alone).
+ * Join PDF text runs using geometry-aware word boundaries.
+ * - Preserve Unicode characters exactly (never reverse Arabic).
+ * - Insert spaces only when the box-to-box gap is a word boundary.
+ * - Glue glyph fragments of the same word (tiny / zero gap).
+ * - Preserve spaces already present in TextItem.str.
+ * - Large gaps → separate logical lines (tables/columns) rather than fake sentences.
+ * - Honor hasEOL.
  */
 function orderLineItems(items: PositionedTextItem[]): string {
   const lineBlob = items.map((i) => i.str).join('');
   const arabicDom = isArabicDominant(lineBlob);
 
   // Prefer PDF logical item sequence for Arabic/mixed (never reverse characters).
-  // RTL x-sort is a fallback only when logical join is empty.
+  // X-sort is a fallback only when logical join is empty.
   let ordered: PositionedTextItem[];
   if (arabicDom || countArabic(lineBlob) > 0) {
     ordered = [...items].sort((a, b) => (a.order ?? 0) - (b.order ?? 0));
-    const logical = joinRuns(ordered);
+    const logical = joinRunsGeometryAware(ordered);
     if (logical.trim()) return logical;
     ordered = [...items].sort((a, b) => b.x - a.x || (a.order ?? 0) - (b.order ?? 0));
-    return joinRuns(ordered);
+    return joinRunsGeometryAware(ordered);
   }
 
   ordered = [...items].sort((a, b) => a.x - b.x || (a.order ?? 0) - (b.order ?? 0));
-  return joinRuns(ordered);
+  return joinRunsGeometryAware(ordered);
 }
 
-function joinRuns(items: PositionedTextItem[]): string {
-  const out: string[] = [];
+function joinRunsGeometryAware(items: PositionedTextItem[]): string {
+  const parts: string[] = [];
+  let lastGeom: PositionedTextItem | null = null;
+
   for (let i = 0; i < items.length; i += 1) {
     const item = items[i];
-    const t = String(item.str || '');
+    const t = String(item.str ?? '');
     if (!t) {
-      if (item.hasEOL) out.push('\n');
-      continue;
-    }
-    if (!out.length) {
-      out.push(t);
-      if (item.hasEOL) out.push('\n');
-      continue;
-    }
-    const prev = out[out.length - 1];
-    if (prev === '\n') {
-      out.push(t);
-      if (item.hasEOL) out.push('\n');
+      if (item.hasEOL) {
+        parts.push('\n');
+        lastGeom = null;
+      }
       continue;
     }
 
-    const prevLast = prev.slice(-1);
-    const nextFirst = t.slice(0, 1);
-    const prevEnd = (items[i - 1]?.x ?? 0) + (items[i - 1]?.width ?? 0);
-    const gap = Math.abs(item.x - prevEnd);
-    const em = Math.max(items[i - 1]?.height || 10, item.height || 10);
-    const gapLooksLikeSpace = gap > em * 0.35;
+    if (!parts.length || parts[parts.length - 1] === '\n' || lastGeom == null) {
+      parts.push(t);
+      lastGeom = item;
+      if (item.hasEOL) {
+        parts.push('\n');
+        lastGeom = null;
+      }
+      continue;
+    }
 
-    // Decimals / dotted code refs: "317" "." "4" "." "1"
-    if (/[\d.]$/.test(prev) && /^[\d.]/.test(t)) {
-      out[out.length - 1] = prev + t;
-    } else if (/\s$/.test(prev) || /^\s/.test(t)) {
-      out[out.length - 1] = prev + t;
-    } else if (
-      isArabicLetter(prevLast) &&
-      isArabicLetter(nextFirst) &&
-      !gapLooksLikeSpace &&
-      (arabicLetterCount(prev.replace(/\s/g, '')) <= 2 ||
-        arabicLetterCount(t.replace(/\s/g, '')) <= 2)
-    ) {
-      // Glyph fragments → glue (never reverse)
-      out[out.length - 1] = prev + t;
-    } else if (
-      isArabicLetter(prevLast) &&
-      isArabicLetter(nextFirst) &&
-      !gapLooksLikeSpace &&
-      arabicLetterCount(prev.replace(/\s/g, '')) > 2 &&
-      arabicLetterCount(t.replace(/\s/g, '')) > 2
-    ) {
-      // Whole Arabic words with negligible gap but separate items → keep word boundary
-      out.push(t);
-    } else if (/[A-Za-z]$/.test(prev) && /^[A-Za-z]/.test(t) && !gapLooksLikeSpace && t.length === 1) {
-      out[out.length - 1] = prev + t;
+    const prevPart = parts[parts.length - 1];
+
+    // Preserve spaces already present in PDF strings — do not invent more.
+    if (/\s$/.test(prevPart) || /^\s/.test(t)) {
+      parts[parts.length - 1] = prevPart + t;
+      lastGeom = item;
+      if (item.hasEOL) {
+        parts.push('\n');
+        lastGeom = null;
+      }
+      continue;
+    }
+
+    const em = estimateEm(lastGeom, item);
+    const gap = horizontalGapBetweenRuns(lastGeom, item);
+    const wordThr = wordGapThreshold(em);
+    const colThr = columnGapThreshold(em);
+
+    if (shouldGlueCodeOrDecimal(prevPart, t) && gap < colThr) {
+      parts[parts.length - 1] = prevPart + t;
+    } else if (gap <= wordThr) {
+      // Same word / adjacent glyphs — glue with no space
+      parts[parts.length - 1] = prevPart + t;
+    } else if (gap >= colThr) {
+      // Distinct column / cell — keep as separate logical lines (do not fabricate a sentence)
+      parts.push('\n');
+      parts.push(t);
     } else {
-      out.push(t);
+      // Genuine word boundary
+      parts[parts.length - 1] = `${prevPart} ${t}`;
     }
-    if (item.hasEOL) out.push('\n');
+
+    lastGeom = item;
+    if (item.hasEOL) {
+      parts.push('\n');
+      lastGeom = null;
+    }
   }
 
-  // Insert spaces between adjacent non-glued tokens stored as separate array entries
-  let joined = '';
-  for (let i = 0; i < out.length; i += 1) {
-    const part = out[i];
-    if (!joined) {
-      joined = part;
-      continue;
-    }
-    if (part === '\n' || joined.endsWith('\n') || /\s$/.test(joined) || /^\s/.test(part)) {
-      joined += part;
-      continue;
-    }
-    // Already glued pieces live in a single entry; separate entries get a space
-    joined += ` ${part}`;
-  }
-  return normalizeSafeWhitespace(joined.replace(/\n+/g, '\n'));
+  return normalizeSafeWhitespace(parts.join('').replace(/\n+/g, '\n'));
 }
 
 /**
