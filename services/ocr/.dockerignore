@@ -1,0 +1,6 @@
+# Local / editor ignore for the OCR service
+node_modules/
+dist/
+*.log
+.env
+.tmp/
