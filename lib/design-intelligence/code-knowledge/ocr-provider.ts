@@ -1,6 +1,7 @@
 /**
  * Production OCR providers for Design Intelligence selective page fallback.
  * Server-side only. Never fabricate engineering text.
+ * Never import @napi-rs/canvas here — it breaks Next client bundles.
  *
  * Env (server-only — never NEXT_PUBLIC_*):
  * - DI_OCR_ENABLED=1
@@ -8,6 +9,9 @@
  * - DI_OCR_API_KEY=…           (optional Authorization bearer)
  * - DI_OCR_PROVIDER=http|tesseract|auto  (default auto)
  * - DI_OCR_TIMEOUT_MS=45000
+ *
+ * HTTP providers should rasterize from pdfBase64+pageNumber when imageBase64
+ * is absent. Local tesseract requires pageImageBytes (no in-process PDF raster).
  */
 
 export type OcrProviderEngine = 'http' | 'tesseract';
@@ -34,6 +38,10 @@ export type OcrProviderResult = OcrProviderSuccess | OcrProviderFailure;
 
 const DEFAULT_TIMEOUT_MS = 45_000;
 
+function isBrowser(): boolean {
+  return typeof window !== 'undefined';
+}
+
 export function getOcrTimeoutMs(): number {
   const raw = Number(process.env.DI_OCR_TIMEOUT_MS || DEFAULT_TIMEOUT_MS);
   if (!Number.isFinite(raw) || raw < 1_000) return DEFAULT_TIMEOUT_MS;
@@ -41,15 +49,15 @@ export function getOcrTimeoutMs(): number {
 }
 
 export function resolveOcrProviderMode(): 'http' | 'tesseract' | 'none' {
+  if (isBrowser()) return 'none';
   if (process.env.DI_OCR_ENABLED !== '1') return 'none';
   const explicit = String(process.env.DI_OCR_PROVIDER || 'auto').toLowerCase();
+  if (explicit === 'tesseract') return 'tesseract';
   if (explicit === 'http') {
     return process.env.DI_OCR_ENDPOINT ? 'http' : 'none';
   }
-  if (explicit === 'tesseract') return 'tesseract';
-  // auto: prefer managed HTTP endpoint on Vercel; else local tesseract.js
-  if (process.env.DI_OCR_ENDPOINT) return 'http';
-  return 'tesseract';
+  // auto: Production path requires managed HTTP endpoint (no fake local OCR)
+  return process.env.DI_OCR_ENDPOINT ? 'http' : 'none';
 }
 
 export function isConfiguredOcrProviderAvailable(): boolean {
@@ -99,12 +107,16 @@ async function runHttpOcr(input: OcrProviderInput, timeoutMs: number): Promise<O
     digits: true,
     imageBase64,
     imageMimeType: imageBase64 ? 'image/png' : null,
-    // Optional full PDF for remote rasterization when local canvas unavailable
+    // Remote service rasterizes the requested page when local image is absent
     pdfBase64:
       !imageBase64 && input.pdfBytes?.byteLength
         ? Buffer.from(input.pdfBytes).toString('base64')
         : null,
   };
+
+  if (!body.imageBase64 && !body.pdfBase64) {
+    return { text: null, error: 'ocr_http_missing_page_image_or_pdf', engine: 'http' };
+  }
 
   try {
     const res = await withTimeout(
@@ -143,19 +155,7 @@ async function runTesseractOcr(
   input: OcrProviderInput,
   timeoutMs: number
 ): Promise<OcrProviderResult> {
-  let imageBytes = input.pageImageBytes || null;
-  if (!imageBytes?.byteLength && input.pdfBytes?.byteLength) {
-    try {
-      const { rasterizePdfPageToPng } = await import(
-        '@/lib/design-intelligence/code-knowledge/pdf-page-raster'
-      );
-      const raster = await rasterizePdfPageToPng(input.pdfBytes, input.pageNumber);
-      imageBytes = raster?.bytes || null;
-    } catch {
-      imageBytes = null;
-    }
-  }
-
+  const imageBytes = input.pageImageBytes || null;
   if (!imageBytes?.byteLength) {
     return {
       text: null,
@@ -197,6 +197,9 @@ async function runTesseractOcr(
 export async function invokeConfiguredOcrProvider(
   input: OcrProviderInput
 ): Promise<OcrProviderResult> {
+  if (isBrowser()) {
+    return { text: null, error: 'ocr_server_only', engine: null };
+  }
   const mode = resolveOcrProviderMode();
   if (mode === 'none') {
     return { text: null, error: 'ocr_provider_not_configured', engine: null };

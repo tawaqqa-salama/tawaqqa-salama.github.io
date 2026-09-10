@@ -13,10 +13,6 @@ import {
   pickBetterExtractionCandidate,
   type ExtractionQualityAssessment,
 } from '@/lib/design-intelligence/code-knowledge/extraction-quality';
-import {
-  invokeConfiguredOcrProvider,
-  isConfiguredOcrProviderAvailable,
-} from '@/lib/design-intelligence/code-knowledge/ocr-provider';
 import { logReingest } from '@/lib/design-intelligence/reingest-log';
 
 /** Page-level provenance persisted on chunks / citations. */
@@ -46,9 +42,19 @@ export function setOcrPageProviderForTests(provider: OcrPageProvider | null): vo
   injectedProvider = provider;
 }
 
+function isBrowserRuntime(): boolean {
+  return typeof window !== 'undefined';
+}
+
+/** True when an OCR provider can be invoked on this runtime (never in browser). */
 export function isRuntimeOcrAvailable(): boolean {
   if (injectedProvider) return true;
-  return isConfiguredOcrProviderAvailable();
+  if (isBrowserRuntime()) return false;
+  if (process.env.DI_OCR_ENABLED !== '1') return false;
+  const mode = String(process.env.DI_OCR_PROVIDER || 'auto').toLowerCase();
+  if (mode === 'http' || mode === 'auto') return Boolean(process.env.DI_OCR_ENDPOINT);
+  if (mode === 'tesseract') return true;
+  return false;
 }
 
 function logOcrStage(
@@ -95,8 +101,12 @@ async function runOcrProvider(input: {
     if (!provided?.text.trim()) return null;
     return provided;
   }
-  if (!isConfiguredOcrProviderAvailable()) return null;
+  if (isBrowserRuntime()) return null;
+  if (!isRuntimeOcrAvailable()) return null;
 
+  const { invokeConfiguredOcrProvider } = await import(
+    '@/lib/design-intelligence/code-knowledge/ocr-provider'
+  );
   const result = await invokeConfiguredOcrProvider({
     pageNumber: input.pageNumber,
     pdfText: input.pdfText,
@@ -110,7 +120,7 @@ async function runOcrProvider(input: {
   return {
     text: '',
     engine: 'ocr',
-    error: result.error || 'ocr_provider_failed',
+    error: ('error' in result && result.error) || 'ocr_provider_failed',
   };
 }
 
