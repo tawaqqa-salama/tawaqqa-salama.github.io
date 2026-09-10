@@ -36,6 +36,11 @@ import {
   chunkPagesPreserving,
   pagesFromPlainText,
 } from '@/lib/design-intelligence/code-knowledge/pdf-page-extract';
+import {
+  assessExtractionTextQuality,
+  EXTRACTION_QUALITY_MIN_USABLE_SCORE,
+} from '@/lib/design-intelligence/code-knowledge/extraction-quality';
+import { isSaudiPolicyEligibleDocument } from '@/lib/design-intelligence/saudi-code-policy';
 import { detectSourceRefsFromText, toPgInt4, toSafePageNumber } from '@/lib/design-intelligence/code-knowledge/source-refs';
 import { sha256HexFromBytes } from '@/lib/design-intelligence/code-knowledge/sha256';
 import {
@@ -313,17 +318,41 @@ export function ensureSeedKnowledgeBase(): { docs: DiKnowledgeDocument[]; chunks
 
 /**
  * Active indexed knowledge document for company RAG readiness counts.
- * Soft-deleted / historical rows must never inflate the UI count.
+ * Soft-deleted / historical / non-Saudi / failed rows must never inflate the UI count.
  */
 export function isActiveIndexedKnowledgeDocument(
   doc: DiKnowledgeDocument,
   companyId?: string | null
 ): boolean {
   if (doc.deleted_at) return false;
+  if (String(doc.status || '').toLowerCase() === 'superseded') return false;
   if (String(doc.index_status || '') !== 'indexed') return false;
   if (String(doc.ingestion_status || '') !== 'indexed') return false;
   if (companyId) {
     if (!doc.company_id || doc.company_id !== companyId) return false;
+  }
+  // Design Intelligence is Saudi-code-only — NFPA / non-Saudi sources are not countable evidence
+  if (
+    !isSaudiPolicyEligibleDocument({
+      id: doc.id,
+      company_id: doc.company_id,
+      title: doc.title,
+      code: doc.code,
+      edition: doc.edition,
+      applicable_codes: doc.applicable_codes,
+      category: doc.category,
+      source_kind: doc.source_kind,
+      source_type: doc.source_type,
+      source_document_id: doc.source_document_id,
+      storage_path: doc.storage_path,
+      file_name: doc.file_name,
+      deleted_at: doc.deleted_at,
+      status: doc.status,
+      index_status: doc.index_status,
+      ingestion_status: doc.ingestion_status,
+    })
+  ) {
+    return false;
   }
   return true;
 }
@@ -597,7 +626,7 @@ export async function indexDocumentText(
 
   const pageParts = chunkPagesPreserving(pageTexts, 900);
   const useUuidIds = requireCloud || isUuid(doc.id);
-  const chunks: DiKnowledgeChunk[] =
+  let chunks: DiKnowledgeChunk[] =
     pageParts.length > 0
       ? pageParts.map((part) => {
           const refs = detectSourceRefsFromText(part.content, {
@@ -645,6 +674,17 @@ export async function indexDocumentText(
           document_title: doc.title,
         }));
 
+  // Reject unusable extraction before persistence — never index CID garbage as evidence
+  const chunksBeforeQuality = chunks.length;
+  chunks = chunks.filter((c) => {
+    if (c.extraction_method === 'unusable') return false;
+    if (String(c.content || '').startsWith('[Page ') && c.content.includes('no extractable text')) {
+      return false;
+    }
+    return assessExtractionTextQuality(c.content || '').usable;
+  });
+  const chunksRejectedForQuality = chunksBeforeQuality - chunks.length;
+
   const now = new Date().toISOString();
   const updated: DiKnowledgeDocument = {
     ...doc,
@@ -667,6 +707,10 @@ export async function indexDocumentText(
     content_sha256: pageMeta?.sha256 ?? doc.content_sha256 ?? null,
     status: (doc.status || 'active') as KnowledgeDocStatus,
     updated_at: now,
+    notes:
+      chunksRejectedForQuality > 0
+        ? `${doc.notes ? `${doc.notes}\n` : ''}quality_rejected_chunks=${chunksRejectedForQuality}`
+        : doc.notes,
   };
 
   let persistedToCloud = false;
@@ -2034,6 +2078,64 @@ export async function ragQuery(
   const resolveDoc = (documentId: string): DiKnowledgeDocument | undefined =>
     remoteDocsById.get(documentId) || docs.find((d) => d.id === documentId);
 
+  // Saudi-code-only: never use NFPA / non-Saudi documents as engineering authority
+  chunks = chunks.filter((chunk) => {
+    const doc = resolveDoc(chunk.document_id);
+    return isSaudiPolicyEligibleDocument({
+      id: doc?.id || chunk.document_id,
+      company_id: doc?.company_id ?? chunk.company_id,
+      title: doc?.title,
+      code: doc?.code ?? chunk.code,
+      edition: doc?.edition ?? chunk.edition,
+      applicable_codes: doc?.applicable_codes,
+      category: doc?.category,
+      source_kind: doc?.source_kind,
+      source_type: doc?.source_type,
+      source_document_id: doc?.source_document_id ?? chunk.source_document_id,
+      storage_path: doc?.storage_path,
+      file_name: doc?.file_name,
+      deleted_at: doc?.deleted_at,
+      status: doc?.status,
+      index_status: doc?.index_status,
+      ingestion_status: doc?.ingestion_status,
+    });
+  });
+
+  if (explicitFamily.length === 1 && explicitFamily[0] === 'NFPA') {
+    return needsDataAnswer(
+      'قاعدة المعرفة تقتصر على الأكواد السعودية (SBC). لا تُسترجع مستندات NFPA كمرجع هندسي معتمد.'
+    );
+  }
+
+  // Hard extraction-quality gate — corrupted CID text must never become strong evidence
+  type QualityMeta = { usable: boolean; score: number; reasons: string[]; method: string | null };
+  const qualityByChunkId = new Map<string, QualityMeta>();
+  chunks = chunks.filter((chunk) => {
+    if (chunk.extraction_method === 'unusable') {
+      qualityByChunkId.set(chunk.id, {
+        usable: false,
+        score: 0,
+        reasons: ['extraction_method_unusable'],
+        method: 'unusable',
+      });
+      return false;
+    }
+    const quality = assessExtractionTextQuality(chunk.content || '');
+    qualityByChunkId.set(chunk.id, {
+      usable: quality.usable,
+      score: quality.score,
+      reasons: quality.reasons,
+      method: chunk.extraction_method || null,
+    });
+    return quality.usable;
+  });
+
+  if (!chunks.length) {
+    return needsDataAnswer(
+      'تعذر الاعتماد على مصدر مفهرس موثوق: النص المستخرج غير قابل للقراءة أو خارج سياسة الأكواد السعودية.'
+    );
+  }
+
   const qVec = embedText(q);
   type Scored = {
     chunk: DiKnowledgeChunk;
@@ -2147,13 +2249,22 @@ export async function ragQuery(
     const doc = resolveDoc(chunk.document_id);
     const pageNumber =
       chunk.page_number ?? chunk.page_start ?? null;
+    const quality = qualityByChunkId.get(chunk.id);
+    const extractionQuality = quality?.score ?? 0;
+    // Separate retrieval similarity from final evidence confidence
+    const evidenceConfidence = Math.min(finalScore, extractionQuality);
+    // Never allow 100% merely from high similarity against weak extraction
+    const capped =
+      extractionQuality < 0.85
+        ? Math.min(evidenceConfidence, 0.7)
+        : evidenceConfidence;
     return {
       documentId: chunk.document_id,
       documentTitle: chunk.document_title || doc?.title || 'Document',
       pageNumber,
       paragraph: chunk.content.slice(0, 420),
       codeReference: chunk.code_reference || chunk.code || doc?.applicable_codes?.[0] || doc?.code || null,
-      confidence: Math.round(finalScore * 100),
+      confidence: Math.round(capped * 100),
       chunkId: chunk.id,
       code: chunk.code ?? doc?.code ?? null,
       edition: chunk.edition ?? doc?.edition ?? null,
@@ -2166,12 +2277,23 @@ export async function ragQuery(
       sourceVerificationStatus: chunk.source_verification_status ?? null,
       documentVerificationStatus: doc?.verification_status ?? null,
       platformVerificationStatus: doc?.platform_verification_status ?? null,
+      extractionMethod: quality?.method ?? chunk.extraction_method ?? null,
+      extractionQuality,
+      extractionQualityReasons: quality?.reasons ?? [],
+      retrievalScore: finalScore,
     };
   });
 
   const top = citations[0];
-  const reliable = best >= RELIABLE_SCORE;
+  const topQuality = qualityByChunkId.get(scored[0]?.chunk.id || '')?.score ?? 0;
+  const reliable = best >= RELIABLE_SCORE && topQuality >= 0.85;
   const matchStrength: RagAnswer['matchStrength'] = reliable ? 'strong' : 'weak';
+
+  if (!reliable && engineeringQuery && topQuality < EXTRACTION_QUALITY_MIN_USABLE_SCORE) {
+    return needsDataAnswer(
+      'المصدر ذو الصلة موجود لكن جودة استخراج النص غير كافية للاعتماد الهندسي.'
+    );
+  }
 
   const answer = reliable
     ? [

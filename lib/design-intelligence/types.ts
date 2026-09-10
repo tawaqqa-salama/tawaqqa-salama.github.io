@@ -112,6 +112,12 @@ export type RagCitation = {
   documentVerificationStatus?: string | null;
   /** Platform official verification when available (additive). */
   platformVerificationStatus?: string | null;
+  /** Extraction provenance / quality (additive — never fabricate). */
+  extractionMethod?: string | null;
+  extractionQuality?: number | null;
+  extractionQualityReasons?: string[];
+  /** Raw retrieval similarity before extraction-quality capping. */
+  retrievalScore?: number | null;
 };
 
 export type RagAnswer = {

@@ -104,7 +104,22 @@ export type IngestionStatus =
   | 'superseded'
   | 'skipped_duplicate';
 
-export type ExtractionMethod = 'text' | 'ocr' | 'mixed' | 'empty';
+/**
+ * Page/chunk extraction provenance.
+ * - text: usable PDF.js text
+ * - ocr: selective OCR fallback won
+ * - alternate: alternate extractor won
+ * - mixed: document contains both text and ocr pages
+ * - empty: no extractable text
+ * - unusable: extraction failed quality gate (must not be indexed as evidence)
+ */
+export type ExtractionMethod =
+  | 'text'
+  | 'ocr'
+  | 'alternate'
+  | 'mixed'
+  | 'empty'
+  | 'unusable';
 
 export type CodeKnowledgeDocumentMeta = {
   id: string;

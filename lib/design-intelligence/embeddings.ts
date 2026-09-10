@@ -186,7 +186,10 @@ export async function extractTextFromFile(file: File): Promise<{
   page_count?: number;
   pages_extracted?: number;
   pages_ocr?: number;
+  pages_rejected?: number;
   page_texts?: string[];
+  page_extraction_methods?: string[];
+  page_quality_scores?: Array<number | null>;
   extraction_method?: string;
 }> {
   const name = file.name.toLowerCase();
@@ -209,6 +212,7 @@ export async function extractTextFromFile(file: File): Promise<{
       page_count: pages.page_count || 1,
       pages_extracted: pages.pages_extracted,
       pages_ocr: 0,
+      pages_rejected: pages.pages_rejected || 0,
       page_texts: pages.pages.map((p) => p.text),
       extraction_method: 'text',
     };
@@ -222,32 +226,34 @@ export async function extractTextFromFile(file: File): Promise<{
       page_count: 1,
       pages_extracted: 1,
       pages_ocr: 0,
+      pages_rejected: 0,
       page_texts: [text],
       extraction_method: 'text',
     };
   }
 
   if (mime.includes('pdf') || name.endsWith('.pdf')) {
-    const { extractPdfPagesFromBytes, applyOcrFallbackToPages } = await import(
-      '@/lib/design-intelligence/code-knowledge/pdf-page-extract'
-    );
+    const {
+      extractPdfPagesFromBytes,
+      applyExtractionQualityGateToPages,
+    } = await import('@/lib/design-intelligence/code-knowledge/pdf-page-extract');
     const bytes = new Uint8Array(await file.arrayBuffer());
     try {
-      let extracted = await extractPdfPagesFromBytes(bytes);
-      const needsOcr =
-        extracted.page_count === 0 ||
-        extracted.pages.every((p) => !p.text.trim());
-      if (needsOcr || extracted.pages.some((p) => !p.text.trim())) {
-        // OCR fallback marks empty pages; does not invent NFPA body text
-        extracted = applyOcrFallbackToPages(extracted.pages);
-      }
+      const raw = await extractPdfPagesFromBytes(bytes);
+      // Selective quality gate + OCR boundary (no invented body text)
+      const extracted = await applyExtractionQualityGateToPages(raw.pages);
       return {
         text: extracted.combined_text,
         ocrUsed: extracted.ocr_used,
         page_count: extracted.page_count,
         pages_extracted: extracted.pages_extracted,
         pages_ocr: extracted.pages_ocr,
-        page_texts: extracted.pages.map((p) => p.text),
+        pages_rejected: extracted.pages_rejected,
+        page_texts: extracted.pages.map((p) =>
+          p.extraction_method === 'unusable' || p.quality_usable === false ? '' : p.text
+        ),
+        page_extraction_methods: extracted.pages.map((p) => p.extraction_method),
+        page_quality_scores: extracted.pages.map((p) => p.quality_score ?? null),
         extraction_method: extracted.extraction_method,
       };
     } catch (err) {
